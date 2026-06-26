@@ -1,0 +1,37 @@
+# Python tooling config for the monorepo's in-tree tools (buckify-rpm, the
+# sandbox/assembly/build drivers, rpm-extract). Formatting + linting via ruff,
+# type-checking via ty — both pinned through DotSlash (tools/ruff, tools/ty).
+# Loosely tracks barrage/mkosi's config; mypy intentionally omitted.
+
+[tool.ruff]
+target-version = "py314"
+line-length = 109
+# Vendored verbatim from upstream — never our code to lint/format.
+extend-exclude = ["distribution/mkosi/sandbox.py"]
+lint.select = [
+    "E",    # pycodestyle
+    "W",    # pycodestyle (trailing whitespace)
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+]
+
+[tool.ty.environment]
+python-version = "3.14"
+# Third-party imports (libdnf5, createrepo_c) resolve from the *engine root* — the
+# pinned environment the drivers actually run in — not the host. The justfile's
+# `check` builds the engine root, symlinks it to a gitignored `.engine`, and points
+# ty at it with `--python .engine/usr` (kept on the CLI, not here, because the
+# symlink only exists after that build step).
+# The tools share a flat import namespace at run time (the bootstrap/chroot
+# run-trees are flat), so the rpm/ drivers import `sandbox`/`mkosi.sandbox` as
+# top-level modules — add distribution/ as a search root so ty resolves them.
+extra-paths = ["distribution"]
+
+[tool.ty.src]
+# Vendored upstream file is not part of our typed surface.
+exclude = ["distribution/mkosi/sandbox.py"]
+
+[tool.ty.rules]
+unused-type-ignore-comment = "ignore"

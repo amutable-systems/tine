@@ -1,0 +1,34 @@
+#!/usr/bin/env dotslash
+
+// Pinned buildifier (Starlark/BUCK formatter) via DotSlash. `./tools/buildifier`
+// fetches the content-addressed prebuilt and verifies its blake3 hash — no install
+// step. Version: 8.5.1. Linux only (x86_64 + aarch64); the release artifacts are
+// raw static Go binaries (no archive, so no `format`/`path`).
+
+{
+  "name": "buildifier",
+  "platforms": {
+    "linux-x86_64": {
+      "size": 7757842,
+      "hash": "blake3",
+      "path": "buildifier",
+      "digest": "6a4fbcac78726e010866c0e8c95fa2ddd73c816c55600de34554a0c6efcc5e02",
+      "providers": [
+        {
+          "url": "https://github.com/bazelbuild/buildtools/releases/download/v8.5.1/buildifier-linux-amd64"
+        }
+      ]
+    },
+    "linux-aarch64": {
+      "size": 7483831,
+      "hash": "blake3",
+      "path": "buildifier",
+      "digest": "db1589c059f5c3984e1f767f1eb7177ce28dbe974d12489713bda59d0409859f",
+      "providers": [
+        {
+          "url": "https://github.com/bazelbuild/buildtools/releases/download/v8.5.1/buildifier-linux-arm64"
+        }
+      ]
+    }
+  }
+}

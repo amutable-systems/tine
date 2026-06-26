@@ -1,0 +1,17 @@
+load("@prelude//toolchains:python.bzl", "python_bootstrap_toolchain")
+
+# The default toolchains cell shipped by the tine cell. The prelude's
+# python_bootstrap rules resolve `toolchains//:python_bootstrap`; a consumer that
+# wants a different toolchain entirely repoints `[cells] toolchains` at their own
+# cell. To override just the interpreter, set `[tine] python_interpreter` in the
+# root .buckconfig (read below) — no need to fork this cell.
+
+# Bootstrap interpreter for our build-time Python tools (rpm-extract, sandbox,
+# build_rpm) — defaults to the cell's pinned DotSlash python3 (3.14.x) rather than
+# whatever's on the host PATH, so the bootstrap is reproducible. This is the only
+# toolchain we need; the rpm rules drive actions directly (no cxx/go/rust/genrule).
+python_bootstrap_toolchain(
+    name = "python_bootstrap",
+    interpreter = read_config("tine", "python_interpreter", "tine//tools:python3"),
+    visibility = ["PUBLIC"],
+)

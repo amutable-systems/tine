@@ -1,0 +1,66 @@
+# Catalog manifest — pinned input to the per-distribution resolvers (`buckify-rpm
+# resolve`, driven by the host `buckify` orchestrator), which resolve each
+# distribution's transitive closure into its own <name>.bzl fragment. Refresh =
+# edit + `just refresh-catalog`.
+#
+# Each [distribution.NAME] configures one distribution build target: its pinned repositories (the solver resolves
+# against their union, highest NEVRA wins); its `engine` — either its own engine-root
+# package set (a list, in THIS distribution's naming) when it can provision one, or the
+# name of the distribution whose engine builds it; and its buildroot. The engine is
+# shared — its libdnf5 assembles any rpm distribution's buildroot, so CentOS (no
+# libdnf5) builds by pointing `engine` at Fedora. The buildroot base is always
+# installed, buildrequires only on demand; `buildroot_groups` expands comps groups
+# (Fedora's @buildsys-build), `buildroot_packages` is an explicit list for
+# distributions with no such group (CentOS — Koji-only) — union both.
+
+[distribution.fedora44]
+release = "44"
+arch = "x86_64"
+# Self-hosting: `engine` is this distribution's own engine-root package set (Fedora
+# naming). Deps arrive transitively, so only top-level packages: coreutils
+# (scriptlets), libseccomp (the nested sandbox dlopen's it), and ca-certificates
+# (TLS trust for the self-hosted, networked lock generator) aren't guaranteed
+# transitively, so they're explicit. python3-createrepo_c writes the buildroot
+# repositories' repodata (libdnf5 only reads it).
+engine = ["rpm", "python3", "python3-libdnf5", "python3-createrepo_c", "coreutils", "libseccomp", "ca-certificates"]
+
+# Frozen GA tree, so the closure is reproducible. (Add the live `updates` tree
+# once we handle its mutability — superseded rpms age out and pinned URLs 404.)
+[[distribution.fedora44.repositories]]
+id = "fedora"
+baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/"
+
+[distribution.fedora44.buildroot]
+buildroot_groups = ["buildsys-build"]
+buildrequires = ["gcc", "gcc-c++", "make", "cmake"]
+
+[distribution.centos10]
+release = "10"
+arch = "x86_64"
+# CentOS Stream ships no libdnf5, so it can't provision its own engine root — it's
+# a build *target* only, built by the Fedora engine (`engine` names that distribution).
+engine = "fedora44"
+# CentOS Stream is a *rolling* repo (no frozen GA), so this pin drifts on refresh
+# like Fedora's updates — fine for now.
+[[distribution.centos10.repositories]]
+id = "baseos"
+baseurl = "https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/"
+
+[[distribution.centos10.repositories]]
+id = "appstream"
+baseurl = "https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/"
+
+[[distribution.centos10.repositories]]
+id = "crb"
+baseurl = "https://mirror.stream.centos.org/10-stream/CRB/x86_64/os/"
+
+[distribution.centos10.buildroot]
+# No @buildsys-build comps group on CentOS; this is mock's chroot_setup_cmd
+# (centos-stream-10.tpl) verbatim.
+buildroot_packages = [
+    "bash", "bzip2", "centos-stream-release", "coreutils", "cpio", "diffutils",
+    "findutils", "gawk", "glibc-minimal-langpack", "grep", "gzip", "info", "patch",
+    "redhat-rpm-config", "rpm-build", "sed", "shadow-utils", "tar", "unzip",
+    "util-linux", "which", "xz",
+]
+buildrequires = ["gcc", "gcc-c++", "make", "cmake"]

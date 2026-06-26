@@ -1,0 +1,35 @@
+#!/usr/bin/env dotslash
+
+// Pinned ty (type checker) via DotSlash. `./tools/ty` fetches the
+// content-addressed prebuilt and verifies its blake3 hash — no install step.
+// Version: 0.0.52. Linux only (x86_64 + aarch64), static musl builds.
+
+{
+  "name": "ty",
+  "platforms": {
+    "linux-x86_64": {
+      "size": 12050160,
+      "hash": "blake3",
+      "digest": "bf4c76f6bd06cd72549222d909ac3963f4dd9ba8264c5c3c90da27fca5b454af",
+      "format": "tar.gz",
+      "path": "ty-x86_64-unknown-linux-musl/ty",
+      "providers": [
+        {
+          "url": "https://github.com/astral-sh/ty/releases/download/0.0.52/ty-x86_64-unknown-linux-musl.tar.gz"
+        }
+      ]
+    },
+    "linux-aarch64": {
+      "size": 11120781,
+      "hash": "blake3",
+      "digest": "7f31f9097a98e4d2574dd6a4c4c970676d8af7fc04cb8e6060f47c8b105a2216",
+      "format": "tar.gz",
+      "path": "ty-aarch64-unknown-linux-musl/ty",
+      "providers": [
+        {
+          "url": "https://github.com/astral-sh/ty/releases/download/0.0.52/ty-aarch64-unknown-linux-musl.tar.gz"
+        }
+      ]
+    }
+  }
+}

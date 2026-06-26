@@ -1,0 +1,15 @@
+# This BUCK lives in the *catalog* cell (default `[cells] catalog = tine/catalog`), so
+# the declaration is scoped to whichever catalog is active. It instantiates the
+# per-distribution target graph — engine roots, repos, distribution targets at
+# `catalog//:<distribution>`, lock generators — from this catalog's @generated lock.
+# tine provides the machinery (the declare_catalog macro + rules); the catalog
+# cell provides the data (generated.bzl + manifest.toml) and this call.
+#
+# A consumer overrides by repointing `[cells] catalog` at their own dir and supplying
+# their own catalog BUCK (this 3-line template, with their own generated.bzl). tine's
+# default declaration here then does not apply — the override replaces data *and*
+# declaration, not just data.
+load("@tine//defs:catalog.bzl", "declare_catalog")
+load(":generated.bzl", "DISTRIBUTIONS")
+
+declare_catalog(DISTRIBUTIONS)
