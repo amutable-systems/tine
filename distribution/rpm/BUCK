@@ -17,7 +17,7 @@ python_bootstrap_binary(
 # The chroot-run drivers, each a DriverInfo a consumer binds to an engine (at the fixed
 # assembly epoch, so assembly output is reproducible). build pulls in the sandbox
 # launcher for its nested rpmbuild chroot.
-driver(name = "install", main = "install.py")
+driver(name = "install", main = "install.py", deps = ["//distribution:rootfs_lib"])
 driver(name = "createrepo", main = "createrepo.py")
 driver(name = "plan", main = "plan.py")
 driver(name = "build", main = "build.py", deps = ["//distribution:sandbox_lib"])

@@ -272,59 +272,41 @@ Every build action that touches a chroot — buildroot assembly, `rpmbuild`,
 `%check`, each image-layer op, the toolchain compiler wrapper, and the bootstrap
 hops — goes through one primitive: a vendored **mkosi-sandbox** wrapper (the sole
 sandbox layer; buck2 has no built-in local one). Two layers: the **`sandbox`
-binary** (`tine/distribution/sandbox.py` — `sandbox.run(SandboxSpec(...))` /
-`cli()` over mkosi-sandbox) and, above it, the **`chroot_python_run(...)`**
-Starlark helper (`tine/defs/rules/python.bzl`) that wires a python tool into an
-engine root via `ctx.actions.run` (internal, not a user-facing rule — decision 11).
+binary** (`tine/distribution/sandbox.py` — a small argparse `main()` over
+mkosi-sandbox) and, above it, the **`chroot_python_run(...)`** Starlark helper
+(`tine/defs/rules/python.bzl`) that wires a python tool into an engine root via
+`ctx.actions.run` (internal, not a user-facing rule — decision 11).
 
-Modeled on mkosi's `sandbox_cmd()` (`../mkosi/mkosi/run.py:615`): a **`tools`**
-tree supplies `/usr`/`/bin`/`/lib`/`/sbin` (ro) — so the binary + its runtime
-come from a *pinned* chroot (engine root / buildroot / sysroot), never the host
-— and the tree being operated on is mounted writable at **`/buildroot`** and
-targeted via `--root`/`--installroot`.
+Modeled on mkosi's `sandbox_cmd()` (`../mkosi/mkosi/run.py:615`): a **`tools`** tree supplies
+`/usr`/`/bin`/`/lib`/`/sbin` (ro) — so the binary + its runtime come from a *pinned* chroot
+(engine root / buildroot / sysroot), never the host — plus the kernel API mounts and become-root
+in a user namespace. **That is all the sandbox sets up: the exec environment.** A driver that
+needs a **target** tree to install into or run against sets it up itself, from inside the
+namespace, via `rootfs.py` (which drives mkosi's own `FSOperation` classes —
+`OverlayOperation`/`BindOperation`/`DevOperation`/`TmpfsOperation`), rather than the launcher
+binding a fixed `/buildroot`: `rootfs.rootfs()` mounts a bind or overlay (+ apivfs) and
+`rootfs.chroot()` enters it.
 
 ```
-SandboxSpec(                  # low level — the sandbox binary (distribution/sandbox.py)
-  tools,                      # ro exec-env chroot, bound onto /
-  cmd,                        # argv to run inside
-  root = None,                # target tree → mounted rw at /buildroot
-  binds = [], ro_binds = [],  # rw / ro inputs as (src, dst) pairs
-  scratch = [],               # writable ephemeral dirs, (name, dst) (discarded)
-  setenv = [], chdir = None, network = False, bind_cwd = False,
-  source_date_epoch = None)   # injected reproducibility clamp
+sandbox --tools <exec-env> [--bind SRC:DST] [--ro-bind …] [--scratch NAME:DST]
+        [--setenv K=V] [--source-date-epoch N] [--network] [--bind-cwd] -- cmd …
 
-chroot_python_run(            # high level — a python tool in an engine root (python.bzl)
-  ctx, sandbox, engine, main, deps = [], network = False,
-  source_date_epoch = None, label = None) -> (runtree, RunInfo)
+chroot_python_run(ctx, sandbox, engine, main, deps = [], network = False, label = None)
 ```
 
-Two shapes:
-- **tool-on-image** (`tools` + `root`): `tools` provides the binary, `root` is the
-  image at `/buildroot`, the cmd points `--root=/buildroot` at it; the mutated
-  `/buildroot` is the captured output tree (`dnf --installroot`, `systemd-repart
-  --root`, `rpm --root`).
-- **run-inside** (`tools` only): the tool lives in `tools` and runs against that
-  env; writes land in `scratch`, kept via `outputs` (`rpmbuild` with `tools` =
-  the buildroot, writing `%_topdir` scratch → the rpms).
-- "chroot in *and* mutate the tree" = `tools` = `root` = the same tree (bound ro
-  for `/usr`, writable at `/buildroot`).
+The target-root patterns (each set up by the driver via `rootfs.py`, not the launcher):
+- **install-into** (`install.py`): bind the output tree at `/buildroot` + apivfs, install there
+  (`dnf --installroot`) — the buildroot assembly and both bootstrap hops.
+- **overlay-and-chroot** (`image.py`): overlay the ancestor delta stack with a fresh upper, chroot
+  in, apply the ops (a `run` op execs the tree's own tools), capture the upper as the delta.
+- **run-inside** (`build.py`): no target root — `tools` = the buildroot, `rpmbuild` writes a
+  `%_topdir` scratch bind → the rpms.
 
-| use | `tools` | `root` (→ `/buildroot`) | `scratch` | `outputs` |
-|---|---|---|---|---|
-| assemble buildroot | engine root | new buildroot | — | root |
-| `rpmbuild` | buildroot | — | `%_topdir` | rpms |
-| image tool-on-tree | tools-chroot | the tree | — | root |
-| image run-in-tree | the tree | the tree | — | root |
-| bootstrap hop-2 | chroot1 | chroot2 | — | root |
-| compiler | sysroot | — | cwd | objects |
-
-Properties: content-keyed on `(tools, root, binds, cmd, env)` digests;
-**reproducibility hooks centralized** — the sandbox injects `SOURCE_DATE_EPOCH`
-(the caller's value: a fixed constant for assembly, the per-package changelog
-epoch for build — see Rebuild semantics) + the dist macros and defaults
-`--unshare-net`, so no action can forget them;
-**RE-ready** (pure-Python userns, no setuid; trees are CAS in/out; deferred
-materialization + reflink for the `/buildroot` copy).
+Properties: content-keyed on `(tools, binds, cmd, env)` digests; **reproducibility hooks
+centralized** — the sandbox injects `SOURCE_DATE_EPOCH` (a fixed constant for assembly, the
+per-package changelog epoch for build — see Rebuild semantics) + the dist macros and defaults
+`--unshare-net`, so no action can forget them; **RE-ready** (pure-Python userns, no setuid; trees
+are CAS in/out; deferred materialization + reflink).
 
 ### Bootstrap & roots of trust
 
@@ -812,7 +794,7 @@ the graph to Go tooling. Both run before the build like reindeer.
   `go/toolchain.bzl:25` — `go`/`compiler`/`linker`/`cgo` `RunInfo` + `env_go_root`
   `Artifact`; `CxxToolchainInfo` `cxx/cxx_toolchain_types.bzl:246` — `*CompilerInfo`
   whose `compiler` is an arbitrary `RunInfo`). Each compiler/linker `RunInfo`
-  points at a **`sandbox_run` wrapper (`tools` = the sysroot)** that runs the
+  points at a **`sandbox` invocation (`--tools` = the sysroot)** that runs the
   real tool at canonical paths. Inside the chroot the compiler's own
   `PT_INTERP`/`DT_NEEDED` resolve to **our** loader/libs *and* its default header/
   lib search finds **our** `-devel` content — the same tree, **no `--sysroot`** —
@@ -853,11 +835,12 @@ resolve-then-materialize inside itself.
 over two format-neutral drivers bound to a distribution's engine root: `image.py` (the step
 driver) and `pack.py` (the packer). A base layer's `install` reuses the rpm
 plan→materialize→install flow — factored out of `rpm_package` into the shared
-`assemble_root` helper (`defs/rules/closure.bzl`) — so `install_rpms` is a separate
-buck action producing the layer's base tree, exactly as below. The step driver
-applies an ordered op list (`run`/`mkdir`/`symlink`/`remove`) to one tree in place;
-`run` ops nest the sandbox in *rw-tools* mode (a new `SandboxSpec.rw_tools`) so
-mutations write back into the layer. The packer drops the rpmdb, then writes a
+`assemble_root` helper (`defs/rules/distribution.bzl`) — so `install_rpms` is a separate
+buck action producing the layer's base tree, exactly as below. The step driver overlays the
+ancestor delta stack with a fresh upper, **chroots into the merge** (via `rootfs.py`) and
+applies an ordered op list (`run`/`mkdir`/`symlink`/`remove`) against it — a `run` op just
+execs from the tree's own tools under apivfs, no nested sandbox — capturing only the upper as
+the layer's delta (see *Layering via overlayfs deltas*). The packer drops the rpmdb, then writes a
 deterministic `tar` (stdlib `tarfile`, since the minimal engine root ships no `tar`)
 or a `directory`. Demonstrated end-to-end by `root//image:demo`. **Roadmap (not yet
 built):** the wider op vocabulary (`copy_tree`/`add_files` from targets, `chmod`/
@@ -869,10 +852,96 @@ install resolves over the distribution's buildroot repos, not a separate image r
 and the distribution `default_os` config transition. The rest of this section is that
 design intent.
 
+**Layering via overlayfs deltas (design intent; supersedes the interim reflink copy).** A layer stores only
+its **delta**, not a full merged tree. Building layer N mounts an **overlayfs** with every ancestor delta as
+a read-only `lowerdir` and a fresh `upperdir`, runs that layer's ops/install against the merged view, and
+captures **only the upper**. `LayerInfo` carries the **ordered ancestor stack** (each entry a delta
+artifact); a child appends its own; the terminal pack overlay-merges the whole stack once (over an ephemeral
+upper) and archives that view. Base layers (`install`, no parent) are the bottom of the stack — a full root,
+no whiteouts. This
+replaces the current "reflink-copy the parent, mutate in place" step driver (`image.py`), so a layer's disk
+cost is the diff (its upper), not a per-layer copy.
+
+- **Deletions travel as OCI whiteouts, not a sidecar.** buck's artifact model is content + one exec bit +
+  symlinks + dirs (verified: `FileMetadata { digest, is_executable }` in buck2
+  `buck2_common/…/file_ops/metadata.rs`) — it cannot round-trip overlay whiteouts (char `0:0` device nodes)
+  or `trusted.overlay.*` xattrs through CAS. So a delta encodes removals **inline as OCI-changeset regular
+  files** — `.wh.<name>` (a deleted path) and `.wh..wh..opq` (an opaque dir) — keeping every stored artifact
+  plain files (RE-safe, reflink-friendly, and a valid OCI layer for free): no second artifact, no device
+  nodes, no xattrs on disk.
+- **Reconstructed to native overlay at mount, unprivileged (verified).** Native overlayfs doesn't read
+  `.wh.` (only fuse-overlayfs does), so at mount we translate them into overlay-native markers — needing
+  **no privilege**: a whiteout is a char `0:0` node and the kernel exempts whiteout nodes from `CAP_MKNOD`
+  (`vfs_mknod`'s `is_whiteout` case), so `os.mknod(p, S_IFCHR, 0)` succeeds in the sandbox's userns; an
+  opaque dir is `user.overlay.opaque=y` under an **`-o userxattr`** mount, settable by the file owner. Both
+  verified in an unprivileged `unshare -Urm` userns. The reconstruction copies **no delta**: each delta stays
+  a read-only `lowerdir`, framed by tiny sidecar "markers" layers (only device nodes + empty dirs, so the
+  cost is O(markers), not O(delta size)). A layer stacked **above** the delta holds the char `0:0` whiteouts
+  — one for each deleted target, plus one hiding the literal `.wh.`/`.wh..wh..opq` marker file so it doesn't
+  leak into the merge. Opaque dirs must mask *lower* layers without hiding the delta's own contents, so they
+  go in a second sidecar layer stacked **below** the delta (`user.overlay.opaque=y` on an empty dir there).
+  Per delta the local stack is therefore `above : delta : below`.
+- **Why native overlay, not fuse or btrfs.** fuse-overlayfs reads `.wh.` directly (no reconstruction) but
+  drags in a fuse binary + `/dev/fuse`; btrfs subvolumes preserve everything but need privilege + a GC hook
+  buck doesn't give us (antlir2's road). Native overlay + `userxattr` keeps the
+  sandbox fuse-free, dependency-free, and unprivileged — matching our posture.
+- **Plumbing (realized).** All root setup happens **inside the payload**, not in the `sandbox` launcher —
+  because reconstructing a whiteout is a `mknod` of a char 0:0 node, which only the sandbox's *own*
+  user+mount namespace permits, and that namespace exists only *after* `sandbox` execs. `sandbox.py` is
+  therefore a pure **exec-environment leaf**: it binds the `--tools` engine tree onto `/` + the kernel APIs
+  and becomes root — no `--root`/`--apivfs`/`/buildroot`. A driver that needs a target tree sets it up itself
+  via **`rootfs.py`** (a `rootfs_lib` wrapping mkosi's own `FSOperation` classes — `OverlayOperation`,
+  `BindOperation`, `DevOperation`, `TmpfsOperation` — driven with `.execute()` from inside the
+  namespace): `rootfs.rootfs()` mounts the target as a bind or an overlay (with apivfs underneath) and tears
+  the mounts down in order on exit; `rootfs.chroot()` (mkosi's own `chroot`, re-exported) enters it.
+  `install.py` now binds its output at `/buildroot` + apivfs and installs there itself (the old
+  `sandbox --root … --apivfs`). `rootfs.rootfs()` also owns the OCI↔native delta translation: on entry it
+  frames each delta with **sidecar marker layers** (no copy) into the lowerdir list, and on exit — with a
+  writable upper — it re-OCI-ifies that upper. So `image.py` just overlays the stack with a fresh upper
+  (`--out` delta) + `--work` dir, **chroots into the merge**, and applies the ops — a `run` op now execs
+  directly from the tree's own tools under apivfs, **no nested sandbox** — while the reconstruct/capture
+  happen around it. `pack.py` gets the same merge but with an **ephemeral** upper (no `upperdir`, so nothing
+  is captured): it drops the rpmdb + runs tmpfiles *into that throwaway upper* and archives the merged view —
+  **no copy of the base tree**, no staging output. For a build layer, overlayfs leaves the `workdir` dirty,
+  so it's a throwaway **declared** scratch output; the ephemeral upper, reconstruction scratch, and
+  mountpoint all live in a private `TemporaryDirectory`. Verified
+  end-to-end: `root//image:{base,demo,chained,opaque}` (single-component + whiteout + opaque-dir round-trips)
+  and the rpm path
+  (engine bootstrap + buildroot + `zlib-ng`, all through the migrated `install.py`).
+
+**File metadata: authored tmpfiles, applied at pack (no rpmdb).** Because the stored tree is content + exec
+only, non-exec modes, ownership, caps, and xattrs are **not** carried — and we deliberately **do not**
+reconstruct them from the rpmdb. Instead each layer may declare **tmpfiles.d snippets** (inline in BUCK);
+`LayerInfo` accumulates them down the chain, and the terminal pack applies them just before archiving, in
+two `systemd-tmpfiles` passes run from the engine over the flattened merged tree:
+
+- **Pass 1 — our snippets, always.** `systemd-tmpfiles --create --root=<merged> -` with the accumulated
+  snippets piped to stdin (the positional `-`). A positional without `--replace` processes **only** that
+  config — the image's own `tmpfiles.d` is untouched — so this applies exactly our declared metadata.
+  `--root` bypasses NSS and reads the **tree's own** `/etc/passwd`/`/etc/group` (verified in the man page),
+  so image-defined sysusers resolve.
+- **Pass 2 — the image's own definitions, format-gated.** `systemd-tmpfiles --create --root=<merged>` with
+  no positional scans the tree's `/usr/lib/tmpfiles.d` + `/etc/tmpfiles.d` and materializes them into the
+  image. Run only for formats consumed **without a systemd first-boot** (directory/rootfs/container);
+  skipped for bootable images, where first boot does it. When both run, order pass 2 **before** pass 1 so
+  our snippets win on conflict.
+- **What actually lands.** `chmod` and file/dir creation are captured for **archive** formats (the metadata
+  lives inside the tar/erofs blob); ownership chowns are best-effort in the single-uid userns
+  (`--suppress-chown` noops them) and are finalized at first boot by the image's own tmpfiles — which is why
+  pass 2 is format-gated. **setuid is banned** (a deliberate image policy — no setuid bits), **SELinux is a
+  relabel** from policy at pack/boot (non-bootc images don't ship labels), and **file capabilities** (the
+  one class tmpfiles can't express — e.g. `newuidmap`/`ping`) are set by an explicit `run` + `setcap` op
+  only when an image needs them.
+- **Directory-format caveat.** For a `directory` output taken via `buck2 build --out`, the copy
+  (`build/out.rs` → `std::fs::copy`) keeps modes + symlinks but **drops xattrs and ownership**; and buck's
+  content+exec model normalizes modes back to the exec bit on any cache/materialization round-trip. So
+  directory-format metadata is **best-effort** (a fresh, local, no-RE run); the **archive** formats
+  (tar/erofs) are the faithful path — metadata there lives inside the blob, invisible to buck's model.
+
 - **Ops batched per action (the disk lever).** A layer action runs a thin
-  step-driver that applies its op list **in order to a single working tree
-  in place** (one reflink/CoW copy of the parent, mutated by every op), then
-  captures **one** output tree. So **# trees = # layers, not # ops** — batch
+  step-driver that applies its op list **in order** against the parent stack (an overlay `upperdir` over the
+  ancestor lowers — see *Layering via overlayfs deltas* above), then
+  captures **one** output delta. So **# trees = # layers, not # ops** — batch
   freely. Granularity is the Docker-layer-design knob: **split `install_rpms`
   and other expensive/independently-cached ops** into their own layers; **batch
   cheap, co-changing ops** (config writes, sysusers, os-release). Disk is bounded
@@ -903,10 +972,10 @@ design intent.
     `make_cpio`, `make_directory`, `make_oci`, and the extension formats
     (`sysext`/`confext`/`esp`/`portable`). mkosi `OutputFormat`: directory, tar,
     cpio, disk, oci, esp, sysext, confext, portable.
-- **Implementation: mkosi as reference + tool source.** Each layer is a
-  `sandbox_run` — tool-on-tree (`tools` = a tools-chroot, `root` = the tree) for
-  `systemd-repart`/`sysusers`/`dnf`, or run-in-tree (`tools` = the tree) for
-  chrooted commands — **reusing the systemd tools mkosi drives**
+- **Implementation: mkosi as reference + tool source.** Each layer is a sandboxed
+  driver that sets up its target tree via `rootfs.py` — `systemd-repart`/`sysusers`/`dnf`
+  run in the engine against a bound/overlaid tree, chrooted commands run inside it —
+  **reusing the systemd tools mkosi drives**
   (`systemd-repart`, `ukify`/`systemd-measure`, `systemd-sysusers`/`tmpfiles`,
   dm-verity, libdnf5) rather than reinventing the hard parts. Whether to shell
   out to those tools or call mkosi's Python helpers is an implementation detail;

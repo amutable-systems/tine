@@ -1,18 +1,16 @@
-"""sandbox — the chroot primitive every build action goes through.
+"""sandbox — the exec-environment primitive every build action goes through.
 
-A thin CLI over the vendored mkosi-sandbox (mkosi/sandbox.py). It assembles the
-namespace the way mkosi's sandbox_cmd does: start from an empty root and bind the
-exec environment onto `/` — each top-level entry of the `--tools` tree read-only (so
-the binary and its runtime come from a pinned chroot, never the host), or, with no
-`--tools`, the `--root` tree *read-write* (run-in-tree: the tree provides its own
-binaries and is mutated in place). With both, `--root` is instead a target mounted
-read-write at /buildroot to install into (with apivfs underneath if `--apivfs`). Then
-add /proc + /dev + tmpfs /run,/tmp,/var/tmp at / and become-root in the user namespace.
+A thin CLI over the vendored mkosi-sandbox (mkosi/sandbox.py). It assembles the namespace
+the way mkosi's sandbox_cmd does: start from an empty root and bind the `--tools` tree's
+top-level entries onto `/` read-only (so the binary and its runtime come from a pinned
+chroot, never the host), add /proc + /dev + tmpfs /run,/tmp,/var/tmp, and become-root in the
+user namespace. It sets up *only* the exec environment — a driver that needs a target root to
+install into or run against sets that up itself (see rootfs.py, which drives mkosi's
+FSOperation primitives from inside this namespace).
 
 It's a leaf: `main()` parses argv, assembles the mkosi-sandbox argv, replaces the host
-environment with a clean base (so it can't leak into the build), and execs. Callers
-that need to nest a sandbox (build_rpm's rpmbuild, the image step driver's `run`) fork
-it off as a subprocess rather than importing it.
+environment with a clean base (so it can't leak into the build), and execs. Callers that need
+to nest a sandbox (build_rpm's rpmbuild) fork it off as a subprocess rather than importing it.
 """
 
 import argparse
@@ -24,7 +22,7 @@ import mkosi.sandbox
 
 # Top-level entries the sandbox provides itself (kernel APIs + ephemerals), so
 # we never bind them from the tools tree.
-_PROVIDED = frozenset({"proc", "sys", "dev", "run", "tmp", "boot", "buildroot"})
+_PROVIDED = frozenset({"proc", "sys", "dev", "run", "tmp", "boot"})
 
 # The clean base environment the sandboxed command runs with. mkosi-sandbox execs
 # via os.execvp, which inherits the *current* environment — so without this the
@@ -57,13 +55,7 @@ def _kv(pairs: list[str], sep: str) -> list[tuple[str, str]]:
 
 def main(argv: list[str] | None = None) -> NoReturn:
     p = argparse.ArgumentParser(prog="sandbox")
-    p.add_argument("--tools", help="ro exec-env chroot bound onto / (omit to run in --root)")
-    p.add_argument("--root", help="rw target tree: mounted at / (no --tools) or /buildroot (with --tools)")
-    p.add_argument(
-        "--apivfs",
-        action="store_true",
-        help="mount apivfs under /buildroot (for installs whose scriptlets chroot in)",
-    )
+    p.add_argument("--tools", required=True, help="ro exec-env chroot bound onto / (the pinned tools tree)")
     p.add_argument("--bind", action="append", default=[], help="SRC:DST rw bind")
     p.add_argument("--ro-bind", dest="ro_bind", action="append", default=[], help="SRC:DST ro bind")
     p.add_argument("--scratch", action="append", default=[], help="NAME:DST tmpfs (NAME=_ → empty dir)")
@@ -87,16 +79,10 @@ def main(argv: list[str] | None = None) -> NoReturn:
     cwd_parts = Path(cwd).parts if cwd else ()
     cwd_top = cwd_parts[1] if len(cwd_parts) > 1 else None
 
-    # The exec environment bound onto /: the read-only --tools tree, or — with no
-    # --tools — the --root tree itself, bound read-write (run-in-tree, mutated in place).
-    exec_root = args.tools or args.root
-    if not exec_root:
-        raise SystemExit("sandbox: need --tools or --root")
-    exec_bind = "--ro-bind" if args.tools else "--bind"
-
-    # Bind each top-level entry of the exec tree onto /. Replicate usr-merge symlinks
-    # (bin/lib/lib64/sbin -> usr/*) rather than binding through them.
-    for entry in sorted(Path(exec_root).resolve().iterdir()):
+    # The exec environment bound onto /: the read-only --tools tree. Bind each top-level
+    # entry onto /, replicating usr-merge symlinks (bin/lib/lib64/sbin -> usr/*) rather than
+    # binding through them.
+    for entry in sorted(Path(args.tools).resolve().iterdir()):
         if entry.name in _PROVIDED:
             continue
         if entry.name == cwd_top:
@@ -115,34 +101,7 @@ def main(argv: list[str] | None = None) -> NoReturn:
         if entry.is_symlink():
             out += ["--symlink", str(entry.readlink()), dest]
         elif entry.is_dir():
-            out += [exec_bind, str(entry), dest]
-
-    # With a --tools exec-env, --root is a separate target mounted rw at /buildroot to
-    # install into (a bare --root is the exec tree above). With --apivfs, also mount
-    # apivfs under it (mkosi's apivfs_options): a package install chroots into the target
-    # to run scriptlets, so it needs a working /dev/null (--dev bind-mounts the real
-    # one), /proc, and writable /run + /tmp + /var/tmp there. Without it rpm leaves a
-    # bogus regular-file /dev/null that *captures* scriptlet output (random rpm-tmp.*
-    # names → non-reproducible trees).
-    if args.tools and args.root:
-        # buck2 doesn't pre-create a declared-output dir, but mkosi-sandbox's bind
-        # needs the source to exist.
-        Path(args.root).mkdir(parents=True, exist_ok=True)
-        out += ["--bind", _abs(args.root), "/buildroot"]
-        if args.apivfs:
-            out += [
-                "--dev",
-                "/buildroot/dev",
-                "--bind",
-                "/proc",
-                "/buildroot/proc",
-                "--tmpfs",
-                "/buildroot/run",
-                "--tmpfs",
-                "/buildroot/tmp",
-                "--tmpfs",
-                "/buildroot/var/tmp",
-            ]
+            out += ["--ro-bind", str(entry), dest]
 
     for name, dest in _kv(args.scratch, ":"):
         out += ["--dir", dest] if name == "_" else ["--tmpfs", dest]

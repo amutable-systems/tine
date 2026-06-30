@@ -10,10 +10,11 @@ def chroot_python_run(
         main: Artifact,
         deps: list[Dependency] = [],
         network: bool = False,
-        root: OutputArtifact | None = None,
-        apivfs: bool = False,
         label: str | None = None) -> RunInfo:
-    """Build a runnable that runs `main` inside `engine` (an EngineInfo) via `sandbox`."""
+    """Build a runnable that runs `main` inside `engine` (an EngineInfo) via `sandbox`.
+
+    `sandbox` only provides the exec environment; a driver that needs a target root to
+    install into or run against sets it up itself (see rootfs.py)."""
     tree = {main.basename: main}
     for dep in deps:
         for s in dep[PythonBootstrapSources].srcs:
@@ -21,11 +22,6 @@ def chroot_python_run(
     runtree = ctx.actions.copied_dir("__{}__".format(label or main.basename), tree)
 
     run = cmd_args(sandbox[RunInfo], "--tools", engine.root, "--bind-cwd")
-    if root != None:
-        run.add("--root", root)
-    if apivfs:
-        run.add("--apivfs")
-
     run.add("--source-date-epoch", str(ASSEMBLY_SDE))
     if network:
         run.add("--network")

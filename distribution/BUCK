@@ -32,6 +32,18 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
+# Sets up a target root (bind or overlayfs) + apivfs and chroots into it, driving mkosi's
+# FSOperation primitives from inside the sandbox's user+mount namespace. Owns the overlay
+# delta translation too (OCI `.wh.` markers <-> char 0:0 whiteouts + opaque xattrs,
+# unprivileged). Used by any driver that installs into or runs against a target tree
+# (install, image, pack).
+python_bootstrap_library(
+    name = "rootfs_lib",
+    srcs = ["rootfs.py"],
+    deps = [":mkosi"],
+    visibility = ["PUBLIC"],
+)
+
 # The format-independent lock-refresh orchestrator. Runs on the host (stdlib only)
 # and nests buck2 to drive each distribution's resolver in its own engine, then
 # amalgamates the fragments. Run via `just refresh-catalog`.

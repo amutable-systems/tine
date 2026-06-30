@@ -48,8 +48,12 @@ DistributionInfo = provider(fields = {
     "buildroot_base_packages": provider_field(list[str]),
 })
 
-# An image layer: one root-filesystem tree. Layers chain (a layer's tree is the next's
-# parent); a terminal pack turns a tree into an archive.
+# An image layer, stored as overlayfs deltas. `stack` is the ordered ancestor chain
+# (bottom..top): the bottom is a full install root, each entry above it a delta (an
+# overlay upper, deletions encoded as OCI `.wh.` files). A child appends its own delta; a
+# terminal pack overlay-merges the whole stack. `tmpfiles` accumulates each layer's
+# tmpfiles.d snippets down the chain, applied at pack time.
 LayerInfo = provider(fields = {
-    "tree": provider_field(Artifact),
+    "stack": provider_field(list[Artifact]),
+    "tmpfiles": provider_field(list[str]),
 })

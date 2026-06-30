@@ -68,3 +68,5 @@ Python tooling targets 3.14+ (the bootstrap needs stdlib `compression.zstd`).
 ## Commit guidelines
 
 - Always sign off commits.
+- Never add AI attribution — no `Co-Authored-By: Claude`, no "Generated with Claude
+  Code" trailer, no mention of an AI/agent anywhere in commit messages or PR bodies.

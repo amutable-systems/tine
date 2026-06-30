@@ -18,8 +18,14 @@ import sys
 from pathlib import Path
 
 import libdnf5
+import rootfs
 
 DBPATH = "usr/lib/sysimage/rpm"
+
+# Install into a fixed path (bound to the real output tree) rather than the buck-out output
+# path directly, so nothing captures the hashed path and libdnf5's scriptlet chroots find a
+# working apivfs there. The writes land in the output tree through the bind.
+BUILDROOT = "/buildroot"
 
 
 def install(rpms_dir: Path, installroot: Path, cachedir: Path) -> None:
@@ -108,22 +114,26 @@ def resolv_symlink(installroot: Path) -> None:
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="install")
     p.add_argument("--packages-dir", required=True, help="the complete set of packages to install")
-    p.add_argument("--installroot", required=True, help="target root (e.g. the engine root or a buildroot)")
+    p.add_argument("--target", required=True, help="output root dir; bound at /buildroot to install into")
     p.add_argument("--cachedir", default="/var/tmp/install-cache")
     p.add_argument("--resolv-symlink", action="store_true", help="add /etc/resolv.conf (engine root only)")
     p.add_argument("--no-parkdb", action="store_true")
     args = p.parse_args(argv)
 
-    # Paths are project-relative (buck-out) and resolved against the bound cwd;
-    # make them absolute for libdnf5/rpm and create the output root.
-    installroot = Path(args.installroot).resolve()
-    installroot.mkdir(parents=True, exist_ok=True)
-    install(Path(args.packages_dir).resolve(), installroot, Path(args.cachedir))
-    if not args.no_parkdb:
-        parkdb(installroot)
-    scrub(installroot)
-    if args.resolv_symlink:
-        resolv_symlink(installroot)
+    # Paths are project-relative (buck-out) and resolved against the bound cwd; make them
+    # absolute for libdnf5/rpm and create the output root (the bind's source must exist).
+    target = Path(args.target).resolve()
+    target.mkdir(parents=True, exist_ok=True)
+    packages_dir = Path(args.packages_dir).resolve()
+
+    with rootfs.rootfs(BUILDROOT, bind=target, apivfs=True):
+        installroot = Path(BUILDROOT)
+        install(packages_dir, installroot, Path(args.cachedir))
+        if not args.no_parkdb:
+            parkdb(installroot)
+        scrub(installroot)
+        if args.resolv_symlink:
+            resolv_symlink(installroot)
 
 
 if __name__ == "__main__":
