@@ -2,32 +2,32 @@
 
 // Pinned just (command runner) via DotSlash. `./tools/just` fetches the
 // content-addressed prebuilt and verifies its blake3 hash — no install step.
-// Version: 1.54.0. Linux only (x86_64 + aarch64), static musl builds.
+// Version: 1.55.1. Linux only (x86_64 + aarch64), static musl builds.
 
 {
   "name": "just",
   "platforms": {
     "linux-x86_64": {
-      "size": 2489309,
+      "size": 2518831,
       "hash": "blake3",
-      "digest": "b10eacfec7bd2bcd257d77d9804711cfb1e20e436db3aeb5812932ddee68cf1e",
+      "digest": "ac3ba4fc480694eda41d5a4ee2c90cfd2fb9281bd05e6acd7e1d6604bea06690",
       "format": "tar.gz",
       "path": "just",
       "providers": [
         {
-          "url": "https://github.com/casey/just/releases/download/1.54.0/just-1.54.0-x86_64-unknown-linux-musl.tar.gz"
+          "url": "https://github.com/casey/just/releases/download/1.55.1/just-1.55.1-x86_64-unknown-linux-musl.tar.gz"
         }
       ]
     },
     "linux-aarch64": {
-      "size": 2268802,
+      "size": 2297303,
       "hash": "blake3",
-      "digest": "d7068a7489d73e43776dbe80bdea9923018212d7ab0bc808864665d1384e4b13",
+      "digest": "ba43c0371e14879f3d0c0636391639a7b5f04d51f6133619d8551055f5681ef8",
       "format": "tar.gz",
       "path": "just",
       "providers": [
         {
-          "url": "https://github.com/casey/just/releases/download/1.54.0/just-1.54.0-aarch64-unknown-linux-musl.tar.gz"
+          "url": "https://github.com/casey/just/releases/download/1.55.1/just-1.55.1-aarch64-unknown-linux-musl.tar.gz"
         }
       ]
     }
