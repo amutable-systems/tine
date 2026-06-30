@@ -8,7 +8,7 @@ set working-directory := '..'
 
 ruff       := "./tine/tools/ruff"
 ty         := "./tine/tools/ty"
-buck2      := "./tine/tools/buck2"
+buck2      := "./tine/tools/buck"
 buildifier := "./tine/tools/buildifier"
 
 # Python source we own — all under the tine cell (the vendored mkosi/sandbox.py is

@@ -32,7 +32,7 @@ All dev tools are pinned via DotSlash under `tools/` — no host install needed.
 them from this directory (`cd tine`); the `just` recipes set their working
 directory to the repo root, so they drive the whole project (cell + consumer).
 
-- **buck2 (whole project):** from the repo root, `./tine/tools/buck2 build //...`;
+- **buck2 (whole project):** from the repo root, `./tine/tools/buck build //...`;
   the cell's own targets are `tine//...`.
 - **Check (format, lint, type-check):** `./tools/just check`
 - **Auto-format + auto-fix:** `./tools/just fmt`
@@ -41,7 +41,7 @@ directory to the repo root, so they drive the whole project (cell + consumer).
   host) and amalgamates the fragments. `./tools/just verify-catalog` asserts the
   committed lock matches (CI fixpoint check).
 - **Integration test (run after any change to the rules, drivers, sandbox, or catalog):**
-  from the repo root, `./tine/tools/buck2 build root//distribution/packages/zlib:`. This
+  from the repo root, `./tine/tools/buck build root//distribution/packages/zlib:`. This
   builds the zlib rpms for every distribution — `:zlib` (fedora44, self-hosted engine) and
   `:zlib.centos10` (centos10, cross-built in the shared Fedora engine) — exercising the whole
   path end-to-end: engine root → buildroot assembly → `rpmbuild` → the subpackage fidelity
