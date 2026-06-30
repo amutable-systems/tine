@@ -1,3 +1,5 @@
+"""The rpm package-format plugin: the per-format drivers + their `package_format` bundle."""
+
 load("//defs/rules:distribution.bzl", "driver", "package_format")
 
 # The rpm-format drivers (sources beside this file: extract/install/createrepo/

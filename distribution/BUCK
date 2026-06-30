@@ -1,8 +1,8 @@
-# The sandbox machinery (format-neutral): the chroot primitive every build action
-# goes through. The format drivers that *run* inside an engine root bind it as
-# their runtime. Lives in the cell so every consumer shares one sandbox. The
-# per-distribution target graph is declared in the catalog cell (catalog//:, default
-# tine/catalog), not here, so overriding `[cells] catalog` replaces the declaration too.
+"""The sandbox machinery (format-neutral): the chroot primitive every build action goes
+through. The format drivers that *run* inside an engine root bind it as their runtime. Lives in
+the cell so every consumer shares one sandbox. The per-distribution target graph is declared in
+the catalog cell (catalog//:, default tine/catalog), not here, so overriding `[cells] catalog`
+replaces the declaration too."""
 
 # Vendored mkosi-sandbox, kept in its own mkosi/ package so its provenance is
 # obvious (mkosi/sandbox.py is theirs; sandbox.py is ours).

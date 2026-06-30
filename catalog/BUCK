@@ -1,3 +1,5 @@
+"""Instantiate the active catalog's per-distribution target graph from its @generated lock."""
+
 # This BUCK lives in the *catalog* cell (default `[cells] catalog = tine/catalog`), so
 # the declaration is scoped to whichever catalog is active. It instantiates the
 # per-distribution target graph — engine roots, repos, distribution targets at

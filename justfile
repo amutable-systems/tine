@@ -18,7 +18,9 @@ check:
 	{{ruff}} check {{PY_DIRS}}
 	# Build the engine root (ty's pinned third-party env) and point ty straight at it — no symlink.
 	{{ty}} check --python $({{buck}} build catalog//:engine.{{ENGINE}}.root --show-full-simple-output --console none -v 0)/usr {{PY_DIRS}}
-	{{buildifier}} -mode=check $(find . \( -name '*.bzl' -o -name BUCK \) -not -path './buck-out/*' -not -path './prelude/*' -not -name generated.bzl)
+	# -lint=warn runs buildifier's linter (default set); the two `function-docstring` subtractions
+	# drop the mandate to document every arg + return value (too verbose for our prose docstrings).
+	{{buildifier}} -mode=check -lint=warn -warnings=-function-docstring-args,-function-docstring-return $(find . \( -name '*.bzl' -o -name BUCK \) -not -path './buck-out/*' -not -path './prelude/*' -not -name generated.bzl)
 	{{buck}} -v 0 starlark lint $(find . -name '*.bzl' -not -path './buck-out/*' -not -path './prelude/*')
 	# The Starlark typechecker resolves @prelude// through the prelude cell's on-disk mount. Create
 	# the symlink (discovered mount → bundled prelude in buck-out) just for the check, then remove it

@@ -30,7 +30,13 @@ def _engine_root_ref(distribution: str, data: dict) -> str:
     name = data["engine"] if type(data["engine"]) == "string" else distribution
     return ":engine." + name + ".root"
 
+# buildifier: disable=unnamed-macro  (fan-out macro: many targets, no single primary — no `name`)
 def declare_catalog(distributions: dict) -> None:
+    """Instantiate the per-distribution target graph from a DISTRIBUTIONS map.
+
+    `distributions` is the @generated lock. See the module docstring for how it scopes
+    into the consumer's package."""
+
     # The engine-provider distributions — `engine` is their own engine-root closure (a
     # list), not a reference (a name) to another distribution. Each runs the build
     # actions for every target distribution pointing at it (CentOS builds in the Fedora

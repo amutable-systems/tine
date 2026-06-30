@@ -179,13 +179,16 @@ def _materialize_closure(ctx: AnalysisContext, name: str, tx: Artifact, candidat
     ))
     return closure
 
-# The assembled buildroot tree, carried out of the anon target for its `root` promise.
-_BuildrootInfo = provider(fields = {"root": provider_field(Artifact)})
+_BuildrootInfo = provider(
+    doc = "The assembled buildroot tree, carried out of the anon target for its `root` promise.",
+    fields = {"root": provider_field(Artifact)},
+)
 
 def _buildroot_impl(ctx: AnalysisContext) -> list[Provider]:
-    """Resolve `install` over the distribution's repos and install the closure into a
-    fresh root. Format-neutral: it drives the distribution's own plan + install drivers
-    (`sandbox` is the launcher).
+    """Install `install`'s resolved closure into a fresh root.
+
+    Resolve `install` over the distribution's repos. Format-neutral: it drives the
+    distribution's own plan + install drivers (`sandbox` is the launcher).
 
     Three actions: (1) plan resolves the install set's runtime closure over the repos →
     a transaction (resolved package filenames); (2) materialize scopes a dir to exactly
@@ -255,6 +258,7 @@ _buildroot = anon_rule(
 
 def assemble_root(ctx: AnalysisContext, distribution: Dependency, sandbox: Dependency, install: list[str]) -> Artifact:
     """Assemble a buildroot via the shared `_buildroot` anon target, returning its tree.
+
     `distribution` is the dep (not its DistributionInfo) so the anon target keys on it;
     `install` is sorted so equal sets share regardless of the order the caller assembled
     base + BuildRequires in. The tree's short path is the anon output's own (`root`) — a

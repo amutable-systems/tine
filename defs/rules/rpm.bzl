@@ -75,6 +75,8 @@ _rpm_package = rule(
 )
 
 def rpm_package(package: str, spec = None, **kwargs) -> None:
-    """Build an rpm package. The spec is `<package>.spec` (a rule attr can't
-    default off another attr, so the macro derives it at load time)."""
+    """Build an rpm package.
+
+    The spec is `<package>.spec` (a rule attr can't default off another attr, so the
+    macro derives it at load time)."""
     _rpm_package(package = package, spec = spec or package + ".spec", **kwargs)

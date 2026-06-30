@@ -1,3 +1,5 @@
+"""DotSlash-pinned tool binaries (python3 bootstrap + dev tooling)."""
+
 load(":defs.bzl", "dotslash_tool")
 
 # DotSlash-pinned tool binaries. The descriptors are executable

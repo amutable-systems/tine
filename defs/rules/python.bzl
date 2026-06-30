@@ -1,3 +1,6 @@
+"""Run a python tool inside an engine root: the `chroot_python_run` helper and the
+`chroot_python_binary` rule that wraps it as a standalone runnable."""
+
 load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapSources")
 load(":providers.bzl", "EngineInfo")
 

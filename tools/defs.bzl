@@ -1,3 +1,5 @@
+"""`dotslash_tool`: expose a DotSlash-pinned tool descriptor as a runnable target."""
+
 def _dotslash_tool_impl(ctx: AnalysisContext) -> list[Provider]:
     # The DotSlash descriptor is executable (`#!/usr/bin/env dotslash`); running
     # it directly resolves the shebang and fetches/verifies the pinned binary.

@@ -1,3 +1,5 @@
+"""The default toolchains cell shipped by the tine cell (the python_bootstrap toolchain)."""
+
 load("@prelude//toolchains:python.bzl", "python_bootstrap_toolchain")
 
 # The default toolchains cell shipped by the tine cell. The prelude's
