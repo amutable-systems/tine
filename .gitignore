@@ -1,0 +1,17 @@
+# buck output / state
+/buck-out
+**/buck-out
+
+# Local (non-committed) config overrides
+/.buckconfig.local
+.claude/settings.local.json
+
+# Python tooling caches (ruff/ty pinned in tools/)
+.ruff_cache/
+.ty_cache/
+__pycache__/
+*.pyc
+
+# Editor / OS noise
+*.swp
+.DS_Store

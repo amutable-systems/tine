@@ -1,12 +1,12 @@
 load(":defs.bzl", "dotslash_tool")
 
 # DotSlash-pinned tool binaries. The descriptors are executable
-# (`#!/usr/bin/env dotslash`); buck2 runs them directly and DotSlash fetches +
+# (`#!/usr/bin/env dotslash`); buck runs them directly and DotSlash fetches +
 # hash-verifies the content-addressed binary on first use.
 #
 # python3 is the bootstrap interpreter for the build-time Python tools
-# (rpm_extract, sandbox, build_rpm); the others (buck2/ruff/ty/just) are dev
-# tooling used outside buck2.
+# (rpm_extract, sandbox, build_rpm); the others (buck/ruff/ty/just) are dev
+# tooling used outside buck.
 dotslash_tool(
     name = "python3",
     src = "python3",

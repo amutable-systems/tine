@@ -264,7 +264,7 @@ def assemble_root(ctx: AnalysisContext, distribution: Dependency, sandbox: Depen
     root = ctx.actions.anon_target(_buildroot, {
         # A friendlier log label than the default `anon//:_buildroot@<hash>`. Derived
         # purely from the distribution (already a key attr), so it doesn't split sharing;
-        # the `@<hash>` buck2 appends still distinguishes distinct install sets.
+        # the `@<hash>` buck appends still distinguishes distinct install sets.
         "name": "//buildroot:{}".format(distribution.label.name),
         "distribution": distribution,
         "install": sorted(install),

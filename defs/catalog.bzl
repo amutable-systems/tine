@@ -112,7 +112,7 @@ def declare_catalog(distributions: dict) -> None:
         )
 
         # The distribution's resolver, bound to *its own* engine root (the host
-        # orchestrator //distribution:buckify nests `buck2 run` on these to refresh
+        # orchestrator //distribution:buckify nests `buck run` on these to refresh
         # each fragment in the right engine). network = True: it fetches repodata.
         chroot_python_binary(
             name = d + ".buckify",

@@ -1,4 +1,4 @@
-# tine — a reusable buck2 cell: the format-neutral machinery for building a
+# tine — a reusable buck cell: the format-neutral machinery for building a
 # distribution from source (rules in defs/rules, the rpm format plugin + drivers
 # in distribution/rpm, the vendored sandbox in distribution). It carries no
 # distribution *data* — a consuming project supplies that (its manifest + lock +

@@ -21,9 +21,8 @@ lint.select = [
 python-version = "3.14"
 # Third-party imports (libdnf5, createrepo_c) resolve from the *engine root* — the
 # pinned environment the drivers actually run in — not the host. The justfile's
-# `check` builds the engine root, symlinks it to a gitignored `.engine`, and points
-# ty at it with `--python .engine/usr` (kept on the CLI, not here, because the
-# symlink only exists after that build step).
+# `check` builds the engine root and points ty at it with `--python <root>/usr` (kept
+# on the CLI, not here, because the path only exists after that build step).
 # The tools share a flat import namespace at run time (the bootstrap/chroot
 # run-trees are flat), so the rpm/ drivers import `sandbox`/`mkosi.sandbox` as
 # top-level modules — add distribution/ as a search root so ty resolves them.
