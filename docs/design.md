@@ -318,7 +318,7 @@ host-independent must lay down the first rpm to break the regress.
 - **Roots of trust** — the only non-built inputs, all content-pinned: the
   **buck2 binary** (DotSlash, sha256) — which also carries the **bundled
   prelude** (no separate pin; it always matches the binary), the **bootstrap
-  python3** (DotSlash, sha256, from python-build-standalone), and the **seed
+  python3** (`http_archive`, sha256, from python-build-standalone), and the **seed
   rpms** (`http_file`, sha256). Host contract: **unprivileged user namespaces**
   (mkosi-sandbox, every action) and — for *bootstrap only* — **Python ≥ 3.14**
   (stdlib `compression.zstd`; Fedora rpm payloads are zstd), satisfied by the
@@ -1320,8 +1320,10 @@ prelude = bundled`) — the source of `genrule`/`cxx_*`/`go_*`/`rust_*`/`gobucki
 Bundling means the prelude **always matches the binary** (no separate pin, no
 submodule), which removes the binary↔prelude version-alignment rough edge
 entirely; the cost is the prelude source isn't checked out in-tree (read it via
-`buck2 audit` or upstream). Dev tooling (python3 bootstrap, ruff, ty, just) is
-likewise DotSlash-pinned under `tools/`. **`buckify-rpm resolve` lands in phase 1,
+`buck2 audit` or upstream). The rest of the dev tooling (python3 bootstrap, ruff,
+ty, buildifier) is pinned in `tools/BUCK` and fetched + sha256-verified by buck
+itself (see `http_tool`); the dev commands are `buck run tine//tools:…` targets.
+**`buckify-rpm resolve` lands in phase 1,
 not phase 2** — the bootstrap
 trampoline's engine root needs the *full* resolved closure (rpm, glibc, libsolv,
 libdnf5, python3, sqlite, openssl, lua, popt, coreutils, bash, … + every

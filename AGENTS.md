@@ -17,13 +17,14 @@ Carries no distribution *data*. The repo root consumes the cell: it supplies the
 
 ## Commands
 
-Tools are pinned under `tools/` and put on `$PATH` by a `SessionStart` hook
-`.claude/settings.json`. Invoke them by bare name. Run `just` recipes as `just <recipe>`.
+The pinned `buck` lives in `tools/`,; invoke it by path. Everything else (python3, ruff, ty, buildifier)
+is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck run` targets.
 
 - **buck (whole project):** `buck build //...`.
-- **Check (format, lint, type-check):** `just check`
-- **Auto-format + auto-fix:** `just fmt`
-- **Refresh the catalog lock:** `just refresh-catalog`; `just verify-catalog` asserts the committed lock matches.
+- **Check (format, lint, type-check):** `buck run tine//tools:check`
+- **Auto-format + auto-fix:** `buck run tine//tools:fmt`
+- **Refresh the catalog lock:** `buck run tine//tools:refresh-catalog`;
+  `buck run tine//tools:verify-catalog` asserts the committed lock matches.
 
 ## Architecture
 
@@ -36,7 +37,7 @@ See [the design plan](docs/design.md).
 - Never use `from __future__ import annotations`.
 - Always use `Self` to refer to a class's own type, not string types.
 - Always use `pathlib.Path` (not `os.path`/string paths); prefer `Path` methods over `os.*`.
-- Keep `just check` green.
+- Keep the check command green (see Commands).
 
 ## Commit guidelines
 

@@ -12,7 +12,7 @@
 #
 # The lock is one @generated `<name>.json` fragment per repository and per engine, read
 # by the target itself at build time (nothing is derived per distribution). When adding
-# one, seed its fragment with `{}` and refresh to fill it: `just refresh-catalog`.
+# one, seed its fragment with `{}` and refresh to fill it: `buck run tine//tools:refresh-catalog`.
 load("@tine//defs/rules:rpm.bzl", "rpm_distribution", "rpm_engine", "rpm_remote_repository")
 
 # Frozen GA tree, so pins are reproducible. (Add the live `updates` tree once we handle

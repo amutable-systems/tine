@@ -1,7 +1,7 @@
 """buckify — the format-independent host orchestrator for (re)generating a catalog.
 
-Runs on the host (a python_bootstrap_binary), invoked via the
-`just <refresh-catalog|verify-catalog>` recipes. It does NOT pin or resolve
+Runs on the host (a python_bootstrap_binary), invoked via the command_alias targets
+`buck run tine//tools:<refresh-catalog|verify-catalog>`. It does NOT pin or resolve
 anything itself; it drives the per-format refresh drivers in two phases:
 
   1. snapshot every repository: `buck uquery` finds the `remote_repository` targets and

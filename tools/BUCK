@@ -1,16 +1,156 @@
-"""DotSlash-pinned tool binaries (python3 bootstrap + dev tooling)."""
+"""Pinned tool binaries + the dev commands (buck-fetched http_tools; DotSlash bootstrap)."""
 
-load(":defs.bzl", "dotslash_tool")
+load(":defs.bzl", "http_tool")
 
-# DotSlash-pinned tool binaries. The descriptors are executable
-# (`#!/usr/bin/env dotslash`); buck runs them directly and DotSlash fetches +
-# hash-verifies the content-addressed binary on first use.
-#
-# python3 is the bootstrap interpreter for the build-time Python tools
-# (rpm_extract, sandbox, build_rpm); the others (buck/ruff/ty/just) are dev
-# tooling used outside buck.
-dotslash_tool(
+# buck stays a DotSlash descriptor in this directory (invoked by bare name via
+# PATH): it must work before buck can build anything. Everything else is pinned
+# below and downloaded + sha256-verified by buck itself on first use: python3
+# backs the python_bootstrap toolchain; buildifier/ruff/ty feed the check and fmt
+# commands at the bottom (`buck run tine//tools:<check|fmt|refresh-catalog|
+# verify-catalog>`), which get the tool paths via `$(location …)` and run them
+# against the working tree (ruff/ty walk the cell root; buildifier takes the
+# graph-derived starlark set from `uquery allbuildfiles`); the catalog commands
+# alias buckify directly.
+
+# Bootstrap interpreter for the build-time Python tools (rpm_extract, sandbox,
+# build_rpm), from astral-sh/python-build-standalone (relocatable CPython — no
+# host Python needed). The bootstrap requires >= 3.14 for stdlib compression.zstd
+# (Fedora rpm payloads are zstd); this build also carries lzma/zlib/sqlite3 used
+# by rpm_extract and the parkdb replication.
+http_tool(
     name = "python3",
-    src = "python3",
+    path = "bin/python3",
+    platforms = {
+        "aarch64": {
+            "sha256": "93af46aac9d7c210b4842ab2813a2ac6e0af60d2550b3ca5f761f2e0f5e18b64",
+            "strip_prefix": "python",
+            "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260623/cpython-3.14.6+20260623-aarch64-unknown-linux-gnu-install_only.tar.gz",
+        },
+        "x86_64": {
+            "sha256": "3d943d8b4360823959012d7e9f4c755256ac1e9c04b609c24894a1b480736e36",
+            "strip_prefix": "python",
+            "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260623/cpython-3.14.6+20260623-x86_64-unknown-linux-gnu-install_only.tar.gz",
+        },
+    },
     visibility = ["PUBLIC"],
+)
+
+# Starlark/BUCK formatter + linter. The release artifacts are raw static Go
+# binaries (no archive, so no `path`).
+http_tool(
+    name = "buildifier",
+    platforms = {
+        "aarch64": {
+            "sha256": "947bf6700d708026b2057b09bea09abbc3cafc15d9ecea35bb3885c4b09ccd04",
+            "url": "https://github.com/bazelbuild/buildtools/releases/download/v8.5.1/buildifier-linux-arm64",
+        },
+        "x86_64": {
+            "sha256": "887377fc64d23a850f4d18a077b5db05b19913f4b99b270d193f3c7334b5a9a7",
+            "url": "https://github.com/bazelbuild/buildtools/releases/download/v8.5.1/buildifier-linux-amd64",
+        },
+    },
+)
+
+# Python formatter + linter (static musl builds).
+http_tool(
+    name = "ruff",
+    path = "ruff",
+    platforms = {
+        "aarch64": {
+            "sha256": "d6945815c5b2b32d01483e1d59ac7d2e744df0a20272680b2290c3e5e4ce5020",
+            "strip_prefix": "ruff-aarch64-unknown-linux-musl",
+            "url": "https://github.com/astral-sh/ruff/releases/download/0.15.19/ruff-aarch64-unknown-linux-musl.tar.gz",
+        },
+        "x86_64": {
+            "sha256": "682158b99b14ce60b62e7b4585100a11ebd5716355efe4048760690eda21fb99",
+            "strip_prefix": "ruff-x86_64-unknown-linux-musl",
+            "url": "https://github.com/astral-sh/ruff/releases/download/0.15.19/ruff-x86_64-unknown-linux-musl.tar.gz",
+        },
+    },
+)
+
+# Python type checker (static musl builds).
+http_tool(
+    name = "ty",
+    path = "ty",
+    platforms = {
+        "aarch64": {
+            "sha256": "a66df5fe96dd54c7232fd46d51adb2f6f6f3f1b62e3421c9b0f9e0d6eebb9d1a",
+            "strip_prefix": "ty-aarch64-unknown-linux-musl",
+            "url": "https://github.com/astral-sh/ty/releases/download/0.0.52/ty-aarch64-unknown-linux-musl.tar.gz",
+        },
+        "x86_64": {
+            "sha256": "2cce40f34e3996fd638406fce25f39f7dbb0098319a2300605cdf9035b39be76",
+            "strip_prefix": "ty-x86_64-unknown-linux-musl",
+            "url": "https://github.com/astral-sh/ty/releases/download/0.0.52/ty-x86_64-unknown-linux-musl.tar.gz",
+        },
+    },
+)
+
+# The driver for the commands that need runtime input prep (see dev.py's docstring).
+# Each command below is `buck run`-able: buck first builds the pinned tools it
+# references, then dev.py drives them against the source tree (cwd-independent).
+python_bootstrap_binary(
+    name = "dev",
+    main = "dev.py",
+)
+
+# check = every source check: fmt's surface in check mode, plus ty and buck's starlark
+# lint/typecheck subcommands. Buck builds the tools and ty's engine root (the pinned
+# environment the drivers actually run in) up front via `$(location …)`; dev.py then
+# runs them against the working tree (`uquery allbuildfiles` supplies the starlark
+# file set).
+# FIXME: type check python in every engine? Some python dependencies will only be
+# available in certain engines.
+command_alias(
+    name = "check",
+    args = [
+        "check",
+        "--buck",
+        "$(source buck)",
+        "--buildifier",
+        "$(location :buildifier)",
+        "--ruff",
+        "$(location :ruff)",
+        "--ty",
+        "$(location :ty)",
+        "--engine",
+        "$(location catalog//:fedora44.engine)",
+    ],
+    exe = ":dev",
+)
+
+command_alias(
+    name = "fmt",
+    args = [
+        "fmt",
+        "--buck",
+        "$(source buck)",
+        "--buildifier",
+        "$(location :buildifier)",
+        "--ruff",
+        "$(location :ruff)",
+    ],
+    exe = ":dev",
+)
+
+# The catalog commands need no driver: buckify resolves its own defaults (the active
+# catalog cell, the project root), so the aliases point straight at it.
+command_alias(
+    name = "refresh-catalog",
+    args = [
+        "--buck",
+        "$(source buck)",
+    ],
+    exe = "//distribution:buckify",
+)
+
+command_alias(
+    name = "verify-catalog",
+    args = [
+        "--verify",
+        "--buck",
+        "$(source buck)",
+    ],
+    exe = "//distribution:buckify",
 )

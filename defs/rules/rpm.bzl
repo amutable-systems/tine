@@ -3,7 +3,7 @@ rpm-bound catalog wrappers (rpm_remote_repository / rpm_engine / rpm_distributio
 
 The wrappers preconfigure their format-neutral rule with the rpm plugin
 (`@tine//distribution/rpm:package_format`) and default each lock to the `<name>.json`
-fragment beside the caller's BUCK (seed it with `{}`; `just refresh-catalog` fills it).
+fragment beside the caller's BUCK (seed it with `{}`; `buck run tine//tools:refresh-catalog` fills it).
 A catalog BUCK composes them package-relative: a distribution names its engine and
 repository sibling targets.
 """
