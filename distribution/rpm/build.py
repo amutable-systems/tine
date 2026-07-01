@@ -102,13 +102,18 @@ def main(argv: list[str] | None = None) -> int:
 def _emit_subpackages(pairs: list[str], version: str, produced: dict[str, Path]) -> None:
     """Map each produced rpm to its declared subpackage, gate the set, copy out.
 
-    The fidelity gate: the declared subpackage set — including the predicted
-    -debuginfo/-debugsource — must equal rpmbuild's actual output, else the action
-    fails. Each produced filename is matched against the exact NVRA shape
-    `<name>-<version>-<release>.<arch>.rpm` (release has no '-'), longest declared
-    name first so `zlib-devel` wins over `zlib`. A second rpm claiming an
-    already-matched name falls through to the `unexpected` set and trips the gate.
+    The fidelity gate: the declared subpackage set must equal rpmbuild's actual
+    output, else the action fails. Each produced filename is matched against the
+    exact NVRA shape `<name>-<version>-<release>.<arch>.rpm` (release has no '-'),
+    longest declared name first so `zlib-devel` wins over `zlib`. A second rpm
+    claiming an already-matched name falls through to the `unexpected` set and
+    trips the gate.
     """
+    # rpm auto-generates a -debuginfo per binary-bearing subpackage + a -debugsource; which
+    # subpackages carry ELF can't be known when sub-targets are declared, so they aren't. Here
+    # (post-build) we have the real rpms: keep them in --out but drop them from the gate, which
+    # only enforces the declared %package set.
+    produced = {f: p for f, p in produced.items() if not re.search(r"-debug(info|source)-", f)}
     declared = dict(p.split("=", 1) for p in pairs)
     names_by_len = sorted(declared, key=len, reverse=True)
     patterns = {

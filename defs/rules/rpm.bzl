@@ -17,15 +17,9 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     rpms = ctx.actions.declare_output("rpms", dir = True)
     topdir = ctx.actions.declare_output("topdir", dir = True)
 
-    # Declared subpackage set = the spec's %package list + the predicted
-    # debuginfo/debugsource (rpmspec -q can't list those). The fidelity gate in
-    # build_rpm fails if this doesn't match rpmbuild's actual output.
-    # debuginfo/debugsource are named after the rpm package (the spec's Name:),
-    # which is NOT the buck target name (e.g. target `zlib.centos10` → `zlib`).
-    subpackages = list(ctx.attrs.subpackages)
-    if ctx.attrs.debuginfo:
-        subpackages += [ctx.attrs.package + "-debuginfo", ctx.attrs.package + "-debugsource"]
-    sub_outputs = {s: ctx.actions.declare_output(s + ".rpm") for s in subpackages}
+    # One declared output per binary subpackage (from .bzl's "subpackages"
+    # list), so each is an addressable sub-target (:pkg[devel], ...).
+    sub_outputs = {s: ctx.actions.declare_output(s + ".rpm") for s in ctx.attrs.subpackages}
 
     build = cmd_args(
         chroot_python_run(
@@ -72,8 +66,7 @@ _rpm_package = rule(
         "version": attrs.string(doc = "package version (for subpackage NVR matching)"),
         "release": attrs.string(doc = "dist-stripped Release base; the build freezes %autorelease = <release>%{?dist}"),
         "subpackages": attrs.list(attrs.string(), doc = "declared binary subpackage names (the %package list)"),
-        "debuginfo": attrs.bool(default = True, doc = "predict <name>-debuginfo/-debugsource subpackages"),
-        "build_requires": attrs.list(attrs.string(), default = [], doc = "extra BR caps beyond the buildroot base (seed-only for now)"),
+        "build_requires": attrs.list(attrs.string(), default = [], doc = "extra BR caps beyond the buildroot base (catalog-only for now)"),
         "source_date_epoch": attrs.int(doc = "per-package SDE from the changelog"),
         "dist": attrs.string(default = ".aos"),
         "distribution": attrs.dep(providers = [DistributionInfo], doc = "catalog//:<distribution> — buildroot + engine that builds it"),
