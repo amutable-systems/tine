@@ -34,7 +34,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--source-date-epoch", type=int, required=True)
     p.add_argument("--topdir", required=True, help="scratch rpmbuild topdir (writable)")
     p.add_argument("--out", required=True, help="output dir to collect rpms into")
-    p.add_argument("--version", required=True, help="package version (for NVR matching)")
     p.add_argument("--release", required=True, help="dist-stripped Release base; freezes %autorelease")
     p.add_argument(
         "--subpackage",
@@ -96,19 +95,22 @@ def main(argv: list[str] | None = None) -> int:
     print(f"collected {len(produced)} binary rpms + srpm into {out}", file=sys.stderr)
 
     if args.subpackage:
-        _emit_subpackages(args.subpackage, args.version, produced)
+        _emit_subpackages(args.subpackage, produced)
     return 0
 
 
-def _emit_subpackages(pairs: list[str], version: str, produced: dict[str, Path]) -> None:
+def _emit_subpackages(pairs: list[str], produced: dict[str, Path]) -> None:
     """Map each produced rpm to its declared subpackage, gate the set, copy out.
 
     The fidelity gate: the declared subpackage set must equal rpmbuild's actual
     output, else the action fails. Each produced filename is matched against the
-    exact NVRA shape `<name>-<version>-<release>.<arch>.rpm` (release has no '-'),
-    longest declared name first so `zlib-devel` wins over `zlib`. A second rpm
-    claiming an already-matched name falls through to the `unexpected` set and
-    trips the gate.
+    NVRA shape `<name>-<version>-<release>.<arch>.rpm` where version and release
+    are dash-free, longest declared name first so `zlib-devel` wins over `zlib`.
+    The version segment is a wildcard, not the main package version: a subpackage
+    may carry its own `Version:` (e.g. libbpf's `usdt-devel` at 0.1.0 vs the main
+    1.7.0). Disambiguation still holds — a longer subpackage name's extra dash
+    keeps its rpm from matching a shorter name's pattern. A second rpm claiming an
+    already-matched name falls through to the `unexpected` set and trips the gate.
     """
     # rpm auto-generates a -debuginfo per binary-bearing subpackage + a -debugsource; which
     # subpackages carry ELF can't be known when sub-targets are declared, so they aren't. Here
@@ -117,9 +119,7 @@ def _emit_subpackages(pairs: list[str], version: str, produced: dict[str, Path])
     produced = {f: p for f, p in produced.items() if not re.search(r"-debug(info|source)-", f)}
     declared = dict(p.split("=", 1) for p in pairs)
     names_by_len = sorted(declared, key=len, reverse=True)
-    patterns = {
-        name: re.compile(rf"^{re.escape(name)}-{re.escape(version)}-[^-]+\.[^.]+\.rpm$") for name in declared
-    }
+    patterns = {name: re.compile(rf"^{re.escape(name)}-[^-]+-[^-]+\.[^.]+\.rpm$") for name in declared}
 
     matched: dict[str, str] = {}  # subpackage name -> produced basename
     for fname in sorted(produced):

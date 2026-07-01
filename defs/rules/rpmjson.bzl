@@ -20,7 +20,7 @@ SrcpkgMetadata = record(
     # producing build arch → pkgname → {Files, Requires, Recommends, Provides}
     binaries = dict,
     sources = list[dict[str, str]],
-    version = str,
+    version = str,  # main-package version; recorded metadata, not consumed by the build (spec drives it)
     release = str,
     dist = str,
     source_date_epoch = int,
@@ -63,7 +63,6 @@ def rpm_package_json(package: str, distribution: str, meta: dict) -> None:
         spec = spec,
         distribution = distribution,
         srcs = srcs,
-        version = m.version,
         release = m.release,
         dist = m.dist,
         source_date_epoch = m.source_date_epoch,
