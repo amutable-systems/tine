@@ -1,7 +1,52 @@
-"""rpm format rule: rpm_package (build one source rpm into its binary rpms)."""
+"""rpm format defs: rpm_package (build one source rpm into its binary rpms) plus the
+rpm-bound catalog wrappers (rpm_remote_repository / rpm_engine / rpm_distribution).
 
-load(":distribution.bzl", "DistributionInfo", "assemble_root")
-load(":engine.bzl", "chroot_run")
+The wrappers preconfigure their format-neutral rule with the rpm plugin
+(`@tine//distribution/rpm:package_format`) and default each lock to the `<name>.json`
+fragment beside the caller's BUCK (seed it with `{}`; `just refresh-catalog` fills it).
+A catalog BUCK composes them package-relative: a distribution names its engine and
+repository sibling targets.
+"""
+
+load(":distribution.bzl", "DistributionInfo", "assemble_root", "distribution", "remote_repository")
+load(":engine.bzl", "chroot_run", engine_rule = "engine")  # aliased: `engine` is an arg below
+
+_RPM_PACKAGE_FORMAT = "@tine//distribution/rpm:package_format"
+
+def rpm_remote_repository(name: str, baseurl: str, lock: str | None = None, **kwargs) -> None:
+    """A remote_repository preconfigured for rpm (see the module docstring)."""
+    remote_repository(
+        name = name,
+        baseurl = baseurl,
+        lock = lock or (name + ".json"),
+        package_format = _RPM_PACKAGE_FORMAT,
+        **kwargs
+    )
+
+def rpm_engine(name: str, packages: list[str], repositories: list[str], lock: str | None = None, **kwargs) -> None:
+    """An engine preconfigured for rpm (see the module docstring)."""
+    engine_rule(
+        name = name,
+        packages = packages,
+        repositories = repositories,
+        lock = lock or (name + ".json"),
+        package_format = _RPM_PACKAGE_FORMAT,
+        **kwargs
+    )
+
+def rpm_distribution(name: str, engine: str, repositories: list[str], buildroot: list[str], **kwargs) -> None:
+    """A distribution preconfigured for rpm (see the module docstring).
+
+    Nothing is derived per distribution — no lock: its engine and repositories carry
+    the pins."""
+    distribution(
+        name = name,
+        engine = engine,
+        package_format = _RPM_PACKAGE_FORMAT,
+        buildroot_repositories = repositories,
+        buildroot_base_packages = buildroot,
+        **kwargs
+    )
 
 def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     distribution = ctx.attrs.distribution[DistributionInfo]

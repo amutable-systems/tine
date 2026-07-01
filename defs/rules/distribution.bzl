@@ -2,26 +2,12 @@
 
 load(":engine.bzl", "EngineInfo", "chroot_run")
 load(":package_format.bzl", "PackageFormatInfo")
-
-RepoInfo = provider(
-    # `dir` holds the `repodata/` the plan resolves against. Two flavors:
-    #   - remote: `dir` is just pinned repodata (no packages); `baseurl` is the real remote base,
-    #     so plan turns each resolved package's location into a download URL. `packages` is empty —
-    #     the buildroot's resolved subset is fetched lazily at build time.
-    #   - local: `dir` is a createrepo'd tree with the rpms present; `packages` are those artifacts
-    #     (keyed by basename to scope an install); `baseurl` is "".
-    doc = "A package repository.",
-    fields = {
-        "id": provider_field(str),
-        "dir": provider_field(Artifact),
-        "packages": provider_field(list[Artifact]),
-        "baseurl": provider_field(str, default = ""),
-    },
-)
+load(":repo.bzl", "RepoInfo", "download_closure")
 
 DistributionInfo = provider(
-    # Pure data (an engine + format plugin + buildroot repos and base packages). The engine
-    # root may belong to another distribution (CentOS builds in the Fedora engine root).
+    # An engine + format plugin + buildroot repos and base packages, plus each repo's
+    # prebuilt solver cache. The engine root may belong to another distribution (CentOS
+    # builds in the Fedora engine root).
     doc = "A distribution build target.",
     fields = {
         "engine": provider_field(EngineInfo),
@@ -30,17 +16,46 @@ DistributionInfo = provider(
         "package_format": provider_field(typing.Any),
         "buildroot_repositories": provider_field(list[RepoInfo]),
         "buildroot_base_packages": provider_field(list[str]),
+        "solv_caches": provider_field(dict[str, Artifact]),  # repo id -> prebuilt cache dir (plan make-cache)
     },
 )
 
 def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
+    engine = ctx.attrs.engine[EngineInfo]
+    fmt = ctx.attrs.package_format[PackageFormatInfo]
+    repos = [r[RepoInfo] for r in ctx.attrs.buildroot_repositories]
+
+    # Loading a repo means parsing its metadata XML into libdnf5's .solv cache —
+    # re-paid by every plan action, since the sandbox cachedir is ephemeral (for
+    # Fedora that's ~1GB of XML, filelists being 3/4 of it). Prebuild each repo's
+    # cache once (plan make-cache, in the engine root) and let every plan seed
+    # from it. Declared on the distribution so all its consumers share one cache
+    # build per repo; the actions run only when a plan actually demands them.
+    caches = {}
+    for repo in repos:
+        cache = ctx.actions.declare_output("solv-cache-{}".format(repo.id), dir = True)
+        ctx.actions.run(
+            cmd_args(
+                chroot_run(engine = engine, exe = fmt.plan),
+                "make-cache",
+                "--repo",
+                cmd_args(repo.dir, format = repo.id + "={}"),
+                "--out",
+                cache.as_output(),
+            ),
+            category = "solvcache",
+            identifier = repo.id,
+        )
+        caches[repo.id] = cache
+
     return [
         DefaultInfo(),
         DistributionInfo(
-            engine = ctx.attrs.engine[EngineInfo],
-            package_format = ctx.attrs.package_format[PackageFormatInfo],
-            buildroot_repositories = [r[RepoInfo] for r in ctx.attrs.buildroot_repositories],
+            engine = engine,
+            package_format = fmt,
+            buildroot_repositories = repos,
             buildroot_base_packages = ctx.attrs.buildroot_base_packages,
+            solv_caches = caches,
         ),
     ]
 
@@ -88,50 +103,68 @@ local_repository = rule(
     },
 )
 
-def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
-    # Assemble a `repodata/` tree as a local `file://` repo: repomd (pinned in catalog)
-    # plus the pinned stream files it references. No packages here: the buildroot's
-    # resolved subset is downloaded at build time (Action 2) from `baseurl`.
-    repomd = ctx.actions.write("repomd.xml", ctx.attrs.repomd)
-    streams = [f[DefaultInfo].default_outputs[0] for f in ctx.attrs.streams]
+def _pin_repodata_impl(actions, id: str, lock: ArtifactValue, repo: OutputArtifact) -> list[Provider]:
+    # Assemble a `repodata/` tree as a local `file://` repo: the lock's filtered repomd
+    # plus the pinned stream files it references, downloaded right here. No packages:
+    # the resolved subset is downloaded at build time (Action 2) from `baseurl`.
+    data = lock.read_json()
+    if not data:
+        fail("repository '{}' is not locked yet (its fragment is `{{}}`); run refresh-catalog".format(id))
+    repomd = actions.write("repomd.xml", data["repomd"])
     tree = {"repodata/repomd.xml": repomd}
-    tree.update({"repodata/" + f.basename: f for f in streams})
-    repo_dir = ctx.actions.copied_dir("repo", tree)
-    return [
-        DefaultInfo(default_output = repo_dir),
-        RepoInfo(id = ctx.attrs.id, dir = repo_dir, packages = [], baseurl = ctx.attrs.baseurl),
-    ]
+    for f in data["streams"]:
+        out = actions.declare_output(f["out"])
+        actions.download_file(out, f["url"], sha256 = f["sha256"], size_bytes = f["size"])
+        tree["repodata/" + f["out"]] = out
+    actions.copied_dir(repo, tree)
+    return []
 
-# A remote repository: a pinned snapshot of a real distro repodata, which in turn pins the
-# distro rpms. The plan resolves against the metadata; the resolved rpms are fetched
-# lazily at build time from `baseurl`.
-remote_repository = rule(
-    impl = _remote_repository_impl,
+_pin_repodata = dynamic_actions(
+    impl = _pin_repodata_impl,
     attrs = {
-        "id": attrs.string(doc = "the repo id"),
-        "baseurl": attrs.string(doc = "the real remote baseurl (for download URLs)"),
-        "repomd": attrs.string(doc = "the filtered repomd.xml content (lists only the pinned streams)"),
-        "streams": attrs.list(attrs.dep(), doc = "pinned metadata stream http_files (primary + filelists)"),
+        "id": dynattrs.value(str),
+        "lock": dynattrs.artifact_value(),
+        "repo": dynattrs.output(),
     },
 )
 
-def _download_closure(actions: AnalysisActions, tx: ArtifactValue, closure: OutputArtifact) -> list[Provider]:
-    # Dynamic: the resolved set is only known once `plan` has run. Fetch rpms into
-    # content-based output for global sharing. The buildroot closure is a symlink tree.
-    rpms = {}
-    for entry in tx.read_json():
-        name = entry["url"].rsplit("/", 1)[-1]
-        out = actions.declare_output("rpm", name, has_content_based_path = True)
-        actions.download_file(out, entry["url"], sha256 = entry["sha256"], size_bytes = entry["size"])
-        rpms[name] = out
-    actions.symlinked_dir(closure, rpms)
-    return []
+def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
+    # The refresh half, as sub-targets: `[manifest]` is the authored data as JSON (the
+    # snapshot driver's input, also handed to distribution resolvers), `[snapshot]`
+    # runs the driver to (re)pin the repodata (host — pinning is pure fetch-and-filter).
+    rid = ctx.label.name
+    fmt = ctx.attrs.package_format[PackageFormatInfo]
+    manifest = ctx.actions.write("manifest.json", json.encode({"baseurl": ctx.attrs.baseurl, "id": rid}))
+    sub_targets = {
+        "manifest": [DefaultInfo(default_output = manifest)],
+        "snapshot": [DefaultInfo(), RunInfo(args = cmd_args(fmt.snapshot[RunInfo], "--manifest", manifest))],
+    }
 
-_download = dynamic_actions(
-    impl = _download_closure,
+    # The pinned half. The lock is a source file read at action time (a dynamic action —
+    # analysis can't read file contents), so an unlocked repo (fragment seeded `{}`)
+    # analyzes fine and fails only when its repodata is actually demanded.
+    repo_dir = ctx.actions.declare_output("repo", dir = True)
+    ctx.actions.dynamic_output_new(_pin_repodata(id = rid, lock = ctx.attrs.lock, repo = repo_dir.as_output()))
+    return [
+        DefaultInfo(default_output = repo_dir, sub_targets = sub_targets),
+        RepoInfo(id = rid, dir = repo_dir, packages = [], manifest = manifest, baseurl = ctx.attrs.baseurl),
+    ]
+
+# A remote repository: a pinned snapshot of a real distro repodata, which in turn pins the
+# distro rpms. A first-class catalog citizen shared across distributions — the target
+# name doubles as the repo id. The plan resolves against the metadata; the resolved rpms
+# are fetched lazily at build time from `baseurl`. Declared via a format wrapper
+# (rpm_remote_repository) that binds `package_format` and defaults `lock`.
+remote_repository = rule(
+    impl = _remote_repository_impl,
     attrs = {
-        "tx": dynattrs.artifact_value(),
-        "closure": dynattrs.output(),
+        "baseurl": attrs.string(doc = "the real remote baseurl (for download URLs)"),
+        "package_format": attrs.dep(providers = [PackageFormatInfo], doc = "the package format plugin (supplies the snapshot driver)"),
+        "lock": attrs.source(
+            doc = "the @generated snapshot fragment, {repomd: <filtered xml>, streams: " +
+                  "[{out, url, sha256, size}]} (size skips the HEAD probe) — the schema is " +
+                  "documented here because the JSON fragments can't carry comments; seed with `{}`",
+        ),
     },
 )
 
@@ -161,21 +194,20 @@ def _buildroot_impl(ctx: AnalysisContext) -> list[Provider]:
     tx = ctx.actions.declare_output("transaction.json")
     plan = cmd_args(
         chroot_run(engine = engine, exe = fmt.plan),
+        "solve",
         "--out",
         tx.as_output(),
     )
     for repository in repos:
         plan.add("--repo", cmd_args(repository.dir, format = repository.id + "={}"))
         plan.add("--baseurl", "{}={}".format(repository.id, repository.baseurl))
+        plan.add("--cache", distribution.solv_caches[repository.id])
     for cap in ctx.attrs.install:
         plan.add("--install", cap)
     ctx.actions.run(plan, category = "plan")
 
-    # Action 2 — download the resolved transaction. lazy (only this buildroot's subset),
-    # shared (downloaded once and re-used via symlink trees), dynamic (resolved set isn't
-    # known until `plan` runs).
-    closure = ctx.actions.declare_output("buildroot.closure", dir = True)
-    ctx.actions.dynamic_output_new(_download(tx = tx, closure = closure.as_output()))
+    # Action 2 — download the resolved transaction.
+    closure = download_closure(ctx, tx)
 
     # Action 3 — install that closure into a fresh root (it's already the exact set).
     # Cuts off when the closure is unchanged.

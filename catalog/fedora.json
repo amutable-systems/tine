@@ -1,0 +1,23 @@
+{
+  "repomd": "<?xml version='1.0' encoding='utf-8'?>\n<repomd xmlns=\"http://linux.duke.edu/metadata/repo\">\n  <revision>1776864872</revision>\n  <data type=\"primary\">\n    <checksum type=\"sha256\">c48e47563bbf65b996c95caf4a608223f982c314cab637e6ab87dd1df67b9d26</checksum>\n    <open-checksum type=\"sha256\">0818500b9143c2e3b251ebe9fd6027b74c0f09fbf47ef1e79681f2dd859c67e2</open-checksum>\n    <location href=\"repodata/c48e47563bbf65b996c95caf4a608223f982c314cab637e6ab87dd1df67b9d26-primary.xml.zst\" />\n    <timestamp>1776864859</timestamp>\n    <size>15678154</size>\n    <open-size>185300395</open-size>\n  </data>\n  <data type=\"filelists\">\n    <checksum type=\"sha256\">326f2b47a15d5750b2bd3387831a9335731033b031cf2d5a9ffd26106d48648b</checksum>\n    <open-checksum type=\"sha256\">a5ab0ea30e259dad18c283d00711196cbed9c2fef039f99463f7e69ec77147ef</open-checksum>\n    <location href=\"repodata/326f2b47a15d5750b2bd3387831a9335731033b031cf2d5a9ffd26106d48648b-filelists.xml.zst\" />\n    <timestamp>1776864859</timestamp>\n    <size>46935343</size>\n    <open-size>829071915</open-size>\n  </data>\n  <data type=\"group\">\n    <checksum type=\"sha256\">6a37d36914955dc65cf6dc037c37dcf00c64ded464dc34164a674bf65fa16927</checksum>\n    <location href=\"repodata/6a37d36914955dc65cf6dc037c37dcf00c64ded464dc34164a674bf65fa16927-comps-Everything.x86_64.xml.zst\" />\n    <timestamp>1776864682</timestamp>\n    <size>291172</size>\n  </data>\n  </repomd>",
+  "streams": [
+    {
+      "out": "c48e47563bbf65b996c95caf4a608223f982c314cab637e6ab87dd1df67b9d26-primary.xml.zst",
+      "sha256": "c48e47563bbf65b996c95caf4a608223f982c314cab637e6ab87dd1df67b9d26",
+      "size": 15678154,
+      "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/repodata/c48e47563bbf65b996c95caf4a608223f982c314cab637e6ab87dd1df67b9d26-primary.xml.zst"
+    },
+    {
+      "out": "326f2b47a15d5750b2bd3387831a9335731033b031cf2d5a9ffd26106d48648b-filelists.xml.zst",
+      "sha256": "326f2b47a15d5750b2bd3387831a9335731033b031cf2d5a9ffd26106d48648b",
+      "size": 46935343,
+      "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/repodata/326f2b47a15d5750b2bd3387831a9335731033b031cf2d5a9ffd26106d48648b-filelists.xml.zst"
+    },
+    {
+      "out": "6a37d36914955dc65cf6dc037c37dcf00c64ded464dc34164a674bf65fa16927-comps-Everything.x86_64.xml.zst",
+      "sha256": "6a37d36914955dc65cf6dc037c37dcf00c64ded464dc34164a674bf65fa16927",
+      "size": 291172,
+      "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/repodata/6a37d36914955dc65cf6dc037c37dcf00c64ded464dc34164a674bf65fa16927-comps-Everything.x86_64.xml.zst"
+    }
+  ]
+}

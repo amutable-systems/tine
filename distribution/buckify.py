@@ -1,18 +1,23 @@
 """buckify — the format-independent host orchestrator for (re)generating a catalog.
 
-Runs on the host (a python_bootstrap_binary), invoked via `buck run
-@tine//distribution:buckify -- --catalog-dir <dir> --buck <buck>`. It does NOT
-resolve packages itself; it drives the per-distribution, per-format resolvers:
+Runs on the host (a python_bootstrap_binary), invoked via the
+`just <refresh-catalog|verify-catalog>` recipes. It does NOT pin or resolve
+anything itself; it drives the per-format refresh drivers in two phases:
 
-  1. `buck uquery` to find the `catalog//:<distribution>.buckify` resolve targets (each a
-     chroot_python_binary bound to *that distribution's* engine root by
-     declare_catalog — Arch in the Arch engine, Fedora in the Fedora engine).
-  2. for each, nest `buck run <target> -- resolve --distribution <distribution> --catalog-dir
-     <dir>`, which writes the fragment <dir>/<distribution>.json in that distribution's engine.
-  3. amalgamate the fragments into <dir>/generated.bzl (static loads of each fragment's
-     `value` + one dict).
-  4. scaffold <dir>/BUCK if absent, so a catalog authored with only a manifest is
-     buildable after one run.
+  1. snapshot every repository: `buck uquery` finds the `remote_repository` targets and
+     runs each one's `[snapshot]` sub-target (the format's host snapshot driver + that
+     repo's `[manifest]` — no engine involved), writing <dir>/<repo>.json.
+  2. resolve every engine's closure: uquery finds the `engine` targets and runs each
+     one's `[resolve]` sub-target (the format's plan driver run *inside that engine*,
+     over its repositories' pinned repodata), writing <dir>/<engine>.json — the engine
+     lock is the transaction the solve emits.
+
+Both sub-targets share one contract: the binding carries every input; the orchestrator
+appends only `--out <fragment>`.
+
+Repos snapshot first so a same-run engine resolve solves over the repodata being pinned.
+The fragments ARE the lock, and each declared target reads its own at build time, so
+there's nothing to amalgamate or scaffold here.
 
 Nested buck is supported: a `buck run` target executes with cwd = the invocation
 dir and inherits PATH + BUCK_ISOLATION_DIR, so a child `buck` reuses the same
@@ -22,121 +27,91 @@ current_exe, which a python process can't use).
 """
 
 import argparse
-import re
+import contextlib
 import subprocess
 import sys
 from pathlib import Path
 
-# Starting BUCK for a freshly-created catalog directory: declare its distributions via
-# tine's macro. Scaffolded only when absent (the orchestrator never clobbers an edited
-# one); kept in sync with tine/catalog/BUCK.
-_CATALOG_BUCK = """\
-# Scaffolded by `buckify`; safe to edit. Declares this catalog's distributions — tine
-# provides the declare_catalog macro + rules.
-load("@tine//defs:catalog.bzl", "declare_catalog")
-load(":generated.bzl", "DISTRIBUTIONS")
 
-declare_catalog(DISTRIBUTIONS)
-"""
+def _buck_out(buck: str, *args: str) -> str:
+    return subprocess.run([buck, *args], check=True, capture_output=True, text=True).stdout.strip()
 
 
-def _alias(name: str) -> str:
-    """A valid Starlark identifier for a distribution's amalgamation load binding."""
-    return "_" + re.sub(r"\W", "_", name)
+def _refresh_targets(buck: str, kind: str) -> list[str]:
+    """The refresh bindings of rule `kind` in the active catalog cell."""
+    return sorted(_buck_out(buck, "uquery", f"kind('{kind}', catalog//...)").split())
 
 
-def _resolve_targets(buck: str) -> list[str]:
-    """The <distribution>.buckify resolve targets in the active catalog cell."""
-    out = subprocess.run(
-        [buck, "uquery", "kind('command_alias', catalog//...)"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout
-    return sorted(t for t in out.split() if t.endswith(".buckify"))
+def _name_of(target: str, suffix: str = "") -> str:
+    return target.rsplit(":", 1)[1].removesuffix(suffix)
 
 
-def _distribution_of(target: str) -> str:
-    return target.rsplit(":", 1)[1].removesuffix(".buckify")
+def _run(buck: str, target: str, args: list[str]) -> None:
+    # `-v 0 --console none` mutes buck's own wrapper output (build id, "BUILD SUCCEEDED",
+    # network) for the nested run; the driver's progress on stderr still comes through.
+    subprocess.run([buck, "-v", "0", "run", target, "--console", "none", "--", *args], check=True)
+
+
+def _snapshot(buck: str, target: str, catalog_dir: Path) -> None:
+    repository = _name_of(target)
+    print(f"==> snapshotting {repository} (via {target}[snapshot])", file=sys.stderr)
+    _run(buck, f"{target}[snapshot]", ["--out", str(catalog_dir / f"{repository}.json")])
 
 
 def _resolve(buck: str, target: str, catalog_dir: Path) -> None:
-    distribution = _distribution_of(target)
-    print(f"==> resolving {distribution} in its engine (via {target})", file=sys.stderr)
-    # `-v 0 --console none` mutes buck's own wrapper output (build id, "BUILD SUCCEEDED",
-    # network) for the nested run; the resolver's progress on stderr still comes through.
-    subprocess.run(
-        [
-            buck,
-            "-v",
-            "0",
-            "run",
-            target,
-            "--console",
-            "none",
-            "--",
-            "resolve",
-            "--distribution",
-            distribution,
-            "--catalog-dir",
-            str(catalog_dir),
-        ],
-        check=True,
-    )
-
-
-def amalgamate(catalog_dir: Path) -> None:
-    """Write generated.bzl merging the per-distribution JSON fragments into one
-    `DISTRIBUTIONS` dict."""
-    names = sorted(p.stem for p in catalog_dir.glob("*.json"))
-    lines = [
-        "# @" + "generated by `buckify` — do not edit.",
-        "# Amalgamation: loads each per-distribution JSON fragment's `value` (buck decodes",
-        "# JSON/TOML natively at load time) and merges them into one DISTRIBUTIONS dict. The",
-        "# fragments are written by the per-distribution resolvers, each in its own engine.",
-        "",
-        *[f'load(":{n}.json", {_alias(n)} = "value")' for n in names],
-        "",
-        "DISTRIBUTIONS = {",
-        *[f'    "{n}": {_alias(n)},' for n in names],
-        "}",
-        "",
-    ]
-    out = catalog_dir / "generated.bzl"
-    out.write_text("\n".join(lines), encoding="utf-8", newline="\n")
-    print(f"==> amalgamated {len(names)} fragments → {out}", file=sys.stderr)
-
-
-def scaffold(catalog_dir: Path) -> None:
-    buck = catalog_dir / "BUCK"
-    if buck.exists():
-        return
-    buck.write_text(_CATALOG_BUCK, encoding="utf-8", newline="\n")
-    print(f"==> scaffolded {buck}", file=sys.stderr)
+    engine = _name_of(target)
+    print(f"==> resolving {engine} in itself (via {target}[resolve])", file=sys.stderr)
+    _run(buck, f"{target}[resolve]", ["--out", str(catalog_dir / f"{engine}.json")])
 
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="buckify")
-    p.add_argument("--catalog-dir", required=True, help="catalog dir to (re)generate")
-    p.add_argument("--buck", default="buck", help="buck binary to nest (default: PATH)")
+    p.add_argument("--catalog-dir", help="catalog dir to (re)generate (default: catalog//)")
     p.add_argument(
-        "--distribution",
+        "--buck", default="buck", help="buck binary to nest (aliases pass the pinned one; default: PATH)"
+    )
+    p.add_argument(
+        "--engine",
         action="append",
-        help="only (re)resolve these distributions; default: all in the active catalog",
+        help="only (re)resolve these engines (repos still all snapshot); default: all",
+    )
+    p.add_argument(
+        "--verify",
+        action="store_true",
+        help="assert the committed catalog matches what the pinned resolvers produce (CI)",
     )
     args = p.parse_args(argv)
-    catalog_dir = Path(args.catalog_dir)
+    # Default to the active catalog cell, so a consumer that repoints `[cells] catalog`
+    # regenerates their own lock without passing --catalog-dir. Anchor an explicit
+    # (possibly relative) dir before the project-root switch below.
+    if args.catalog_dir:
+        catalog_dir = Path(args.catalog_dir).absolute()
+    else:
+        catalog_dir = Path(_buck_out(args.buck, "audit", "cell", "catalog", "--paths-only"))
+    catalog_dir.mkdir(parents=True, exist_ok=True)
 
-    targets = _resolve_targets(args.buck)
-    if args.distribution:
-        targets = [t for t in targets if _distribution_of(t) in set(args.distribution)]
-    if not targets:
-        raise SystemExit("buckify: no <distribution>.buckify resolve targets found in catalog//...")
+    # The nested `buck run`s' python wrappers resolve against the project root — run them
+    # there (a no-op when tine is the root), so buckify itself works from anywhere.
+    with contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")):
+        snapshots = _refresh_targets(args.buck, "remote_repository")
+        for target in snapshots:
+            _snapshot(args.buck, target, catalog_dir)
 
-    for target in targets:
-        _resolve(args.buck, target, catalog_dir)
-    amalgamate(catalog_dir)
-    scaffold(catalog_dir)
+        resolves = _refresh_targets(args.buck, "engine")
+        if args.engine:
+            resolves = [t for t in resolves if _name_of(t) in set(args.engine)]
+        for target in resolves:
+            _resolve(args.buck, target, catalog_dir)
+
+    if not snapshots and not resolves:
+        raise SystemExit("buckify: no repository/engine refresh targets found in catalog//...")
+
+    if args.verify:
+        print("==> verifying the committed catalog matches", file=sys.stderr)
+        # git prints the offending diff; just propagate the failure without a traceback.
+        proc = subprocess.run(["git", "-C", str(catalog_dir), "diff", "--exit-code", "--", "*.json"])
+        if proc.returncode != 0:
+            raise SystemExit(proc.returncode)
 
 
 if __name__ == "__main__":

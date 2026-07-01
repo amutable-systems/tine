@@ -3,13 +3,13 @@
 load("//defs/rules:package_format.bzl", "package_format")
 
 # The rpm-format drivers (sources beside this file: extract/install/createrepo/
-# plan/build/buckify.py). They run under the pinned host python3 (extract) or
-# inside an engine root provisioned by the consumer (the rest). Bare `//` here
+# plan/build/snapshot.py). They run under the pinned host python3 (extract, snapshot)
+# or inside an engine root provisioned by the consumer (the rest). Bare `//` here
 # resolves to the tine cell (the cell of this BUCK), so the cell self-references
 # without qualification.
 
-# The bootstrap ur-tool: payload-extracts the seed rpms to stand up the first
-# chroot. stdlib only, run by host python3 — not a chroot tool, so not per-engine.
+# The bootstrap ur-tool, stdlib only, run by host python3 (not a chroot tool, so not
+# per-engine): payload-extracts the downloaded seed to stand up the first chroot.
 python_bootstrap_binary(
     name = "extract",
     main = "extract.py",
@@ -18,8 +18,23 @@ python_bootstrap_binary(
 
 python_bootstrap_binary(name = "install", main = "install.py", deps = ["//distribution:rootfs_lib"])
 python_bootstrap_binary(name = "createrepo", main = "createrepo.py")
+
+# plan doubles as the engine-closure resolver and the repo-cache prebuilder: builds
+# bind it per buildroot (seeded from make-cache outputs), and an engine's
+# `[resolve]` sub-target binds it at refresh to re-solve the lock (the engine lock is
+# a plan transaction).
 python_bootstrap_binary(name = "plan", main = "plan.py")
 python_bootstrap_binary(name = "build", main = "build.py", deps = ["//distribution:sandbox_lib"])
+
+# The lock generator: snapshot pins one repository's repodata — pure fetch-and-filter
+# (stdlib), so it runs on the host, bound per repository with just that repo's
+# manifest. Public so a consumer can bind it on their side (the cell only owns the
+# drivers).
+python_bootstrap_binary(
+    name = "snapshot",
+    main = "snapshot.py",
+    visibility = ["PUBLIC"],
+)
 
 # The rpm package format plugin: the build drivers, selected generically as
 # `@tine//distribution/rpm:package_format` by the orchestration layer (per a
@@ -27,19 +42,10 @@ python_bootstrap_binary(name = "build", main = "build.py", deps = ["//distributi
 package_format(
     name = "package_format",
     extract = ":extract",
+    snapshot = ":snapshot",
     install = ":install",
     createrepo = ":createrepo",
     plan = ":plan",
     build = ":build",
-    visibility = ["PUBLIC"],
-)
-
-# The lock generator, public so a consumer can bind it to *their* engine root (a
-# command_alias over the engine's RunInfo). It's consumer-data-driven (needs the
-# consumer's engine root), so the runnable is declared on the consumer side; the cell
-# only owns the driver.
-python_bootstrap_binary(
-    name = "buckify",
-    main = "buckify.py",
     visibility = ["PUBLIC"],
 )

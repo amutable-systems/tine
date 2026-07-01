@@ -1,0 +1,537 @@
+[
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/a/alternatives-1.33-5.fc44.x86_64.rpm",
+    "sha256": "0179df0fadb4de141ec94d765a539cf4ebfaf986de19b7a81850a1ed324d290c",
+    "size": 41829
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/a/audit-libs-4.1.4-1.fc44.x86_64.rpm",
+    "sha256": "5dcea7a072a4d5b7bd7dbeb11badf011ce3299097a9816ffe1ec6fd17b79328f",
+    "size": 145022
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/b/bash-5.3.9-3.fc44.x86_64.rpm",
+    "sha256": "2ccb046d638f5ad23f5613222a78ee71067dc43f0bdf03b60ce311536bc4bed5",
+    "size": 1985877
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/b/bzip2-libs-1.0.8-23.fc44.x86_64.rpm",
+    "sha256": "ead652ccea75f1345305c82e97759a360da5e4f46b2f1862a18ebf0f8547d2b9",
+    "size": 44832
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/c/ca-certificates-2025.2.80_v9.0.304-6.fc44.noarch.rpm",
+    "sha256": "8cafab44ee1d744480860f18e06f9060cc1a2afd87ce926ec33abf5ae11a8980",
+    "size": 996072
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/c/coreutils-9.10-3.fc44.x86_64.rpm",
+    "sha256": "a418ac69e4d9b6b22c2e6db27cf8121abb6fa31512a79ee16c66211ed359bbe6",
+    "size": 1245872
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/c/coreutils-common-9.10-3.fc44.x86_64.rpm",
+    "sha256": "556c75b9c32e60499ba83f6464a143621d971362af21203ea7e73f13037ad455",
+    "size": 2236256
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/c/createrepo_c-libs-1.2.1-5.fc44.x86_64.rpm",
+    "sha256": "926810dc9bd5e93e296cce9ccd8be3486e4b5d0e7e645950f8baed40f1ed25dc",
+    "size": 116350
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/c/crypto-policies-20251128-3.git19878fe.fc44.noarch.rpm",
+    "sha256": "bc91e5ceafb7c9884654dc86da14187493a16cec8e6a279d625efb0e3aa4d005",
+    "size": 100658
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/c/curl-8.18.0-4.fc44.x86_64.rpm",
+    "sha256": "c0339c79fc1e20070a2b35518072552dfa53508e1acfdb7d03530aea87fd5c6a",
+    "size": 246571
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/c/cyrus-sasl-lib-2.1.28-35.fc44.x86_64.rpm",
+    "sha256": "0175ce156be22a2d129754c74ad0089d02a94a5255cec33320b51c2cc884c47e",
+    "size": 819940
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/d/drpm-0.5.3-2.fc44.x86_64.rpm",
+    "sha256": "aef76b722ef541b469392d1baeae27da4e6b217055d0046559a15019e7eedbf6",
+    "size": 66906
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/e/expat-2.7.3-2.fc44.x86_64.rpm",
+    "sha256": "ff5544dbe56e48b95d6f8bc39dc35b624fc39e1dfe70c486a225ef7c5fdfa211",
+    "size": 127778
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/f/fedora-gpg-keys-44-1.noarch.rpm",
+    "sha256": "586631445cb43412af8125af71c44d3eca2851f074154a81093faec6514dac5f",
+    "size": 144772
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/f/fedora-release-44-17.noarch.rpm",
+    "sha256": "c7e33c968399c79130abe3bb8c0581cf00aa5a6980659ebe708f91b21198b584",
+    "size": 12817
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/f/fedora-release-common-44-17.noarch.rpm",
+    "sha256": "bb924ec01ceadcd2aee69c8e7352a73cb9ebf1826eeb33ba82b87938994379cf",
+    "size": 24222
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/f/fedora-release-identity-basic-44-17.noarch.rpm",
+    "sha256": "42eba834594cf3ab9a4cc09991e0dc2e471499092a3ea7c14b64b4ac4f083538",
+    "size": 13599
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/f/fedora-repos-44-1.noarch.rpm",
+    "sha256": "8ea372905db4c40c2fb53048e6bf008eafc1c448416c7cd638bedfd6836de48f",
+    "size": 9466
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/f/filesystem-3.18-52.fc44.x86_64.rpm",
+    "sha256": "7abc643d653bf2773c38e183e0e33489cab4880c8a540b315fcd7fff09c6c52c",
+    "size": 1398770
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/f/findutils-4.10.0-7.fc44.x86_64.rpm",
+    "sha256": "b1f9fe72be7a0cf0fb53ec00ef9e6b8ccc9987cb5f55e9de02bbc67f9cf3b5cf",
+    "size": 565758
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/f/fmt-11.2.0-4.fc44.x86_64.rpm",
+    "sha256": "1ba4d955ff7ee1ce4c95bf8a76349b5aa7481ed0370d2503eb7b23130460d13c",
+    "size": 108140
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/gdbm-libs-1.23-11.fc44.x86_64.rpm",
+    "sha256": "3fb13a4e2d4292ef3482732f51de572ded34bdf4c657c2dc4dbafe8d0ba2d4b8",
+    "size": 60220
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/glib2-2.88.0-1.fc44.x86_64.rpm",
+    "sha256": "e0b5895e0ea8e760e53423eea8d531ce5f9988f3ae992c4b791cdd3a2958d558",
+    "size": 3316152
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/glibc-2.43-2.fc44.x86_64.rpm",
+    "sha256": "90ddf81832ba518f8768264a6944d0b02e030acc7e78aa2ed907d7e77d0a069f",
+    "size": 2483822
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/glibc-common-2.43-2.fc44.x86_64.rpm",
+    "sha256": "379fd21487772fc584d7ad40490452ca56844a7690b3506a99cc0b366cb41868",
+    "size": 379809
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/glibc-minimal-langpack-2.43-2.fc44.x86_64.rpm",
+    "sha256": "93370d17e3ed960b26c7b9fb79582366b718ec5bad32d259af80459e17aea21e",
+    "size": 80829
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/gmp-6.3.0-5.fc44.x86_64.rpm",
+    "sha256": "94b960c5eaba00c1cb56abdbed05bd348d1256360cf68fd9cd7a24b3232d6558",
+    "size": 330200
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/gnulib-l10n-20241231-2.fc44.noarch.rpm",
+    "sha256": "5e55fb0fd56734e71aa6ebeba0a66fde69c07964b43591464a0bb2edf96d18e7",
+    "size": 153933
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/gnutls-3.8.12-1.fc44.x86_64.rpm",
+    "sha256": "a1338ac7c9621e221a6813e1ba8b6c1f832e55ecfa61eaa650e6a2b5d6c0f411",
+    "size": 1471012
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/grep-3.12-3.fc44.x86_64.rpm",
+    "sha256": "0b1e3d96f14f6346d0af992a8cdc1af696ff8e616311abfdee49d6a3a3f1e746",
+    "size": 308807
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/j/json-c-0.18-8.fc44.x86_64.rpm",
+    "sha256": "af4cf667585ec8618b8bf352b4323bb69422130be253fdc4803e2f720dfd893c",
+    "size": 47441
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/k/keyutils-libs-1.6.3-7.fc44.x86_64.rpm",
+    "sha256": "28b1b356688c24c51affa429feaf908425d52e42758ee068836cdb547aedf8dc",
+    "size": 32285
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/k/krb5-libs-1.22.2-2.fc44.x86_64.rpm",
+    "sha256": "29be5c79ea96c3594f8512117397250eef0831ec3d4fb377cb0af0b59538eb70",
+    "size": 823133
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libacl-2.3.2-6.fc44.x86_64.rpm",
+    "sha256": "38a4c106c2b56c6b3701f7bdbb6f0874159da347a2ffbbe48a6233cf5b91abaa",
+    "size": 25422
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libarchive-3.8.4-2.fc44.x86_64.rpm",
+    "sha256": "40c57e51dbf9e79105154bf8c2659bd54c7d6cfef1c6c0fe38208a19b4a84389",
+    "size": 451984
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libattr-2.5.2-8.fc44.x86_64.rpm",
+    "sha256": "524d8916b69977f52dc74a447a1b3bca4f2e106ab8a59788e8953f33527ffb30",
+    "size": 18359
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libblkid-2.41.3-12.fc44.x86_64.rpm",
+    "sha256": "1cc22f556069fbd183b817e79e0881a504f0adbaab371bc34fbea41239839972",
+    "size": 132546
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libbrotli-1.2.0-3.fc44.x86_64.rpm",
+    "sha256": "3f678e2c3eadfb559b3f91489cea1118cffe230219366426038a023bb34f5054",
+    "size": 356158
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libcap-2.77-2.fc44.x86_64.rpm",
+    "sha256": "4601aa22a90d64d022c203203fed150231aa052945ad37a74527ebc2ecd3db96",
+    "size": 90655
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libcap-ng-0.9.2-1.fc44.x86_64.rpm",
+    "sha256": "0e774e3ce39521be43ec7fc55e2ca79fe6af7fcc6cefd50b0d597e0271899e00",
+    "size": 33813
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libcbor-0.13.0-2.fc44.x86_64.rpm",
+    "sha256": "e5ed0379715086b19c4cf34ba02b5df1543e0648fe8bb1e0b0e7df315b508bc6",
+    "size": 36819
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libcom_err-1.47.3-4.fc44.x86_64.rpm",
+    "sha256": "c163f4fce53aa42e032c04299cecf9cc57e69437515a095e667b5a91b7859878",
+    "size": 27759
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libcurl-8.18.0-4.fc44.x86_64.rpm",
+    "sha256": "f394fcdefb0958bc21c9d1cbeff3bf210aa494707d63aed4b7ea1c6f58b3524d",
+    "size": 465578
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libdnf5-5.4.1.0-1.fc44.x86_64.rpm",
+    "sha256": "8d082202f3419c5c12d40f3978f680b0a94a84a423c151ff7593372cf17b03f3",
+    "size": 1405996
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libeconf-0.7.9-3.fc44.x86_64.rpm",
+    "sha256": "f8212f510faaa3d6dca692478a686f44f0c27bdad9741e83e3940c17a2d4eb69",
+    "size": 37085
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libevent-2.1.12-17.fc44.x86_64.rpm",
+    "sha256": "d930266aff8012e3dfa8ed04cbf6f52a71f44586aa72759b9f883572de358152",
+    "size": 294253
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libffi-3.5.2-2.fc44.x86_64.rpm",
+    "sha256": "a7dae96d30d007140c7dab605df40e55f90ef16f04392dd8ded32fa230c10dd6",
+    "size": 43388
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libfido2-1.16.0-5.fc44.x86_64.rpm",
+    "sha256": "e71e9bb6308be5a693c69f4fac0460e58b5ed58b8fe164e162a6d959a9085f36",
+    "size": 107020
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libgcc-16.0.1-0.10.fc44.x86_64.rpm",
+    "sha256": "a541f09bf0efded051844bbe65be14c8ebbc327f4201548718d6d1ee106d7075",
+    "size": 129332
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libidn2-2.3.8-3.fc44.x86_64.rpm",
+    "sha256": "430ed4991a4364fe88bc220c1771c768b8ef4ebcc9ad6af3afcfea8ab609fa18",
+    "size": 179767
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libmodulemd-2.15.2-7.fc44.x86_64.rpm",
+    "sha256": "12550ef33a45ea19fdb48f2166c6adbe2c92f005e184524cfb589c0eb711256c",
+    "size": 229665
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libmount-2.41.3-12.fc44.x86_64.rpm",
+    "sha256": "1dcdadd3515c2998694c5928eca95e701134aaa0f267eb541ff612759a54fb6c",
+    "size": 175104
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libnghttp2-1.68.0-3.fc44.x86_64.rpm",
+    "sha256": "5e3ad64d5ba88c7dbc553b743b42eb91c279a408e175156aa806637803bb8a14",
+    "size": 79025
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libnghttp3-1.15.0-1.fc44.x86_64.rpm",
+    "sha256": "b6b1a16b3224db92b7c9f0e39252e19982ae336dc72fe9f2df12fe6732775c8c",
+    "size": 75708
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libpsl-0.21.5-7.fc44.x86_64.rpm",
+    "sha256": "9ea7b4480a43788ec32e0ba44e7a8bc263265fece99f0173b68a469d55374a50",
+    "size": 66819
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/librepo-1.20.0-5.fc44.x86_64.rpm",
+    "sha256": "b3d5c7a974bf25fdf70add8f66d6e0eb0e24d5ccd41400afcfe2fc93dde7f1bb",
+    "size": 105689
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libseccomp-2.6.0-3.fc44.x86_64.rpm",
+    "sha256": "79e590043e47b09369e7757f2c62ed4f2fe56e4d90c70f5f61fab7b52ba33ef2",
+    "size": 78968
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libselinux-3.10-1.fc44.x86_64.rpm",
+    "sha256": "a87a2a7dcb22f68c9df32a6036f0c4431cf7e06e4e862cd3c1ee28d089232ace",
+    "size": 104438
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libsepol-3.10-1.fc44.x86_64.rpm",
+    "sha256": "d1557823d5ee478dd8d6955df961c596503963d3cc62b9eea3ec55ccedd01e6e",
+    "size": 376440
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libsolv-0.7.36-2.fc44.x86_64.rpm",
+    "sha256": "09e8e5cc688be987f55b6544a54b5ebbd2295091ad6abe2e599bdc705c1bd219",
+    "size": 471114
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libssh-0.12.0-1.fc44.x86_64.rpm",
+    "sha256": "c64a7801639c9817fd65f8cd0a42b26adda9b487698166e476053b07a6cf3ab2",
+    "size": 300814
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libssh-config-0.12.0-1.fc44.noarch.rpm",
+    "sha256": "e8a303f2011d44555be13c8c683356da9b4a7e60322cb1de7df3fe4843ce47eb",
+    "size": 9647
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libstdc++-16.0.1-0.10.fc44.x86_64.rpm",
+    "sha256": "b1cc45a89d1785f1fc6404f430ff1fec40f577b2822e78b5ef8ba82e46797591",
+    "size": 970166
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libtasn1-4.21.0-1.fc44.x86_64.rpm",
+    "sha256": "32806a98942dc5492838b4642cb830ce20f478609733326fb9388539930d6596",
+    "size": 77814
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libtool-ltdl-2.5.4-10.fc44.x86_64.rpm",
+    "sha256": "7b9bea37da808d074b26072c9f13612f6997a646e84b8b9b81ca147452d33a88",
+    "size": 37921
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libunistring-1.1-11.fc44.x86_64.rpm",
+    "sha256": "578749cc0f7ac197be5434e65c42f9e88112e3561be731edd52c820cdcacfae5",
+    "size": 560970
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libuuid-2.41.3-12.fc44.x86_64.rpm",
+    "sha256": "123dca469014499c008df49d3a7a1052f18455ae3b96bf56e559ba1f0f7d8efb",
+    "size": 27285
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libverto-0.3.2-12.fc44.x86_64.rpm",
+    "sha256": "3e2ef69df14272b2f666be05312242cb65c0e385bd813007362204b5e19c7cb0",
+    "size": 21633
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libxcrypt-4.5.2-3.fc44.x86_64.rpm",
+    "sha256": "4be1ebfa6079b11d5b4e5119c702df69153788cef8c5b71600482617bdc4ab25",
+    "size": 134355
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libxml2-2.12.10-6.fc44.x86_64.rpm",
+    "sha256": "8df2fb3b424781f56306909f83e9cedd64b68eaa14dc8d52e050b79867d9714d",
+    "size": 742039
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libyaml-0.2.5-18.fc44.x86_64.rpm",
+    "sha256": "acb3fcb1381f1cd0cb337c34ce7109547e602945911c5c5ef1b3d4c8f719a852",
+    "size": 64563
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libzstd-1.5.7-5.fc44.x86_64.rpm",
+    "sha256": "af98832cf1d93eabb442d18520bad10f03f4278a99d54c5d071b2903f6f50fac",
+    "size": 372900
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/lua-libs-5.4.8-5.fc44.x86_64.rpm",
+    "sha256": "f0e198863835e3e159457fe8de7f47e60896277aaf380fdd3363875a0c985586",
+    "size": 139832
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/lz4-libs-1.10.0-4.fc44.x86_64.rpm",
+    "sha256": "3e5697a9804a0c9fe1f1cd2b5a9c99e474bc6c6e2b543a8b1794f2649c013077",
+    "size": 79562
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/m/mpdecimal-4.0.1-3.fc44.x86_64.rpm",
+    "sha256": "f9495b4a3f05e370f6ad6fea7632c83473d94609fe9f8d508a8696bcecf5ab6f",
+    "size": 101509
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/n/ncurses-base-6.6-1.fc44.noarch.rpm",
+    "sha256": "19c6053ad3e76d47f330da92e5c97e2b9a3617b4ddd8fa2139d9066092cfc181",
+    "size": 90110
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/n/ncurses-libs-6.6-1.fc44.x86_64.rpm",
+    "sha256": "d9afd13714bac08fdfbe9b9f5bc5d298497fc1c3fee31fb2e1274ed95ab3d96a",
+    "size": 352355
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/n/nettle-3.10.1-3.fc44.x86_64.rpm",
+    "sha256": "36d7fea745c4d0b17f6dbee48c8f6fe3ca444984aee8ecab863dffa5b5042114",
+    "size": 438310
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/n/ngtcp2-1.21.0-1.fc44.x86_64.rpm",
+    "sha256": "4f36626fc30c1bb883cf09554aa33d55dd312dd58a2896fbbe26ca1f26e94ef0",
+    "size": 159823
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/n/ngtcp2-crypto-ossl-1.21.0-1.fc44.x86_64.rpm",
+    "sha256": "9eb5b57191386881867003970500c8a39f9ea0f3c75fd0a2be134117550f9985",
+    "size": 28222
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/o/openldap-2.6.13-1.fc44.x86_64.rpm",
+    "sha256": "2fc8edf3da4faabe82ce7adcbc91a1b92cda589ec9de80dd8c55865fd59381e0",
+    "size": 278140
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/o/openssl-libs-3.5.5-1.fc44.x86_64.rpm",
+    "sha256": "2f02efa7a21a6a15a7b6b0be62769ff222dc88433fec355e87f78c1ee619fd3f",
+    "size": 2877689
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/p11-kit-0.26.2-1.fc44.x86_64.rpm",
+    "sha256": "546dc2915396a230d5f8f8107d8313f2291a21f310a373d8fd7c751b6f02ecc3",
+    "size": 569014
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/p11-kit-trust-0.26.2-1.fc44.x86_64.rpm",
+    "sha256": "1b060cb633e2375782f62e943ba9ccced1d1286105eb350a75bd063a9dcd6fa3",
+    "size": 149884
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/pam-libs-1.7.2-1.fc44.x86_64.rpm",
+    "sha256": "e5137b3eefb0c1d026ac4b6cd79e2296bcbccbb02268043d31948cdf6168b409",
+    "size": 60488
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/pcre2-10.47-1.fc44.1.x86_64.rpm",
+    "sha256": "9e3498c301b011ed0f517090e45798fbd3063a10b46468f2f8359738975f8702",
+    "size": 284397
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/pcre2-syntax-10.47-1.fc44.1.noarch.rpm",
+    "sha256": "f764ad48aff82dc0805ce5db071e91c805dea73dcc9696f8686583b1a2b19c16",
+    "size": 168666
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/popt-1.19-10.fc44.x86_64.rpm",
+    "sha256": "95d460bfdc12f762ead084ae00f1686ae8bb22ebeed86c097db8a80dd3cf270d",
+    "size": 68537
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/publicsuffix-list-dafsa-20260116-1.fc44.noarch.rpm",
+    "sha256": "90884464488a98f478d93c76b46e48400de7b2fdb0188ec61dc614def78c1f8b",
+    "size": 61722
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/python-pip-wheel-26.0.1-2.fc44.noarch.rpm",
+    "sha256": "cba3f75725616f404b032d50eac2e65c52f2d14af16b041735c93699dd83564f",
+    "size": 1205154
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/python3-3.14.3-2.fc44.x86_64.rpm",
+    "sha256": "7db6a488efe47ee7a811e22ea40f44dfc1b795204a49c5f420e9ff2a2dc959eb",
+    "size": 28934
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/python3-createrepo_c-1.2.1-5.fc44.x86_64.rpm",
+    "sha256": "526a8ba2d8829d28c32dd5471eea33eec58e47b09c7136b25c537551e1102b66",
+    "size": 71426
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/python3-libdnf5-5.4.1.0-1.fc44.x86_64.rpm",
+    "sha256": "fb74853c57f5a7c93dfcd713800fb2e68af84b1c6ee42cf912476b787752ed6e",
+    "size": 1871930
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/python3-libs-3.14.3-2.fc44.x86_64.rpm",
+    "sha256": "130aad43ab0ccca75d52c89d9862701a0c55136cb6b8aba4e34d21d3fd8b2849",
+    "size": 10591012
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/r/readline-8.3-4.fc44.x86_64.rpm",
+    "sha256": "d1f99a29cb7d03781bdf69ae8dcc7aebe7fe45205a36f3756bc67bbe26609608",
+    "size": 235274
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/r/rpm-6.0.1-2.fc44.x86_64.rpm",
+    "sha256": "17527fbfd103607a4cad760214196dde1dca98d879e731c239e5fbd0b27c3c84",
+    "size": 592163
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/r/rpm-libs-6.0.1-2.fc44.x86_64.rpm",
+    "sha256": "24297b88ac826cf3dd209396504695747c94851ef26f0e8bccbf92572f219a6d",
+    "size": 425430
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/r/rpm-sequoia-1.10.1-1.fc44.x86_64.rpm",
+    "sha256": "53e36d3e7b57605f8664720545b7453c3e9682993403c7e25e10640c9573e74e",
+    "size": 935797
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/s/sed-4.9-7.fc44.x86_64.rpm",
+    "sha256": "f1cf741fb40f3a911f32ad0161c689c4b9811a604599fc41f33c867c775cd4d1",
+    "size": 326830
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/s/setup-2.15.0-28.fc44.noarch.rpm",
+    "sha256": "55d58325996df10b4be2f1a9b963dbec3cea3099e43f9f4295eea6e8adfaf7b8",
+    "size": 160947
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/s/sqlite-libs-3.51.2-1.fc44.x86_64.rpm",
+    "sha256": "b9a9f1ce6cd359622b100b9d313e6859adf2a0574e5e75ff166baab3e67ccd6f",
+    "size": 818349
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/s/systemd-libs-259.5-1.fc44.x86_64.rpm",
+    "sha256": "4aff97347f72c79681b4b330f2c8c37cf8810484a4f16b378ff37c85d7d57eb3",
+    "size": 888848
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/s/systemd-standalone-sysusers-259.5-1.fc44.x86_64.rpm",
+    "sha256": "1d5a6631a20e43c6c5926a9dad5bed25646a7bea6dee33b52752b734cf6cba0f",
+    "size": 154647
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/t/tzdata-2026a-1.fc44.noarch.rpm",
+    "sha256": "4a222031f4a5ce8dbdaaa76e2a25a51eb3fd5b274dc47ac0b30bb6a7fccb5cd4",
+    "size": 730502
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/x/xz-libs-5.8.2-2.fc44.x86_64.rpm",
+    "sha256": "dfe774d950f79fd04deb36c3ff3863c6b8072a41ba578de1c20d33b8e2c2aa45",
+    "size": 119631
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/z/zchunk-libs-1.5.1-4.fc44.x86_64.rpm",
+    "sha256": "c29059a94b664d9190a945e945887a9acd167e13f6c6437b8eb45578ff5adbd5",
+    "size": 55864
+  },
+  {
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/z/zlib-ng-compat-2.3.3-3.fc44.x86_64.rpm",
+    "sha256": "53ee3cd7082b1a34e4901f13079b1840648113c809effb5b78e7725235a7d939",
+    "size": 93304
+  }
+]

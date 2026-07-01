@@ -1,0 +1,23 @@
+{
+  "repomd": "<?xml version='1.0' encoding='utf-8'?>\n<repomd xmlns=\"http://linux.duke.edu/metadata/repo\">\n  <revision>10-stream</revision>\n  <tags>\n    <distro cpeid=\"cpe:/o:centos-stream:centos-stream:10\">CentOS Stream 10</distro>\n  </tags>\n  <data type=\"primary\">\n    <checksum type=\"sha256\">d23411466bf5511441e51adff51259d68691c02f0dd20fd7fe664dc38c9ebc13</checksum>\n    <open-checksum type=\"sha256\">f6f3f5b87505648efeb77149ef2af5607d2d6600965cb8be9214ff13f78a8ad4</open-checksum>\n    <location href=\"repodata/d23411466bf5511441e51adff51259d68691c02f0dd20fd7fe664dc38c9ebc13-primary.xml.gz\" />\n    <timestamp>1782847584</timestamp>\n    <size>3265250</size>\n    <open-size>47509368</open-size>\n  </data>\n  <data type=\"filelists\">\n    <checksum type=\"sha256\">5bbfa2c346cf451ae2a53eacdb29ba30767b554fcc00a2b5ddfcbbd46c3dc80e</checksum>\n    <open-checksum type=\"sha256\">9634039cd044c3c883aa9439623abb62fc9e1028e8b8d20dc5549a81c569e5f3</open-checksum>\n    <location href=\"repodata/5bbfa2c346cf451ae2a53eacdb29ba30767b554fcc00a2b5ddfcbbd46c3dc80e-filelists.xml.gz\" />\n    <timestamp>1782847584</timestamp>\n    <size>16310392</size>\n    <open-size>246754587</open-size>\n  </data>\n  <data type=\"group\">\n    <checksum type=\"sha256\">995061b34c503afcf01de2b7c6c973e3de638a8626c1d125299969035323577b</checksum>\n    <location href=\"repodata/995061b34c503afcf01de2b7c6c973e3de638a8626c1d125299969035323577b-comps-AppStream.x86_64.xml\" />\n    <timestamp>1782847576</timestamp>\n    <size>527024</size>\n  </data>\n  </repomd>",
+  "streams": [
+    {
+      "out": "d23411466bf5511441e51adff51259d68691c02f0dd20fd7fe664dc38c9ebc13-primary.xml.gz",
+      "sha256": "d23411466bf5511441e51adff51259d68691c02f0dd20fd7fe664dc38c9ebc13",
+      "size": 3265250,
+      "url": "https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/repodata/d23411466bf5511441e51adff51259d68691c02f0dd20fd7fe664dc38c9ebc13-primary.xml.gz"
+    },
+    {
+      "out": "5bbfa2c346cf451ae2a53eacdb29ba30767b554fcc00a2b5ddfcbbd46c3dc80e-filelists.xml.gz",
+      "sha256": "5bbfa2c346cf451ae2a53eacdb29ba30767b554fcc00a2b5ddfcbbd46c3dc80e",
+      "size": 16310392,
+      "url": "https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/repodata/5bbfa2c346cf451ae2a53eacdb29ba30767b554fcc00a2b5ddfcbbd46c3dc80e-filelists.xml.gz"
+    },
+    {
+      "out": "995061b34c503afcf01de2b7c6c973e3de638a8626c1d125299969035323577b-comps-AppStream.x86_64.xml",
+      "sha256": "995061b34c503afcf01de2b7c6c973e3de638a8626c1d125299969035323577b",
+      "size": 527024,
+      "url": "https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/repodata/995061b34c503afcf01de2b7c6c973e3de638a8626c1d125299969035323577b-comps-AppStream.x86_64.xml"
+    }
+  ]
+}

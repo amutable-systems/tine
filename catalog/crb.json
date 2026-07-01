@@ -1,0 +1,23 @@
+{
+  "repomd": "<?xml version='1.0' encoding='utf-8'?>\n<repomd xmlns=\"http://linux.duke.edu/metadata/repo\">\n  <revision>10-stream</revision>\n  <tags>\n    <distro cpeid=\"cpe:/o:centos-stream:centos-stream:10\">CentOS Stream 10</distro>\n  </tags>\n  <data type=\"primary\">\n    <checksum type=\"sha256\">07986c9584d4d59a2d6084ec712aed8a6e779d5db62e3c3d9b307d5540551be4</checksum>\n    <open-checksum type=\"sha256\">2eca508791f9c0d44c1e39f97593e3f6c4a9f6505ef47b001867b61fdd93e126</open-checksum>\n    <location href=\"repodata/07986c9584d4d59a2d6084ec712aed8a6e779d5db62e3c3d9b307d5540551be4-primary.xml.gz\" />\n    <timestamp>1782847785</timestamp>\n    <size>777304</size>\n    <open-size>8922206</open-size>\n  </data>\n  <data type=\"filelists\">\n    <checksum type=\"sha256\">83dad472a3e76c70f9223cf903917b03c7593b51e38ca23013df7aa1f5d9ce1a</checksum>\n    <open-checksum type=\"sha256\">8893b6485999f4cce2fbf2dabe831a37fa81b2f769e4097e0f2d417f4a209232</open-checksum>\n    <location href=\"repodata/83dad472a3e76c70f9223cf903917b03c7593b51e38ca23013df7aa1f5d9ce1a-filelists.xml.gz\" />\n    <timestamp>1782847785</timestamp>\n    <size>6795549</size>\n    <open-size>98331192</open-size>\n  </data>\n  <data type=\"group\">\n    <checksum type=\"sha256\">69ed90ff19acae6c0af9f869925cb9e7e03f47de02e4c68d3f384490cbd12fca</checksum>\n    <location href=\"repodata/69ed90ff19acae6c0af9f869925cb9e7e03f47de02e4c68d3f384490cbd12fca-comps-CRB.x86_64.xml\" />\n    <timestamp>1782847782</timestamp>\n    <size>85613</size>\n  </data>\n  </repomd>",
+  "streams": [
+    {
+      "out": "07986c9584d4d59a2d6084ec712aed8a6e779d5db62e3c3d9b307d5540551be4-primary.xml.gz",
+      "sha256": "07986c9584d4d59a2d6084ec712aed8a6e779d5db62e3c3d9b307d5540551be4",
+      "size": 777304,
+      "url": "https://mirror.stream.centos.org/10-stream/CRB/x86_64/os/repodata/07986c9584d4d59a2d6084ec712aed8a6e779d5db62e3c3d9b307d5540551be4-primary.xml.gz"
+    },
+    {
+      "out": "83dad472a3e76c70f9223cf903917b03c7593b51e38ca23013df7aa1f5d9ce1a-filelists.xml.gz",
+      "sha256": "83dad472a3e76c70f9223cf903917b03c7593b51e38ca23013df7aa1f5d9ce1a",
+      "size": 6795549,
+      "url": "https://mirror.stream.centos.org/10-stream/CRB/x86_64/os/repodata/83dad472a3e76c70f9223cf903917b03c7593b51e38ca23013df7aa1f5d9ce1a-filelists.xml.gz"
+    },
+    {
+      "out": "69ed90ff19acae6c0af9f869925cb9e7e03f47de02e4c68d3f384490cbd12fca-comps-CRB.x86_64.xml",
+      "sha256": "69ed90ff19acae6c0af9f869925cb9e7e03f47de02e4c68d3f384490cbd12fca",
+      "size": 85613,
+      "url": "https://mirror.stream.centos.org/10-stream/CRB/x86_64/os/repodata/69ed90ff19acae6c0af9f869925cb9e7e03f47de02e4c68d3f384490cbd12fca-comps-CRB.x86_64.xml"
+    }
+  ]
+}

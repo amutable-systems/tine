@@ -1,17 +1,133 @@
-"""Instantiate the active catalog's per-distribution target graph from its @generated lock."""
+"""The active catalog: repositories, engines, and distributions, declared directly."""
 
 # This BUCK lives in the *catalog* cell (default `[cells] catalog = tine/catalog`), so
-# the declaration is scoped to whichever catalog is active. It instantiates the
-# per-distribution target graph — engine roots, repos, distribution targets at
-# `catalog//:<distribution>`, lock generators — from this catalog's @generated lock.
-# tine provides the machinery (the declare_catalog macro + rules); the catalog
-# cell provides the data (generated.bzl + manifest.toml) and this call.
+# the declarations are scoped to whichever catalog is active. Everything pinned is
+# first-class and shareable: a repository pins its repodata once, an engine pins its
+# closure once, and distributions compose them by target name. tine provides the
+# machinery (the rules + rpm wrappers); the catalog cell provides the data.
 #
 # A consumer overrides by repointing `[cells] catalog` at their own dir and supplying
-# their own catalog BUCK (this 3-line template, with their own generated.bzl). tine's
-# default declaration here then does not apply — the override replaces data *and*
-# declaration, not just data.
-load("@tine//defs:catalog.bzl", "declare_catalog")
-load(":generated.bzl", "DISTRIBUTIONS")
+# their own catalog BUCK. tine's default declarations here then do not apply — the
+# override replaces data *and* declaration.
+#
+# The lock is one @generated `<name>.json` fragment per repository and per engine, read
+# by the target itself at build time (nothing is derived per distribution). When adding
+# one, seed its fragment with `{}` and refresh to fill it: `just refresh-catalog`.
+load("@tine//defs/rules:rpm.bzl", "rpm_distribution", "rpm_engine", "rpm_remote_repository")
 
-declare_catalog(DISTRIBUTIONS)
+# Frozen GA tree, so pins are reproducible. (Add the live `updates` tree once we handle
+# its mutability — superseded rpms age out and pinned URLs 404.)
+rpm_remote_repository(
+    name = "fedora",
+    baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/",
+    visibility = ["PUBLIC"],
+)
+
+# Rolling tree (no frozen GA): the pin drifts on refresh like CentOS's, and rawhide's
+# repodata churns daily, so pinned stream URLs go stale quickly — refresh often.
+rpm_remote_repository(
+    name = "fedora-rawhide",
+    baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/",
+    visibility = ["PUBLIC"],
+)
+
+# CentOS Stream is a *rolling* repo (no frozen GA), so these pins drift on refresh like
+# Fedora's updates would — fine for now.
+rpm_remote_repository(
+    name = "baseos",
+    baseurl = "https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/",
+    visibility = ["PUBLIC"],
+)
+
+rpm_remote_repository(
+    name = "appstream",
+    baseurl = "https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/",
+    visibility = ["PUBLIC"],
+)
+
+rpm_remote_repository(
+    name = "crb",
+    baseurl = "https://mirror.stream.centos.org/10-stream/CRB/x86_64/os/",
+    visibility = ["PUBLIC"],
+)
+
+# The Fedora engine: the execution environment whose libdnf5 assembles any rpm
+# distribution's buildroot. Deps arrive transitively, so only top-level packages:
+# coreutils (scriptlets), libseccomp (the nested sandbox dlopen's it), and
+# ca-certificates (TLS trust for the self-hosted, networked lock resolver) aren't
+# guaranteed transitively, so they're explicit. python3-createrepo_c writes the
+# buildroot repositories' repodata (libdnf5 only reads it).
+rpm_engine(
+    name = "fedora44.engine",
+    packages = [
+        "rpm",
+        "python3",
+        "python3-libdnf5",
+        "python3-createrepo_c",
+        "coreutils",
+        "libseccomp",
+        "ca-certificates",
+    ],
+    repositories = [":fedora"],
+    visibility = ["PUBLIC"],
+)
+
+rpm_distribution(
+    name = "fedora44",
+    engine = ":fedora44.engine",
+    repositories = [":fedora"],
+    # The always-installed buildroot base, as install specs; it and individual
+    # BuildRequires are resolved + fetched per build against the pinned repodata.
+    # `@buildsys-build` names the comps group (mandatory members, expanded at build time
+    # against the pinned comps).
+    buildroot = ["@buildsys-build"],
+    visibility = ["PUBLIC"],
+)
+
+# Rawhide srcpkgs need rawhide BuildRequires — the frozen-GA fedora44 pool is too old (e.g.
+# systemd's `package-notes` doesn't exist in F44 at all), and importing/bootstrapping every
+# too-new BR ourselves needs the full transitive bootstrap (too early). Trailing rawhide keeps
+# every package cold-rebuildable; our own builds still outrank it via repo priority. Builds
+# run in the fedora44 engine.
+rpm_distribution(
+    name = "rawhide",
+    engine = ":fedora44.engine",
+    repositories = [":fedora-rawhide"],
+    buildroot = ["@buildsys-build"],
+    visibility = ["PUBLIC"],
+)
+
+rpm_distribution(
+    name = "centos10",
+    # CentOS Stream ships no libdnf5, so it can't provision its own engine — it's a
+    # build *target* only, built by the shared Fedora engine.
+    engine = ":fedora44.engine",
+    repositories = [":baseos", ":appstream", ":crb"],
+    # No @buildsys-build comps group on CentOS; this is mock's chroot_setup_cmd
+    # (centos-stream-10.tpl) verbatim.
+    buildroot = [
+        "bash",
+        "bzip2",
+        "centos-stream-release",
+        "coreutils",
+        "cpio",
+        "diffutils",
+        "findutils",
+        "gawk",
+        "glibc-minimal-langpack",
+        "grep",
+        "gzip",
+        "info",
+        "patch",
+        "redhat-rpm-config",
+        "rpm-build",
+        "sed",
+        "shadow-utils",
+        "tar",
+        "unzip",
+        "util-linux",
+        "which",
+        "xz",
+    ],
+    visibility = ["PUBLIC"],
+)

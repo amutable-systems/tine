@@ -133,7 +133,7 @@ less here since the bulk is rpm builds.
     barrage ours, libdnf5 LGPL — all OSS-compatible).
     **Realized so far:** the machinery is the **`tine`** cell; distribution data is
     the consumer-overridable **`catalog`** cell (`catalog//:<distribution>` targets /
-    engine roots / repos, declared by `declare_catalog` — a consumer repoints
+    engine roots / repos, declared in the catalog BUCK — a consumer repoints
     `[cells] catalog` at their own dir); the python toolchain is the **`toolchains`**
     cell; consumer packages live in the **root** cell (`root//distribution/
     packages/`). The OSS-standalone / submodule-pin framing is still aspirational.
@@ -445,40 +445,45 @@ consumes it as a static graph and never runs buckify. It is **two programs**:
 
 - A **format-independent host orchestrator** (`tine/distribution/buckify.py`, a
   `python_bootstrap_binary` run on the host as `buck2 run @tine//distribution:buckify`).
-  It `uquery`s the per-distribution `catalog//:<distribution>.buckify` resolve targets,
-  nests `buck2 run <target> -- resolve --distribution <d> --catalog-dir <dir>` for each
-  (each runs in *that distribution's* engine — CentOS in the Fedora engine it reuses),
-  then amalgamates the fragments. Nested `buck2 run` is fine — the child inherits cwd
-  + `BUCK_ISOLATION_DIR` and reuses the daemon.
-- A per-format **resolver** (`tine/distribution/rpm/buckify.py` for rpm — libdnf5),
-  selected by the path convention `@tine//distribution/<format>:buckify.py` and bound
-  by `declare_catalog` to run inside the distribution's engine root. Its only
-  subcommand is `resolve` (below); deb/arch would add sibling resolvers.
+  It `uquery`s the catalog's pinning targets and drives their refresh sub-targets in two
+  phases: every repository's `catalog//:<repo>[snapshot]` (host — no engine), then every
+  engine's `catalog//:<engine>[resolve]`, nested as `buck2 run` *inside that engine*.
+  Both sub-targets share one contract: the binding carries every input, the orchestrator
+  appends only `--out <fragment>`. Nested `buck2 run` is fine — the child inherits cwd +
+  `BUCK_ISOLATION_DIR` and reuses the daemon.
+- Per-format **refresh drivers** (for rpm: `tine/distribution/rpm/snapshot.py`, plus
+  `plan.py` doubling as the resolver), bundled in the format's `package_format` plugin
+  and bound by the pinning rules themselves; deb/arch would add siblings.
 
-- **Resolve** (`resolve --distribution <name> --catalog-dir <dir>`). Input: the catalog
-  manifest (`<dir>/manifest.toml`) — per distribution, its **pinned repos**, its
-  **buildroot** base (`buildroot_groups` like Fedora's `@buildsys-build` ∪
-  `buildroot_packages`), and its **engine** (its own engine-root package set, or the
-  name of the distribution whose engine builds it). The resolver resolves, via libdnf5,
-  only the **engine** closure into pinned packages; for the buildroot it **snapshots the
-  repos' repodata** — fetches `repomd.xml`, keeps only the `primary`/`filelists` streams
-  (so libdnf5 never chases the ones we drop), and pins the filtered repomd + those streams
-  (url + sha256) + the real remote baseurl. It writes one **fragment** `<dir>/<name>.json`
-  — a plain JSON object buck2 loads natively, the distribution's
-  `{package_format, engine, buildroot, buildroot_repos}` (`engine` a list of
-  `[target, url, sha256, source]`; `buildroot_repos` the pinned repodata streams + baseurl).
-  Individual BuildRequires are **not** resolved here — they're resolved and fetched lazily
-  per build against that repodata, so no buildroot pool is locked. A distribution's repos track
-  what its srcpkgs actually need: the rawhide branch resolves against a trailing rawhide
-  snapshot (refresh often!), while the frozen fedora44 GA tree keeps feeding
-  the engine root and the f44 branch. The orchestrator then
-  writes the **amalgamation** `<dir>/generated.bzl` — a static `load` of each fragment's
-  `value` (buck2 decodes JSON/TOML natively at load time) + a merged `DISTRIBUTIONS` dict
-  (the fragment set is enumerated as static loads). The `declare_catalog` macro (in the
-  catalog cell's BUCK, from `@tine//defs:catalog.bzl`) expands `DISTRIBUTIONS` into an
-  `http_file(url, sha256)` per **engine** rpm and per **repodata stream**, a
-  `remote_repository` per buildroot repo, plus the per-distribution
-  engine/distribution/resolver targets. Re-run when the manifest or a pin changes.
+- **Snapshot** (`snapshot --manifest <repo.json> --out <dir>/<repo>.json`, each
+  repository target's `[snapshot]` sub-target). A repository is a first-class catalog citizen —
+  the **unit of repodata pinning**, shared by every distribution that references it —
+  so it pins independently of any distribution. Pinning is pure fetch-and-filter
+  (stdlib urllib + ElementTree, no libdnf5), so it runs on the **host**: fetches
+  `repomd.xml`, keeps only the `primary`/`filelists`/`group` streams (so libdnf5 never
+  chases the ones we drop), and writes the repo's fragment `{repomd, streams}` (url +
+  sha256 per stream). A distribution's repositories track what its srcpkgs actually need:
+  the rawhide branch builds against a trailing rawhide snapshot (refresh often!), while
+  the frozen fedora44 GA tree keeps feeding the engine and the f44 branch.
+- **Resolve** (each engine target's `[resolve]` sub-target: the format's *plan* driver —
+  the same one that plans buildroots — bound to run inside that engine, over its
+  repositories' pinned repodata, with the engine's package set as the install specs).
+  The engine too is first-class — the **unit of closure pinning**, shared by every
+  distribution it builds (CentOS names the Fedora engine). The solve turns the engine's
+  top-level package set into its transitive closure, written as a plan *transaction*
+  (`[{url, sha256, size}]`) — which IS the engine's fragment: engine bootstrap
+  downloads straight from the lock, consulting no repodata at build time (the repos
+  stay declared for `[resolve]` alone). Nothing is derived per *distribution* at all:
+  its buildroot base (a list of install specs — Fedora's `@buildsys-build`, CentOS an
+  explicit package list) is never resolved (groups as `@group` specs, expanded per
+  build against the pinned comps), and individual BuildRequires are resolved and
+  fetched lazily per build against the pinned repodata, so no buildroot pool is locked.
+  The fragments ARE the lock, and each pinning target reads its own `<name>.json` at
+  build time (a new one is seeded `{}` until its first refresh — analysis never sees
+  fragment contents). The catalog BUCK is thus three flat declaration kinds, composed
+  by target name via their rpm wrappers (which bind the plugin and default the fragment
+  path): `remote_repository` (dynamic action sha-downloads each pinned **stream**),
+  `engine`, and `distribution`. Re-run when the authored data or a pin changes.
 
 The bullets below — build-driven lock discovery, cycle/SCC handling, provider
 tie-break pins, Provides-drift checks, `import`/`refresh` — are **roadmap, not yet
@@ -716,9 +721,14 @@ plan/install/build drivers, run in the engine root):
   set — the seed buildroot base + X's `BuildRequires` — via libdnf5 over the
   distribution's `remote_repository` (its pinned repodata snapshot, loaded as a
   `file://` repo, **no weak deps** — `install_weak_deps=False`), and write each
-  resolved package's `{url, sha256}` (url at the repo's real baseurl) to a sorted
+  resolved package's `{url, sha256, size}` (url at the repo's real baseurl) to a sorted
   `transaction.json`. Re-runs on any repodata change, but its output is byte-stable
-  unless *this* buildroot's closure actually changed.
+  unless *this* buildroot's closure actually changed. Each repo's metadata XML is
+  parsed **once per distribution, not once per plan**: the distribution target
+  prebuilds the repo's libdnf5 `.solv` cache as an artifact (`plan make-cache`, in
+  the engine root) and every plan seeds its ephemeral cachedir from it (libdnf5's
+  root-cache clone, pointed at the seeds via `system_cachedir`); a missed seed just
+  falls back to the parse.
 - **Action 2 — download closure** (`dynamic_actions`): read `transaction.json` and
   fetch each rpm with buck's native content-addressed `download_file` (keyed on
   sha256) into a content-based-path output, symlinked into `closure/`. Only the
@@ -1318,9 +1328,9 @@ libdnf5, python3, sqlite, openssl, lua, popt, coreutils, bash, … + every
 transitive dep) plus the invoked-tool base, which is far too large to hand-write
 correctly. So phase 1 builds the `resolve` subcommand + host orchestrator first
 (manifest → each distribution resolved in its own engine → committed
-per-distribution fragments `tine/catalog/<distribution>.json` + the `generated.bzl`
-amalgamation, expanded by the `declare_catalog` macro in the catalog cell's BUCK
-into per-rpm `http_file`s); the lock is generated, never hand-written. The
+per-distribution fragments `tine/catalog/<distribution>.json`, loaded statically and
+declared in the catalog cell's BUCK); the lock is
+generated, never hand-written. The
 **bootstrap trampoline** (`extract.py` → engine root,
 host Python ≥ 3.14) + vendored mkosi-sandbox stands up the engine root; the
 **engine** — the assemble (libdnf5) + build (rpmbuild) drivers bound to that root

@@ -45,8 +45,8 @@ python_bootstrap_library(
 )
 
 # The format-independent lock-refresh orchestrator. Runs on the host (stdlib only)
-# and nests buck2 to drive each distribution's resolver in its own engine, then
-# amalgamates the fragments. Run via `just refresh-catalog`.
+# and nests buck2 to drive each distribution's resolver in its own engine. Run via
+# `just refresh-catalog`.
 python_bootstrap_binary(
     name = "buckify",
     main = "buckify.py",

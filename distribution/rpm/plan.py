@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """plan — Action 1: resolve a buildroot's package closure over the upstream repo.
 
-Runs *inside* the engine root. Loads each buildroot repository's pinned `repodata/`
+Runs *inside* the engine root. Loads each repository's pinned `repodata/`
 (--repo id=dir, a `file://` metadata-only tree), resolves the requested install set's
 transitive runtime closure (hard requires only, install_weak_deps=False), and writes the
 resolved packages as the *transaction*: a JSON list of {url, sha256, size}, where the url is the
@@ -12,6 +12,18 @@ then fetches exactly this subset.
 Only metadata is read here (no packages downloaded), so it re-runs whenever a repo's
 repodata changes — but the transaction is byte-identical unless *this* buildroot's resolved
 closure actually changed, so the download + buildroot cut off rather than rebuilding.
+
+Also the engine-closure resolver (reindeer-style, run on refresh, NOT during builds):
+an engine's `[resolve]` sub-target binds this same driver — inside that engine, over
+its repos' pinned repodata — and the orchestrator (//distribution:buckify) commits the
+transaction as the engine's lock fragment. The lock *is* a transaction: engine
+bootstrap downloads straight from it, consulting no repodata. One solver, two bindings.
+
+Loading a repo means parsing its XML into libdnf5's .solv cache — for Fedora ~1GB of
+XML (filelists is 3/4 of it), re-paid by every plan action since the sandbox cachedir
+is ephemeral. The `make-cache` command runs just the load, with `--out` as the cachedir:
+the distribution rule captures it per repo as a buck artifact, and every solve seeds its
+cachedir from those (`--cache`), so the XML is parsed once per repo, not once per plan.
 """
 
 import argparse
@@ -20,47 +32,98 @@ import sys
 from pathlib import Path
 
 import libdnf5
+import libdnf5.comps
 import libdnf5.conf
 
+# Providers we never want in a closure: 32-bit multilib duplicates. The resolution arch
+# is pinned, so a 32-bit provider in the transaction means the solve went wrong; fail
+# loudly rather than silently shipping an .i686.
+MULTILIB_ARCHES = ("i686", "i386", "i586")
 
-def plan(
-    repos: list[tuple[str, Path, str]], install: list[str], cachedir: Path
-) -> list[dict[str, str | int]]:
+
+def load_base(
+    repos: list[tuple[str, Path]],
+    cachedir: Path,
+    arch: str,
+    seeds: list[Path] | None = None,
+) -> libdnf5.base.Base:
+    """A Base with `repos` ((id, pinned-repodata dir) pairs) loaded, ready to solve.
+
+    With `seeds` (per-repo cache dirs from `make-cache`), libdnf5's root-cache clone is
+    pointed at them via system_cachedir: a repo whose working cache is empty copies the
+    seeded repodata + .solv in and mmaps it instead of re-parsing the XML. libdnf5 keys
+    each seed subdir by the repo's file:// baseurl (the repo dir's absolute path), so a
+    stale or foreign seed just misses and the load falls back to the parse — slower,
+    never wrong.
+    """
     base = libdnf5.base.Base()
     cfg = base.get_config()
     cfg.cachedir = str(cachedir)
     cfg.install_weak_deps = False
-    # Load filelists (we pin it): file-path BuildRequires (e.g. /usr/bin/foo) resolve against
-    # it, not just the subset primary.xml carries. The snapshot's repomd lists only primary +
-    # filelists, so nothing else is fetched regardless.
-    cfg.get_optional_metadata_types_option().set(libdnf5.conf.METADATA_TYPE_FILELISTS)
-    # Pin the resolution arch (x86_64-only for now), matching buckify — so repo
-    # loading + provider selection don't depend on host detection.
-    base.get_vars().set("arch", "x86_64")
-    base.get_vars().set("basearch", "x86_64")
+    if seeds:
+        # One system_cachedir holding every seed's `<id>-<hash>` subdir, by symlink —
+        # libdnf5 only ever copies *out* of it, so read-only buck outputs are fine.
+        seed_root = cachedir.parent / (cachedir.name + "-seed")
+        seed_root.mkdir(parents=True, exist_ok=True)
+        for seed in seeds:
+            for sub in sorted(seed.iterdir()):
+                (seed_root / sub.name).symlink_to(sub)
+        cfg.system_cachedir = str(seed_root)
+    # Freshness is buck's problem (the repodata and seeds are pinned action inputs),
+    # not wall-clock age's; never expire a cache that validates.
+    cfg.metadata_expire = -1
+    # Load filelists + comps (both pinned): file-path BuildRequires (e.g. /usr/bin/foo) resolve
+    # against filelists, not just the subset primary.xml carries; `@group` install specs (the
+    # buildroot base) expand against comps. The snapshot's repomd lists only the pinned
+    # streams, so nothing else is fetched regardless.
+    cfg.get_optional_metadata_types_option().set(
+        f"{libdnf5.conf.METADATA_TYPE_FILELISTS},{libdnf5.conf.METADATA_TYPE_COMPS}"
+    )
+    # Pin the resolution arch (x86_64-only for now) so repo loading + provider
+    # selection don't depend on host detection.
+    base.get_vars().set("arch", arch)
+    base.get_vars().set("basearch", arch)
     base.setup()
 
-    # id -> real remote baseurl, so a resolved package's location becomes a download URL.
-    baseurls = {rid: url.rstrip("/") + "/" for rid, _, url in repos}
     sack = base.get_repo_sack()
-    for rid, path, _ in repos:
+    for rid, path in repos:
         rc = sack.create_repo(rid).get_config()
         rc.baseurl = f"file://{path}"  # pinned repodata read locally
         rc.get_pkg_gpgcheck_option().set(False)
     sack.load_repos(libdnf5.repo.Repo.Type_AVAILABLE)
+    return base
+
+
+def plan(
+    repos: list[tuple[str, Path, str]],
+    install: list[str],
+    cachedir: Path,
+    arch: str,
+    seeds: list[Path],
+) -> list[dict[str, str | int]]:
+    base = load_base([(rid, path) for rid, path, _ in repos], cachedir, arch, seeds)
+
+    # id -> real remote baseurl, so a resolved package's location becomes a download URL.
+    baseurls = {rid: url.rstrip("/") + "/" for rid, _, url in repos}
 
     goal = libdnf5.base.Goal(base)
-    for name in install:
-        goal.add_rpm_install(name)
+    # add_install (not add_rpm_install) so `@group` specs resolve too. Groups take only
+    # their mandatory members — mock's `@buildsys-build` semantics.
+    settings = libdnf5.base.GoalJobSettings()
+    settings.set_group_package_types(libdnf5.comps.PackageType_MANDATORY)
+    for spec in install:
+        goal.add_install(spec, settings)
     tx = goal.resolve()
 
     problems = tx.get_resolve_logs_as_strings()
     if problems:
-        raise SystemExit("buildroot resolution failed:\n  " + "\n  ".join(problems))
+        raise SystemExit("plan resolution failed:\n  " + "\n  ".join(problems))
 
     resolved = []
     for tp in tx.get_transaction_packages():
         pkg = tp.get_package()
+        if pkg.get_arch() in MULTILIB_ARCHES:
+            raise SystemExit(f"refusing multilib package {pkg.get_nevra()} (32-bit in a {arch} closure)")
         chk = pkg.get_checksum()
         if chk.get_type_str() != "sha256":
             raise SystemExit(f"expected sha256 repodata checksum for {pkg.get_nevra()}")
@@ -77,16 +140,22 @@ def plan(
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="plan")
-    p.add_argument(
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
         "--repo",
         action="append",
         default=[],
         required=True,
         metavar="ID=DIR",
-        help="a buildroot repo as id=dir (a pinned repodata tree); repeatable",
+        help="a repo as id=dir (a pinned repodata tree); repeatable",
     )
-    p.add_argument(
+    common.add_argument("--arch", default="x86_64", help="the resolution arch")
+
+    p = argparse.ArgumentParser(prog="plan")
+    sub = p.add_subparsers(dest="command", required=True)
+
+    solve = sub.add_parser("solve", parents=[common], help="resolve the closure, writing the transaction")
+    solve.add_argument(
         "--baseurl",
         action="append",
         default=[],
@@ -94,9 +163,21 @@ def main(argv: list[str] | None = None) -> None:
         metavar="ID=URL",
         help="a repo's real remote baseurl as id=url (for download URLs); repeatable",
     )
-    p.add_argument("--install", action="append", default=[], help="package/cap to install")
-    p.add_argument("--cachedir", default="/var/tmp/plan-cache")
-    p.add_argument("--out", required=True, help="output transaction JSON ([{url, sha256}])")
+    solve.add_argument(
+        "--install", action="append", default=[], required=True, help="package/cap to install"
+    )
+    solve.add_argument(
+        "--cache",
+        action="append",
+        default=[],
+        help="a prebuilt repo cache dir (a make-cache output) to seed the solve from; repeatable",
+    )
+    solve.add_argument("--cachedir", default="/var/tmp/plan-cache")
+    solve.add_argument("--out", required=True, help="output transaction JSON ([{url, sha256, size}])")
+
+    cache = sub.add_parser("make-cache", parents=[common], help="just load the repos (no solve)")
+    cache.add_argument("--out", required=True, help="output cache dir, reusable via `solve --cache`")
+
     args = p.parse_args(argv)
 
     def parse_kv(specs: list[str], what: str) -> dict[str, str]:
@@ -109,13 +190,24 @@ def main(argv: list[str] | None = None) -> None:
         return out
 
     dirs = parse_kv(args.repo, "--repo")
+
+    if args.command == "make-cache":
+        out = Path(args.out).resolve()
+        out.mkdir(parents=True, exist_ok=True)
+        load_base([(rid, Path(d).resolve()) for rid, d in dirs.items()], out, args.arch)
+        print(f"plan: cached {len(dirs)} repo(s)", file=sys.stderr)
+        return
+
     urls = parse_kv(args.baseurl, "--baseurl")
     if dirs.keys() != urls.keys():
         raise SystemExit(f"--repo ids {sorted(dirs)} and --baseurl ids {sorted(urls)} must match")
     repos = [(rid, Path(d).resolve(), urls[rid]) for rid, d in dirs.items()]
+    seeds = [Path(c).resolve() for c in args.cache]
 
-    tx = plan(repos, args.install, Path(args.cachedir))
-    Path(args.out).write_text(json.dumps(tx, indent=2) + "\n")
+    tx = plan(repos, args.install, Path(args.cachedir), args.arch, seeds)
+    # Explicit encoding/newline: the `[resolve]` binding commits this output as the
+    # engine lock, so it must be byte-identical regardless of locale or platform.
+    Path(args.out).write_text(json.dumps(tx, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":
