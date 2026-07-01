@@ -32,7 +32,10 @@ baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/
 
 [distribution.fedora44.buildroot]
 buildroot_groups = ["buildsys-build"]
-buildrequires = ["gcc", "gcc-c++", "make", "cmake"]
+# cmake(GTest) (gtest-devel's cmake config) + libabigail are zlib-ng BuildRequires not in
+# @buildsys-build; pulled prebuilt into the pool rather than imported (their transitive BR
+# closure is large — deferred). Add more here as other packages surface missing caps.
+buildrequires = ["gcc", "gcc-c++", "make", "cmake", "cmake(GTest)", "libabigail"]
 
 [distribution.centos10]
 release = "10"
