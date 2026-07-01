@@ -43,6 +43,8 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.attrs.dist,
         "--version",
         ctx.attrs.version,
+        "--release",
+        ctx.attrs.release,
         "--source-date-epoch",
         str(ctx.attrs.source_date_epoch),
         "--topdir",
@@ -68,6 +70,7 @@ _rpm_package = rule(
         "package": attrs.string(doc = "the rpm package Name: (distinct from the buck target name)"),
         "srcs": attrs.list(attrs.source(), default = [], doc = "Source/Patch files"),
         "version": attrs.string(doc = "package version (for subpackage NVR matching)"),
+        "release": attrs.string(doc = "dist-stripped Release base; the build freezes %autorelease = <release>%{?dist}"),
         "subpackages": attrs.list(attrs.string(), doc = "declared binary subpackage names (the %package list)"),
         "debuginfo": attrs.bool(default = True, doc = "predict <name>-debuginfo/-debugsource subpackages"),
         "build_requires": attrs.list(attrs.string(), default = [], doc = "extra BR caps beyond the buildroot base (seed-only for now)"),
@@ -78,7 +81,7 @@ _rpm_package = rule(
     },
 )
 
-def rpm_package(package: str, **kwargs) -> None:
+def rpm_package(package: str, spec = None, **kwargs) -> None:
     """Build an rpm package. The spec is `<package>.spec` (a rule attr can't
     default off another attr, so the macro derives it at load time)."""
-    _rpm_package(package = package, spec = package + ".spec", **kwargs)
+    _rpm_package(package = package, spec = spec or package + ".spec", **kwargs)

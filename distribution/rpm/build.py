@@ -34,6 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--topdir", required=True, help="scratch rpmbuild topdir (writable)")
     p.add_argument("--out", required=True, help="output dir to collect rpms into")
     p.add_argument("--version", required=True, help="package version (for NVR matching)")
+    p.add_argument("--release", required=True, help="dist-stripped Release base; freezes %autorelease")
     p.add_argument(
         "--subpackage",
         action="append",
@@ -47,7 +48,13 @@ def main(argv: list[str] | None = None) -> int:
     for d in ("SOURCES", "SPECS", "BUILD", "BUILDROOT", "RPMS", "SRPMS"):
         (topdir / d).mkdir(parents=True, exist_ok=True)
     spec = Path(args.spec)
-    shutil.copy(spec, topdir / "SPECS" / spec.name)
+    # Freeze the release so an %autorelease spec builds without rpmautospec/git in the buildroot:
+    # prepend a static %autorelease (re-applying %{?dist}) + an empty %autochangelog, overriding the
+    # rpmautospec macros. Harmless for static-Release specs. Mirrors what koji does.
+    frozen = (
+        f"%global autorelease {args.release}%{{?dist}}\n%global autochangelog %{{nil}}\n"
+    ) + spec.read_text()
+    (topdir / "SPECS" / spec.name).write_text(frozen)
     for src in args.source:
         s = Path(src)
         shutil.copy(s, topdir / "SOURCES" / s.name)
