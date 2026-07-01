@@ -1,8 +1,7 @@
 """rpm format rule: rpm_package (build one source rpm into its binary rpms)."""
 
-load(":distribution.bzl", "assemble_root")
-load(":providers.bzl", "DistributionInfo")
-load(":python.bzl", "chroot_python_run")
+load(":distribution.bzl", "DistributionInfo", "assemble_root")
+load(":engine.bzl", "chroot_run")
 
 def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     distribution = ctx.attrs.distribution[DistributionInfo]
@@ -10,7 +9,6 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     buildroot = assemble_root(
         ctx,
         ctx.attrs.distribution,
-        ctx.attrs._sandbox,
         distribution.buildroot_base_packages + ctx.attrs.build_requires,
     )
 
@@ -22,13 +20,7 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     sub_outputs = {s: ctx.actions.declare_output(s + ".rpm") for s in ctx.attrs.subpackages}
 
     build = cmd_args(
-        chroot_python_run(
-            ctx,
-            sandbox = ctx.attrs._sandbox,
-            engine = distribution.engine,
-            main = distribution.package_format.build.main,
-            deps = distribution.package_format.build.deps,
-        ),
+        chroot_run(engine = distribution.engine, exe = distribution.package_format.build),
         "--buildroot",
         buildroot,
         "--spec",
@@ -70,7 +62,6 @@ _rpm_package = rule(
         "source_date_epoch": attrs.int(doc = "per-package SDE from the changelog"),
         "dist": attrs.string(default = ".aos"),
         "distribution": attrs.dep(providers = [DistributionInfo], doc = "catalog//:<distribution> — buildroot + engine that builds it"),
-        "_sandbox": attrs.exec_dep(default = "tine//distribution:sandbox", providers = [RunInfo]),
     },
 )
 

@@ -23,7 +23,7 @@ python_bootstrap_library(
     visibility = ["PUBLIC"],
 )
 
-# Generic chroot launcher used by the engine_root + assemble actions (runs
+# Generic chroot launcher used by the engine + assemble actions (runs
 # sandbox.cli() via its __main__ guard).
 python_bootstrap_binary(
     name = "sandbox",

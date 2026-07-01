@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 """buckify-rpm — the rpm resolver (reindeer-style, run on refresh, NOT during
 builds): the rpm implementation of the format-neutral `resolve` interface that the
 host orchestrator (//distribution:buckify) drives, one distribution at a time.

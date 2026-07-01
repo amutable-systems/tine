@@ -48,7 +48,7 @@ def _alias(name: str) -> str:
 def _resolve_targets(buck: str) -> list[str]:
     """The <distribution>.buckify resolve targets in the active catalog cell."""
     out = subprocess.run(
-        [buck, "uquery", "kind('chroot_python_binary', catalog//...)"],
+        [buck, "uquery", "kind('command_alias', catalog//...)"],
         check=True,
         capture_output=True,
         text=True,

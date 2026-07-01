@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 """plan — Action 1: resolve a buildroot's package closure over real repos.
 
 Runs *inside* the engine root. Loads the buildroot repositories (--repo id=dir,

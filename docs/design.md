@@ -470,7 +470,7 @@ consumes it as a static graph and never runs buckify. It is **two programs**:
   `declare_catalog` macro (in the catalog cell's BUCK, from
   `@tine//defs:catalog.bzl`) expands `DISTRIBUTIONS` into one
   `http_file(url, sha256)` per rpm plus the per-distribution
-  engine_root/repo/distribution/resolver targets. Re-run when the manifest or a pin changes.
+  engine/repo/distribution/resolver targets. Re-run when the manifest or a pin changes.
 
 The bullets below — build-driven lock discovery, cycle/SCC handling, provider
 tie-break pins, Provides-drift checks, `import`/`refresh` — are **roadmap, not yet

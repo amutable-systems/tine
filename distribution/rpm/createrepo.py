@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 """createrepo — generate repodata for a local package repository (Action 0).
 
 Runs *inside* the engine root (which carries python3 + python3-createrepo_c), so

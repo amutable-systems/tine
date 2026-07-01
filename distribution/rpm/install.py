@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 """install — install a complete set of rpms into a root.
 
 One driver for both the engine-root bootstrap (Action B) and the buildroot

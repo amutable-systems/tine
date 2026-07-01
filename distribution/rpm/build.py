@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 """build_rpm — Action 4 driver: rpmbuild in an assembled buildroot.
 
 Runs *inside* the engine root (like the install driver) under its python3. It

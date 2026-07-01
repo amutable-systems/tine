@@ -1,6 +1,6 @@
 """The rpm package-format plugin: the per-format drivers + their `package_format` bundle."""
 
-load("//defs/rules:distribution.bzl", "driver", "package_format")
+load("//defs/rules:package_format.bzl", "package_format")
 
 # The rpm-format drivers (sources beside this file: extract/install/createrepo/
 # plan/build/buckify.py). They run under the pinned host python3 (extract) or
@@ -16,13 +16,10 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-# The chroot-run drivers, each a DriverInfo a consumer binds to an engine (at the fixed
-# assembly epoch, so assembly output is reproducible). build pulls in the sandbox
-# launcher for its nested rpmbuild chroot.
-driver(name = "install", main = "install.py", deps = ["//distribution:rootfs_lib"])
-driver(name = "createrepo", main = "createrepo.py")
-driver(name = "plan", main = "plan.py")
-driver(name = "build", main = "build.py", deps = ["//distribution:sandbox_lib"])
+python_bootstrap_binary(name = "install", main = "install.py", deps = ["//distribution:rootfs_lib"])
+python_bootstrap_binary(name = "createrepo", main = "createrepo.py")
+python_bootstrap_binary(name = "plan", main = "plan.py")
+python_bootstrap_binary(name = "build", main = "build.py", deps = ["//distribution:sandbox_lib"])
 
 # The rpm package format plugin: the build drivers, selected generically as
 # `@tine//distribution/rpm:package_format` by the orchestration layer (per a
@@ -37,11 +34,12 @@ package_format(
     visibility = ["PUBLIC"],
 )
 
-# The lock generator's source, exported so a consumer can bind it to *their* engine
-# root as a `chroot_python_binary` (network = True: it fetches repodata). It's
-# consumer-data-driven (needs the consumer's engine root), so the runnable is
-# declared on the consumer side; the cell only owns the source.
-export_file(
-    name = "buckify.py",
+# The lock generator, public so a consumer can bind it to *their* engine root (a
+# command_alias over the engine's RunInfo). It's consumer-data-driven (needs the
+# consumer's engine root), so the runnable is declared on the consumer side; the cell
+# only owns the driver.
+python_bootstrap_binary(
+    name = "buckify",
+    main = "buckify.py",
     visibility = ["PUBLIC"],
 )

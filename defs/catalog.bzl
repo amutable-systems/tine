@@ -14,15 +14,15 @@ unlike a BUCK file — doesn't get them as bare globals.
 # `native` is implicit at evaluation time but the standalone Starlark typechecker
 # doesn't model it, so load it explicitly (as the prelude itself does).
 load("@prelude//:native.bzl", "native")
-load("@tine//defs/rules:distribution.bzl", "distribution", "engine_root", "repo")
-load("@tine//defs/rules:python.bzl", "chroot_python_binary")
+load("@tine//defs/rules:distribution.bzl", "distribution", "repo")
+load("@tine//defs/rules:engine.bzl", "engine")
 
 def _package_format(data: dict) -> str:
     return "@tine//distribution/" + data["package_format"] + ":package_format"
 
-def _buckify_main(data: dict) -> str:
-    # The format's resolver source (a sibling of package_format).
-    return "@tine//distribution/" + data["package_format"] + ":buckify.py"
+def _buckify_driver(data: dict) -> str:
+    # The format's resolver driver (a sibling of package_format).
+    return "@tine//distribution/" + data["package_format"] + ":buckify"
 
 def _engine_root_ref(distribution: str, data: dict) -> str:
     # The engine root that builds this distribution: its own when self-hosting (`engine`
@@ -70,7 +70,7 @@ def declare_catalog(distributions: dict) -> None:
         )
 
         # Bootstrap trampoline → the installed engine root (chroot2).
-        engine_root(
+        engine(
             name = "engine." + d + ".root",
             packages = ":engine." + d + ".packages",
             package_format = _package_format(distributions[d]),
@@ -119,11 +119,16 @@ def declare_catalog(distributions: dict) -> None:
 
         # The distribution's resolver, bound to *its own* engine root (the host
         # orchestrator //distribution:buckify nests `buck run` on these to refresh
-        # each fragment in the right engine). network = True: it fetches repodata.
-        chroot_python_binary(
+        # each fragment in the right engine). The engine root's RunInfo is the
+        # enter-the-engine prefix; --network (it fetches repodata) goes before the
+        # `--` that starts the command.
+        native.command_alias(
             name = d + ".buckify",
-            main = _buckify_main(data),
-            engine = _engine_root_ref(d, data),
-            network = True,
+            exe = _engine_root_ref(d, data),
+            args = [
+                "--network",
+                "--",
+                "$(location {})".format(_buckify_driver(data)),
+            ],
             visibility = ["PUBLIC"],
         )
