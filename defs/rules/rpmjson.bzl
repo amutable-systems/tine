@@ -16,7 +16,7 @@ load(":rpm.bzl", "rpm_package")
 # Mirrors importer's SrcpkgMetadata TypedDict (the generated <package>.json), keep in sync.
 # buildifier: disable=name-conventions  (a record *type*, conventionally UpperCamelCase)
 SrcpkgMetadata = record(
-    build_requires = list[str],
+    build_requires = dict[str, list[str]],  # "_all" + per-arch conditional extras
     # only carried for schema parity, unused
     binaries = dict,
     sources = list[dict[str, str]],
@@ -26,6 +26,17 @@ SrcpkgMetadata = record(
     subpackages = list[str],
     source_date_epoch = int,
 )
+
+# TODO: The whole stack resolves + builds x86_64 only for now (cf. plan.py's pinned arch), so
+# select that slice of the per-arch static BuildRequires.
+_ARCH = "x86_64"
+
+def _build_requires(meta: dict) -> list[str]:
+    """A package's effective BuildRequires: the arch-common set + the pinned arch's extras.
+
+    An arch with no conditional extras has no key."""
+    brs = meta["build_requires"]
+    return sorted(brs["_all"] + brs.get(_ARCH, []))
 
 # buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package + its source http_files)
 def rpm_package_json(package: str, distribution: str, meta: dict) -> None:
@@ -58,7 +69,7 @@ def rpm_package_json(package: str, distribution: str, meta: dict) -> None:
         dist = m.dist,
         source_date_epoch = m.source_date_epoch,
         subpackages = m.subpackages,
-        build_requires = m.build_requires,
+        build_requires = _build_requires(meta),
     )
 
 # buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package_json per branch package)
