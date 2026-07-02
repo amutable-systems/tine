@@ -34,6 +34,24 @@ baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/
 [distribution.fedora44.buildroot]
 buildroot_groups = ["buildsys-build"]
 
+[distribution.rawhide]
+release = "rawhide"
+arch = "x86_64"
+# Rawhide srcpkgs need rawhide BuildRequires — the frozen-GA fedora44 pool is too old (e.g.
+# systemd's `package-notes` doesn't exist in F44 at all), and importing/bootstrapping every
+# too-new BR ourselves needs the full transitive bootstrap (too early). Trailing rawhide keeps
+# every package cold-rebuildable; our own builds still outrank it via repo priority. Builds
+# run in the fedora44 engine.
+engine = "fedora44"
+# Rolling tree (no frozen GA): the pin drifts on refresh like CentOS's, and rawhide's
+# repodata churns daily, so pinned stream URLs go stale quickly — refresh often.
+[[distribution.rawhide.repositories]]
+id = "fedora"
+baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/"
+
+[distribution.rawhide.buildroot]
+buildroot_groups = ["buildsys-build"]
+
 [distribution.centos10]
 release = "10"
 arch = "x86_64"

@@ -468,7 +468,10 @@ consumes it as a static graph and never runs buckify. It is **two programs**:
   `{package_format, engine, buildroot, buildroot_repos}` (`engine` a list of
   `[target, url, sha256, source]`; `buildroot_repos` the pinned repodata streams + baseurl).
   Individual BuildRequires are **not** resolved here — they're resolved and fetched lazily
-  per build against that repodata, so no buildroot pool is locked. The orchestrator then
+  per build against that repodata, so no buildroot pool is locked. A distribution's repos track
+  what its srcpkgs actually need: the rawhide branch resolves against a trailing rawhide
+  snapshot (refresh often!), while the frozen fedora44 GA tree keeps feeding
+  the engine root and the f44 branch. The orchestrator then
   writes the **amalgamation** `<dir>/generated.bzl` — a static `load` of each fragment's
   `value` (buck2 decodes JSON/TOML natively at load time) + a merged `DISTRIBUTIONS` dict
   (the fragment set is enumerated as static loads). The `declare_catalog` macro (in the

@@ -5,8 +5,10 @@
 
 load(":centos10.json", _centos10 = "value")
 load(":fedora44.json", _fedora44 = "value")
+load(":rawhide.json", _rawhide = "value")
 
 DISTRIBUTIONS = {
     "centos10": _centos10,
     "fedora44": _fedora44,
+    "rawhide": _rawhide,
 }

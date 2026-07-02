@@ -1,0 +1,49 @@
+{
+  "buildroot": [
+    "bash",
+    "bzip2",
+    "coreutils",
+    "cpio",
+    "diffutils",
+    "fedora-release-common",
+    "findutils",
+    "gawk",
+    "glibc-minimal-langpack",
+    "grep",
+    "gzip",
+    "info",
+    "patch",
+    "redhat-rpm-config",
+    "rpm-build",
+    "sed",
+    "shadow-utils",
+    "tar",
+    "unzip",
+    "util-linux",
+    "which",
+    "xz"
+  ],
+  "buildroot_repos": [
+    {
+      "baseurl": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/",
+      "id": "fedora",
+      "repomd": "<?xml version='1.0' encoding='utf-8'?>\n<repomd xmlns=\"http://linux.duke.edu/metadata/repo\">\n  <revision>1782971672</revision>\n  <data type=\"primary\">\n    <checksum type=\"sha256\">7eef9664d020ad2d5b9a9dc5f83bbcf32f722a97d590df557decd1d2bdc116ca</checksum>\n    <open-checksum type=\"sha256\">f05e3833149e4f1e169ee4e2aa03476ecf528b141f88a57e0cebab12e26b1a1d</open-checksum>\n    <location href=\"repodata/7eef9664d020ad2d5b9a9dc5f83bbcf32f722a97d590df557decd1d2bdc116ca-primary.xml.zst\" />\n    <timestamp>1782971659</timestamp>\n    <size>16102785</size>\n    <open-size>195917982</open-size>\n  </data>\n  <data type=\"filelists\">\n    <checksum type=\"sha256\">32266ee55bd02ad80c788a5753020edc61d3c5bb622552b01859273200210ee6</checksum>\n    <open-checksum type=\"sha256\">b20dfdb906dda68b53892848db0e9de9dd7e089c16398f36ad75a90ff45ed2fc</open-checksum>\n    <location href=\"repodata/32266ee55bd02ad80c788a5753020edc61d3c5bb622552b01859273200210ee6-filelists.xml.zst\" />\n    <timestamp>1782971659</timestamp>\n    <size>46815695</size>\n    <open-size>833244679</open-size>\n  </data>\n  </repomd>",
+      "streams": [
+        {
+          "out": "7eef9664d020ad2d5b9a9dc5f83bbcf32f722a97d590df557decd1d2bdc116ca-primary.xml.zst",
+          "sha256": "7eef9664d020ad2d5b9a9dc5f83bbcf32f722a97d590df557decd1d2bdc116ca",
+          "size": 16102785,
+          "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/repodata/7eef9664d020ad2d5b9a9dc5f83bbcf32f722a97d590df557decd1d2bdc116ca-primary.xml.zst"
+        },
+        {
+          "out": "32266ee55bd02ad80c788a5753020edc61d3c5bb622552b01859273200210ee6-filelists.xml.zst",
+          "sha256": "32266ee55bd02ad80c788a5753020edc61d3c5bb622552b01859273200210ee6",
+          "size": 46815695,
+          "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/repodata/32266ee55bd02ad80c788a5753020edc61d3c5bb622552b01859273200210ee6-filelists.xml.zst"
+        }
+      ]
+    }
+  ],
+  "engine": "fedora44",
+  "package_format": "rpm"
+}
