@@ -3,10 +3,10 @@
 This is the only module that knows the JSON schema, as the hand-over point
 between the package importer and buck build system.
 
-The generated per-distro/release BUCK loads each <package>.json and calls this;
-`SrcpkgMetadata(**meta)` validates it against the schema at load time
-(missing/extra/mistyped fields fail the parse), then it projects onto
-rpm_package.
+The generated per-distro/release BUCK loads each <package>.json and hands them all to
+`rpm_branch`, which projects each onto `rpm_package_json`; `SrcpkgMetadata(**meta)`
+validates each against the schema at load time (missing/extra/mistyped fields fail the
+parse).
 
 """
 
@@ -60,3 +60,12 @@ def rpm_package_json(package: str, distribution: str, meta: dict) -> None:
         subpackages = m.subpackages,
         build_requires = m.build_requires,
     )
+
+# buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package_json per branch package)
+def rpm_branch(distribution: str, packages: dict) -> None:
+    """Declare every package in a distro/release branch.
+
+    The importer emits only the data (this `packages` map of name -> loaded <package>.json);
+    branch-wide derivations live here in buck. All packages share one distribution."""
+    for name in sorted(packages):
+        rpm_package_json(package = name, distribution = distribution, meta = packages[name])
