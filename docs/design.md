@@ -105,7 +105,7 @@ less here since the bulk is rpm builds.
     questions), not a latent footgun.
 11. **Clean, stable public Starlark API; internal machinery stays internal.**
     User-facing macros/rules (`rpm_package`, `os_image`, `barrage_test`, …) keep
-    a **small, stable surface**; the implementation mechanics — `chroot_python_run`
+    a **small, stable surface**; the implementation mechanics — `chroot_run`
     over `ctx.actions.run`, sub-target wiring, the image step-driver — stay
     **internal details** that can change without churning user BUILD files. We
     expose subpackages as plain `:foo-devel` labels (the `:foo[devel]` sub-target
@@ -114,7 +114,7 @@ less here since the bulk is rpm builds.
 12. **Architect for a public building-blocks cell from day one.** All machinery
     — the rules (`rpm_package`, `image`/`layer`/`pack`/`os_image`,
     `toolchain_sysroot`, `signing_toolchain`, `barrage_test`) and tools
-    (`buckify-rpm`, the image step-driver, the `sandbox` + `chroot_python_run`,
+    (`buckify-rpm`, the image step-driver, the `sandbox` + `chroot_run`,
     `extract.py`, the barrage executor, vendored mkosi-sandbox) — lives in a
     **self-contained cell** (`tine//`, OSS-able like the prelude/antlir). The
     monorepo holds only
@@ -263,19 +263,20 @@ the pin via libdnf5, records the transaction (binary→source via
 The libdnf5/python/createrepo tooling that *runs* assembly lives in an
 **engine root assembled from the seed rpms** (mock's bootstrap-chroot
 equivalent; a cached action — built once, reused), run via the chroot primitive
-(`chroot_python_run`, below). How that first engine root comes up without host tooling is the
+(`chroot_run`, below). How that first engine root comes up without host tooling is the
 bootstrap regress — see below.
 
-### The chroot primitive (`sandbox` + `chroot_python_run`)
+### The chroot primitive (`sandbox` + `chroot_run`)
 
 Every build action that touches a chroot — buildroot assembly, `rpmbuild`,
 `%check`, each image-layer op, the toolchain compiler wrapper, and the bootstrap
 hops — goes through one primitive: a vendored **mkosi-sandbox** wrapper (the sole
 sandbox layer; buck2 has no built-in local one). Two layers: the **`sandbox`
 binary** (`tine/distribution/sandbox.py` — a small argparse `main()` over
-mkosi-sandbox) and, above it, the **`chroot_python_run(...)`** Starlark helper
-(`tine/defs/rules/python.bzl`) that wires a python tool into an engine root via
-`ctx.actions.run` (internal, not a user-facing rule — decision 11).
+mkosi-sandbox) and, above it, the **`chroot_run(...)`** Starlark helper
+(`tine/defs/rules/engine.bzl`) that wires a driver — a plain `python_bootstrap_binary`
+target — into an engine root as a `RunInfo` command prefix for `ctx.actions.run`
+(internal, not a user-facing rule — decision 11).
 
 Modeled on mkosi's `sandbox_cmd()` (`../mkosi/mkosi/run.py:615`): a **`tools`** tree supplies
 `/usr`/`/bin`/`/lib`/`/sbin` (ro) — so the binary + its runtime come from a *pinned* chroot
@@ -291,7 +292,7 @@ binding a fixed `/buildroot`: `rootfs.rootfs()` mounts a bind or overlay (+ apiv
 sandbox --tools <exec-env> [--bind SRC:DST] [--ro-bind …] [--scratch NAME:DST]
         [--setenv K=V] [--source-date-epoch N] [--network] [--bind-cwd] -- cmd …
 
-chroot_python_run(ctx, sandbox, engine, main, deps = [], network = False, label = None)
+chroot_run(engine: Provider, exe: Dependency, network: bool = False) -> RunInfo
 ```
 
 The target-root patterns (each set up by the driver via `rootfs.py`, not the launcher):
@@ -731,7 +732,7 @@ plan/install/build drivers, run in the engine root):
   DELETE` + `VACUUM`, then drop the side files; the flag isn't in a released rpm
   yet) — and scrub tooling bookkeeping, so the root content-keys deterministically
   (the rpmdb is part of every buildroot's content key; its WAL/free-page noise
-  would otherwise defeat early cutoff). Runs via `chroot_python_run` in the engine
+  would otherwise defeat early cutoff). Runs via `chroot_run` in the engine
   root, with the new buildroot as `--installroot`; `%post`/scriptlets run chrooted
   in it. (Buildroot assembly — Actions 1-3 — is a shared `anon_target` keyed on
   `(distribution, sorted install set)`: consumers with the same buildroot collapse to
