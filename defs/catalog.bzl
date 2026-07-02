@@ -51,19 +51,20 @@ def declare_catalog(distributions: dict) -> None:
         # sha256-pinned http_file per engine package, named with `out` = the real
         # filename; copy = True on the filegroup because a symlink into buck-out
         # would dangle once bound into a sandbox.
-        for (target, url, sha256, _) in distributions[d]["engine"]:
+        for (target, url, sha256, size, _) in distributions[d]["engine"]:
             native.http_file(
                 name = "engine." + d + ".packages." + target,
                 out = url.rsplit("/", 1)[-1],
                 urls = [url],
                 sha256 = sha256,
+                size_bytes = size,  # from repodata — skips buck's HEAD size probe
                 visibility = ["PUBLIC"],
             )
         native.filegroup(
             name = "engine." + d + ".packages",
             srcs = [
                 ":engine." + d + ".packages." + target
-                for (target, _, _, _) in distributions[d]["engine"]
+                for (target, _, _, _, _) in distributions[d]["engine"]
             ],
             copy = True,
             visibility = ["PUBLIC"],
@@ -89,6 +90,7 @@ def declare_catalog(distributions: dict) -> None:
                     out = f["out"],
                     urls = [f["url"]],
                     sha256 = f["sha256"],
+                    size_bytes = f["size"],  # from repomd — skips buck's HEAD size probe
                     visibility = ["PUBLIC"],
                 )
             rt = "{}.{}.repo".format(d, r["id"])

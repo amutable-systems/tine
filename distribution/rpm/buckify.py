@@ -169,15 +169,22 @@ def expand_groups(pool: Pool, groupids: list[str]) -> list[str]:
     return sorted(names)
 
 
-# A rendered rpm: (buck target name, download url, sha256, source rpm name). The
-# pool resolves the url/sha while it's open, so these survive after it closes.
-type Entry = tuple[str, str, str, str]
+# A rendered rpm: (buck target name, download url, sha256, download size in bytes, source rpm
+# name). The size lets http_file skip buck's HEAD size probe. The pool resolves these while it's
+# open, so they survive after it closes.
+type Entry = tuple[str, str, str, int, str]
 
 
 def entries(pool: Pool, pkgs: list[libdnf5.rpm.Package]) -> list[Entry]:
     """Freeze resolved packages into Entry tuples (sorted by NEVRA, byte-stable)."""
     return [
-        (_target_name(p.get_nevra()), pkg_url(pool, p), pkg_sha256(p), p.get_source_name())
+        (
+            _target_name(p.get_nevra()),
+            pkg_url(pool, p),
+            pkg_sha256(p),
+            p.get_download_size(),
+            p.get_source_name(),
+        )
         for p in sorted(pkgs, key=lambda p: p.get_nevra())
     ]
 
@@ -229,10 +236,18 @@ def snapshot_repodata(rid: str, baseurl: str) -> dict:
 
         loc = data.find(f"{{{_REPOMD_NS}}}location")
         chk = data.find(f"{{{_REPOMD_NS}}}checksum[@type='sha256']")
+        size = data.find(f"{{{_REPOMD_NS}}}size")  # compressed size — lets http_file skip the HEAD probe
         href = loc.get("href") if loc is not None else None
-        if href is None or chk is None or chk.text is None:
-            raise SystemExit(f"{rid}: {data.get('type')} record lacks a location or sha256 checksum")
-        streams.append({"out": href.rsplit("/", 1)[-1], "url": base + href, "sha256": chk.text})
+        if href is None or chk is None or chk.text is None or size is None or size.text is None:
+            raise SystemExit(f"{rid}: {data.get('type')} record lacks a location, sha256 checksum, or size")
+        streams.append(
+            {
+                "out": href.rsplit("/", 1)[-1],
+                "url": base + href,
+                "sha256": chk.text,
+                "size": int(size.text),
+            }
+        )
 
     if len(streams) != len(_BUILD_STREAMS):
         raise SystemExit(f"{rid}: repomd.xml missing one of {_BUILD_STREAMS}")

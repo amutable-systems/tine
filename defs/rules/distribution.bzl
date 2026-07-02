@@ -122,7 +122,7 @@ def _download_closure(actions: AnalysisActions, tx: ArtifactValue, closure: Outp
     for entry in tx.read_json():
         name = entry["url"].rsplit("/", 1)[-1]
         out = actions.declare_output("rpm", name, has_content_based_path = True)
-        actions.download_file(out, entry["url"], sha256 = entry["sha256"])
+        actions.download_file(out, entry["url"], sha256 = entry["sha256"], size_bytes = entry["size"])
         rpms[name] = out
     actions.symlinked_dir(closure, rpms)
     return []

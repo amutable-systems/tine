@@ -4,9 +4,10 @@
 Runs *inside* the engine root. Loads each buildroot repository's pinned `repodata/`
 (--repo id=dir, a `file://` metadata-only tree), resolves the requested install set's
 transitive runtime closure (hard requires only, install_weak_deps=False), and writes the
-resolved packages as the *transaction*: a JSON list of {url, sha256}, where the url is the
-repo's real remote baseurl (--baseurl id=url) + the package's location and the sha256 comes
-straight from the repodata. `download` (Action 2) then fetches exactly this subset.
+resolved packages as the *transaction*: a JSON list of {url, sha256, size}, where the url is the
+repo's real remote baseurl (--baseurl id=url) + the package's location, and the sha256 + size come
+straight from the repodata (size lets download_file skip buck's HEAD probe). `download` (Action 2)
+then fetches exactly this subset.
 
 Only metadata is read here (no packages downloaded), so it re-runs whenever a repo's
 repodata changes — but the transaction is byte-identical unless *this* buildroot's resolved
@@ -22,7 +23,9 @@ import libdnf5
 import libdnf5.conf
 
 
-def plan(repos: list[tuple[str, Path, str]], install: list[str], cachedir: Path) -> list[dict[str, str]]:
+def plan(
+    repos: list[tuple[str, Path, str]], install: list[str], cachedir: Path
+) -> list[dict[str, str | int]]:
     base = libdnf5.base.Base()
     cfg = base.get_config()
     cfg.cachedir = str(cachedir)
@@ -65,6 +68,7 @@ def plan(repos: list[tuple[str, Path, str]], install: list[str], cachedir: Path)
             {
                 "url": baseurls[pkg.get_repo_id()] + pkg.get_location(),
                 "sha256": chk.get_checksum(),
+                "size": pkg.get_download_size(),  # lets download_file skip buck's HEAD size probe
             }
         )
     resolved.sort(key=lambda e: e["url"])  # byte-stable transaction

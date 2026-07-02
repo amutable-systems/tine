@@ -32,11 +32,13 @@
         {
           "out": "ec1dbadc16b89f59a78678efe4c9087a3fe9ec64b0d5430deaefeb1bb036edba-primary.xml.gz",
           "sha256": "ec1dbadc16b89f59a78678efe4c9087a3fe9ec64b0d5430deaefeb1bb036edba",
+          "size": 6993580,
           "url": "https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/repodata/ec1dbadc16b89f59a78678efe4c9087a3fe9ec64b0d5430deaefeb1bb036edba-primary.xml.gz"
         },
         {
           "out": "f803192558ab8ddddbdb4519da3c21488ec5ca436048fbc8e07623cffeb531b5-filelists.xml.gz",
           "sha256": "f803192558ab8ddddbdb4519da3c21488ec5ca436048fbc8e07623cffeb531b5",
+          "size": 1940855,
           "url": "https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/repodata/f803192558ab8ddddbdb4519da3c21488ec5ca436048fbc8e07623cffeb531b5-filelists.xml.gz"
         }
       ]
@@ -49,11 +51,13 @@
         {
           "out": "d23411466bf5511441e51adff51259d68691c02f0dd20fd7fe664dc38c9ebc13-primary.xml.gz",
           "sha256": "d23411466bf5511441e51adff51259d68691c02f0dd20fd7fe664dc38c9ebc13",
+          "size": 3265250,
           "url": "https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/repodata/d23411466bf5511441e51adff51259d68691c02f0dd20fd7fe664dc38c9ebc13-primary.xml.gz"
         },
         {
           "out": "5bbfa2c346cf451ae2a53eacdb29ba30767b554fcc00a2b5ddfcbbd46c3dc80e-filelists.xml.gz",
           "sha256": "5bbfa2c346cf451ae2a53eacdb29ba30767b554fcc00a2b5ddfcbbd46c3dc80e",
+          "size": 16310392,
           "url": "https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/repodata/5bbfa2c346cf451ae2a53eacdb29ba30767b554fcc00a2b5ddfcbbd46c3dc80e-filelists.xml.gz"
         }
       ]
@@ -66,11 +70,13 @@
         {
           "out": "07986c9584d4d59a2d6084ec712aed8a6e779d5db62e3c3d9b307d5540551be4-primary.xml.gz",
           "sha256": "07986c9584d4d59a2d6084ec712aed8a6e779d5db62e3c3d9b307d5540551be4",
+          "size": 777304,
           "url": "https://mirror.stream.centos.org/10-stream/CRB/x86_64/os/repodata/07986c9584d4d59a2d6084ec712aed8a6e779d5db62e3c3d9b307d5540551be4-primary.xml.gz"
         },
         {
           "out": "83dad472a3e76c70f9223cf903917b03c7593b51e38ca23013df7aa1f5d9ce1a-filelists.xml.gz",
           "sha256": "83dad472a3e76c70f9223cf903917b03c7593b51e38ca23013df7aa1f5d9ce1a",
+          "size": 6795549,
           "url": "https://mirror.stream.centos.org/10-stream/CRB/x86_64/os/repodata/83dad472a3e76c70f9223cf903917b03c7593b51e38ca23013df7aa1f5d9ce1a-filelists.xml.gz"
         }
       ]
