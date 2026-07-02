@@ -4,13 +4,18 @@ load(":engine.bzl", "EngineInfo", "chroot_run")
 load(":package_format.bzl", "PackageFormatInfo")
 
 RepoInfo = provider(
-    # `dir` is packages + `repodata/` (what the plan resolves against); `packages` are the
-    # individual artifacts, keyed by basename to scope an install to its resolved closure.
+    # `dir` holds the `repodata/` the plan resolves against. Two flavors:
+    #   - remote: `dir` is just pinned repodata (no packages); `baseurl` is the real remote base,
+    #     so plan turns each resolved package's location into a download URL. `packages` is empty —
+    #     the buildroot's resolved subset is fetched lazily at build time.
+    #   - local: `dir` is a createrepo'd tree with the rpms present; `packages` are those artifacts
+    #     (keyed by basename to scope an install); `baseurl` is "".
     doc = "A package repository.",
     fields = {
         "id": provider_field(str),
         "dir": provider_field(Artifact),
         "packages": provider_field(list[Artifact]),
+        "baseurl": provider_field(str, default = ""),
     },
 )
 
@@ -49,7 +54,7 @@ distribution = rule(
     },
 )
 
-def _repo_impl(ctx: AnalysisContext) -> list[Provider]:
+def _local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     # Bind the format's createrepo driver to run in the engine root (the repodata
     # writer lives there); chroot_run runs it at the fixed assembly epoch so the
     # repodata is reproducible.
@@ -70,11 +75,11 @@ def _repo_impl(ctx: AnalysisContext) -> list[Provider]:
         RepoInfo(id = ctx.attrs.id, dir = repo_dir, packages = packages),
     ]
 
-# A package repository: the packages processed (in an engine root) into a
-# real local repository addressed by `id`, also exposing the per-package artifacts
-# for closure materialization.
-repo = rule(
-    impl = _repo_impl,
+# A local repository: generate repodata (in an engine root) from a list of package targets
+# (the rpms we build ourselves) into a real local repo addressed by `id`, also exposing the
+# per-package artifacts. This is how our own builds are served to a buildroot resolve.
+local_repository = rule(
+    impl = _local_repository_impl,
     attrs = {
         "id": attrs.string(doc = "the repo id"),
         "packages": attrs.list(attrs.dep(), doc = "the rpms this repo publishes (one dep each)"),
@@ -83,35 +88,52 @@ repo = rule(
     },
 )
 
-def _fill_closure(actions: AnalysisActions, tx: ArtifactValue, closure: OutputArtifact, candidates: dict[str, Artifact]) -> list[Provider]:
-    names = tx.read_json()
-    actions.copied_dir(closure, {n: candidates[n] for n in names})
-    return []
+def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
+    # Assemble a `repodata/` tree as a local `file://` repo: repomd (pinned in catalog)
+    # plus the pinned stream files it references. No packages here: the buildroot's
+    # resolved subset is downloaded at build time (Action 2) from `baseurl`.
+    repomd = ctx.actions.write("repomd.xml", ctx.attrs.repomd)
+    streams = [f[DefaultInfo].default_outputs[0] for f in ctx.attrs.streams]
+    tree = {"repodata/repomd.xml": repomd}
+    tree.update({"repodata/" + f.basename: f for f in streams})
+    repo_dir = ctx.actions.copied_dir("repo", tree)
+    return [
+        DefaultInfo(default_output = repo_dir),
+        RepoInfo(id = ctx.attrs.id, dir = repo_dir, packages = [], baseurl = ctx.attrs.baseurl),
+    ]
 
-_materialize = dynamic_actions(
-    impl = _fill_closure,
+# A remote repository: a pinned snapshot of a real distro repodata, which in turn pins the
+# distro rpms. The plan resolves against the metadata; the resolved rpms are fetched
+# lazily at build time from `baseurl`.
+remote_repository = rule(
+    impl = _remote_repository_impl,
     attrs = {
-        "tx": dynattrs.artifact_value(),
-        "closure": dynattrs.output(),
-        "candidates": dynattrs.dict(str, dynattrs.value(Artifact)),
+        "id": attrs.string(doc = "the repo id"),
+        "baseurl": attrs.string(doc = "the real remote baseurl (for download URLs)"),
+        "repomd": attrs.string(doc = "the filtered repomd.xml content (lists only the pinned streams)"),
+        "streams": attrs.list(attrs.dep(), doc = "pinned metadata stream http_files (primary + filelists)"),
     },
 )
 
-def _materialize_closure(ctx: AnalysisContext, name: str, tx: Artifact, candidates: dict[str, Artifact]) -> Artifact:
-    """Scope a dir to just the packages named in the transaction `tx`.
+def _download_closure(actions: AnalysisActions, tx: ArtifactValue, closure: OutputArtifact) -> list[Provider]:
+    # Dynamic: the resolved set is only known once `plan` has run. Fetch rpms into
+    # content-based output for global sharing. The buildroot closure is a symlink tree.
+    rpms = {}
+    for entry in tx.read_json():
+        name = entry["url"].rsplit("/", 1)[-1]
+        out = actions.declare_output("rpm", name, has_content_based_path = True)
+        actions.download_file(out, entry["url"], sha256 = entry["sha256"])
+        rpms[name] = out
+    actions.symlinked_dir(closure, rpms)
+    return []
 
-    Dynamic: the resolved set is only known once the plan has run, so we read `tx` at
-    build time and copy in exactly those package artifacts. The output is byte-identical
-    for an unchanged transaction even though `candidates` (every repo package) is an
-    input — that's what makes the install cut off when an unrelated repo package changes.
-    """
-    closure = ctx.actions.declare_output(name + ".closure", dir = True)
-    ctx.actions.dynamic_output_new(_materialize(
-        tx = tx,
-        closure = closure.as_output(),
-        candidates = candidates,
-    ))
-    return closure
+_download = dynamic_actions(
+    impl = _download_closure,
+    attrs = {
+        "tx": dynattrs.artifact_value(),
+        "closure": dynattrs.output(),
+    },
+)
 
 _BuildrootInfo = provider(
     doc = "The assembled buildroot tree, carried out of the anon target for its `root` promise.",
@@ -119,15 +141,15 @@ _BuildrootInfo = provider(
 )
 
 def _buildroot_impl(ctx: AnalysisContext) -> list[Provider]:
-    """Install `install`'s resolved closure into a fresh root.
+    """Resolve `install` over the distribution's repos and install the closure into a fresh root.
 
-    Resolve `install` over the distribution's repos. Format-neutral: it drives the
-    distribution's own plan + install drivers.
+    Format-neutral: it drives the distribution's own plan + install drivers, with buck's native
+    download_file in between.
 
-    Three actions: (1) plan resolves the install set's runtime closure over the repos →
-    a transaction (resolved package filenames); (2) materialize scopes a dir to exactly
-    those packages (dynamic, so unrelated repo changes cut off); (3) install lays that
-    closure into a fresh root.
+    Three actions: (1) plan resolves the install set's runtime closure over the repos'
+    pinned repodata → a transaction ([{url, sha256}]); (2) a dynamic download_file per rpm
+    fetches exactly that subset (sha-verified, content-addressed → shared across buildroots);
+    (3) install lays that closure into a fresh root.
     """
     distribution = ctx.attrs.distribution[DistributionInfo]
     repos = distribution.buildroot_repositories
@@ -135,7 +157,7 @@ def _buildroot_impl(ctx: AnalysisContext) -> list[Provider]:
     engine = distribution.engine
 
     # Action 1 — plan: resolve the closure over the repos' repodata → a transaction.
-    # Re-runs on any repo change, but its output is stable unless *this* closure changed.
+    # Re-runs on any repodata change, but its output is stable unless *this* closure changed.
     tx = ctx.actions.declare_output("transaction.json")
     plan = cmd_args(
         chroot_run(engine = engine, exe = fmt.plan),
@@ -144,13 +166,16 @@ def _buildroot_impl(ctx: AnalysisContext) -> list[Provider]:
     )
     for repository in repos:
         plan.add("--repo", cmd_args(repository.dir, format = repository.id + "={}"))
+        plan.add("--baseurl", "{}={}".format(repository.id, repository.baseurl))
     for cap in ctx.attrs.install:
         plan.add("--install", cap)
     ctx.actions.run(plan, category = "plan")
 
-    # Action 2 — materialize the resolved closure (scoped to the transaction).
-    candidates = {p.basename: p for repository in repos for p in repository.packages}
-    closure = _materialize_closure(ctx, "buildroot", tx, candidates)
+    # Action 2 — download the resolved transaction. lazy (only this buildroot's subset),
+    # shared (downloaded once and re-used via symlink trees), dynamic (resolved set isn't
+    # known until `plan` runs).
+    closure = ctx.actions.declare_output("buildroot.closure", dir = True)
+    ctx.actions.dynamic_output_new(_download(tx = tx, closure = closure.as_output()))
 
     # Action 3 — install that closure into a fresh root (it's already the exact set).
     # Cuts off when the closure is unchanged.

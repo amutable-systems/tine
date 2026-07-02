@@ -456,21 +456,25 @@ consumes it as a static graph and never runs buckify. It is **two programs**:
 
 - **Resolve** (`resolve --distribution <name> --catalog-dir <dir>`). Input: the catalog
   manifest (`<dir>/manifest.toml`) — per distribution, its **pinned repos**, its
-  **buildroot** (`buildroot_groups` like Fedora's `@buildsys-build` ∪
-  `buildroot_packages` ∪ `buildrequires`), and its **engine** (its own engine-root
-  package set, or the name of the distribution whose engine builds it). The resolver
-  reads the repodata snapshot and resolves, via libdnf5, the buildroot **pool**'s
-  transitive runtime closure and the engine closure, writing one **fragment**
-  `<dir>/<name>.json` — a plain JSON object buck2 loads natively, the distribution's
-  `{package_format, engine, buildroot, packages}` (each package a
-  `[target, url, sha256, source]`; url at the same repo, sha256 from the repodata).
-  The orchestrator then writes the **amalgamation** `<dir>/generated.bzl` — a static
-  `load` of each fragment's `value` (buck2 decodes JSON/TOML natively at load time) +
-  a merged `DISTRIBUTIONS` dict (the fragment set is enumerated as static loads). The
-  `declare_catalog` macro (in the catalog cell's BUCK, from
-  `@tine//defs:catalog.bzl`) expands `DISTRIBUTIONS` into one
-  `http_file(url, sha256)` per rpm plus the per-distribution
-  engine/repo/distribution/resolver targets. Re-run when the manifest or a pin changes.
+  **buildroot** base (`buildroot_groups` like Fedora's `@buildsys-build` ∪
+  `buildroot_packages`), and its **engine** (its own engine-root package set, or the
+  name of the distribution whose engine builds it). The resolver resolves, via libdnf5,
+  only the **engine** closure into pinned packages; for the buildroot it **snapshots the
+  repos' repodata** — fetches `repomd.xml`, keeps only the `primary`/`filelists` streams
+  (so libdnf5 never chases the ones we drop), and pins the filtered repomd + those streams
+  (url + sha256) + the real remote baseurl. It writes one **fragment** `<dir>/<name>.json`
+  — a plain JSON object buck2 loads natively, the distribution's
+  `{package_format, engine, buildroot, buildroot_repos}` (`engine` a list of
+  `[target, url, sha256, source]`; `buildroot_repos` the pinned repodata streams + baseurl).
+  Individual BuildRequires are **not** resolved here — they're resolved and fetched lazily
+  per build against that repodata, so no buildroot pool is locked. The orchestrator then
+  writes the **amalgamation** `<dir>/generated.bzl` — a static `load` of each fragment's
+  `value` (buck2 decodes JSON/TOML natively at load time) + a merged `DISTRIBUTIONS` dict
+  (the fragment set is enumerated as static loads). The `declare_catalog` macro (in the
+  catalog cell's BUCK, from `@tine//defs:catalog.bzl`) expands `DISTRIBUTIONS` into an
+  `http_file(url, sha256)` per **engine** rpm and per **repodata stream**, a
+  `remote_repository` per buildroot repo, plus the per-distribution
+  engine/distribution/resolver targets. Re-run when the manifest or a pin changes.
 
 The bullets below — build-driven lock discovery, cycle/SCC handling, provider
 tie-break pins, Provides-drift checks, `import`/`refresh` — are **roadmap, not yet
@@ -706,17 +710,19 @@ plan/install/build drivers, run in the engine root):
 
 - **Action 1 — plan** (`distribution.plan`, `plan.py`): resolve the buildroot install
   set — the seed buildroot base + X's `BuildRequires` — via libdnf5 over the
-  distribution's createrepo'd local `repo`s (`file://`, **no weak deps** —
-  `install_weak_deps=False`), and write the resolved rpm filenames to a sorted
-  `transaction.json`. Re-runs on any repo change, but its output is byte-stable
+  distribution's `remote_repository` (its pinned repodata snapshot, loaded as a
+  `file://` repo, **no weak deps** — `install_weak_deps=False`), and write each
+  resolved package's `{url, sha256}` (url at the repo's real baseurl) to a sorted
+  `transaction.json`. Re-runs on any repodata change, but its output is byte-stable
   unless *this* buildroot's closure actually changed.
-- **Action 2 — materialize closure** (`dynamic_actions`): read `transaction.json`
-  and copy in exactly the resolved package artifacts → `closure/`. This is the
-  early-cutoff seam — an unchanged transaction yields a byte-identical `closure/`
-  even though every repo package is an input, so an unrelated repo change doesn't
-  perturb the buildroot.
+- **Action 2 — download closure** (`dynamic_actions`): read `transaction.json` and
+  fetch each rpm with buck's native content-addressed `download_file` (keyed on
+  sha256) into a content-based-path output, symlinked into `closure/`. Only the
+  resolved subset is fetched, keyed on the transaction alone — so a rpm shared by
+  many buildroots is downloaded once and stored once, and an unrelated repodata
+  change doesn't perturb the buildroot.
 - **Action 3 — assemble** (`distribution.install`, `install.py`): `add_cmdline_packages`
-  the materialized closure into `installroot` → `Transaction::run()` (the closure
+  the downloaded closure into `installroot` → `Transaction::run()` (the closure
   is already the exact set — no repo resolution, no network), at the **fixed
   assembly `SOURCE_DATE_EPOCH`** (the seed-pin constant, *not* the consumer's
   package epoch, so identical closures content-key identically across consumers;

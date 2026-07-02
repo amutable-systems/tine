@@ -14,7 +14,7 @@ unlike a BUCK file — doesn't get them as bare globals.
 # `native` is implicit at evaluation time but the standalone Starlark typechecker
 # doesn't model it, so load it explicitly (as the prelude itself does).
 load("@prelude//:native.bzl", "native")
-load("@tine//defs/rules:distribution.bzl", "distribution", "repo")
+load("@tine//defs/rules:distribution.bzl", "distribution", "remote_repository")
 load("@tine//defs/rules:engine.bzl", "engine")
 
 def _package_format(data: dict) -> str:
@@ -78,41 +78,39 @@ def declare_catalog(distributions: dict) -> None:
         )
 
     for d, data in distributions.items():
-        # Per target distribution: its buildroot pool (one http_file per package) → a
-        # local repository → a distribution target naming its engine.
-        for (target, url, sha256, _) in data["packages"]:
-            native.http_file(
-                name = d + "." + target,
-                out = url.rsplit("/", 1)[-1],
-                urls = [url],
-                sha256 = sha256,
+        # Per target distribution: its upstream buildroot repos (pinned repodata → a
+        # remote_repository each) → a distribution target naming its engine. The buildroot's
+        # resolved rpms are fetched lazily at build time, so only repodata is pinned here.
+        repo_targets = []
+        for r in data.get("buildroot_repos", []):  # not yet present before first refresh-catalog
+            for f in r["streams"]:
+                native.http_file(
+                    name = "{}.{}.{}".format(d, r["id"], f["out"]),
+                    out = f["out"],
+                    urls = [f["url"]],
+                    sha256 = f["sha256"],
+                    visibility = ["PUBLIC"],
+                )
+            rt = "{}.{}.repo".format(d, r["id"])
+            remote_repository(
+                name = rt,
+                id = r["id"],
+                baseurl = r["baseurl"],
+                repomd = r["repomd"],
+                streams = [":{}.{}.{}".format(d, r["id"], f["out"]) for f in r["streams"]],
                 visibility = ["PUBLIC"],
             )
-
-        # The pool built into a local repository (RepoInfo). For now one repo per
-        # distribution (its whole pool); the distribution target takes a list, so more can be added
-        # without touching the rule.
-        repo(
-            name = d + ".repo",
-            id = d,
-            packages = [
-                ":" + d + "." + target
-                for (target, _, _, _) in data["packages"]
-            ],
-            engine = _engine_root_ref(d, data),
-            package_format = _package_format(data),
-            visibility = ["PUBLIC"],
-        )
+            repo_targets.append(":" + rt)
 
         # `:<distribution>` is the distribution build target a package builds against:
-        # its build drivers (plan/install/build) bound to an engine root + buildroot
-        # repositories + base. The engine root is this distribution's own when it
+        # its build drivers (plan/download/install/build) bound to an engine root +
+        # buildroot repositories + base. The engine root is this distribution's own when it
         # self-hosts, else the engine distribution its `engine` field names.
         distribution(
             name = d,
             engine = _engine_root_ref(d, data),
             package_format = _package_format(data),
-            buildroot_repositories = [":" + d + ".repo"],
+            buildroot_repositories = repo_targets,
             buildroot_base_packages = data["buildroot"],
             visibility = ["PUBLIC"],
         )

@@ -11,11 +11,14 @@ engine root (the host orchestrator binds each distribution's buckify target to i
 engine), so the resolution uses the pinned libdnf5 that builds the distribution.
 
 `buckify-rpm resolve --distribution <name> --catalog-dir <dir>`: reads <dir>/manifest.toml,
-resolves <name>'s buildroot pool + engine closure, and writes the fragment
-<dir>/<name>.json — a plain JSON object (package_format, engine, buildroot, packages)
-that buck2 loads natively at load time. The host orchestrator amalgamates the
-fragments into generated.bzl. Re-running against the same pins reproduces the
-fragment byte-for-byte.
+resolves <name>'s engine closure and snapshots its buildroot repodata, and writes the
+fragment <dir>/<name>.json — a plain JSON object (package_format, engine, buildroot,
+buildroot_repos) that buck2 loads natively at load time. The buildroot itself is not
+resolved here: the buildroot repos are pinned *repodata* snapshots (repomd + primary +
+filelists), and each package's per-build buildroot is resolved + downloaded lazily at build
+time against them, so any BuildRequires is available without curating a pool. The host
+orchestrator amalgamates the fragments into generated.bzl; re-running against the same pins
+reproduces the fragment byte-for-byte.
 """
 
 import argparse
@@ -24,6 +27,8 @@ import shutil
 import sys
 import tempfile
 import tomllib
+import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Self
 
@@ -190,25 +195,69 @@ def _repos(distribution: dict) -> list[tuple[str, str]]:
     return [(r["id"], r["baseurl"]) for r in distribution["repositories"]]
 
 
+# repomd.xml's namespace (the <data>/<location>/<checksum> elements live here).
+_REPOMD_NS = "http://linux.duke.edu/metadata/repo"
+# The repodata streams the build-time solve needs: primary (provides/requires) + filelists
+# (file-path provides, for file-dep BuildRequires). comps/other/updateinfo and the db/zck
+# encodings aren't needed at build time and are dropped so libdnf5 never tries to fetch them.
+_BUILD_STREAMS = ("primary", "filelists")
+
+
+def snapshot_repodata(rid: str, baseurl: str) -> dict:
+    """Pin one repo's build-time repodata.
+
+    Fetches repomd.xml, drops every <data> record except the build streams (so the served
+    repomd lists only what we pin — libdnf5 then never tries to download the streams we
+    skip), and records each kept stream as a sha-pinned download stanza (sha256 from
+    repomd's own checksum). Returns {id, baseurl, repomd: <filtered xml>, streams: [{out,
+    url, sha256}]}: buck writes the filtered repomd + downloads the streams into a
+    `repodata/` tree the plan resolves against; `baseurl` is where the resolved rpms are
+    fetched from.
+    """
+    base = baseurl.rstrip("/") + "/"
+    with urllib.request.urlopen(base + "repodata/repomd.xml") as f:
+        repomd = f.read()
+
+    ET.register_namespace("", _REPOMD_NS)  # keep the default (unprefixed) namespace on output
+    root = ET.fromstring(repomd)
+
+    streams = []
+    for data in list(root.findall(f"{{{_REPOMD_NS}}}data")):
+        if data.get("type") not in _BUILD_STREAMS:
+            root.remove(data)  # drop other/updateinfo/comps/*_db/*_zck
+            continue
+
+        loc = data.find(f"{{{_REPOMD_NS}}}location")
+        chk = data.find(f"{{{_REPOMD_NS}}}checksum[@type='sha256']")
+        href = loc.get("href") if loc is not None else None
+        if href is None or chk is None or chk.text is None:
+            raise SystemExit(f"{rid}: {data.get('type')} record lacks a location or sha256 checksum")
+        streams.append({"out": href.rsplit("/", 1)[-1], "url": base + href, "sha256": chk.text})
+
+    if len(streams) != len(_BUILD_STREAMS):
+        raise SystemExit(f"{rid}: repomd.xml missing one of {_BUILD_STREAMS}")
+
+    filtered = ET.tostring(root, encoding="unicode", xml_declaration=True)
+    return {"id": rid, "baseurl": base, "repomd": filtered, "streams": streams}
+
+
 def resolve_one(name: str, distribution: dict) -> dict:
-    """Resolve one distribution against its OWN repos: its buildroot (base always-installed
-    + the BuildRequires pool) and its engine. `engine` is either this distribution's own
-    engine-root package set (a list — it provisions its own engine) or the name of
-    the distribution whose engine builds it (a string); a self-hosting distribution's package
-    names are in its OWN naming (they differ across distributions)."""
-    with Pool(_repos(distribution), distribution_id=name, arch=distribution.get("arch", "x86_64")) as pool:
+    """Resolve one distribution's engine + buildroot base names, and snapshot its buildroot repos' repodata.
+
+    `engine` is either this distribution's own engine-root package set (a list — it
+    provisions its own engine) or the name of the distribution whose engine builds it (a
+    string). The buildroot itself is not resolved into a pool here: it's the pinned
+    upstream repodata, resolved + fetched per build.
+    """
+    repos = _repos(distribution)
+    with Pool(repos, distribution_id=name, arch=distribution.get("arch", "x86_64")) as pool:
         br = distribution["buildroot"]
         base = sorted(
             set(
                 expand_groups(pool, br.get("buildroot_groups", [])) + br.get("buildroot_packages", []),
             )
         )
-        print(
-            f"{name}: resolving buildroot ({len(base)} base + {len(br['buildrequires'])} BR)…",
-            file=sys.stderr,
-        )
-        pool_pkgs = resolve_closure(pool, base + br["buildrequires"])
-        print(f"{name}: buildroot pool = {len(pool_pkgs)} packages", file=sys.stderr)
+        print(f"{name}: buildroot base = {len(base)} packages", file=sys.stderr)
 
         engine_spec = distribution["engine"]
         if isinstance(engine_spec, list):
@@ -224,12 +273,13 @@ def resolve_one(name: str, distribution: dict) -> dict:
             # `:engine.<name>.root`, which must exist), so no cross-distribution check here.
             engine = engine_spec
 
-        return {
-            "package_format": "rpm",  # this is the rpm resolver; deb/etc. emit their own
-            "engine": engine,
-            "buildroot": base,
-            "packages": entries(pool, pool_pkgs),
-        }
+    print(f"{name}: snapshotting repodata for {len(repos)} repo(s)…", file=sys.stderr)
+    return {
+        "package_format": "rpm",  # this is the rpm resolver; deb/etc. emit their own
+        "engine": engine,
+        "buildroot": base,
+        "buildroot_repos": [snapshot_repodata(rid, baseurl) for rid, baseurl in repos],
+    }
 
 
 def cmd_resolve(args: argparse.Namespace) -> None:
