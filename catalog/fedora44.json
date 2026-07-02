@@ -1018,12 +1018,6 @@
       "ghc-srpm-macros"
     ],
     [
-      "git-core-2.53.0-1.fc44.x86_64",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/git-core-2.53.0-1.fc44.x86_64.rpm",
-      "b526494b519d4a123c7a2a860070f17dc7d9005c657596990e03ec29547e7e01",
-      "git"
-    ],
-    [
       "glibc-2.43-2.fc44.x86_64",
       "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/glibc-2.43-2.fc44.x86_64.rpm",
       "90ddf81832ba518f8768264a6944d0b02e030acc7e78aa2ed907d7e77d0a069f",
@@ -1052,12 +1046,6 @@
       "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/glibc-minimal-langpack-2.43-2.fc44.x86_64.rpm",
       "93370d17e3ed960b26c7b9fb79582366b718ec5bad32d259af80459e17aea21e",
       "glibc"
-    ],
-    [
-      "gmock-1.17.0-2.fc44.x86_64",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/gmock-1.17.0-2.fc44.x86_64.rpm",
-      "cfb50f6e8da3f49abc3cc7f94cb373c7e9249d8738eac406b935d228ee0fcb2d",
-      "gtest"
     ],
     [
       "gmp-1-6.3.0-5.fc44.x86_64",
@@ -1138,18 +1126,6 @@
       "grep"
     ],
     [
-      "gtest-1.17.0-2.fc44.x86_64",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/gtest-1.17.0-2.fc44.x86_64.rpm",
-      "14842b5149b88b0347f563ee4f076f3853fea532dc8f022b3eabdfd4fbc1a05b",
-      "gtest"
-    ],
-    [
-      "gtest-devel-1.17.0-2.fc44.x86_64",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/gtest-devel-1.17.0-2.fc44.x86_64.rpm",
-      "145c6b5d4a1ef685df55c2ed09186d81509105c871eec3cefe9ec848ec500e98",
-      "gtest"
-    ],
-    [
       "gzip-1.14-2.fc44.x86_64",
       "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/gzip-1.14-2.fc44.x86_64.rpm",
       "a94d5384a9e8c30b31f5a85ae2ca953f8b0af946f425103f942457770fb268b4",
@@ -1216,18 +1192,6 @@
       "krb5"
     ],
     [
-      "less-691-2.fc44.x86_64",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/less-691-2.fc44.x86_64.rpm",
-      "98b9e7d0bd2223e8fca79d4f623c5847295035a37db53be0a1075b74dfb0d1a8",
-      "less"
-    ],
-    [
-      "libabigail-2.9-2.fc44.x86_64",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libabigail-2.9-2.fc44.x86_64.rpm",
-      "d0f260e50819f3b9458515e7c338dcb1fa1762b75c36e9f709d8b4104f77b12e",
-      "libabigail"
-    ],
-    [
       "libacl-2.3.2-6.fc44.x86_64",
       "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libacl-2.3.2-6.fc44.x86_64.rpm",
       "38a4c106c2b56c6b3701f7bdbb6f0874159da347a2ffbbe48a6233cf5b91abaa",
@@ -1262,12 +1226,6 @@
       "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libblkid-2.41.3-12.fc44.x86_64.rpm",
       "1cc22f556069fbd183b817e79e0881a504f0adbaab371bc34fbea41239839972",
       "util-linux"
-    ],
-    [
-      "libbpf-2-1.6.3-1.fc44.x86_64",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libbpf-1.6.3-1.fc44.x86_64.rpm",
-      "1c06ae3b08dbfe01d53d65825f5c4b6d593ae71f430759e76ee72f299de7ff3b",
-      "libbpf"
     ],
     [
       "libbrotli-1.2.0-3.fc44.x86_64",
@@ -1310,12 +1268,6 @@
       "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libeconf-0.7.9-3.fc44.x86_64.rpm",
       "f8212f510faaa3d6dca692478a686f44f0c27bdad9741e83e3940c17a2d4eb69",
       "libeconf"
-    ],
-    [
-      "libedit-3.1-58.20251016cvs.fc44.x86_64",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/l/libedit-3.1-58.20251016cvs.fc44.x86_64.rpm",
-      "68c93ed7857307a41571243b5ad048811179406dfff841d9d8a4c4934885c4de",
-      "libedit"
     ],
     [
       "libevent-2.1.12-17.fc44.x86_64",
@@ -1648,18 +1600,6 @@
       "openldap"
     ],
     [
-      "openssh-10.2p1-7.fc44.x86_64",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/o/openssh-10.2p1-7.fc44.x86_64.rpm",
-      "ba29ac48c8ba320c839de497884ca20c9e098b7b537b7720941d2e9e9506d03f",
-      "openssh"
-    ],
-    [
-      "openssh-clients-10.2p1-7.fc44.x86_64",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/o/openssh-clients-10.2p1-7.fc44.x86_64.rpm",
-      "4a47767b6827e3248dbb5b5e85e45757abf608184ebeb977d166d55af7635ed2",
-      "openssh"
-    ],
-    [
       "openssl-libs-1-3.5.5-1.fc44.x86_64",
       "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/o/openssl-libs-3.5.5-1.fc44.x86_64.rpm",
       "2f02efa7a21a6a15a7b6b0be62769ff222dc88433fec355e87f78c1ee619fd3f",
@@ -1774,34 +1714,10 @@
       "python3.14"
     ],
     [
-      "python3-GitPython-3.1.46-3.fc44.noarch",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/python3-GitPython-3.1.46-3.fc44.noarch.rpm",
-      "c60564cee615240b87bc78d648c5b53947626c6bed6de12532566578f802f316",
-      "GitPython"
-    ],
-    [
-      "python3-gitdb-4.0.11-7.fc44.noarch",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/python3-gitdb-4.0.11-7.fc44.noarch.rpm",
-      "8233d01a98157abc24e87f16114f3c2b69cf93b40dba3df418d8f096493947b3",
-      "python-gitdb"
-    ],
-    [
-      "python3-libarchive-c-5.3-8.fc44.noarch",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/python3-libarchive-c-5.3-8.fc44.noarch.rpm",
-      "220e1f8a04abcdb3c6a53242f8f151e35e5a665695437af9ec0a889a49f22478",
-      "python-libarchive-c"
-    ],
-    [
       "python3-libs-3.14.3-2.fc44.x86_64",
       "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/python3-libs-3.14.3-2.fc44.x86_64.rpm",
       "130aad43ab0ccca75d52c89d9862701a0c55136cb6b8aba4e34d21d3fd8b2849",
       "python3.14"
-    ],
-    [
-      "python3-smmap-5.0.1-7.fc44.noarch",
-      "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/p/python3-smmap-5.0.1-7.fc44.noarch.rpm",
-      "09e220afc24f1640f9b70d44640b44dcacdb70b706420c45f88ad1bfc88a04fd",
-      "python-smmap"
     ],
     [
       "qt5-srpm-macros-5.15.18-2.fc44.noarch",
