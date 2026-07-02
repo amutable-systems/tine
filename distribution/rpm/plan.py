@@ -42,12 +42,12 @@ MULTILIB_ARCHES = ("i686", "i386", "i586")
 
 
 def load_base(
-    repos: list[tuple[str, Path]],
+    repos: list[tuple[str, Path, int]],
     cachedir: Path,
     arch: str,
     seeds: list[Path] | None = None,
 ) -> libdnf5.base.Base:
-    """A Base with `repos` ((id, pinned-repodata dir) pairs) loaded, ready to solve.
+    """A Base with `repos` ((id, pinned-repodata dir, dnf priority) triples) loaded, ready to solve.
 
     With `seeds` (per-repo cache dirs from `make-cache`), libdnf5's root-cache clone is
     pointed at them via system_cachedir: a repo whose working cache is empty copies the
@@ -86,25 +86,28 @@ def load_base(
     base.setup()
 
     sack = base.get_repo_sack()
-    for rid, path in repos:
+    for rid, path, priority in repos:
         rc = sack.create_repo(rid).get_config()
         rc.baseurl = f"file://{path}"  # pinned repodata read locally
         rc.get_pkg_gpgcheck_option().set(False)
+        # dnf semantics: lower number wins, across versions -- an outranking repo's package is
+        # taken even when another repo carries a newer NEVRA (how our own builds beat upstream).
+        rc.get_priority_option().set(priority)
     sack.load_repos(libdnf5.repo.Repo.Type_AVAILABLE)
     return base
 
 
 def plan(
-    repos: list[tuple[str, Path, str]],
+    repos: list[tuple[str, Path, str, int]],
     install: list[str],
     cachedir: Path,
     arch: str,
     seeds: list[Path],
 ) -> list[dict[str, str | int]]:
-    base = load_base([(rid, path) for rid, path, _ in repos], cachedir, arch, seeds)
+    base = load_base([(rid, path, priority) for rid, path, _, priority in repos], cachedir, arch, seeds)
 
     # id -> real remote baseurl, so a resolved package's location becomes a download URL.
-    baseurls = {rid: url.rstrip("/") + "/" for rid, _, url in repos}
+    baseurls = {rid: url.rstrip("/") + "/" for rid, _, url, _ in repos}
 
     goal = libdnf5.base.Goal(base)
     # add_install (not add_rpm_install) so `@group` specs resolve too. Groups take only
@@ -164,6 +167,13 @@ def main(argv: list[str] | None = None) -> None:
         help="a repo's real remote baseurl as id=url (for download URLs); repeatable",
     )
     solve.add_argument(
+        "--priority",
+        action="append",
+        default=[],
+        metavar="ID=N",
+        help="a repo's dnf priority as id=number (lower wins; default 99); repeatable",
+    )
+    solve.add_argument(
         "--install", action="append", default=[], required=True, help="package/cap to install"
     )
     solve.add_argument(
@@ -194,14 +204,18 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "make-cache":
         out = Path(args.out).resolve()
         out.mkdir(parents=True, exist_ok=True)
-        load_base([(rid, Path(d).resolve()) for rid, d in dirs.items()], out, args.arch)
+        # The priority only orders the solve; any value caches the same.
+        load_base([(rid, Path(d).resolve(), 99) for rid, d in dirs.items()], out, args.arch)
         print(f"plan: cached {len(dirs)} repo(s)", file=sys.stderr)
         return
 
     urls = parse_kv(args.baseurl, "--baseurl")
     if dirs.keys() != urls.keys():
         raise SystemExit(f"--repo ids {sorted(dirs)} and --baseurl ids {sorted(urls)} must match")
-    repos = [(rid, Path(d).resolve(), urls[rid]) for rid, d in dirs.items()]
+    priorities = parse_kv(args.priority, "--priority")
+    if unknown := priorities.keys() - dirs.keys():
+        raise SystemExit(f"--priority for unknown repo ids {sorted(unknown)}")
+    repos = [(rid, Path(d).resolve(), urls[rid], int(priorities.get(rid, "99"))) for rid, d in dirs.items()]
     seeds = [Path(c).resolve() for c in args.cache]
 
     tx = plan(repos, args.install, Path(args.cachedir), args.arch, seeds)

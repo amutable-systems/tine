@@ -51,10 +51,16 @@ def rpm_distribution(name: str, engine: str, repositories: list[str], buildroot:
 def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     distribution = ctx.attrs.distribution[DistributionInfo]
 
+    # Self-hosting: each buildroot_dep is another package we build whose rpms provide some of
+    # this package's BuildRequires. Its whole binary-rpm set (the dep's default output dir) goes
+    # into the buildroot as extra packages, so the resolve prefers our build over Fedora's.
+    # These are real buck deps, so the DAG builds them first (the staircase).
+    extra_packages = [d[DefaultInfo].default_outputs[0] for d in ctx.attrs.buildroot_deps]
     buildroot = assemble_root(
         ctx,
         ctx.attrs.distribution,
         distribution.buildroot_base_packages + ctx.attrs.build_requires,
+        extra_packages = extra_packages,
     )
 
     rpms = ctx.actions.declare_output("rpms", dir = True)
@@ -96,7 +102,8 @@ _rpm_package = rule(
         "srcs": attrs.list(attrs.source(), default = [], doc = "Source/Patch files"),
         "release": attrs.string(doc = "dist-stripped Release base; the build freezes %autorelease = <release>%{?dist}"),
         "subpackages": attrs.list(attrs.string(), doc = "declared binary subpackage names (the %package list)"),
-        "build_requires": attrs.list(attrs.string(), default = [], doc = "extra BR caps beyond the buildroot base (catalog-only for now)"),
+        "build_requires": attrs.list(attrs.string(), default = [], doc = "the package's BuildRequires, resolved against the buildroot repos (base + these)"),
+        "buildroot_deps": attrs.list(attrs.dep(), default = [], doc = "our packages whose rpms overlay the buildroot (self-hosted BRs)"),
         "source_date_epoch": attrs.int(doc = "per-package SDE from the changelog"),
         "dist": attrs.string(default = ".aos"),
         "distribution": attrs.dep(providers = [DistributionInfo], doc = "catalog//:<distribution> — buildroot + engine that builds it"),

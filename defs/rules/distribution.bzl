@@ -4,6 +4,10 @@ load(":engine.bzl", "EngineInfo", "chroot_run")
 load(":package_format.bzl", "PackageFormatInfo")
 load(":repo.bzl", "RepoInfo", "download_closure")
 
+# Prefer extra-packages (our own builds) over the upstream repos even when
+# upstream carries a newer version that we didn't import/merge yet.
+_EXTRA_REPO_PRIORITY = 50
+
 DistributionInfo = provider(
     # An engine + format plugin + buildroot repos and base packages, plus each repo's
     # prebuilt solver cache. The engine root may belong to another distribution (CentOS
@@ -168,6 +172,42 @@ remote_repository = rule(
     },
 )
 
+_ExtraRepoInfo = provider(
+    doc = "The extra-packages repository tree, carried out of the anon target for its promise.",
+    fields = {"repo": provider_field(Artifact)},
+)
+
+def _extra_repository_impl(ctx: AnalysisContext) -> list[Provider]:
+    """createrepo our own build outputs (rpms dirs) into a local repository.
+
+    Each rpm's location_href is its rpms-dir index + basename, so a consumer can map a
+    resolved file:// URL back to the originating input dir (see repo.bzl's download_closure)."""
+    distribution = ctx.attrs.distribution[DistributionInfo]
+    repo = ctx.actions.declare_output("repo", dir = True)
+    createrepo = cmd_args(
+        chroot_run(engine = distribution.engine, exe = distribution.package_format.createrepo),
+        "--out",
+        repo.as_output(),
+    )
+    for rpms_dir in ctx.attrs.packages:
+        createrepo.add("--packages-dir", rpms_dir)
+    ctx.actions.run(createrepo, category = "createrepo")
+    return [DefaultInfo(default_output = repo), _ExtraRepoInfo(repo = repo)]
+
+# The repo is pure data — (distribution, packages) fully determine it — so it's an anon
+# target: buildroots with different install sets but the same extra packages share one
+# repodata build, same as the buildroot itself is shared (see _buildroot).
+_extra_repository = anon_rule(
+    impl = _extra_repository_impl,
+    attrs = {
+        "distribution": attrs.dep(providers = [DistributionInfo]),
+        "packages": attrs.list(attrs.source()),
+    },
+    artifact_promise_mappings = {
+        "repo": lambda p: p[_ExtraRepoInfo].repo,
+    },
+)
+
 _BuildrootInfo = provider(
     doc = "The assembled buildroot tree, carried out of the anon target for its `root` promise.",
     fields = {"root": provider_field(Artifact)},
@@ -189,6 +229,20 @@ def _buildroot_impl(ctx: AnalysisContext) -> list[Provider]:
     fmt = distribution.package_format
     engine = distribution.engine
 
+    # Action 0 (self-hosting only) — createrepo our own build outputs (the locked
+    # buildroot_deps' rpms dirs) into a local extra-packages repo, via a nested anon target so
+    # buildroots with different install sets but identical extra packages share it. Its lower
+    # priority number outranks the upstream repos, so the plan takes our build for any cap we
+    # provide — even when upstream carries a newer NEVRA we didn't import yet.
+    extra_repo = None
+    if ctx.attrs.extra_packages:
+        extra_repo = ctx.actions.anon_target(_extra_repository, {
+            "name": "//extra-repository:{}".format(ctx.attrs.distribution.label.name),
+            "distribution": ctx.attrs.distribution,
+            "packages": ctx.attrs.extra_packages,
+        }).artifact("repo")
+        extra_repo = ctx.actions.assert_short_path(extra_repo, short_path = "repo")
+
     # Action 1 — plan: resolve the closure over the repos' repodata → a transaction.
     # Re-runs on any repodata change, but its output is stable unless *this* closure changed.
     tx = ctx.actions.declare_output("transaction.json")
@@ -198,16 +252,23 @@ def _buildroot_impl(ctx: AnalysisContext) -> list[Provider]:
         "--out",
         tx.as_output(),
     )
+    if extra_repo != None:
+        # Our builds resolve as a local file:// repo; download (Action 2) reads the rpms in place.
+        plan.add("--repo", cmd_args(extra_repo, format = "extra={}"))
+        plan.add("--baseurl", cmd_args(extra_repo, format = "extra=file://{}"))
+        plan.add("--priority", "extra={}".format(_EXTRA_REPO_PRIORITY))
     for repository in repos:
         plan.add("--repo", cmd_args(repository.dir, format = repository.id + "={}"))
         plan.add("--baseurl", "{}={}".format(repository.id, repository.baseurl))
+        plan.add("--priority", "{}={}".format(repository.id, repository.priority))
         plan.add("--cache", distribution.solv_caches[repository.id])
     for cap in ctx.attrs.install:
         plan.add("--install", cap)
     ctx.actions.run(plan, category = "plan")
 
-    # Action 2 — download the resolved transaction.
-    closure = download_closure(ctx, tx)
+    # Action 2 — download the resolved transaction (extra-packages rpms are projected in
+    # place from their rpms dirs instead of fetched).
+    closure = download_closure(ctx, tx, extra_packages = ctx.attrs.extra_packages)
 
     # Action 3 — install that closure into a fresh root (it's already the exact set).
     # Cuts off when the closure is unchanged.
@@ -233,20 +294,24 @@ _buildroot = anon_rule(
     attrs = {
         "distribution": attrs.dep(providers = [DistributionInfo]),
         "install": attrs.list(attrs.string()),
+        "extra_packages": attrs.list(attrs.source(), default = []),
     },
     artifact_promise_mappings = {
         "root": lambda p: p[_BuildrootInfo].root,
     },
 )
 
-def assemble_root(ctx: AnalysisContext, distribution: Dependency, install: list[str]) -> Artifact:
+def assemble_root(ctx: AnalysisContext, distribution: Dependency, install: list[str], extra_packages: list[Artifact] = []) -> Artifact:
     """Assemble a buildroot via the shared `_buildroot` anon target, returning its tree.
 
     `distribution` is the dep (not its DistributionInfo) so the anon target keys on it;
     `install` is sorted so equal sets share regardless of the order the caller assembled
-    base + BuildRequires in. The tree's short path is the anon output's own (`root`) — a
-    shared target can't take a per-caller name; `assert_short_path` just pins it so the
-    promise is usable before the anon target is analyzed.
+    base + BuildRequires in. `extra_packages` is the rpms dirs of our own builds that outrank
+    the upstream repos (empty for a pure-seed buildroot); it keys the anon target too, so
+    distinct sets don't collide but identical (distribution, install, extra_packages) triples
+    still share. The tree's short path is the anon output's own (`root`) — a shared target
+    can't take a per-caller name; `assert_short_path` just pins it so the promise is usable
+    before the anon target is analyzed.
     """
     root = ctx.actions.anon_target(_buildroot, {
         # A friendlier log label than the default `anon//:_buildroot@<hash>`. Derived
@@ -255,5 +320,6 @@ def assemble_root(ctx: AnalysisContext, distribution: Dependency, install: list[
         "name": "//buildroot:{}".format(distribution.label.name),
         "distribution": distribution,
         "install": sorted(install),
+        "extra_packages": extra_packages,
     }).artifact("root")
     return ctx.actions.assert_short_path(root, short_path = "root")

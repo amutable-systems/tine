@@ -487,7 +487,12 @@ consumes it as a static graph and never runs buckify. It is **two programs**:
 
 The bullets below — build-driven lock discovery, cycle/SCC handling, provider
 tie-break pins, Provides-drift checks, `import`/`refresh` — are **roadmap, not yet
-implemented** (only `resolve` exists today).
+implemented**. Today `resolve` exists, plus an interim **static self-host lock**: `rpm_branch`
+(`rpmjson.bzl`) computes per-branch `buildroot_deps` from the importer's srcpkg.json metadata —
+provides = binary names ∪ `Provides` ∪ file lists; X build-depends on P iff X's BuildRequires
+intersect P's provides; SCC-condensed to a DAG, with intra-cycle caps falling back to the
+upstream seed — so a buildroot prefers our own builds wherever an acyclic order exists (see the
+build actions below).
 - **Build-driven lock discovery.** The BUCK file is always dep-free (edges live
   in the lock). buckify loops `buck2 build :pkg[br]`: the rule assembles the
   real buildroot from the current lock and runs `rpmbuild -br`; on exit 11 it
@@ -715,17 +720,22 @@ the subpackage), while the **buildroot installs only that subpackage + its
 runtime closure**, not the provider's other subpackages.
 
 The build is four actions, each bound to the **distribution** target (its
-plan/install/build drivers, run in the engine root):
+plan/install/build drivers, run in the engine root). A package with `buildroot_deps` (the
+self-host lock) additionally prepends an **extra-packages repo**: a nested `_extra_repository`
+anon target createrepos the deps' rpms dirs into a local `file://` repo, shared on
+`(distribution, extra_packages)` like the buildroot itself.
 
 - **Action 1 — plan** (`distribution.plan`, `plan.py`): resolve the buildroot install
   set — the seed buildroot base + X's `BuildRequires` — via libdnf5 over the
   distribution's `remote_repository` (its pinned repodata snapshot, loaded as a
   `file://` repo, **no weak deps** — `install_weak_deps=False`), and write each
   resolved package's `{url, sha256, size}` (url at the repo's real baseurl) to a sorted
-  `transaction.json`. Re-runs on any repodata change, but its output is byte-stable
-  unless *this* buildroot's closure actually changed. Each repo's metadata XML is
-  parsed **once per distribution, not once per plan**: the distribution target
-  prebuilds the repo's libdnf5 `.solv` cache as an artifact (`plan make-cache`, in
+  `transaction.json`. Repos carry dnf **priorities** (lower wins): the extra-packages
+  repo gets 50 vs the upstream 99, so our own build is taken even when upstream
+  carries a newer NEVRA we didn't import yet. Re-runs on any repodata change, but its
+  output is byte-stable unless *this* buildroot's closure actually changed. Each repo's
+  metadata XML is parsed **once per distribution, not once per plan**: the distribution
+  target prebuilds the repo's libdnf5 `.solv` cache as an artifact (`plan make-cache`, in
   the engine root) and every plan seeds its ephemeral cachedir from it (libdnf5's
   root-cache clone, pointed at the seeds via `system_cachedir`); a missed seed just
   falls back to the parse.
@@ -734,7 +744,10 @@ plan/install/build drivers, run in the engine root):
   sha256) into a content-based-path output, symlinked into `closure/`. Only the
   resolved subset is fetched, keyed on the transaction alone — so a rpm shared by
   many buildroots is downloaded once and stored once, and an unrelated repodata
-  change doesn't perturb the buildroot.
+  change doesn't perturb the buildroot. Extra-packages rpms arrive as `file://` URLs
+  and are projected in place from the originating rpms dir instead of fetched (the
+  extra repo's `location_href`s carry the dir index — its own tree is an anon promise
+  artifact, which buck cannot project).
 - **Action 3 — assemble** (`distribution.install`, `install.py`): `add_cmdline_packages`
   the downloaded closure into `installroot` → `Transaction::run()` (the closure
   is already the exact set — no repo resolution, no network), at the **fixed
@@ -748,10 +761,10 @@ plan/install/build drivers, run in the engine root):
   would otherwise defeat early cutoff). Runs via `chroot_run` in the engine
   root, with the new buildroot as `--installroot`; `%post`/scriptlets run chrooted
   in it. (Buildroot assembly — Actions 1-3 — is a shared `anon_target` keyed on
-  `(distribution, sorted install set)`: consumers with the same buildroot collapse to
-  one analysis + one build, not just an action-cache hit. Deduping *different* install
-  requests that happen to resolve to the *same* closure — via content-based-path outputs
-  on the closure — remains a **future** refinement.)
+  `(distribution, sorted install set, extra_packages)`: consumers with the same buildroot
+  collapse to one analysis + one build, not just an action-cache hit. Deduping *different*
+  install requests that happen to resolve to the *same* closure — via content-based-path
+  outputs on the closure — remains a **future** refinement.)
 - **Action 4 — build** (`distribution.build`, `build.py`): rpmbuild runs from the
   buildroot's own tools — a sandbox *nested* in the engine root. rpmbuild resolves
   every `Source`/`Patch` to `%{_sourcedir}/<basename>` (always basename, the URL

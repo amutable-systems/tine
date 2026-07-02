@@ -14,12 +14,16 @@ RepoInfo = provider(
         "packages": provider_field(list[Artifact]),
         "manifest": provider_field(typing.Any, default = None),  # the authored {id, baseurl} JSON (remote repos; refresh input)
         "baseurl": provider_field(str, default = ""),
+        # dnf semantics: lower number wins; 99 is libdnf's default.
+        "priority": provider_field(int, default = 99),
     },
 )
 
-def _download_closure(actions: AnalysisActions, tx: ArtifactValue, closure: OutputArtifact) -> list[Provider]:
-    # Dynamic: the resolved set is only known once the transaction exists. Fetch rpms into
-    # content-based output for global sharing. The closure is a symlink tree.
+def _download_closure(actions: AnalysisActions, tx: ArtifactValue, closure: OutputArtifact, extra_packages: list[Artifact]) -> list[Provider]:
+    # Dynamic: the resolved set is only known once the transaction exists. Each rpm is fetched
+    # from the remote repo (https → content-addressed download_file, shared across closures) or
+    # taken from our own builds (file:// → already local, projected in place). The closure is a
+    # symlink tree.
     entries = tx.read_json()
 
     # The engine lock doubles as a transaction and its unlocked seed is `{}` (an object,
@@ -30,9 +34,16 @@ def _download_closure(actions: AnalysisActions, tx: ArtifactValue, closure: Outp
     rpms = {}
     for entry in entries:
         name = entry["url"].rsplit("/", 1)[-1]
-        out = actions.declare_output("rpm", name, has_content_based_path = True)
-        actions.download_file(out, entry["url"], sha256 = entry["sha256"], size_bytes = entry["size"])
-        rpms[name] = out
+        if entry["url"].startswith("file://"):
+            # An extra-packages rpm: its location_href is <dir-index>/<name> (see createrepo's
+            # --packages-dir), naming the originating rpms dir — the repo's own tree is a promise
+            # artifact, which buck can't project.
+            idx = entry["url"].rsplit("/", 2)[-2]
+            rpms[name] = extra_packages[int(idx)].project(name)
+        else:
+            out = actions.declare_output("rpm", name, has_content_based_path = True)
+            actions.download_file(out, entry["url"], sha256 = entry["sha256"], size_bytes = entry["size"])
+            rpms[name] = out
     actions.symlinked_dir(closure, rpms)
     return []
 
@@ -41,14 +52,21 @@ _download = dynamic_actions(
     attrs = {
         "tx": dynattrs.artifact_value(),
         "closure": dynattrs.output(),
+        "extra_packages": dynattrs.value(list[Artifact]),  # our-build rpms dirs (may be empty)
     },
 )
 
-def download_closure(ctx: AnalysisContext, tx: Artifact) -> Artifact:
+def download_closure(ctx: AnalysisContext, tx: Artifact, extra_packages: list[Artifact] = []) -> Artifact:
     """Download the transaction `tx` ([{url, sha256, size}]) into a symlink-tree dir.
 
     Lazy (only this closure's subset), shared (each rpm downloaded once, content-addressed),
-    dynamic (the resolved set isn't known until the transaction is built)."""
+    dynamic (the resolved set isn't known until the transaction is built). `extra_packages`
+    is the rpms dirs of our own builds; their rpms resolve as file:// URLs and are projected
+    in place instead of fetched."""
     closure = ctx.actions.declare_output("install.closure", dir = True)
-    ctx.actions.dynamic_output_new(_download(tx = tx, closure = closure.as_output()))
+    ctx.actions.dynamic_output_new(_download(
+        tx = tx,
+        closure = closure.as_output(),
+        extra_packages = extra_packages,
+    ))
     return closure

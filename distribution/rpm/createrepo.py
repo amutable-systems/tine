@@ -36,16 +36,18 @@ def _link_or_copy(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
-def createrepo(packages: list[Path], out: Path, revision: str) -> None:
+def createrepo(entries: list[tuple[str, Path]], out: Path, revision: str) -> None:
     out.mkdir(parents=True, exist_ok=True)
-    rpms = sorted(packages)
-    if not rpms:
+    entries = sorted(entries)
+    if not entries:
         raise SystemExit("no packages given")
 
     # libdnf5 resolves each package's location_href relative to the repo baseurl,
-    # so the rpms must live in the repo dir next to repodata/.
-    for rpm in rpms:
-        _link_or_copy(rpm, out / rpm.name)
+    # so the rpms live in the repo dir (under their href) next to repodata/.
+    for href, rpm in entries:
+        dst = out / href
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        _link_or_copy(rpm, dst)
 
     repodata = out / "repodata"
     repodata.mkdir(exist_ok=True)
@@ -53,10 +55,10 @@ def createrepo(packages: list[Path], out: Path, revision: str) -> None:
     paths = {name: str(repodata / f"{name}.xml.gz") for name, _ in _STREAMS}
     writers = {name: cls(paths[name]) for name, cls in _STREAMS}
     for w in writers.values():
-        w.set_num_of_pkgs(len(rpms))
-    for rpm in rpms:
+        w.set_num_of_pkgs(len(entries))
+    for href, rpm in entries:
         pkg = cr.package_from_rpm(str(rpm))
-        pkg.location_href = rpm.name
+        pkg.location_href = href
         for w in writers.values():
             w.add_pkg(pkg)
     for w in writers.values():
@@ -73,20 +75,33 @@ def createrepo(packages: list[Path], out: Path, revision: str) -> None:
         repomd.set_record(rec)
     (repodata / "repomd.xml").write_text(repomd.xml_dump())
 
-    print(f"createrepo: {len(rpms)} packages → {out}", file=sys.stderr)
+    print(f"createrepo: {len(entries)} packages → {out}", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="createrepo")
+    p.add_argument("--package", action="append", default=[], help="an rpm to publish; repeatable")
     p.add_argument(
-        "--package", action="append", default=[], required=True, help="an rpm to publish; repeatable"
+        "--packages-dir",
+        action="append",
+        default=[],
+        help="a dir whose *.rpm (excluding .src.rpm) are published under <dir-index>/; repeatable",
     )
     p.add_argument("--out", required=True, help="output repo dir (rpms + repodata/)")
     args = p.parse_args(argv)
+    entries = [(Path(p).name, Path(p).resolve()) for p in args.package]
+    # Keyed by dir index so a consumer can map a resolved location back to the input dir it
+    # came from (buck's dynamic download projects the rpm from there).
+    for i, d in enumerate(args.packages_dir):
+        entries += [
+            (f"{i}/{p.name}", p)
+            for p in sorted(Path(d).resolve().glob("*.rpm"))
+            if not p.name.endswith(".src.rpm")
+        ]
     # Injected by the sandbox via --source-date-epoch; default keeps the tool
     # runnable standalone.
     revision = os.environ.get("SOURCE_DATE_EPOCH", "0")
-    createrepo([Path(p).resolve() for p in args.package], Path(args.out).resolve(), revision)
+    createrepo(entries, Path(args.out).resolve(), revision)
 
 
 if __name__ == "__main__":
