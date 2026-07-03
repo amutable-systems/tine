@@ -17,13 +17,12 @@ load(":rpm.bzl", "rpm_package")
 # buildifier: disable=name-conventions  (a record *type*, conventionally UpperCamelCase)
 SrcpkgMetadata = record(
     build_requires = dict[str, list[str]],  # "_all" + per-arch conditional extras
-    # only carried for schema parity, unused
+    # producing build arch → pkgname → {Files, Requires, Recommends, Provides}
     binaries = dict,
     sources = list[dict[str, str]],
     version = str,
     release = str,
     dist = str,
-    subpackages = list[str],
     source_date_epoch = int,
 )
 
@@ -68,7 +67,8 @@ def rpm_package_json(package: str, distribution: str, meta: dict) -> None:
         release = m.release,
         dist = m.dist,
         source_date_epoch = m.source_date_epoch,
-        subpackages = m.subpackages,
+        # drives the sub-targets + fidelity gate
+        subpackages = sorted(m.binaries[_ARCH]),
         build_requires = _build_requires(meta),
     )
 
