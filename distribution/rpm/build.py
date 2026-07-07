@@ -126,11 +126,6 @@ def _emit_subpackages(pairs: list[str], produced: dict[str, Path]) -> None:
     keeps its rpm from matching a shorter name's pattern. A second rpm claiming an
     already-matched name falls through to the `unexpected` set and trips the gate.
     """
-    # rpm auto-generates a -debuginfo per binary-bearing subpackage + a -debugsource; which
-    # subpackages carry ELF can't be known when sub-targets are declared, so they aren't. Here
-    # (post-build) we have the real rpms: keep them in --out but drop them from the gate, which
-    # only enforces the declared %package set.
-    produced = {f: p for f, p in produced.items() if not re.search(r"-debug(info|source)-", f)}
     declared = dict(p.split("=", 1) for p in pairs)
     names_by_len = sorted(declared, key=len, reverse=True)
     patterns = {name: re.compile(rf"^{re.escape(name)}-[^-]+-[^-]+\.[^.]+\.rpm$") for name in declared}
@@ -143,10 +138,17 @@ def _emit_subpackages(pairs: list[str], produced: dict[str, Path]) -> None:
                     matched[name] = fname
                 break
 
-    # Gate on BOTH directions: a declared subpackage with no rpm, AND any
-    # produced rpm matching no declared name (e.g. an unpredicted -debuginfo).
+    # Gate on BOTH directions: a declared subpackage with no rpm, AND any produced rpm matching no
+    # declared name. rpm auto-generates a -debuginfo per binary-bearing subpackage plus a
+    # -debugsource; which subpackages carry ELF can't be known when the sub-targets are declared, so
+    # they aren't declared, and are tolerated here — but only on the produced-but-not-declared side.
+    # We must not pre-drop them from `produced`: an explicitly declared package whose name merely
+    # contains that substring (the kernel's kernel-debuginfo-common-<arch>) has to match a declared
+    # name normally, else the gate reports it falsely missing.
     missing = sorted(set(declared) - set(matched))
-    unexpected = sorted(f for f in produced if f not in set(matched.values()))
+    unexpected = sorted(
+        f for f in produced if f not in set(matched.values()) and not re.search(r"-debug(info|source)-", f)
+    )
     if missing or unexpected:
         raise SystemExit(
             "subpackage fidelity gate failed:\n"
