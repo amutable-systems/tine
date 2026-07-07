@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""plan — Action 1: resolve a buildroot's package closure over the upstream repo.
+"""plan — Action 1: resolve a package closure over the upstream repo.
 
 Runs *inside* the engine root. Loads each repository's pinned `repodata/`
 (--repo id=dir, a `file://` metadata-only tree), resolves the requested install set's
@@ -9,9 +9,17 @@ repo's real remote baseurl (--baseurl id=url) + the package's location, and the 
 straight from the repodata (size lets download_file skip buck's HEAD probe). `download` (Action 2)
 then fetches exactly this subset.
 
+Two resolution bases: against an empty root (a fresh buildroot / a base image
+layer), or — with `--lower` — against an existing installed tree (a child image
+layer installing *more* packages). For the latter the parent's delta stack is
+overlay-merged read-only (an ephemeral upper, never captured) and used as the
+installroot, so libdnf5 loads its rpmdb as the system repo and resolves
+incrementally: the transaction lists only the *inbound* packages, with
+already-installed ones satisfying dependencies instead of reappearing.
+
 Only metadata is read here (no packages downloaded), so it re-runs whenever a repo's
-repodata changes — but the transaction is byte-identical unless *this* buildroot's resolved
-closure actually changed, so the download + buildroot cut off rather than rebuilding.
+repodata changes — but the transaction is byte-identical unless *this* closure actually
+changed, so the download + install cut off rather than rebuilding.
 
 Also the engine-closure resolver (reindeer-style, run on refresh, NOT during builds):
 an engine's `[resolve]` sub-target binds this same driver — inside that engine, over
@@ -29,11 +37,13 @@ cachedir from those (`--cache`), so the XML is parsed once per repo, not once pe
 import argparse
 import json
 import sys
+from contextlib import ExitStack
 from pathlib import Path
 
 import libdnf5
 import libdnf5.comps
 import libdnf5.conf
+import rootfs
 
 # Providers we never want in a closure: 32-bit multilib duplicates. The resolution arch
 # is pinned, so a 32-bit provider in the transaction means the solve went wrong; fail
@@ -44,6 +54,7 @@ MULTILIB_ARCHES = ("i686", "i386", "i586")
 def load_base(
     repos: list[tuple[str, Path, int]],
     cachedir: Path,
+    installroot: Path | None,
     arch: str,
     seeds: list[Path] | None = None,
 ) -> libdnf5.base.Base:
@@ -60,6 +71,8 @@ def load_base(
     cfg = base.get_config()
     cfg.cachedir = str(cachedir)
     cfg.install_weak_deps = False
+    if installroot is not None:
+        cfg.installroot = str(installroot)
     if seeds:
         # One system_cachedir holding every seed's `<id>-<hash>` subdir, by symlink —
         # libdnf5 only ever copies *out* of it, so read-only buck outputs are fine.
@@ -93,7 +106,11 @@ def load_base(
         # dnf semantics: lower number wins, across versions -- an outranking repo's package is
         # taken even when another repo carries a newer NEVRA (how our own builds beat upstream).
         rc.get_priority_option().set(priority)
-    sack.load_repos(libdnf5.repo.Repo.Type_AVAILABLE)
+    if installroot is not None:
+        # The installroot's rpmdb too, so installed packages provide instead of re-resolving.
+        sack.load_repos()
+    else:
+        sack.load_repos(libdnf5.repo.Repo.Type_AVAILABLE)
     return base
 
 
@@ -101,10 +118,13 @@ def plan(
     repos: list[tuple[str, Path, str, int]],
     install: list[str],
     cachedir: Path,
+    installroot: Path | None,
     arch: str,
     seeds: list[Path],
 ) -> list[dict[str, str | int]]:
-    base = load_base([(rid, path, priority) for rid, path, _, priority in repos], cachedir, arch, seeds)
+    base = load_base(
+        [(rid, path, priority) for rid, path, _, priority in repos], cachedir, installroot, arch, seeds
+    )
 
     # id -> real remote baseurl, so a resolved package's location becomes a download URL.
     baseurls = {rid: url.rstrip("/") + "/" for rid, _, url, _ in repos}
@@ -122,8 +142,12 @@ def plan(
     if problems:
         raise SystemExit("plan resolution failed:\n  " + "\n  ".join(problems))
 
+    # The inbound half of the transaction: outbound/kept items (REPLACED, REASON_CHANGE —
+    # possible only when resolving against an installroot) aren't packages to download.
     resolved = []
     for tp in tx.get_transaction_packages():
+        if not libdnf5.transaction.transaction_item_action_is_inbound(tp.get_action()):
+            continue
         pkg = tp.get_package()
         if pkg.get_arch() in MULTILIB_ARCHES:
             raise SystemExit(f"refusing multilib package {pkg.get_nevra()} (32-bit in a {arch} closure)")
@@ -177,6 +201,12 @@ def main(argv: list[str] | None = None) -> None:
         "--install", action="append", default=[], required=True, help="package/cap to install"
     )
     solve.add_argument(
+        "--lower",
+        action="append",
+        default=[],
+        help="installed-tree delta (bottom..top); resolve against the merge instead of empty",
+    )
+    solve.add_argument(
         "--cache",
         action="append",
         default=[],
@@ -205,7 +235,7 @@ def main(argv: list[str] | None = None) -> None:
         out = Path(args.out).resolve()
         out.mkdir(parents=True, exist_ok=True)
         # The priority only orders the solve; any value caches the same.
-        load_base([(rid, Path(d).resolve(), 99) for rid, d in dirs.items()], out, args.arch)
+        load_base([(rid, Path(d).resolve(), 99) for rid, d in dirs.items()], out, None, args.arch)
         print(f"plan: cached {len(dirs)} repo(s)", file=sys.stderr)
         return
 
@@ -218,7 +248,13 @@ def main(argv: list[str] | None = None) -> None:
     repos = [(rid, Path(d).resolve(), urls[rid], int(priorities.get(rid, "99"))) for rid, d in dirs.items()]
     seeds = [Path(c).resolve() for c in args.cache]
 
-    tx = plan(repos, args.install, Path(args.cachedir), args.arch, seeds)
+    with ExitStack() as stack:
+        installroot = None
+        if args.lower:
+            # No upperdir: an ephemeral upper, so libdnf5's cache writes into the
+            # installroot land in scratch and the merge is effectively read-only.
+            installroot = stack.enter_context(rootfs.rootfs("/installroot", lowers=args.lower))
+        tx = plan(repos, args.install, Path(args.cachedir), installroot, args.arch, seeds)
     # Explicit encoding/newline: the `[resolve]` binding commits this output as the
     # engine lock, so it must be byte-identical regardless of locale or platform.
     Path(args.out).write_text(json.dumps(tx, indent=2) + "\n", encoding="utf-8", newline="\n")

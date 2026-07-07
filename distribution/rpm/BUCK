@@ -23,10 +23,10 @@ python_bootstrap_binary(name = "install", main = "install.py", deps = ["//distri
 python_bootstrap_binary(name = "createrepo", main = "createrepo.py")
 
 # plan doubles as the engine-closure resolver and the repo-cache prebuilder: builds
-# bind it per buildroot (seeded from make-cache outputs), and an engine's
+# bind it per buildroot/layer (seeded from make-cache outputs), and an engine's
 # `[resolve]` sub-target binds it at refresh to re-solve the lock (the engine lock is
 # a plan transaction).
-python_bootstrap_binary(name = "plan", main = "plan.py")
+python_bootstrap_binary(name = "plan", main = "plan.py", deps = ["//distribution:rootfs_lib"])
 python_bootstrap_binary(name = "build", main = "build.py", deps = [":util", "//distribution:rootfs_lib"])
 
 # The lock generator: snapshot pins one repository's repodata — pure fetch-and-filter

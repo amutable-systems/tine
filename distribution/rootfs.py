@@ -33,6 +33,7 @@ import stat
 import tempfile
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
+from enum import Enum, auto
 from pathlib import Path
 
 from mkosi.sandbox import (
@@ -48,6 +49,7 @@ from mkosi.sandbox import chroot as _chroot  # the `chroot=` kwarg below shadows
 _WH = ".wh."  # `.wh.<name>`: a whiteout hiding <name> from lower layers
 _OPAQUE = ".wh..wh..opq"  # marks its parent dir opaque (hide everything below it)
 _ESC = ".esc."  # `.esc.<escaped>`: a name buck can't store, percent-escaped
+_OPAQUE_XATTR = b"user.overlay.opaque"  # an opaque dir's native form (userxattr namespace)
 
 
 # ---- OCI delta <-> native overlay translation ----------------------------------------------
@@ -69,6 +71,34 @@ def _unescape(name: str) -> str:
     return name.removeprefix(_ESC).replace("%5C", "\\").replace("%25", "%")
 
 
+class _Kind(Enum):
+    """What a stored delta entry means once decoded."""
+
+    NORMAL = auto()  # a plain entry, carried through under its true name
+    WHITEOUT = auto()  # deletes the payload name from lower layers
+    OPAQUE = auto()  # marks its parent dir opaque
+
+
+def _classify(name: str) -> tuple[_Kind, str]:
+    """Decode one stored delta entry name into (kind, payload): the whited-out target for
+    WHITEOUT, "" for OPAQUE, the entry's true (unescaped) name for NORMAL. `.esc.` wrapping
+    is undone first, so an escaped whiteout still classifies as a whiteout. The single
+    decoder for the OCI-marker vocabulary — `_thaw` and `_markers` both route through it."""
+    true = _unescape(name) if name.startswith(_ESC) else name
+    if true == _OPAQUE:
+        return _Kind.OPAQUE, ""
+    if true.startswith(_WH):
+        return _Kind.WHITEOUT, true[len(_WH) :]
+    return _Kind.NORMAL, true
+
+
+def _whiteout_marker(name: str) -> str:
+    """Encode a whiteout of `name` as its stored marker filename: `.wh.` + the name, then
+    escaped (the target name may itself be unstorable). The encode inverse of `_classify`'s
+    WHITEOUT case; `capture` writes this."""
+    return _escape(_WH + name)
+
+
 def _whiteout(directory: Path, name: str) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     os.mknod(str(directory / name), stat.S_IFCHR | 0o600, os.makedev(0, 0))
@@ -84,13 +114,13 @@ def _thaw(src: Path, dst: Path) -> None:
         return
     dst.mkdir(mode=stat.S_IMODE(src.lstat().st_mode))
     for child in src.iterdir():
-        name = _unescape(child.name) if child.name.startswith(_ESC) else child.name
-        if name == _OPAQUE:
-            os.setxattr(str(dst), b"user.overlay.opaque", b"y")
-        elif name.startswith(_WH):
-            _whiteout(dst, name[len(_WH) :])
+        kind, payload = _classify(child.name)
+        if kind is _Kind.OPAQUE:
+            os.setxattr(str(dst), _OPAQUE_XATTR, b"y")
+        elif kind is _Kind.WHITEOUT:
+            _whiteout(dst, payload)
         else:
-            _thaw(child, dst / name)
+            _thaw(child, dst / payload)
     shutil.copystat(src, dst, follow_symlinks=False)
 
 
@@ -111,24 +141,21 @@ def _markers(delta: Path, dest: Path) -> tuple[Path | None, Path | None]:
         rel = p.parent.relative_to(delta)
         if any(part.startswith(_ESC) for part in rel.parts):
             continue  # inside an escaped dir: thawed wholesale when its ancestor was hit
-        if p.name == _OPAQUE:
+        kind, payload = _classify(p.name)
+        if kind is _Kind.OPAQUE:
             opaque = below / rel
             opaque.mkdir(parents=True, exist_ok=True)
-            os.setxattr(str(opaque), b"user.overlay.opaque", b"y")
-            _whiteout(above / rel, _OPAQUE)  # hide the marker file itself
+            os.setxattr(str(opaque), _OPAQUE_XATTR, b"y")
+            _whiteout(above / rel, p.name)  # hide the marker file itself
             used_above = used_below = True
-        elif p.name.startswith(_ESC):
-            name = _unescape(p.name)
-            if name.startswith(_WH):
-                _whiteout(above / rel, name[len(_WH) :])  # an escaped whiteout marker
-            else:
-                (above / rel).mkdir(parents=True, exist_ok=True)
-                _thaw(p, above / rel / name)  # the entry itself, under its true name
-            _whiteout(above / rel, p.name)  # hide the `.esc.` entry itself
+        elif kind is _Kind.WHITEOUT:
+            _whiteout(above / rel, payload)  # whiteout the deleted target
+            _whiteout(above / rel, p.name)  # hide the literal marker file (`.wh.` or `.esc.`)
             used_above = True
-        elif p.name.startswith(_WH):
-            _whiteout(above / rel, p.name[len(_WH) :])  # whiteout the deleted target
-            _whiteout(above / rel, p.name)  # hide the `.wh.` marker file itself
+        elif p.name.startswith(_ESC):  # an escaped normal entry
+            (above / rel).mkdir(parents=True, exist_ok=True)
+            _thaw(p, above / rel / payload)  # materialize it under its true name
+            _whiteout(above / rel, p.name)  # hide the `.esc.` entry itself
             used_above = True
     return (above if used_above else None, below if used_below else None)
 
@@ -151,7 +178,7 @@ def _reconstruct(lowers: list[Path], scratch: Path) -> list[Path]:
 
 def _is_opaque(d: Path) -> bool:
     try:
-        return os.getxattr(str(d), b"user.overlay.opaque") == b"y"
+        return os.getxattr(str(d), _OPAQUE_XATTR) == b"y"
     except OSError:
         return False
 
@@ -176,10 +203,10 @@ def capture(tree: Path) -> None:
         st = p.lstat()
         if stat.S_ISCHR(st.st_mode) and st.st_rdev == 0:
             p.unlink()
-            (p.parent / _escape(_WH + p.name)).write_bytes(b"")
+            (p.parent / _whiteout_marker(p.name)).write_bytes(b"")
             continue
         if stat.S_ISDIR(st.st_mode) and _is_opaque(p):
-            os.removexattr(str(p), b"user.overlay.opaque")
+            os.removexattr(str(p), _OPAQUE_XATTR)
             (p / _OPAQUE).write_bytes(b"")
         escaped = _escape(p.name)
         if escaped != p.name:
@@ -189,9 +216,9 @@ def capture(tree: Path) -> None:
 # ---- root setup ----------------------------------------------------------------------------
 
 
-def _bind(src: str | Path, dst: str | Path, *, readonly: bool = False) -> None:
+def _bind(src: str | Path, dst: str | Path) -> None:
     BindOperation(
-        str(src), str(dst), readonly=readonly, required=True, foreign=False, relative=False, nofollow=False
+        str(src), str(dst), readonly=False, required=True, foreign=False, relative=False, nofollow=False
     ).execute()
 
 
@@ -213,7 +240,7 @@ def rootfs(
     target: str | Path,
     *,
     bind: str | Path | None = None,
-    lowers: list[Path] | None = None,
+    lowers: list[str | Path] | None = None,
     upperdir: str | Path | None = None,
     workdir: str | Path | None = None,
     apivfs: bool = False,
@@ -233,8 +260,11 @@ def rootfs(
     target = Path(target)
     with ExitStack() as stack:
         if lowers is not None:
+            # Callers pass buck-out paths relative to the bound cwd; resolve to absolute here
+            # (before any chroot) since the delta walk and overlay mount need real paths.
+            resolved = [Path(lo).resolve() for lo in lowers]
             scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="rootfs.")))
-            components = _reconstruct(lowers, scratch)
+            components = _reconstruct(resolved, scratch)
             if upperdir is not None:
                 # Persisted delta (building a layer): capture the built upper to OCI on exit.
                 if workdir is None:

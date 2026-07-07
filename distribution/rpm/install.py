@@ -1,12 +1,19 @@
 #!/usr/bin/python3
 """install — install a complete set of rpms into a root.
 
-One driver for both the engine-root bootstrap (Action B) and the buildroot
-assembly (Action 3): the input dir is *exactly* the set to install — the seed
-closure for the engine root, the plan's resolved closure for a buildroot — so
-this just cmdline-installs every rpm in --packages-dir into --installroot via libdnf5
-(no resolution against repos, no network), then parks the rpmdb + scrubs so the
-root content-keys deterministically (SDE injected by the sandbox clamps the rpmdb).
+One driver for the engine-root bootstrap (Action B), the buildroot assembly
+(Action 3), and a child image layer's incremental install: the input dir is
+*exactly* the set to install — the seed closure for the engine root, the plan's
+resolved closure otherwise — so this just cmdline-installs every rpm in
+--packages-dir into --installroot via libdnf5 (no resolution against repos, no
+network), then parks the rpmdb + scrubs so the root content-keys
+deterministically (SDE injected by the sandbox clamps the rpmdb).
+
+Two target shapes: by default --target is a fresh root, bound rw and installed
+into. With --lower (an existing tree as a delta stack, bottom..top), the stack is
+overlay-merged with --target as the persisted upper, so the install lands as this
+layer's *delta* (captured to OCI-changeset form on exit); the rewritten rpmdb
+copies up into the delta, keeping the merged tree's db authoritative.
 
 Runs inside whichever root provides libdnf5: chroot1 (the payload-extracted seed)
 when bootstrapping the engine, the engine root itself when assembling a buildroot.
@@ -29,26 +36,38 @@ DBPATH = "usr/lib/sysimage/rpm"
 BUILDROOT = "/buildroot"
 
 
-def install(rpms_dir: Path, installroot: Path, cachedir: Path) -> None:
+def install(rpms_dir: Path, installroot: Path, cachedir: Path, *, system: bool = False) -> None:
     base = libdnf5.base.Base()
     cfg = base.get_config()
     cfg.installroot = str(installroot)
     cfg.cachedir = str(cachedir)
     cfg.install_weak_deps = False
-    cfg.gpgcheck = False
+    # No signature verification: the seed's own sha256 pins integrity. `gpgcheck` is the deprecated
+    # repo option; the checks that actually gate a `Transaction::run()` are pkg_gpgcheck (repo
+    # packages) and localpkg_gpgcheck (command-line packages — what add_cmdline_packages feeds), the
+    # pair dnf5's --nogpgcheck sets.
+    cfg.pkg_gpgcheck = False
+    cfg.localpkg_gpgcheck = False
     base.setup()
 
     sack = base.get_repo_sack()
     paths = [str(p) for p in sorted(rpms_dir.glob("*.rpm"))]
     sack.add_cmdline_packages(paths)
+    if system:
+        # An incremental install: load the existing tree's rpmdb so the increment's
+        # dependencies on already-installed packages resolve (a fresh root has no db).
+        sack.load_repos(libdnf5.repo.Repo.Type_SYSTEM)
 
-    # Install everything: the dir is already the exact set, so there's nothing to
-    # resolve against repos. With no repos loaded, a bare query is exactly the
-    # cmdline packages we just added.
+    # Install everything from the dir — it's already the exact set, so there's nothing
+    # to resolve against repos. The query is scoped to the cmdline packages we just
+    # added (with only the system repo besides, everything else is already installed).
+    query = libdnf5.rpm.PackageQuery(base)
+    if system:
+        query.filter_repo_id(["@commandline"])
     goal = libdnf5.base.Goal(base)
     # SWIG makes the query iterable at runtime but ty can't see __iter__; the
     # annotation restores the element type so the loop body type-checks.
-    packages: list[libdnf5.rpm.Package] = list(libdnf5.rpm.PackageQuery(base))  # ty: ignore
+    packages: list[libdnf5.rpm.Package] = list(query)  # ty: ignore
     for pkg in packages:
         goal.add_rpm_install(pkg)
     tx = goal.resolve()
@@ -116,6 +135,13 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="install")
     p.add_argument("--packages-dir", required=True, help="the complete set of packages to install")
     p.add_argument("--target", required=True, help="output root dir; bound at /buildroot to install into")
+    p.add_argument(
+        "--lower",
+        action="append",
+        default=[],
+        help="existing-tree delta (bottom..top); --target becomes the install's overlay upper",
+    )
+    p.add_argument("--work", help="throwaway overlay workdir (required with --lower)")
     p.add_argument("--cachedir", default="/var/tmp/install-cache")
     p.add_argument("--resolv-symlink", action="store_true", help="add /etc/resolv.conf (engine root only)")
     p.add_argument("--no-parkdb", action="store_true")
@@ -127,25 +153,39 @@ def main(argv: list[str] | None = None) -> None:
     target.mkdir(parents=True, exist_ok=True)
     packages_dir = Path(args.packages_dir).resolve()
 
-    with rootfs.rootfs(BUILDROOT, bind=target, apivfs=True):
+    incremental = bool(args.lower)
+    if incremental:
+        if args.work is None:
+            raise SystemExit("--lower needs a --work overlay workdir")
+        root = rootfs.rootfs(
+            BUILDROOT, lowers=args.lower, upperdir=target, workdir=Path(args.work).resolve(), apivfs=True
+        )
+    else:
+        root = rootfs.rootfs(BUILDROOT, bind=target, apivfs=True)
+
+    with root:
         installroot = Path(BUILDROOT)
 
         # set fixed machine-id; systemd %post otherwise initializes a fresh random one
-        # into every buildroot, which breaks re-usability in buck
+        # into every root, which breaks re-usability in buck
         etc = installroot / "etc"
         etc.mkdir(exist_ok=True)
         (etc / "machine-id").write_text("uninitialized\n")
 
-        install(packages_dir, installroot, Path(args.cachedir))
+        install(packages_dir, installroot, Path(args.cachedir), system=incremental)
         if not args.no_parkdb:
             parkdb(installroot)
         scrub(installroot)
         if args.resolv_symlink:
             resolv_symlink(installroot)
 
-    # The assembled root is stored as-is, so escape any name buck can't store (systemd's
-    # `\x2d`-escaped unit files) — after teardown, so the walk doesn't descend into apivfs mounts.
-    rootfs.capture(target)
+    if not incremental:
+        # A fresh full root is stored as-is (the --lower upper was captured by rootfs on
+        # teardown), so escape any name buck can't store — after teardown, so the walk
+        # doesn't descend into the apivfs mounts. Mounts that *don't* thaw (the engine
+        # root under --tools) see such names escaped; the engine package set is curated,
+        # so none arise there today.
+        rootfs.capture(target)
 
 
 if __name__ == "__main__":

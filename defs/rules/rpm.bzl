@@ -8,7 +8,7 @@ A catalog BUCK composes them package-relative: a distribution names its engine a
 repository sibling targets.
 """
 
-load(":distribution.bzl", "DistributionInfo", "assemble_root", "distribution", "remote_repository")
+load(":distribution.bzl", "DistributionInfo", "distribution", "install_packages", "remote_repository")
 load(":engine.bzl", "chroot_run", engine_rule = "engine")  # aliased: `engine` is an arg below
 
 _RPM_PACKAGE_FORMAT = "@tine//distribution/rpm:package_format"
@@ -56,7 +56,7 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     # into the buildroot as extra packages, so the resolve prefers our build over Fedora's.
     # These are real buck deps, so the DAG builds them first (the staircase).
     extra_packages = [d[DefaultInfo].default_outputs[0] for d in ctx.attrs.buildroot_deps]
-    buildroot = assemble_root(
+    buildroot = install_packages(
         ctx,
         ctx.attrs.distribution,
         distribution.buildroot_base_packages + ctx.attrs.build_requires,
