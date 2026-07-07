@@ -136,6 +136,10 @@ def main(argv: list[str] | None = None) -> None:
         if args.resolv_symlink:
             resolv_symlink(installroot)
 
+    # The assembled root is stored as-is, so escape any name buck can't store (systemd's
+    # `\x2d`-escaped unit files) — after teardown, so the walk doesn't descend into apivfs mounts.
+    rootfs.capture(target)
+
 
 if __name__ == "__main__":
     main()

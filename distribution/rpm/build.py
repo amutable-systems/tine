@@ -2,10 +2,12 @@
 """build_rpm — Action 4 driver: rpmbuild in an assembled buildroot.
 
 Runs *inside* the engine root (like the install driver) under its python3. It
-stages an rpmbuild %_topdir (SOURCES + the spec), runs rpmbuild in
-the buildroot via the shared sandbox library — a sandbox *nested* inside the
-engine root one, so rpmbuild runs from the buildroot's own pinned tools — then
-collects the produced rpms into the declared output dir.
+stages an rpmbuild %_topdir (SOURCES + the spec), mounts the stored buildroot via
+`rootfs` with the topdir bound at /build, **chroots in** (like the image step
+driver), and runs rpmbuild directly from the buildroot's own pinned tools — no
+nested sandbox: the engine-root sandbox already provides the clean env, userns
+root, and network unshare. Then it collects the produced rpms into the declared
+output dir.
 
 rpmbuild resolves every Source/Patch to %{_sourcedir}/<basename> (the URL is
 reference-only), so we just drop each source into SOURCES/ under its basename.
@@ -13,16 +15,14 @@ reference-only), so we just drop each source into SOURCES/ under its basename.
 """
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-# The sandbox CLI is forked off as a subprocess (via sandbox.__file__) to nest a chroot
-# — the buildroot's own pinned tools — for rpmbuild inside the engine-root one; the
-# module is imported only to locate it in the runtree.
-import sandbox
+import rootfs
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -59,27 +59,34 @@ def main(argv: list[str] | None = None) -> int:
         s = Path(src)
         shutil.copy(s, topdir / "SOURCES" / s.name)
 
-    rc = subprocess.run(
-        [
-            sys.executable, sandbox.__file__,
-            "--tools", args.buildroot,
-            "--bind", f"{topdir}:/build",
-            "--setenv", "HOME=/build",
-            "--source-date-epoch", str(args.source_date_epoch),
-            "--",
-            "/usr/bin/rpmbuild",
-            "--define", "_topdir /build",
-            "--define", f"dist {args.dist}",
-            "--define", "_buildhost reproducible",
-            # Make the BUILDTIME header reproducible: rpm only uses SOURCE_DATE_EPOCH (we
-            # set it via --source-date-epoch) for the build time when this is on — it
-            # defaults off, so otherwise the header gets time(NULL) (rpm build/build.cc
-            # getBuildTime). File mtimes are already clamped to it by redhat-rpm-config.
-            "--define", "use_source_date_epoch_as_buildtime 1",
-            "-ba", "--nocheck", "--noclean",
-            f"/build/SPECS/{spec.name}",
-        ],
-    ).returncode  # fmt: skip
+    # Mount the stored buildroot and chroot in: rpmbuild execs directly from the buildroot's
+    # own pinned tools, with the topdir bound at /build. Stray writes outside /build land in
+    # the throwaway overlay upper. SOURCE_DATE_EPOCH must be the per-package changelog epoch,
+    # overriding the fixed assembly epoch the engine-root sandbox set.
+    env = os.environ | {"HOME": "/build", "SOURCE_DATE_EPOCH": str(args.source_date_epoch)}
+    with rootfs.rootfs(
+        "/buildroot",
+        lowers=[Path(args.buildroot).resolve()],
+        binds=[(topdir, "/build")],
+        apivfs=True,
+        chroot=True,
+    ):
+        rc = subprocess.run(
+            [
+                "/usr/bin/rpmbuild",
+                "--define", "_topdir /build",
+                "--define", f"dist {args.dist}",
+                "--define", "_buildhost reproducible",
+                # Make the BUILDTIME header reproducible: rpm only uses SOURCE_DATE_EPOCH
+                # for the build time when this is on — it defaults off, so otherwise the
+                # header gets time(NULL) (rpm build/build.cc getBuildTime). File mtimes
+                # are already clamped to it by redhat-rpm-config.
+                "--define", "use_source_date_epoch_as_buildtime 1",
+                "-ba", "--nocheck", "--noclean",
+                f"/build/SPECS/{spec.name}",
+            ],
+            env=env,
+        ).returncode  # fmt: skip
     if rc != 0:
         return rc
 
@@ -96,6 +103,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.subpackage:
         _emit_subpackages(args.subpackage, produced)
+
+    # topdir is a declared output (its build tree feeds a later %check target). rpmbuild trees can
+    # hold names buck can't store — systemd's `\x2d`-escaped unit files crash buck's path handling —
+    # so rewrite topdir into buck-storable form with the same capture() the rootfs deltas use; a
+    # later mount via rootfs(lowers=[topdir]) thaws the `.esc.` names back. Runs last, after the rpm
+    # copies above read topdir/RPMS+SRPMS under their real names.
+    rootfs.capture(topdir)
     return 0
 
 

@@ -24,7 +24,7 @@ python_bootstrap_binary(name = "createrepo", main = "createrepo.py")
 # `[resolve]` sub-target binds it at refresh to re-solve the lock (the engine lock is
 # a plan transaction).
 python_bootstrap_binary(name = "plan", main = "plan.py")
-python_bootstrap_binary(name = "build", main = "build.py", deps = ["//distribution:sandbox_lib"])
+python_bootstrap_binary(name = "build", main = "build.py", deps = ["//distribution:rootfs_lib"])
 
 # The lock generator: snapshot pins one repository's repodata — pure fetch-and-filter
 # (stdlib), so it runs on the host, bound per repository with just that repo's
