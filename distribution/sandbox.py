@@ -145,9 +145,16 @@ def main(argv: list[str] | None = None) -> NoReturn:
 
     # Replace the inherited host environment with our clean base: mkosi-sandbox's
     # os.execvp passes the current os.environ to the command (only --setenv layers on
-    # top), so this is what stops the host env leaking in.
+    # top), so this is what stops the host env leaking in. One exception rides through
+    # in bind-cwd mode: buck's per-action scratch dir, which lives under buck-out inside
+    # the cwd bind — real disk (the sandbox's /tmp and /var/tmp are tmpfs), wiped by
+    # `buck clean`, never a declared output. Drivers stage large scratch trees there
+    # (rpmbuild's %_topdir).
+    scratch = os.environ.get("BUCK_SCRATCH_PATH") if args.bind_cwd else None
     os.environ.clear()
     os.environ.update(_BASE_ENV)
+    if scratch:
+        os.environ["BUCK_SCRATCH_PATH"] = scratch
     mkosi.sandbox.main(out)  # calls enter() then os.execvp; never returns
     raise SystemExit(127)  # unreachable; for the type checker
 

@@ -758,20 +758,16 @@ plan/install/build drivers, run in the engine root):
   reference-only — `../rpm/build/parsePreamble.cc:144-153`), so `_topdir` is set to
   a bound scratch dir (`--define "_topdir …"`) and each buck-downloaded source is
   **copied** into `SOURCES/` under its basename. Then `rpmbuild --define
-  "_buildhost reproducible" -ba --nocheck --noclean`; `--nocheck` defers tests,
-  `--noclean` keeps the build tree; exit 11 ⇒ "lock stale, re-run buckify". Outputs:
-  (a) the rpms — **static** sub-targets per subpackage (enumerated via rpmspec +
-  predicted debuginfo, no `dynamic_output`), consumed by dependents and by image
-  assembly; (b) the preserved build-tree + buildroot for the test target.
-- **`:pkg-test` (separate, no rebuild)**: restore the build-tree to the same
-  sandbox `%_topdir` (rpmbuild uses absolute paths; the sandbox gives path
-  stability), reuse the build's buildroot-assembly output (test deps are BRs),
-  run `rpmbuild -bk --short-circuit` → only `%check` (`rpmbuild.cc:664-667`).
-  The rpm doesn't depend on this target → tests never rebuild it and a failure
-  never blocks the artifact; CI gates via `buck2 test`. Tradeoff: cost moves
-  from CPU (rebuild) to build-tree storage/transport (GB-scale; ships to the
-  test worker under RE — mitigate via locality); cache hits need a reproducible
-  build tree.
+  "_buildhost reproducible" -ba --nocheck --noclean`; `--nocheck` skips `%check`
+  (enabling tests is an open question below); exit 11 ⇒ "lock stale, re-run
+  buckify". Output: the rpms — **static** sub-targets
+  per subpackage (enumerated via rpmspec + predicted debuginfo, no `dynamic_output`),
+  consumed by dependents and by image assembly. The build tree itself is **scratch,
+  not an output**: `%_topdir` is staged in buck's per-action scratch dir
+  (`BUCK_SCRATCH_PATH` — under `buck-out/v2/tmp`, forwarded through the sandbox's
+  env scrub) and deleted once the rpms are collected. Persisting it as a declared
+  output swamped buck-out (a kernel build tree is ~46 GB) for a tree nothing yet
+  consumes.
 - **Post-build check (a buck2 `validation`)**: built rpm Requires ⊆ resolved
   runtime closure. This and the sibling correctness gates — the **fidelity gate**
   (declared subpackage set == rpmbuild's actual output, above), **Provides-drift**,
@@ -786,6 +782,30 @@ plan/install/build drivers, run in the engine root):
   the lock output) → `run()` → `rpmbuild -br`. Exit 11 = success-with-report
   (unmet caps + `.buildreqs.nosrc.rpm` requires). buck2-cached on inputs; used
   by import and the staleness check.
+
+### buck-out footprint (what persists, and why)
+
+The durable value in buck-out is the two ends of the pipeline: **pinned inputs** (downloaded rpms,
+tarballs, repodata snapshots, the engine root — expensive to re-fetch or re-bootstrap, cheap to keep)
+and **built rpms** (the product: consumed by dependents' buildroots and by images). Everything in
+between is implementation detail, reproducible from those two ends; each class is managed by its
+ratio of reproduction cost × reuse probability to size:
+
+- **rpmbuild build trees (`%_topdir`): scratch, never stored.** Staged in buck's per-action scratch
+  dir and deleted once the rpms are collected (Action 4). Zero reuse by construction: an unchanged
+  package doesn't rebuild, and a changed package restarts at `%prep` — there is deliberately no
+  intra-package incrementality (`.c → .o` reuse would need ccache-style content tricks that break
+  honest content keying); the caching unit is the whole build action, and rebuild cost is bounded by
+  RE + the action cache + early cutoff instead, so nothing between spec-in and rpms-out is worth
+  keeping. (Before this policy a single kernel build tree persisted ~46 GB.)
+- **buildroots: artifacts by necessity, freely reclaimable.** They must be artifacts — they're inputs
+  to *separate* actions (build, `[br]`), and the anon-target key gives them
+  **spatial** reuse: one assembly per identical closure per wavefront, shared across consumers. Their
+  **temporal** reuse is poor, though — many of our packages form one tightly connected
+  build-dependency graph, so a content change in any dep invalidates every consumer's buildroot.
+  They are large (a few GB) while quick to re-assemble from locally cached rpms (seconds to
+  minutes). So they're cache, not product: reclaimable via `buck clean --stale` (requires enabling
+  `buck2.defer_write_actions` and `sqlite_materializer_state`).
 
 ### Toolchains for in-repo native code (dogfooding)
 
@@ -1151,7 +1171,7 @@ on buck2) to pool all selected tests into a single streamed barrage process.
   the content key; a single committed macro set (in buckify-rpm config + the
   rule) is the source of truth, passed the same way everywhere.
 - **Build-time network: never granted.** `--unshare-net` in *every* sandbox
-  (assembly, build, `:pkg-test`) — **matches Koji's network-isolated chroot**, so
+  (assembly, build) — **matches Koji's network-isolated chroot**, so
   anything that builds in Fedora builds for us. `rpmbuild` never fetches
   (`Source`/`Patch` is a local basename, URL reference-only —
   `parsePreamble.cc:144-153`); only a spec's own scriptlets running a fetcher
@@ -1165,8 +1185,8 @@ on buck2) to pool all selected tests into a single streamed barrage process.
   `--unshare-net` too. We import specs as-is, so the only consequence is
   **import-closure size** (deps-as-rpms pulls in many tiny crate/module rpms) — a
   scope question, not a mechanism one. **No allow-network escape hatch**: a
-  fetching spec fails loudly (the signal to vendor it); `%check` network tests
-  run in `:pkg-test` and are patched/skipped as Fedora does.
+  fetching spec fails loudly (the signal to vendor it); network-dependent
+  `%check` tests are patched/skipped as Fedora does.
 - **Compiler preference**: once our gcc is built, the buildroot installs it over
   the seed gcc (NEVRA-newer) so subsequent packages compile with our gcc; other
   invoked tools stay seed (they don't shape output bits). No stage transition —
@@ -1297,9 +1317,8 @@ signers are non-cacheable/release-tier; everything else is unchanged.
 - **Build hermetically with RE** (action-cache write) — this *is* the canonical,
   shippable build; unchanged actions hit the cache so it's slow only the first
   time, and early cutoff + reproducibility trim cascades.
-- **Run `:pkg-test`** (`%check`) and the barrage integration tests as `buck2
-  test` targets; a test failure doesn't block the rpm artifact (gating is a CI
-  policy).
+- **Run the barrage integration tests** as `buck2 test` targets; a test failure
+  doesn't block the rpm artifact (gating is a CI policy).
 - **Reproducibility audit**: build-twice-compare per package (or a periodic
   full rebuild) — load-bearing because early cutoff depends on it. Maintain a
   quarantine list (compare modulo known-bad files + tracking issue) so repro
@@ -1397,7 +1416,7 @@ package doesn't rebuild the base.*
 
 **Phase 5 — CI: hermetic build + tests + reproducibility.** Hermetic build per
 merged commit with RE action-cache write (canonical/shippable artifacts);
-`:pkg-test` test jobs; reproducibility audit + quarantine list; the staleness
+integration-test jobs; reproducibility audit + quarantine list; the staleness
 bot. *Verify: an unchanged-commit re-run is ~all cache hits; a no-op change to
 a deep dep trims at early cutoff rather than rebuilding the world; a repro flake
 is quarantined, not wedging CI.*
@@ -1441,6 +1460,11 @@ RE.*
   debuginfo repo, `debuginfod`, srpm repo).
 - **Upstream-update workflow**: tracking Fedora updates after import, rebasing
   local patches, how version bumps flow into lock refresh.
+- **Package tests (`%check`)**: if/when we want them, drop `--nocheck` from the
+  primary rpmbuild action and run them as part of the package build. Build
+  trees are huge and discarded after a successful build, so they can't be run
+  as a separate action. Likely with a per-package opt-out for broken or
+  too expensive suites.
 
 ## Reference material
 

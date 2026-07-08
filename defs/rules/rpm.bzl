@@ -58,7 +58,6 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     )
 
     rpms = ctx.actions.declare_output("rpms", dir = True)
-    topdir = ctx.actions.declare_output("topdir", dir = True)
 
     # One declared output per binary subpackage (from .bzl's "subpackages"
     # list), so each is an addressable sub-target (:pkg[devel], ...).
@@ -76,8 +75,6 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.attrs.release,
         "--source-date-epoch",
         str(ctx.attrs.source_date_epoch),
-        "--topdir",
-        topdir.as_output(),
         "--out",
         rpms.as_output(),
     )
@@ -89,7 +86,6 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
 
     sub_targets = {s: [DefaultInfo(default_output = out)] for s, out in sub_outputs.items()}
     sub_targets["buildroot"] = [DefaultInfo(default_output = buildroot)]
-    sub_targets["topdir"] = [DefaultInfo(default_output = topdir)]
     return [DefaultInfo(default_output = rpms, sub_targets = sub_targets)]
 
 _rpm_package = rule(

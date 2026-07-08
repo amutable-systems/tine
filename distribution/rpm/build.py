@@ -2,21 +2,25 @@
 """build_rpm — Action 4 driver: rpmbuild in an assembled buildroot.
 
 Runs *inside* the engine root (like the install driver) under its python3. It
-stages an rpmbuild %_topdir (SOURCES + the spec), mounts the stored buildroot via
-`rootfs` with the topdir bound at /build, **chroots in** (like the image step
-driver), and runs rpmbuild directly from the buildroot's own pinned tools — no
-nested sandbox: the engine-root sandbox already provides the clean env, userns
-root, and network unshare. Then it collects the produced rpms into the declared
-output dir.
+stages an rpmbuild %_topdir (SOURCES + the spec) in buck's per-action scratch dir,
+mounts the stored buildroot via `rootfs` with the topdir bound at /build, **chroots
+in** (like the image step driver), and runs rpmbuild directly from the buildroot's
+own pinned tools — no nested sandbox: the engine-root sandbox already provides the
+clean env, userns root, and network unshare. Then it collects the produced rpms
+into the declared output dir and deletes the build tree: only the rpms persist
+(build trees are huge — a kernel's is tens of GB — and would swamp buck-out if
+they were declared outputs).
 
 rpmbuild resolves every Source/Patch to %{_sourcedir}/<basename> (the URL is
 reference-only), so we just drop each source into SOURCES/ under its basename.
-`-ba --nocheck --noclean` defers %check and keeps the build tree.
+`-ba --nocheck --noclean` defers %check and skips rpm's own per-stage cleanup
+(pointless — the whole tree is dropped at the end).
 """
 
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -32,7 +36,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--source", action="append", default=[], help="source/patch file")
     p.add_argument("--dist", default=".aos")
     p.add_argument("--source-date-epoch", type=int, required=True)
-    p.add_argument("--topdir", required=True, help="scratch rpmbuild topdir (writable)")
     p.add_argument("--out", required=True, help="output dir to collect rpms into")
     p.add_argument("--release", required=True, help="dist-stripped Release base; freezes %autorelease")
     p.add_argument(
@@ -44,7 +47,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = p.parse_args(argv)
 
-    topdir = Path(args.topdir).resolve()
+    # The build tree lives in buck's per-action scratch dir (forwarded by the sandbox;
+    # under buck-out inside the cwd bind, so real disk, not the sandbox tmpfs). Wipe any
+    # leftover from a failed prior run so a stale tree can't leak into this build.
+    scratch = os.environ.get("BUCK_SCRATCH_PATH")
+    if not scratch:
+        raise SystemExit("BUCK_SCRATCH_PATH not set (buck provides it; the sandbox forwards it)")
+    topdir = (Path(scratch) / "topdir").resolve()
+    if topdir.exists():
+        shutil.rmtree(topdir)
     for d in ("SOURCES", "SPECS", "BUILD", "BUILDROOT", "RPMS", "SRPMS"):
         (topdir / d).mkdir(parents=True, exist_ok=True)
     spec = Path(args.spec)
@@ -105,12 +116,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.subpackage:
         _emit_subpackages(args.subpackage, produced)
 
-    # topdir is a declared output (its build tree feeds a later %check target). rpmbuild trees can
-    # hold names buck can't store — systemd's `\x2d`-escaped unit files crash buck's path handling —
-    # so rewrite topdir into buck-storable form with the same capture() the rootfs deltas use; a
-    # later mount via rootfs(lowers=[topdir]) thaws the `.esc.` names back. Runs last, after the rpm
-    # copies above read topdir/RPMS+SRPMS under their real names.
-    rootfs.capture(topdir)
+    # Done with the build tree — drop it (it's scratch, not an output; on failure above it
+    # stays behind for post-mortem and the next run wipes it).
+    shutil.rmtree(topdir)
     return 0
 
 
