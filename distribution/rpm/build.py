@@ -17,12 +17,12 @@ reference-only), so we just drop each source into SOURCES/ under its basename.
 import argparse
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import rootfs
+import util
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -57,7 +57,8 @@ def main(argv: list[str] | None = None) -> int:
     (topdir / "SPECS" / spec.name).write_text(frozen)
     for src in args.source:
         s = Path(src)
-        shutil.copy(s, topdir / "SOURCES" / s.name)
+        # no hardlink: a spec scribbling on SOURCES/ must not reach the buck source artifact
+        util.clone_file(s, topdir / "SOURCES" / s.name)
 
     # Mount the stored buildroot and chroot in: rpmbuild execs directly from the buildroot's
     # own pinned tools, with the topdir bound at /build. Stray writes outside /build land in
@@ -96,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     produced: dict[str, Path] = {}  # basename -> path of each binary rpm
     for sub in ("RPMS", "SRPMS"):
         for f in sorted((topdir / sub).rglob("*.rpm")):
-            shutil.copy(f, out / f.name)
+            util.clone_file(f, out / f.name, allow_link=True)
             if not f.name.endswith(".src.rpm"):
                 produced[f.name] = f
     print(f"collected {len(produced)} binary rpms + srpm into {out}", file=sys.stderr)
@@ -159,7 +160,7 @@ def _emit_subpackages(pairs: list[str], produced: dict[str, Path]) -> None:
     for name, out_path in declared.items():
         op = Path(out_path)
         op.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(produced[matched[name]], op)
+        util.clone_file(produced[matched[name]], op, allow_link=True)
     print(f"emitted {len(declared)} subpackage sub-targets", file=sys.stderr)
 
 
