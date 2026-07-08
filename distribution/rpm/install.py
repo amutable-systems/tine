@@ -129,6 +129,13 @@ def main(argv: list[str] | None = None) -> None:
 
     with rootfs.rootfs(BUILDROOT, bind=target, apivfs=True):
         installroot = Path(BUILDROOT)
+
+        # set fixed machine-id; systemd %post otherwise initializes a fresh random one
+        # into every buildroot, which breaks re-usability in buck
+        etc = installroot / "etc"
+        etc.mkdir(exist_ok=True)
+        (etc / "machine-id").write_text("uninitialized\n")
+
         install(packages_dir, installroot, Path(args.cachedir))
         if not args.no_parkdb:
             parkdb(installroot)
