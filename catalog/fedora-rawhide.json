@@ -1,17 +1,17 @@
 {
-  "repomd": "<?xml version='1.0' encoding='utf-8'?>\n<repomd xmlns=\"http://linux.duke.edu/metadata/repo\">\n  <revision>1783402403</revision>\n  <data type=\"primary\">\n    <checksum type=\"sha256\">102f2c3c70dda1a3f02b6340a179a16302612721d9aafefa19be0bca4849045a</checksum>\n    <open-checksum type=\"sha256\">139e47419bc75ad8019ffbf4940ecf1a89e02287142098df93e2813ff9ce9bba</open-checksum>\n    <location href=\"repodata/102f2c3c70dda1a3f02b6340a179a16302612721d9aafefa19be0bca4849045a-primary.xml.zst\" />\n    <timestamp>1783402391</timestamp>\n    <size>16119141</size>\n    <open-size>196072092</open-size>\n  </data>\n  <data type=\"filelists\">\n    <checksum type=\"sha256\">c00fa3d91c2b6480611ed30ca864c93012c80ff223ca97cb3876b9f615374aa1</checksum>\n    <open-checksum type=\"sha256\">0c32f0078cfd39b980b56356052b8d58d1cd0e04805ad33bcb473ad4ba7ff8dd</open-checksum>\n    <location href=\"repodata/c00fa3d91c2b6480611ed30ca864c93012c80ff223ca97cb3876b9f615374aa1-filelists.xml.zst\" />\n    <timestamp>1783402391</timestamp>\n    <size>46857847</size>\n    <open-size>832413573</open-size>\n  </data>\n  <data type=\"group\">\n    <checksum type=\"sha256\">c41e5721347914789ba2a781683b5db1e0c99aef19811c867dc421855c331089</checksum>\n    <location href=\"repodata/c41e5721347914789ba2a781683b5db1e0c99aef19811c867dc421855c331089-comps-Everything.x86_64.xml.zst\" />\n    <timestamp>1783402201</timestamp>\n    <size>292823</size>\n  </data>\n  </repomd>",
+  "repomd": "<?xml version='1.0' encoding='utf-8'?>\n<repomd xmlns=\"http://linux.duke.edu/metadata/repo\">\n  <revision>1783488812</revision>\n  <data type=\"primary\">\n    <checksum type=\"sha256\">cccdbe87f3cb6da32a278cbb4f6c3db2b04afec3476f0a9559dc705766ae3f51</checksum>\n    <open-checksum type=\"sha256\">65be88dbc3137832be26b48fb48c3f0fdf9491d074190f782047c0fa08fcbccd</open-checksum>\n    <location href=\"repodata/cccdbe87f3cb6da32a278cbb4f6c3db2b04afec3476f0a9559dc705766ae3f51-primary.xml.zst\" />\n    <timestamp>1783488800</timestamp>\n    <size>16106126</size>\n    <open-size>195943786</open-size>\n  </data>\n  <data type=\"filelists\">\n    <checksum type=\"sha256\">8ba9911041be9b584dfd292dbcbb3491f7ee62ea46df420cc830d80643bb36e8</checksum>\n    <open-checksum type=\"sha256\">267bebbda6c74a3fcc615a35496627d1824623945be4dbbefa4b46e7f4472ed4</open-checksum>\n    <location href=\"repodata/8ba9911041be9b584dfd292dbcbb3491f7ee62ea46df420cc830d80643bb36e8-filelists.xml.zst\" />\n    <timestamp>1783488800</timestamp>\n    <size>46858773</size>\n    <open-size>833779660</open-size>\n  </data>\n  <data type=\"group\">\n    <checksum type=\"sha256\">c41e5721347914789ba2a781683b5db1e0c99aef19811c867dc421855c331089</checksum>\n    <location href=\"repodata/c41e5721347914789ba2a781683b5db1e0c99aef19811c867dc421855c331089-comps-Everything.x86_64.xml.zst\" />\n    <timestamp>1783488593</timestamp>\n    <size>292823</size>\n  </data>\n  </repomd>",
   "streams": [
     {
-      "out": "102f2c3c70dda1a3f02b6340a179a16302612721d9aafefa19be0bca4849045a-primary.xml.zst",
-      "sha256": "102f2c3c70dda1a3f02b6340a179a16302612721d9aafefa19be0bca4849045a",
-      "size": 16119141,
-      "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/repodata/102f2c3c70dda1a3f02b6340a179a16302612721d9aafefa19be0bca4849045a-primary.xml.zst"
+      "out": "cccdbe87f3cb6da32a278cbb4f6c3db2b04afec3476f0a9559dc705766ae3f51-primary.xml.zst",
+      "sha256": "cccdbe87f3cb6da32a278cbb4f6c3db2b04afec3476f0a9559dc705766ae3f51",
+      "size": 16106126,
+      "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/repodata/cccdbe87f3cb6da32a278cbb4f6c3db2b04afec3476f0a9559dc705766ae3f51-primary.xml.zst"
     },
     {
-      "out": "c00fa3d91c2b6480611ed30ca864c93012c80ff223ca97cb3876b9f615374aa1-filelists.xml.zst",
-      "sha256": "c00fa3d91c2b6480611ed30ca864c93012c80ff223ca97cb3876b9f615374aa1",
-      "size": 46857847,
-      "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/repodata/c00fa3d91c2b6480611ed30ca864c93012c80ff223ca97cb3876b9f615374aa1-filelists.xml.zst"
+      "out": "8ba9911041be9b584dfd292dbcbb3491f7ee62ea46df420cc830d80643bb36e8-filelists.xml.zst",
+      "sha256": "8ba9911041be9b584dfd292dbcbb3491f7ee62ea46df420cc830d80643bb36e8",
+      "size": 46858773,
+      "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/repodata/8ba9911041be9b584dfd292dbcbb3491f7ee62ea46df420cc830d80643bb36e8-filelists.xml.zst"
     },
     {
       "out": "c41e5721347914789ba2a781683b5db1e0c99aef19811c867dc421855c331089-comps-Everything.x86_64.xml.zst",
