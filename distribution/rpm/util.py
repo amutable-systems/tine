@@ -21,21 +21,25 @@ def clone_file(src: Path, dst: Path, allow_link: bool = False) -> None:
     hardlink, else plain copy. Hardlinks share the inode, so they're only safe between
     write-once outputs that live and die together; that needs an explicit allow_link=True
     opt-in, since through a hardlink a later write to either file reaches the other.
-    src's permissions are not preserved (buck keys outputs on content, not mode).
+
+    src's mode is preserved for executable %{SOURCE} scripts. A hardlink
+    shares it via the inode; the clone and copy paths copy it explicitly.
     """
     with open(src, "rb") as s, open(dst, "wb") as d:
         try:
             fcntl.ioctl(d.fileno(), fcntl.FICLONE, s.fileno())
-            return
         except OSError as e:
             if e.errno not in _CLONE_FALLBACK_ERRNOS:
                 raise
+        else:
+            shutil.copymode(src, dst)
+            return
     dst.unlink()  # drop the empty file the failed clone attempt created
     if allow_link:
         try:
-            os.link(src, dst)
+            os.link(src, dst)  # shares src's mode via the inode
             return
         except OSError as e:
             if e.errno not in _LINK_FALLBACK_ERRNOS:
                 raise
-    shutil.copyfile(src, dst)
+    shutil.copy(src, dst)  # copyfile + copymode
