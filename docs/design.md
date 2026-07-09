@@ -57,17 +57,13 @@ less here since the bulk is rpm builds.
 5. **Single stage** — one wavefront builds every shipped package once against
    the seed's invoked tools + our already-built libs. No tiers, no `.seed`
    suffix. The pinned seed is the only non-built input.
-6. **Cycles cut at invoked-tool edges** (which resolve to the seed) — e.g.
-   gcc↔glibc cuts at gcc. No SCC redirection in the common case. The fallback,
-   for **shipped-linked build SCCs** not routed through an invoked tool, is a
-   `%bcond bootstrap` variant (or seed-self-bootstrap): both the two-package
-   `-devel`-mutual shape (systemd ⇄ util-linux: each BuildRequires the other's
-   `-devel`→lib) and self-builds (perl, python). These are **detected and broken
-   automatically** by buckify-rpm at lock generation (source-level SCC detection
-   → minimum feedback arc set → synthesized bootstrap variant), never by manual
-   per-spec surgery — see buckify-rpm. A genuine *runtime* cycle (rare: mutually
-   hard-`Require`'d libs, e.g. glibc ⇄ libgcc) is separate, handled by SCC
-   condensation in the runtime-closure tset, not a bootstrap variant.
+6. **Build cycles broken by SCC condensation, not `%bcond` surgery.** The
+   self-host lock drops the BuildRequires edges inside each cycle, so those caps
+   fall back to the seed and cycle members build against upstream's binaries — as
+   koji does against its own previous round (self-hosting the core is a later
+   increment). Mechanism, source granularity, and the buildroot-only-package
+   exception are in buckify-rpm below. A genuine *runtime* cycle (glibc ⇄
+   libgcc) is separate — SCC condensation in the runtime-closure tset.
 7. **Seed satisfies invoked-only tools; we build everything linked/shipped.**
    A BR resolving to an invoked-only package (compilers, make, cmake, autoconf,
    coreutils, bash, sed…) comes from the seed; one resolving to a linked/shipped
@@ -151,7 +147,7 @@ less here since the bulk is rpm builds.
     conditionals (`%if 0%{?fedora}`/`%if 0%{?rhel}`) use `select(config//distribution)`;
     specs are shared where conditionals span both (the dist-git norm), per-distribution
     variants where they diverge. Threading: **lock keys gain a distribution dimension**
-    (per distribution × arch × bcond-variant); **seed, buckify-rpm, and the toolchain
+    (per distribution × arch); **seed, buckify-rpm, and the toolchain
     are per-distribution**; the distribution is part of every content key so Fedora/CentOS
     artifacts never collide; **single-stage (decision 5) is per-distribution** (each
     distribution its own wavefront — multi-distribution is an orthogonal config axis, not
@@ -485,9 +481,9 @@ consumes it as a static graph and never runs buckify. It is **two programs**:
   path): `remote_repository` (dynamic action sha-downloads each pinned **stream**),
   `engine`, and `distribution`. Re-run when the authored data or a pin changes.
 
-The bullets below — build-driven lock discovery, cycle/SCC handling, provider
-tie-break pins, Provides-drift checks, `import`/`refresh` — are **roadmap, not yet
-implemented**. Today `resolve` exists, plus an interim **static self-host lock**: `rpm_branch`
+The bullets below — build-driven lock discovery, provider tie-break pins, Provides-drift
+checks, `import`/`refresh` — are **roadmap, not yet implemented**. What runs today: `resolve`,
+and an **interim static self-host lock** that already does the cycle/SCC handling — `rpm_branch`
 (`rpmjson.bzl`) computes per-branch `buildroot_deps` from the importer's srcpkg.json metadata —
 provides = binary names ∪ `Provides` ∪ file lists; X build-depends on P iff X's BuildRequires
 intersect P's provides; SCC-condensed to a DAG, with intra-cycle caps falling back to the
@@ -591,55 +587,19 @@ build actions below).
   Requires ⊆ resolved closure, and **Provides-drift** (actual Provides vs what
   resolution recorded — a vanished cap / bumped soname marks every consumer
   that resolved against it stale → the bot regenerates their locks).
-- **Edge classification** (decision 6): invoked-tool BR → seed (no local edge,
-  cuts cycles); linked-lib BR → local target dep. Invoked-tool cuts remove most
-  cycles; what's left are **shipped-linked build SCCs** through mutual `-devel`
-  BuildRequires — handled automatically (next bullet), not by hand.
-- **Automatic cycle detection & breaking (in lock generation).** buckify-rpm
-  builds the **source-level build graph** — node per source package, edge A→B
-  when A's resolved non-seed BuildRequires are provided by a binary subpackage of
-  B (seed-satisfied invoked-tool BRs add no edge) — and runs **Tarjan SCC** over
-  it (deterministic: sorted node/edge iteration). Source granularity is the right
-  granularity because `rpmbuild -ba` is all-or-nothing: producing *any*
-  subpackage of B (e.g. `libmount`) builds the whole util-linux source, which
-  carries its `BuildRequires: systemd-devel` — so a 2-cycle survives binary
-  granularity. Each **non-trivial SCC** (size > 1, or a self-loop) is a build
-  cycle: the common shape is the two-package `-devel`-mutual case (systemd ⇄
-  util-linux); self-loops are self-builds (perl, python).
-  - **Break = minimum feedback arc set + a bootstrap variant.** Per SCC, compute
-    an exact MFAS (SCCs are tiny), tie-broken deterministically toward an edge
-    whose target package exposes a usable **bootstrap bcond**. A cut edge A→B
-    is realized by synthesizing a `<B>-bootstrap` target built with the spec's
-    `%bcond` flipped (`bootstrap`, or a feature bcond like `systemd`) so the
-    cycle-closing BR drops out — e.g. `util-linux-bootstrap` built `--without
-    systemd` still produces `libmount`/`libblkid`/`libuuid` (those libs don't
-    need systemd), so **systemd builds against `util-linux-bootstrap`**, then
-    **full `util-linux` builds against systemd**. The SCC becomes a DAG
-    (`util-linux-bootstrap → systemd → util-linux`); only the *full* variant
-    ships, the bootstrap variant is build-only.
-  - **Bcond discovery, not guessing.** buckify-rpm parses the spec's declared
-    `%bcond`/`%bcond_with`/`%bcond_without` switches to find candidates, and the
-    bootstrap variant's **reduced BR set is itself discovered** by re-running the
-    `-br` fixpoint in the bootstrap configuration (a distinct `bcond-variant`
-    lock slice — decision 13's keying already carries this) — so it's verified,
-    never assumed. The full build's exit-11 backstop confirms sufficiency.
-  - **Fail-closed.** If no bcond can break an SCC, buckify-rpm errors with the
-    SCC and its offending edges and proposes adding a `%bcond bootstrap` (a spec
-    patch) — same stance as "fail on a BR resolving to no target." It never
-    silently drops a real BuildRequires (the build would just fail at `-ba`).
-  - **Recorded as data.** The SCC, the cut edge(s), the chosen bcond, the
-    bootstrap variant + its reduced lock, and the build order land in the
-    committed cycle-break annotations (below); the bot regenerates them, humans
-    review the data diff. **ABI caveat**: downstream stays built against the
-    bootstrap variant's `-devel`; we rebuild it against the full variant only if
-    a Provides/soname-drift check shows the cut bcond changed that library's ABI
-    (usually it doesn't — the bcond touches services, not the core libs).
+- **Cycle handling** (decision 6): the BuildRequires graph above is condensed with
+  **Tarjan SCC** and the **intra-cycle edges dropped to the seed**. Source granularity is
+  right because `rpmbuild -ba` is all-or-nothing: producing *any* subpackage of B (e.g.
+  `libmount`) builds the whole util-linux source, carrying its `BuildRequires:
+  systemd-devel`, so a 2-cycle survives binary granularity. Exception: a cap in
+  `buildroot_only_packages`, i.e. `glibc32` (only in koji's buildroot
+  repo, not in the compose/seed) keeps its edge across the cycle.
 - **Lock output = pure data, not build logic**: a `@generated`
   `buildrequires.lock.bzl` per package (resolved BR edges, runtime closure,
-  cycle-break annotations, **and the committed per-package build
+  **and the committed per-package build
   `SOURCE_DATE_EPOCH`** from the changelog) loaded by a stable hand-written BUCK
   (`rpm_package(name, spec, br_lock = BR_LOCK)`). The lock is **keyed by
-  `distribution × arch × bcond-variant`** (decision 13): `BR_LOCK` is a structured
+  `distribution × arch`** (decision 13): `BR_LOCK` is a structured
   map, and the rule selects the active slice via the configuration — i.e. the
   distribution/arch is read from the config (`select(config//distribution)` is implicit in
   how the rule indexes `BR_LOCK`), not passed per-call, so one `rpm_package`
@@ -690,11 +650,9 @@ package plus its entire not-yet-imported dependency closure (build AND runtime):
    update → fixpoint (usually zero iterations thanks to the estimates).
 4. `buck2 build` the packages (full builds; exit-11 backstop confirms).
 
-Cycles found during bulk import are mostly auto-cut (invoked-tool BRs → seed);
-shipped-linked build SCCs are detected and broken automatically (SCC → MFAS →
-bootstrap variant — see buckify-rpm), so import doesn't fail per package. Only
-an SCC with **no usable bcond** stops import, surfaced in the report with the
-SCC + offending edges and a proposed `%bcond bootstrap` spec patch.
+Cycles found during bulk import are handled the same way (SCC condensation →
+intra-cycle edges dropped to the seed, see buckify-rpm), so import doesn't fail
+per package.
 
 ### rpm_package rule
 
@@ -1428,17 +1386,15 @@ satisfied direct BR is caught; full build exits 0.*
 **Phase 4 — our toolchain + invoked/linked rule + cycles.** Buildroot = seed
 invoked-tools base + our linked libs; implement the classification (decision 7).
 Build our gcc bootstrapped by the seed gcc (decision 10) and prefer it once
-built; glibc/libstdc++/libgcc as our linked libs everywhere. Invoked-tool BRs
-cut common cycles; the **automatic SCC detector + bootstrap-variant breaker**
-(buckify-rpm) lands here, exercised on a real two-package linked SCC (systemd ⇄
-util-linux) — not just self-builds. The reproducibility gate
-(build-twice-compare) lands in CI here at the latest; early-cutoff
-cascade-trimming depends on it. *Verify: gcc↔glibc builds (glibc via seed gcc →
-our gcc → preferred after); systemd ⇄ util-linux auto-breaks via a generated
-`util-linux-bootstrap` (`--without systemd`) with systemd built against it, full
-util-linux built against systemd, only full variants shipped; a package links
-our glibc not seed's; seed tools run against our glibc; editing a non-base
-package doesn't rebuild the base.*
+built; glibc/libstdc++/libgcc as our linked libs everywhere. Build cycles are
+condensed by SCC and their intra-cycle edges dropped to the seed, so the mega-SCC
+core (gcc ↔ glibc ↔ systemd ↔ …) builds against upstream binaries; self-hosting
+that core (rebuild against our own round) is a later increment. The reproducibility
+gate (build-twice-compare) lands in CI here at the latest; early-cutoff
+cascade-trimming depends on it. *Verify: gcc↔glibc builds (both via the seed gcc);
+a cycle member's buildroot resolves its intra-cycle BuildRequires from the seed; a
+package links our glibc not seed's; seed tools run against our glibc; editing a
+non-base package doesn't rebuild the base.*
 
 **Phase 5 — CI: hermetic build + tests + reproducibility.** Hermetic build per
 merged commit with RE action-cache write (canonical/shippable artifacts);
