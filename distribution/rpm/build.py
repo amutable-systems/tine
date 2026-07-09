@@ -3,8 +3,9 @@
 
 Runs *inside* the engine root (like the install driver) under its python3. It
 stages an rpmbuild %_topdir (SOURCES + the spec) in buck's per-action scratch dir,
-mounts the stored buildroot via `rootfs` with the topdir bound at /build, **chroots
-in** (like the image step driver), and runs rpmbuild directly from the buildroot's
+overlay-merges the buildroot stack (the shared base lowerdir + this package's
+BuildRequires delta) via `rootfs` with the topdir bound at /build, **chroots in**
+(like the image step driver), and runs rpmbuild directly from the buildroot's
 own pinned tools — no nested sandbox: the engine-root sandbox already provides the
 clean env, userns root, and network unshare. Then it collects the produced rpms
 into the declared output dir and deletes the build tree: only the rpms persist
@@ -31,7 +32,14 @@ import util
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="build_rpm")
-    p.add_argument("--buildroot", required=True, help="assembled buildroot (tools tree)")
+    p.add_argument(
+        "--lower",
+        action="append",
+        default=[],
+        required=True,
+        metavar="LAYER",
+        help="a buildroot overlay layer (bottom..top); the merged stack is the buildroot",
+    )
     p.add_argument("--spec", required=True)
     p.add_argument("--source", action="append", default=[], help="source/patch file")
     p.add_argument("--dist", default=".aos")
@@ -71,14 +79,15 @@ def main(argv: list[str] | None = None) -> int:
         # no hardlink: a spec scribbling on SOURCES/ must not reach the buck source artifact
         util.clone_file(s, topdir / "SOURCES" / s.name)
 
-    # Mount the stored buildroot and chroot in: rpmbuild execs directly from the buildroot's
-    # own pinned tools, with the topdir bound at /build. Stray writes outside /build land in
-    # the throwaway overlay upper. SOURCE_DATE_EPOCH must be the per-package changelog epoch,
-    # overriding the fixed assembly epoch the engine-root sandbox set.
+    # Overlay-merge the buildroot stack and chroot in: rpmbuild execs directly from the
+    # buildroot's own pinned tools, with the topdir bound at /build. The merge gets an ephemeral
+    # upper, so stray writes outside /build (and anything the build itself lands in the buildroot)
+    # are throwaway. SOURCE_DATE_EPOCH must be the per-package changelog epoch, overriding the
+    # fixed assembly epoch the engine-root sandbox set.
     env = os.environ | {"HOME": "/build", "SOURCE_DATE_EPOCH": str(args.source_date_epoch)}
     with rootfs.rootfs(
         "/buildroot",
-        lowers=[Path(args.buildroot).resolve()],
+        lowers=args.lower,
         binds=[(topdir, "/build")],
         apivfs=True,
         chroot=True,

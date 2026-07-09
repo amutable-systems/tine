@@ -138,7 +138,15 @@ def plan(
         goal.add_install(spec, settings)
     tx = goal.resolve()
 
-    problems = tx.get_resolve_logs_as_strings()
+    # Resolving against an installed base (the buildroot's BR delta, an incremental image
+    # layer) reports each requested spec the base already satisfies as ALREADY_INSTALLED —
+    # benign: the base provides it, so it just doesn't reappear in the transaction. BuildRequires
+    # overlap the base heavily, so fail only on the real problems, not these notices.
+    problems = [
+        log.to_string()
+        for log in tx.get_resolve_logs()
+        if log.get_problem() != libdnf5.base.GoalProblem_ALREADY_INSTALLED
+    ]
     if problems:
         raise SystemExit("plan resolution failed:\n  " + "\n  ".join(problems))
 

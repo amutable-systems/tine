@@ -719,16 +719,25 @@ source granularity** (the provider's whole source target must build to produce
 the subpackage), while the **buildroot installs only that subpackage + its
 runtime closure**, not the provider's other subpackages.
 
-The build is four actions, each bound to the **distribution** target (its
-plan/install/build drivers, run in the engine root). A package with `buildroot_deps` (the
-self-host lock) additionally prepends an **extra-packages repo**: a nested `_extra_repository`
-anon target createrepos the deps' rpms dirs into a local `file://` repo, shared on
-`(distribution, extra_packages)` like the buildroot itself.
+The buildroot is an **overlay stack**, assembled then built against — all bound to the
+**distribution** target (its plan/install/build drivers, run in the engine root). The
+distribution's **base packages** (`@buildsys-build`) are assembled once into a shared lowerdir
+— a `plan → download → install` triple keyed on `(distribution, base set)`, so every package of
+a distribution reuses the one base install — and X's **BuildRequires** layer on top as a
+**delta**: the same triple again, but the plan resolves against the merged base (already-installed
+base packages provide instead of reappearing) and the install lands in an overlay upper. Action 4
+overlay-merges the stack and runs rpmbuild in it. A package with `buildroot_deps` (the self-host
+lock) additionally prepends an **extra-packages repo** to the *delta's* plan: a nested
+`_extra_repository` anon target createrepos the deps' rpms dirs into a local `file://` repo,
+shared on `(distribution, extra_packages)`. Its lower priority number outranks upstream, so a BR
+takes our build even when upstream carries a newer NEVRA — and where a BR pulls our newer build
+over a base package, the delta overlays (upgrades) it.
 
-- **Action 1 — plan** (`distribution.plan`, `plan.py`): resolve the buildroot install
-  set — the seed buildroot base + X's `BuildRequires` — via libdnf5 over the
-  distribution's `remote_repository` (its pinned repodata snapshot, loaded as a
-  `file://` repo, **no weak deps** — `install_weak_deps=False`), and write each
+- **Action 1 — plan** (`distribution.plan`, `plan.py`): resolve a buildroot install set —
+  the base set for the base install, or X's `BuildRequires` for the delta (resolved
+  incrementally against the base via `--lower`, so it lists only the inbound increment) —
+  via libdnf5 over the distribution's `remote_repository` (its pinned repodata snapshot,
+  loaded as a `file://` repo, **no weak deps** — `install_weak_deps=False`), and write each
   resolved package's `{url, sha256, size}` (url at the repo's real baseurl) to a sorted
   `transaction.json`. Repos carry dnf **priorities** (lower wins): the extra-packages
   repo gets 50 vs the upstream 99, so our own build is taken even when upstream
@@ -759,14 +768,18 @@ anon target createrepos the deps' rpms dirs into a local `file://` repo, shared 
   yet) — and scrub tooling bookkeeping, so the root content-keys deterministically
   (the rpmdb is part of every buildroot's content key; its WAL/free-page noise
   would otherwise defeat early cutoff). Runs via `chroot_run` in the engine
-  root, with the new buildroot as `--installroot`; `%post`/scriptlets run chrooted
-  in it. (Buildroot assembly — Actions 1-3 — is a shared `anon_target` keyed on
-  `(distribution, sorted install set, extra_packages)`: consumers with the same buildroot
-  collapse to one analysis + one build, not just an action-cache hit. Deduping *different*
-  install requests that happen to resolve to the *same* closure — via content-based-path
-  outputs on the closure — remains a **future** refinement.)
+  root, with the buildroot as `--installroot`; `%post`/scriptlets run chrooted
+  in it. The **base** install (the base set, empty `--lower`) is a fresh full root; the
+  **delta** install (`--lower` the base) overlay-merges the base read-only and installs into a
+  persisted upper, captured to an OCI changeset — the layer buck stores. (The base install —
+  Actions 1-3 over the base set — is a shared `anon_target` keyed on `(distribution, base set)`,
+  so every package of a distribution collapses onto one base analysis + build; the per-package
+  delta runs inline. Deduping *different* install requests that resolve to the *same* closure —
+  via content-based-path outputs on the closure — remains a **future** refinement.)
 - **Action 4 — build** (`distribution.build`, `build.py`): rpmbuild runs from the
-  buildroot's own tools — a sandbox *nested* in the engine root. rpmbuild resolves
+  buildroot's own tools — the driver overlay-merges the buildroot stack (the shared base
+  lowerdir + this package's BR delta) via `rootfs`, over an ephemeral upper, and chroots in,
+  like the image step driver (no nested sandbox). rpmbuild resolves
   every `Source`/`Patch` to `%{_sourcedir}/<basename>` (always basename, the URL
   reference-only — `../rpm/build/parsePreamble.cc:144-153`), so `_topdir` is set to
   a bound scratch dir (`--define "_topdir …"`) and each buck-downloaded source is
