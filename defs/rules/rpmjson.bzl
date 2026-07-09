@@ -82,6 +82,33 @@ def _cap(dep: str) -> str:
     'foo >= 1' -> 'foo'; 'pkgconfig(bar)' and path names pass through."""
     return dep.split(" ")[0]
 
+# rpm rich-dependency boolean operators (`(glibc32 or glibc-devel(x86-32))` and friends)
+# and the version-constraint comparison operators.
+_RICH_OPS = {op: True for op in ["and", "or", "if", "else", "unless", "with", "without"]}
+_VERSION_OPS = {op: True for op in ["<", "<=", "=", ">=", ">"]}
+
+def _br_caps(br: str) -> list[str]:
+    """The capabilities a BuildRequires string references.
+
+    A plain dependency yields its _cap. A rich dependency `(a or b ...)` sheds the outer parens
+    and yields each token's _cap, dropping the boolean operators and each version operator with
+    its operand. Nested parens aren't parsed, they are part of the cap name (usually "Provides").
+    """
+    if not br.startswith("("):
+        return [_cap(br)]
+    if not br.endswith(")"):
+        fail("malformed rich dependency '{}'".format(br))
+    caps = []
+    skip = False  # the operand following a version operator
+    for tok in br[1:-1].split():
+        if skip:
+            skip = False
+        elif tok in _VERSION_OPS:
+            skip = True
+        elif tok not in _RICH_OPS:
+            caps.append(_cap(tok))
+    return caps
+
 def _sccs(edges: dict) -> dict:
     """Map each node to a strongly-connected-component id (iterative Tarjan).
 
@@ -136,13 +163,18 @@ def _sccs(edges: dict) -> dict:
                     low[parent] = min(low[parent], low[v])
     return comp
 
-def _buildroot_locks(packages: dict) -> dict:
+def _buildroot_locks(packages: dict, buildroot_only_packages: list[str]) -> dict:
     """Per-package self-hosting buildroot deps: package -> sibling packages providing its BRs.
 
     The revdep map read forward: provides = binary names ∪ Provides ∪ Files (paths are a kind of
     Provides), and X build-depends on P iff X's BuildRequires intersect P's provides. Condensed to
     a DAG — edges inside a BuildRequires cycle are dropped (those caps fall back to the upstream
-    seed) — since buck rejects cyclic deps. Scoped to `packages`."""
+    seed) — since buck rejects cyclic deps. Scoped to `packages`.
+
+    Edges justified `buildroot_only_packages` are exempt from dropping: the seed cannot substitute
+    for those (koji satisfies them from buildroot-only packages the compose never ships). The kept
+    edges are re-checked to still form a DAG.
+    """
     provides = {}  # capability -> {package: True}
     for name in sorted(packages):
         for arch_bins in packages[name]["binaries"].values():
@@ -150,25 +182,51 @@ def _buildroot_locks(packages: dict) -> dict:
                 bm = arch_bins[binname]
                 for cap in [binname] + bm["Provides"] + bm["Files"]:
                     provides.setdefault(_cap(cap), {})[name] = True
+    for cap in buildroot_only_packages:
+        if cap not in provides:
+            fail("buildroot-only package '{}' has no provider among the branch packages".format(cap))
     edges = {}
+    kept = {}  # package -> {provider: True} edges exempt from cycle dropping
     for name in sorted(packages):
         deps = {}
+        keep = {}
         for br in _build_requires(packages[name]):
-            for p in provides.get(_cap(br), {}):
-                if p != name:
-                    deps[p] = True
+            for cap in _br_caps(br):
+                for p in provides.get(cap, {}):
+                    if p != name:
+                        deps[p] = True
+                        if cap in buildroot_only_packages:
+                            keep[p] = True
         edges[name] = sorted(deps)
+        kept[name] = keep
     comp = _sccs(edges)
-    return {name: [p for p in edges[name] if comp[p] != comp[name]] for name in edges}
+    locks = {
+        name: [p for p in edges[name] if comp[p] != comp[name] or kept[name].get(p, False)]
+        for name in edges
+    }
+    lockcomp = _sccs(locks)
+    members = {}  # SCC id -> member count; any id shared by two nodes is a cycle
+    for name in locks:
+        members[lockcomp[name]] = members.get(lockcomp[name], 0) + 1
+    for name in sorted(locks):
+        if members[lockcomp[name]] > 1:
+            fail("buildroot-only packages reintroduce a BuildRequires cycle through '{}'".format(name))
+    return locks
 
 # buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package_json per branch package)
-def rpm_branch(distribution: str, packages: dict) -> None:
+def rpm_branch(distribution: str, packages: dict, buildroot_only_packages: list[str] = []) -> None:
     """Declare every package in a distro/release branch, self-hosting lock included.
 
     Computes the self-hosting buildroot lock across the whole branch (see _buildroot_locks) and
     projects each package onto rpm_package_json. The importer emits only the data (this `packages`
-    map of name -> loaded <package>.json); all build/resolution logic lives here in buck."""
-    locks = _buildroot_locks(packages)
+    map of name -> loaded <package>.json); all build/resolution logic lives here in buck.
+
+    `buildroot_only_packages` are packages that exist only in the distribution's build ecosystem,
+    never in its compose (koji's build-only packages, primarily "glibc32"): the lock keeps a
+    BuildRequires edge for these even inside a cycle, because the seed cannot substitute for
+    it.
+    """
+    locks = _buildroot_locks(packages, buildroot_only_packages)
     for name in sorted(packages):
         rpm_package_json(
             package = name,
