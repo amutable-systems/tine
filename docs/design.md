@@ -1447,14 +1447,6 @@ RE.*
   trees are huge and discarded after a successful build, so they can't be run
   as a separate action. Likely with a per-package opt-out for broken or
   too expensive suites.
-- **Layered buildroot assembly**: today every package's buildroot is a full
-  installed chroot, so the common base (glibc, gcc, coreutils, rpm-build, …) is
-  duplicated into each. We could  assemble the per-distribution base **once** as
-  a shared artifact, then a per-package overlay upper holding only that
-  package's extra BR closure (`rootfs.py` already does this overlay/capture
-  dance for image layers). Costs to weigh: the rpmdb copy-up lands the whole
-  (few-MB) rpmdb in every delta, and the buildroot content key becomes
-  `(base, extras)`.
 
 ## Reference material
 
