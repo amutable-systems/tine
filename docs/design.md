@@ -323,12 +323,13 @@ host-independent must lay down the first rpm to break the regress.
   (btrfs/XFS — see Image building); RE workers need neither Python nor reflink,
   only userns + CAS. Past chroot2 nothing else touches the host.
 - **Ur-tool = a minimal committed `tine/distribution/rpm/extract.py`** (our
-  source, not a pinned binary). It parses the rpm header (index entries + data
-  store) and writes the payload, decompressing with stdlib
-  `compression.zstd`/`lzma`/`zlib`. Today it handles **v4** (`070701` "newc" cpio
-  payload — what the pinned Fedora 44 GA ships, zstd+cpio); **v6** (index-keyed
-  payload; per-file metadata from the header — `BASENAMES`/`DIRNAMES`/`FILEMODES`/
-  …; rpm.org `format_v6.md`) is a **TODO**, gated on a pin that uses it.
+  source, not a pinned binary). It frames the rpm (lead + two headers) via the shared
+  **`rpmfile.py`** primitives and writes the payload as files (the newc parse is the
+  shared **`cpio.py`** reader). Today it handles **v4** (`070701` "newc" cpio payload —
+  what the pinned Fedora 44 GA ships); it decompresses the payload (Fedora ships it
+  zstd-compressed) via `rpmfile` before the cpio parse.
+  **v6** (index-keyed payload; per-file metadata from the header — `BASENAMES`/`DIRNAMES`/
+  `FILEMODES`/…; rpm.org `format_v6.md`) is a **TODO**, gated on a pin that uses it.
   **Payload only**: skips scriptlets, file caps, ownership, SELinux, device nodes
   (the real rpm sets those when it builds chroot2), so it stays small and dumb.
   Ours, not bsdtar, because **libarchive can't read rpm 6 output** (issue #4078)

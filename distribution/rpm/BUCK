@@ -8,11 +8,17 @@ load("//defs/rules:package_format.bzl", "package_format")
 # resolves to the tine cell (the cell of this BUCK), so the cell self-references
 # without qualification.
 
+# Shared rpm-file primitives (header framing + payload decompression), stdlib only: read a
+# downloaded rpm without the real rpm stack (used by extract).
+python_bootstrap_library(name = "rpmfile_lib", srcs = ["rpmfile.py"])
+
 # The bootstrap ur-tool, stdlib only, run by host python3 (not a chroot tool, so not
-# per-engine): payload-extracts the downloaded seed to stand up the first chroot.
+# per-engine): payload-extracts the downloaded seed to stand up the first chroot. The newc
+# parse is the shared cpio_lib (also the image packer's writer).
 python_bootstrap_binary(
     name = "extract",
     main = "extract.py",
+    deps = ["//distribution:cpio_lib", ":rpmfile_lib"],
     visibility = ["PUBLIC"],
 )
 

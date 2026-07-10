@@ -32,6 +32,15 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
+# Shared newc cpio reader + writer (stdlib only): the rpm ur-tool reads payloads with it, the
+# image packer + boot driver write the initrd / kernel-modules cpios with it. Reflink-aware
+# (block-aligns file data to share extents via FICLONERANGE), so it needs no engine tools.
+python_bootstrap_library(
+    name = "cpio_lib",
+    srcs = ["cpio.py"],
+    visibility = ["PUBLIC"],
+)
+
 # Sets up a target root (bind or overlayfs) + apivfs and chroots into it, driving mkosi's
 # FSOperation primitives from inside the sandbox's user+mount namespace. Owns the overlay
 # delta translation too (OCI `.wh.` markers <-> char 0:0 whiteouts + opaque xattrs,
