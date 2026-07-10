@@ -11,6 +11,11 @@ use, frames it with `rpmfile`, and decompresses its payload. Both paths unpack w
 `cpio` module (also the image packer's writer). v6 (index-keyed payload, per-file metadata from
 header tags) is a TODO gated on a pin that uses it; libarchive can't read rpm 6, which is why this
 is ours.
+
+Like every stored tree, the extracted chroot goes through `rootfs.capture` at the end: names buck
+can't store (systemd's backslash-escaped units, which ride in once the engine carries systemd)
+become inert `.esc.` markers. chroot1 is only ever an exec environment (`--tools`), never booted
+or mounted as a delta, so the escaped unit files staying escaped is harmless.
 """
 
 import mmap
@@ -19,6 +24,7 @@ import tempfile
 from pathlib import Path
 
 import cpio
+import rootfs
 import rpmfile
 
 
@@ -60,6 +66,7 @@ def main(argv: list[str] | None = None) -> None:
     total = 0
     for package in rpms:
         total += extract_payload(package, dest) if package.suffix == ".cpio" else extract(package, dest)
+    rootfs.capture(dest)
     print(f"extracted {total} files from {len(rpms)} rpm(s) into {dest}", file=sys.stderr)
 
 
