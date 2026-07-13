@@ -1,19 +1,7 @@
-"""cpio — a shared newc ("070701") cpio reader + writer.
-
-Two consumers: `rpm/extract.py` reads (a decompressed rpm payload → files), and the image
-packer + boot driver write (a directory tree → the initrd / kernel-modules cpio). One format
-implementation, so the newc quirks live in one place.
-
-Reflink, both directions. The writer block-aligns each large file's data (padding the embedded name
-with NULs — newc `namesize` is free-form) so its offset lands on a block boundary, then
-`copy_file_range`s it in: the kernel shares extents (copy-on-write on btrfs/XFS) for the aligned part
-and copies the misaligned remainder. `unpack()` reads symmetrically, cloning each file's data *out*
-by offset. The reader strips the name padding, so it reads our aligned archives and stock ones alike.
-An uncompressed newc cpio is a valid kernel initramfs and `ukify --initrd` payload, so nothing here
-compresses.
-"""
+"""Read and write uncompressed newc archives with reflink-friendly file alignment."""
 
 import ctypes
+import errno
 import mmap
 import os
 import stat
@@ -24,13 +12,10 @@ from typing import NamedTuple, Self
 MAGIC = b"070701"
 TRAILER = "TRAILER!!!"
 _HEADER = 110  # 6-byte magic + 13 * 8-hex fields
-# Reflink alignment target. A fixed constant (not the runtime fs block size) so the archive bytes
-# are reproducible regardless of where they're written; 4096 matches btrfs/XFS block size.
+# Fixed alignment keeps bytes reproducible across filesystems.
 _BLOCK = 4096
 
-# copy_file_range(2) reflinks the block-aligned part of a range (shared extents on btrfs/XFS) and
-# copies the rest in the kernel. CPython's old-glibc build omits os.copy_file_range, but the symbol
-# is in the host libc at runtime, so bind it directly.
+# Bootstrap Python omits os.copy_file_range, so bind the host libc symbol.
 _libc = ctypes.CDLL(None, use_errno=True)
 _libc.copy_file_range.restype = ctypes.c_ssize_t
 # int fd_in, loff_t *off_in, int fd_out, loff_t *off_out, size_t len, unsigned int flags
@@ -56,27 +41,38 @@ def _pwrite_all(fd: int, data: memoryview | bytes, off: int) -> None:
         off += n
 
 
+def _copy_range(dst_fd: int, dst_off: int, src_fd: int, src_off: int, size: int) -> None:
+    """Plain userspace pread/pwrite copy — the fallback when the kernel can't take the range."""
+    while size:
+        chunk = os.pread(src_fd, min(size, 1 << 20), src_off)
+        if not chunk:
+            raise OSError(f"short read: {size} bytes remain")
+        _pwrite_all(dst_fd, chunk, dst_off)
+        src_off += len(chunk)
+        dst_off += len(chunk)
+        size -= len(chunk)
+
+
 def _clone_or_copy(dst_fd: int, dst_off: int, src_fd: int, src_off: int, size: int) -> None:
-    """copy_file_range `src_fd[src_off:src_off+size]` → `dst_fd` at `dst_off`: the kernel reflinks the
-    block-aligned part (shared extents on btrfs/XFS) and copies the misaligned remainder. Looped for
-    short returns; used both directions (a source file into the archive, an archive entry back out)."""
+    """Clone a range when supported, otherwise copy it in userspace."""
     o_in, o_out, done = ctypes.c_int64(src_off), ctypes.c_int64(dst_off), 0
     while done < size:
         n = _libc.copy_file_range(src_fd, ctypes.byref(o_in), dst_fd, ctypes.byref(o_out), size - done, 0)
         if n < 0:
-            raise OSError(ctypes.get_errno(), "copy_file_range")
+            if ctypes.get_errno() not in (errno.EXDEV, errno.EINVAL, errno.EOPNOTSUPP, errno.ENOSYS):
+                raise OSError(ctypes.get_errno(), "copy_file_range")
+            _copy_range(dst_fd, o_out.value, src_fd, o_in.value, size - done)
+            return
         if n == 0:
             raise OSError(f"short copy_file_range: {size - done} of {size} bytes remain")
         done += n
 
 
-# ---- reader ---------------------------------------------------------------------------------
+# Reader.
 
 
 class Entry(NamedTuple):
-    """One decoded newc record. `data` is the symlink target or file contents (a view into the
-    source buffer); empty for directories and hardlink stubs. `data_off` is that view's byte
-    offset within the buffer, so a file-backed reader can clone it out."""
+    """A decoded record whose data remains a view into the source buffer."""
 
     ino: int
     mode: int
@@ -89,15 +85,10 @@ class Entry(NamedTuple):
 
 
 def read(buf: Buffer, start: int = 0) -> Iterator[Entry]:
-    """Parse a newc archive from `buf` (bytes or an mmap) beginning at `start`, yielding every
-    record up to the TRAILER. Each Entry's offsets are absolute within `buf`, so a reader whose
-    `buf` maps a whole file can clone data out of the file by that offset — including when the
-    archive is embedded at `start` in a larger file (an rpm payload)."""
+    """Yield records from a newc archive embedded at `start` in `buf`."""
     view = memoryview(buf)
 
-    # newc pads headers and file data to 4 bytes *relative to the archive start*. When the archive
-    # is embedded at an unaligned `start` (an rpm payload begins right after the main header, which
-    # isn't 4-aligned), absolute rounding would drift — so align against `start`.
+    # Newc alignment is relative to the archive, not its containing file.
     def align(pos: int) -> int:
         return start + _roundup(pos - start, 4)
 
@@ -125,10 +116,7 @@ def read(buf: Buffer, start: int = 0) -> Iterator[Entry]:
 
 
 def _relpath(name: str) -> str:
-    """Map an rpm cpio name ('./usr/...') to a dest-relative path, dropping absolute and '..'
-    components ('..foo' survives — only exact '..' components are dropped). This sanitizes entry
-    *names*, not symlink *targets*: a later entry routed through a hostile symlink could still escape
-    dest. We don't defend against that for now — the payloads are trusted Fedora rpms."""
+    """Normalize a trusted RPM payload path beneath the destination."""
     return "/".join(p for p in name.split("/") if p not in ("", ".", ".."))
 
 
@@ -149,10 +137,7 @@ def _put_regular(target: Path, e: Entry, src_fd: int) -> None:
 
 
 def _extract(mm: Buffer, dest: Path, src_fd: int, start: int) -> int:
-    """The extraction loop, split from `unpack` so its frame — and the last Entry's memoryview into
-    `mm` — is released before `unpack` closes the mmap (a live view would make `mm.close()` raise
-    BufferError). Don't inline it back. Hardlink sets (nlink > 1: content on one member, zero-size
-    stubs elsewhere) resolve in either arrival order; devices/fifos/sockets are skipped."""
+    """Extract entries while releasing all memoryviews before the mmap closes."""
     count = 0
     canonical: dict[tuple[int, int, int], Path] = {}
     pending: dict[tuple[int, int, int], list[tuple[Path, int]]] = {}
@@ -197,10 +182,7 @@ def _extract(mm: Buffer, dest: Path, src_fd: int, start: int) -> int:
 
 
 def unpack(fd: int, dest: Path, *, offset: int = 0) -> int:
-    """Extract the newc archive in `fd` (from byte `offset`) into `dest`, returning entries written —
-    the fd-based counterpart to `Writer`, cloning each regular file's data out of `fd` by absolute
-    offset. `offset` skips leading framing, so a cpio embedded in a larger file (an rpm payload)
-    extracts straight from its fd."""
+    """Extract a newc archive from `fd` at `offset`, returning the entry count."""
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
     if os.fstat(fd).st_size == 0:
@@ -209,15 +191,11 @@ def unpack(fd: int, dest: Path, *, offset: int = 0) -> int:
         return _extract(mm, dest, fd, offset)
 
 
-# ---- writer ---------------------------------------------------------------------------------
+# Writer.
 
 
 class Writer:
-    """Streams a reproducible newc archive. Entries are emitted in caller order (sort first); uid/gid
-    are 0, mtimes clamp to `epoch`, and every record has nlink=1 with a monotonic inode counter (no
-    hardlink dedup — safe, since the kernel only links when nlink>1). Large files are block-aligned
-    and reflinked in (see module docstring). Every write targets an explicit offset (`self._pos`), so
-    a reflinking copy_file_range — which doesn't move the fd — slots in between the header writes."""
+    """Stream a reproducible archive with fixed ownership and clamped mtimes."""
 
     def __init__(self, path: Path, epoch: int) -> None:
         self._fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
@@ -249,8 +227,7 @@ class Writer:
         raw = name.encode()
         namesize = len(raw) + 1  # name + its NUL terminator
         if block_align:
-            # Grow the name (namesize is free-form) so header+name reaches a block boundary and the
-            # file data that follows is block-aligned for copy_file_range to share extents.
+            # Newc namesize permits padding file data to the reflink boundary.
             namesize = _roundup(self._pos + _HEADER + namesize, _BLOCK) - (self._pos + _HEADER)
         fields = (self._ino, mode, 0, 0, 1, min(mtime, self._epoch), filesize, 0, 0, 0, 0, namesize, 0)
         self._write(MAGIC + b"".join(b"%08x" % v for v in fields))
@@ -289,12 +266,10 @@ class Writer:
         self._fd = -1
 
 
-def pack_tree(tree: Path, out: Path, epoch: int, *, subtree: str | None = None) -> int:
-    """Write `tree` (or its `subtree`) into the newc archive `out`, returning entries written.
-
-    Directory entries precede their contents (sorted rglob is parent-first). With `subtree`, its
-    ancestor dirs are emitted first so the extracted layout is rooted correctly (e.g. the
-    kernel-modules cpio keeps its `usr/lib/modules/<kver>/...` prefix)."""
+def pack_tree(
+    tree: Path, out: Path, epoch: int, *, subtree: str | None = None, exclude: tuple[str, ...] = ()
+) -> int:
+    """Pack a tree or subtree into `out`, optionally filtering entries by glob."""
     tree = Path(tree)
     if subtree is not None:
         parts = Path(subtree).parts
@@ -305,6 +280,8 @@ def pack_tree(tree: Path, out: Path, epoch: int, *, subtree: str | None = None) 
     count = 0
     with Writer(out, epoch) as w:
         for path in paths:
+            if any(path.relative_to(tree).full_match(pattern) for pattern in exclude):
+                continue
             st = path.lstat()
             name = str(path.relative_to(tree))
             mode = stat.S_IMODE(st.st_mode)
