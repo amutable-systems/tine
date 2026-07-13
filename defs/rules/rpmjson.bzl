@@ -13,13 +13,20 @@ load time (missing/extra/mistyped fields fail the parse).
 load("@prelude//:native.bzl", "native")
 load(":rpm.bzl", "rpm_package")
 
-# Mirrors importer's SrcpkgMetadata TypedDict (the generated <package>.json), keep in sync.
+# Mirror the importer's TypedDicts (the generated <package>.json), keep in sync.
 # buildifier: disable=name-conventions  (a record *type*, conventionally UpperCamelCase)
+SourceMetadata = record(
+    url = str,
+    sha256sum = str,
+    size = int,  # archive size in bytes
+)
+
+# buildifier: disable=name-conventions
 SrcpkgMetadata = record(
     build_requires = dict[str, list[str]],  # "_all" + per-arch conditional extras
     # producing build arch → pkgname → {Files, Requires, Recommends, Provides}
     binaries = dict,
-    sources = list[dict[str, str]],
+    sources = list[SourceMetadata],
     version = str,  # main-package version; recorded metadata, not consumed by the build (spec drives it)
     release = str,
     dist = str,
@@ -51,14 +58,16 @@ def rpm_package_json(package: str, distribution: str, meta: dict, buildroot_deps
     our own rpms, not Fedora's. Empty for packages with no self-hosted BR.
     """
 
-    # fails on schema mismatch
-    m = SrcpkgMetadata(**meta)
+    # decoded json has plain dicts for sources; swap in typed records, then validate the whole.
+    meta = dict(meta)
+    meta["sources"] = [SourceMetadata(**s) for s in meta["sources"]]
+    m = SrcpkgMetadata(**meta)  # fails on schema mismatch
     spec = "{}/{}.spec".format(package, package)
     srcs = []
     for s in m.sources:
-        out = s["url"].rsplit("/", 1)[-1]
+        out = s.url.rsplit("/", 1)[-1]
         target = "{}--{}".format(package, out)
-        native.http_file(name = target, out = out, urls = [s["url"]], sha256 = s["sha256sum"])
+        native.http_file(name = target, out = out, urls = [s.url], sha256 = s.sha256sum)
         srcs.append(":" + target)
     srcs += native.glob(["{}/*".format(package)], exclude = [spec])
     rpm_package(
