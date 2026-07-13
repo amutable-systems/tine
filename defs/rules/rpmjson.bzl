@@ -51,7 +51,8 @@ def rpm_package_json(package: str, distribution: str, meta: dict, buildroot_deps
     `meta` is the natively-decoded json dict, matching SrcpkgMetadata (validated on load).
     The spec + committed Source/Patch files live in the package's <package>/ dist-git subdir;
     each upstream `sources` entry becomes an http_file dropped into SOURCES under its URL
-    basename (http_file needs the SHA256; the lookaside itself is keyed by SHA512).
+    basename (http_file needs the SHA256; the lookaside itself is keyed by SHA512). Its recorded
+    byte size is passed as size_bytes so buck skips the HEAD probe it otherwise issues to learn it.
 
     `buildroot_deps` (from rpm_branch's per-branch lock) are sibling package labels whose builds
     provide some of this package's BuildRequires; they overlay the buildroot so we build against
@@ -67,7 +68,7 @@ def rpm_package_json(package: str, distribution: str, meta: dict, buildroot_deps
     for s in m.sources:
         out = s.url.rsplit("/", 1)[-1]
         target = "{}--{}".format(package, out)
-        native.http_file(name = target, out = out, urls = [s.url], sha256 = s.sha256sum)
+        native.http_file(name = target, out = out, urls = [s.url], sha256 = s.sha256sum, size_bytes = s.size)
         srcs.append(":" + target)
     srcs += native.glob(["{}/*".format(package)], exclude = [spec])
     rpm_package(
