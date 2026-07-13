@@ -33,7 +33,7 @@ def _build_requires(meta: dict) -> list[str]:
 
 # buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package + its source http_files)
 # buildifier: disable=function-docstring-args
-def rpm_package_json(package: str, distribution: str, meta: dict, buildroot_deps: list[str] = []) -> None:
+def rpm_package_json(package: str, buildroot: str, meta: dict, buildroot_deps: list[str] = []) -> None:
     """Validate generated metadata and project it onto `rpm_package`."""
 
     # Convert nested source dictionaries before validating the outer record.
@@ -52,7 +52,7 @@ def rpm_package_json(package: str, distribution: str, meta: dict, buildroot_deps
         name = package,
         package = package,
         spec = spec,
-        distribution = distribution,
+        buildroot = buildroot,
         srcs = srcs,
         release = m.release,
         dist = m.dist,
@@ -183,13 +183,13 @@ def _buildroot_locks(packages: dict, buildroot_only_packages: list[str]) -> dict
     return locks
 
 # buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package_json per branch package)
-def rpm_branch(distribution: str, packages: dict, buildroot_only_packages: list[str] = []) -> None:
+def rpm_branch(buildroot: str, packages: dict, buildroot_only_packages: list[str] = []) -> None:
     """Declare a branch and its self-hosting buildroot edges."""
     locks = _buildroot_locks(packages, buildroot_only_packages)
     for name in sorted(packages):
         rpm_package_json(
             package = name,
-            distribution = distribution,
+            buildroot = buildroot,
             meta = packages[name],
             buildroot_deps = [":" + dep for dep in locks[name]],
         )

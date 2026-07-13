@@ -1,11 +1,13 @@
-"""RPM-bound repository, engine, distribution, and package rules."""
+"""RPM repositories, engines, and package-build rules."""
 
 load("//engine:rules.bzl", "chroot_run", engine_rule = "engine")  # aliased: `engine` is an arg below
-load("//package:distribution.bzl", "DistributionInfo", "distribution", "install_packages", "remote_repository_base")
-load("//package:format.bzl", "PackageFormatInfo")
-load("//package:repository.bzl", "PackagePoolInfo", "PackagePoolValueInfo", "package_artifact", "package_representation")
+load("//package:buildroot.bzl", "BuildrootInfo")
+load("//package:install.bzl", "install_packages")
+load("//package:manager.bzl", "PackageManagerInfo")
+load("//package:repository.bzl", "PackagePoolInfo", "PackagePoolValueInfo", "package_artifact", "package_representation", "remote_repository_base")
+load("//package:system.bzl", "PackageSystemInfo")
 
-_RPM_PACKAGE_FORMAT = "@tine//package_format/rpm:package_format"
+_RPM_PACKAGE_SYSTEM = "@tine//package_system/rpm:package_system"
 
 rpm_metadata = record(
     location = str,
@@ -114,11 +116,11 @@ remote_repository = rule(
     impl = _remote_repository_impl,
     attrs = {
         "baseurl": attrs.string(),
-        "package_format": attrs.dep(providers = [PackageFormatInfo]),
+        "package_system": attrs.dep(providers = [PackageSystemInfo]),
         "priority": attrs.int(default = 99),
         "snapshot": attrs.option(attrs.source(), default = None),
         "_decompress": attrs.exec_dep(
-            default = "tine//package_format/rpm:decompress",
+            default = "tine//package_system/rpm:decompress",
             providers = [RunInfo],
         ),
     },
@@ -128,12 +130,14 @@ def rpm_remote_repository(
         name: str,
         baseurl: str,
         **kwargs) -> None:
-    """Declare a repository backed by the optional package-relative `<name>.json`."""
+    """Declare a repository backed by its optional package-relative snapshot."""
+    if not name.endswith(".repository"):
+        fail("rpm_remote_repository name must end with '.repository': {}".format(name))
     snapshots = glob([name + ".json"])
     remote_repository(
         name = name,
         baseurl = baseurl,
-        package_format = _RPM_PACKAGE_FORMAT,
+        package_system = _RPM_PACKAGE_SYSTEM,
         snapshot = snapshots[0] if snapshots else None,
         **kwargs
     )
@@ -141,48 +145,36 @@ def rpm_remote_repository(
 def rpm_engine(
         name: str,
         packages: list[str],
-        repositories: list[str],
+        repository_universe: str,
         lock: str | None = None,
         **kwargs) -> None:
     """An engine preconfigured for rpm (see the module docstring)."""
+    if not name.endswith(".engine"):
+        fail("rpm_engine name must end with '.engine': {}".format(name))
     engine_rule(
         name = name,
         packages = packages,
-        repositories = repositories,
+        repository_universe = repository_universe,
         lock = lock or (name + ".json"),
-        package_format = _RPM_PACKAGE_FORMAT,
-        **kwargs
-    )
-
-def rpm_distribution(
-        name: str,
-        engine: str,
-        repositories: list[str],
-        buildroot: list[str],
-        **kwargs) -> None:
-    """A distribution preconfigured for RPM."""
-    distribution(
-        name = name,
-        engine = engine,
-        package_format = _RPM_PACKAGE_FORMAT,
-        buildroot_repositories = repositories,
-        buildroot_base_packages = buildroot,
+        package_system = _RPM_PACKAGE_SYSTEM,
         **kwargs
     )
 
 def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
-    distribution = ctx.attrs.distribution[DistributionInfo]
+    base_buildroot = ctx.attrs.buildroot[BuildrootInfo]
+    package_manager_dep = base_buildroot.package_manager
+    package_manager = package_manager_dep[PackageManagerInfo]
+    system = package_manager.package_system[PackageSystemInfo]
 
     # Share the base buildroot; add package-specific BuildRequires as a delta.
-    base = install_packages(ctx, ctx.attrs.distribution, distribution.buildroot_base_packages)
-    buildroot = [base]
+    buildroot = [base_buildroot.root]
 
     if ctx.attrs.build_requires or ctx.attrs.buildroot_deps:
         # Self-hosted package outputs outrank upstream while resolving the delta.
         extra_packages = [d[DefaultInfo].default_outputs[0] for d in ctx.attrs.buildroot_deps]
         buildroot = buildroot + [install_packages(
             ctx,
-            ctx.attrs.distribution,
+            package_manager_dep,
             ctx.attrs.build_requires,
             stack = buildroot,
             extra_packages = extra_packages,
@@ -194,7 +186,7 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     sub_outputs = {s: ctx.actions.declare_output(s + ".rpm") for s in ctx.attrs.subpackages}
 
     build = cmd_args(
-        chroot_run(engine = distribution.engine, exe = distribution.package_format.build),
+        chroot_run(engine = package_manager.engine, exe = system.build),
         "--spec",
         ctx.attrs.spec,
         "--dist",
@@ -243,9 +235,9 @@ _rpm_package = rule(
         ),
         "source_date_epoch": attrs.int(doc = "per-package SDE from the changelog"),
         "dist": attrs.string(default = ".aos"),
-        "distribution": attrs.dep(
-            providers = [DistributionInfo],
-            doc = "catalog//:<distribution> — buildroot + engine that builds it",
+        "buildroot": attrs.dep(
+            providers = [BuildrootInfo],
+            doc = "the shared base buildroot",
         ),
     },
 )

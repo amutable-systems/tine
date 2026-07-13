@@ -1,1641 +1,560 @@
-# Building RPMs with buck2 — architecture & plan
+# Tine architecture
 
-## Goal
+This document describes the architecture implemented in this repository, the decisions that shaped it,
+and the work that remains. It is a living architecture document, not a chronological implementation plan.
 
-A new monorepo holding every rpm package repo (spec + sources) for a **core
-subset of Fedora**, where each rpm is a buck2 target and buck2 schedules
-`rpmbuild` in dependency order with full caching/incrementality and (later)
-remote execution. Every package we ship is rebuilt by us.
+Statements under **Current architecture** describe code that exists. **Roadmap** describes accepted or
+possible future work and labels open questions explicitly. When implementation and this document disagree,
+the implementation is authoritative and this document should be corrected.
 
-**Build system: buck2.** Bazel was evaluated and rejected; buck2 was chosen
-for: its **decoupled, pluggable test executor** (barrage integration
-tests as a single streamed in-process run — Bazel has no equivalent; decisive),
-**sub-targets carrying providers** (clean binary-subpackage edges vs Bazel
-wrapper-target boilerplate), **lazy content-addressed source downloads** as
-build artifacts (vs Bazel's loading-phase repository fetch), and **no built-in
-local sandbox** to fight mkosi-sandbox (Bazel sandboxes by default → must tag
-`no-sandbox`). Bazel's edge — richer third-party language rulesets — matters
-less here since the bulk is rpm builds.
+## Purpose and scope
 
-## Constraints from research (verified in source)
+Tine uses Buck2 to build native packages and compose operating-system images. The long-term goal is a
+monorepo in which a useful core package set is rebuilt from source, scheduled in dependency order, cached
+by content, and suitable for remote execution. The current implementation already provides:
 
-- **buck2 cannot grow a target's dep set from action output.** `dynamic_output`
-  only creates actions over already-declared deps; anon targets are
-  analysis-time only and banned inside dynamic lambdas
-  (`app/buck2_action_impl/src/dynamic/deferred.rs:248` asserts no promises).
-  → Dynamic BuildRequires must be resolved by a **lock-generation driver**
-  (`buckify-rpm`, reindeer-style) that produces committed lock data; the build
-  graph is then static.
-- **rpm's dynamic-BR protocol is orchestration-friendly.** `rpmbuild -br` runs
-  `%prep` + `%generate_buildrequires`; on missing deps it exits **11**
-  (`RPMRC_MISSINGBUILDREQUIRES`, `rpm/include/rpm/rpmbuild.h:58`) and emits
-  `<NVR>.buildreqs.nosrc.rpm` (Requires = discovered deps, `rpm -qp --requires`).
-  May need several iterations. rpmbuild never installs deps and isn't hermetic —
-  buildroot assembly (mock's job) becomes ours.
+- pinned RPM repositories and a repository-owned RPM artifact pool;
+- bootstrap engine roots containing the pinned userspace used by build actions;
+- configured package managers and shared buildroots for Fedora and CentOS Stream;
+- RPM builds from imported spec/source metadata, including self-hosted buildroot dependencies;
+- layered filesystem images, deterministic archives, bootable GPT disks, and a VM runner.
 
-## Decisions (settled)
+The system does not yet claim complete source provenance, production signing, remote execution, or a full
+release pipeline. Images currently mix packages built in this repository with pinned upstream packages.
 
-1. **Committed catalog data** (repository snapshots + engine transactions) is acceptable.
-2. **Seed = a pinned set of Fedora rpm packages** (not a rootfs), defined by a
-   committed package-name manifest and a committed transaction resolved against an
-   **authoritative repository snapshot**. The snapshot contains the filtered repodata
-   streams and the complete primary-metadata package index (`pkgid` → location + size).
-   `rpm_remote_repository` loads both halves into one public target: it reconstructs the
-   pinned repodata and owns one independent, digest-checked raw artifact per package.
-   The transaction records only repository/package identities, so the same pool feeds the
-   engine seed, buildroots, and images without creating consumer-owned downloads.
-3. **Sandbox = vendored mkosi-sandbox** (`../mkosi/mkosi/sandbox.py`), not
-   bwrap/mock. Single-file, ctypes-only, unprivileged-userns; its seccomp
-   **`--suppress-chown`/`--suppress-sync`** is the fakeroot-equivalent letting
-   `rpmbuild` run unprivileged. Vendoring one file ships trivially to RE
-   workers. (buck2 has no built-in local sandbox — mkosi-sandbox is the sole
-   sandbox layer, no nesting.)
-4. Scope: a **core subset of Fedora**, every included package rebuilt.
-5. **Single stage** — one wavefront builds every shipped package once against
-   the seed's invoked tools + our already-built libs. No tiers, no `.seed`
-   suffix. The pinned seed is the only non-built input.
-6. **Build cycles broken by SCC condensation, not `%bcond` surgery.** The
-   self-host lock drops the BuildRequires edges inside each cycle, so those caps
-   fall back to the seed and cycle members build against upstream's binaries — as
-   koji does against its own previous round (self-hosting the core is a later
-   increment). Mechanism, source granularity, and the buildroot-only-package
-   exception are in buckify-rpm below. A genuine *runtime* cycle (glibc ⇄
-   libgcc) is separate — SCC condensation in the runtime-closure tset.
-7. **Seed satisfies invoked-only tools; we build everything linked/shipped.**
-   A BR resolving to an invoked-only package (compilers, make, cmake, autoconf,
-   coreutils, bash, sed…) comes from the seed; one resolving to a linked/shipped
-   package (glibc, libstdc++, libraries, -devel) must be ours. Seed is curated,
-   grows on import. Buildroot for P = seed invoked-tools + our linked libs.
-8. **Hermetic, content-keyed builds — one mode, no interface files, no store.**
-   An action is keyed on the full content of its inputs (spec/sources, seed
-   content, the rpm payloads of its buildroot closure), so invalidation is
-   honest. Deep changes (glibc/gcc) rebuild their reverse-dep cone — **accepted**:
-   RE distributes it, the action cache avoids redundant work, and **early
-   cutoff** + reproducible builds trim branches whose output is unchanged (an
-   earlier attempt to suppress cascades via interface files / an rpm store was
-   dropped — the only hermetic way to do it is ABI-stub sysroots, which don't
-   work for rpm builds that need real dep content at build time).
-9. **libdnf5 (Python bindings) is the single engine** for buildroot assembly,
-   resolution, provides queries, and rpm metadata — replacing dnf-CLI,
-   libsolv-direct, createrepo_c-for-assembly, and `rpm -qp`. APIs (`../dnf5`):
-   `Goal::resolve()` (plan) vs `Transaction::run()` (execute);
-   `TransactionPackage::get_reason()` USER vs DEPENDENCY (direct edge vs
-   transitive, at resolve time); `add_cmdline_packages()` (assemble from rpm
-   paths, no repodata); `Package::get_source_name/get_provides/get_requires/
-   get_files`; `PackageQuery::filter_provides/filter_file` (rich-dep aware).
-   Stable `LIBDNF_API` (5.x), pinned with the seed. libsolv sits behind it.
-10. **Our gcc, bootstrapped by the seed gcc, preferred once built.** We build
-    our own gcc (for our codegen + our libgcc/libstdc++, which ship). gcc's
-    library deps (glibc, gmp, mpfr, mpc, isl) are *our* builds compiled by the
-    seed gcc, built **before** gcc (kernel-headers → glibc → gmp/mpfr/… → gcc);
-    accepted, no purity rebuild. Self-referential shippers (perl, python)
-    bootstrap the same way. Only ABI assumption: **glibc forward-compatibility**
-    (seed tools run against our glibc, sound while our glibc ≥ seed's) —
-    **enforced, not assumed**: seed generation/refresh asserts our glibc EVR ≥
-    the seed's glibc EVR and **fails the seed bump** otherwise, so a pin that
-    outruns our glibc can't land until our glibc is re-imported/rebuilt first.
-    This makes the invariant a checked gate on the upstream-update workflow (open
-    questions), not a latent footgun.
-11. **Clean, stable public Starlark API; internal machinery stays internal.**
-    User-facing macros/rules (`rpm_package`, `os_image`, `barrage_test`, …) keep
-    a **small, stable surface**; the implementation mechanics — `chroot_run`
-    over `ctx.actions.run`, sub-target wiring, the image step-driver — stay
-    **internal details** that can change without churning user BUILD files. We
-    expose subpackages as plain `:foo-devel` labels (the `:foo[devel]` sub-target
-    form stays an internal detail) and build **no facade/shim** — it's a
-    convention on the surface, not a layer.
-12. **Architect for a public building-blocks cell from day one.** All machinery
-    — the rules (`rpm_package`, `image`/`layer`/`pack`/`os_image`,
-    `toolchain_sysroot`, `signing_toolchain`, `barrage_test`) and tools
-    (`buckify-rpm`, the image step-driver, the `sandbox` + `chroot_run`,
-    `extract.py`, the barrage executor, vendored mkosi-sandbox) — lives in a
-    **self-contained cell** (`tine//`, OSS-able like the prelude/antlir). The
-    monorepo holds only
-    **data + config**: package specs/sources/patches, committed locks, the catalog
-    manifest + seed pin, dist identity (`.aos`), image definitions, signing keys, RE
-    endpoints. **Boundary discipline** — nothing our-specific is baked into the
-    cell: dist tag, seed pin, package set, repo/Koji URLs, and keys are all
-    monorepo-supplied (rule attrs / a root-defined `config//` cell — the same
-    root-authoritative mechanism as `toolchains//`). Deps flow one way
-    (monorepo → cell → prelude); **CI builds the cell standalone** against a tiny
-    example so it can't grow a monorepo dependency. The monorepo submodules +
-    pins the cell (the prelude itself is the binary's bundled copy, not a
-    submodule). Enabled by decision 11 + lock-output-is-data
-    + configuration layering — the cost is keeping our-specifics out, not
-    architecture. License pass before publishing (mkosi LGPL, siguldry MIT,
-    barrage ours, libdnf5 LGPL — all OSS-compatible).
-    **Realized so far:** the machinery is the **`tine`** cell; distribution data is
-    the consumer-overridable **`catalog`** cell (`catalog//:<distribution>` targets /
-    engine roots / repos, declared in the catalog BUCK — a consumer repoints
-    `[cells] catalog` at their own dir); the python toolchain is the **`toolchains`**
-    cell; consumer packages live in the **root** cell (`root//distribution/
-    packages/`). The OSS-standalone / submodule-pin framing is still aspirational.
-13. **Multi-distribution from the start (Fedora first, CentOS next).** A
-    **distribution** (fedora, centos9, centos10…) — our analog of antlir's
-    flavor — is a buck2 **configuration dimension** (`config//distribution`), and a
-    `distribution` target bundles everything distribution-specific: the **seed** (that
-    distribution's pinned repo + manifest), the **macro environment** (`%fedora NN` /
-    `%rhel N` + dist defines), the **toolchain** (our gcc/glibc built for it), and
-    the **package-set/lock root**. An image (and other leaf rules) picks a distribution
-    via a **`default_os`/`distribution` attr** → a **configuration transition**
-    reconfigures the whole package graph to that distribution (antlir-style, bottom-up:
-    the leaf decides), so every `rpm_package` it pulls builds against that
-    distribution's seed/macros/toolchain/lock. Differences not covered by dist-git spec
-    conditionals (`%if 0%{?fedora}`/`%if 0%{?rhel}`) use `select(config//distribution)`;
-    specs are shared where conditionals span both (the dist-git norm), per-distribution
-    variants where they diverge. Threading: **lock keys gain a distribution dimension**
-    (per distribution × arch); **seed, buckify-rpm, and the toolchain
-    are per-distribution**; the distribution is part of every content key so Fedora/CentOS
-    artifacts never collide; **single-stage (decision 5) is per-distribution** (each
-    distribution its own wavefront — multi-distribution is an orthogonal config axis, not
-    staging). **Cell boundary (decision 12)**: the distribution *mechanism* (the
-    constraint, the `distribution` rule, the transition, the `default_os` attr) lives in
-    `tine//`; the *concrete* distributions (fedora/centos seeds, pins, macro
-    sets, package-set roots) are monorepo data. **Fedora first**: implement the
-    fedora distribution end-to-end; the config dimension + per-distribution lock keying are in
-    place so adding centos = add a distribution (seed + pin + import its specs/locks +
-    build its toolchain), no restructure. **NVRs may collide across distributions —
-    fine**: a package's fedora and centos builds never share an image, repo, or
-    buildroot (each is single-distribution) and buck2 content-keys them distinctly by
-    distribution, so the dist tag stays a uniform `.aos` (no per-distribution suffix). The
-    per-distribution macro env still sets `%fedora`/`%rhel` so spec conditionals
-    evaluate correctly.
-14. **Heterogeneous, format-generic package sets (`PackageInfo`).** A distribution's package set is not
-    uniformly from-source: it mixes **prebuilt** rpms selected from the repository-owned package pool with
-    rpms we **build from source** (`rpm_package`). Both expose one neutral provider —
-    **`PackageInfo`** (the package-file artifact, its id, provides-caps, runtime-deps tset, and a **format
-    tag**) — so resolution, buildroot assembly, and image install consume packages without knowing their
-    origin. **From-source shadows prebuilt**: buckify-rpm omits, from the generated prebuilt set, every
-    package *name* we build from source, so each name has exactly one provider (no tie-break,
-    deterministic). The prebuilt set then **auto-completes** — resolving each from-source package's runtime
-    closure and selecting every dependency we do not build from the authoritative pool, so the downloaded
-    long-tail is exactly the closure the from-source set needs. A package graduates prebuilt→from-source by
-    adding its spec + an `rpm_package` target; the name-exclusion flips it, images are unchanged.
+## Current architecture
 
-    **Per-image backing policy** is a second configuration dimension, **`config//pkg_source ∈ {prebuilt,
-    hybrid, source}`** (mechanism in `tine//`, like the distribution constraint), set by a per-image attr →
-    a transition, composing with `default_os`/arch into one config space. buckify-rpm emits, per package, a
-    `select()` over the three values whose arms are baked at lock time by whether a from-source build
-    exists: `prebuilt`→download, `source`→from-source (or a **fail-target** if none — an analysis-time
-    error naming the missing package), `hybrid`→from-source-if-present-else-download. The image picks a
-    mode; every node in its closure resolves accordingly. This is cheap because **the dependency closure is
-    mode-independent**: from-source builds are pinned to the *same versions* as the prebuilt pool (the
-    version-skew invariant below), so the dep graph is identical across modes — only each node's backing
-    swaps. One lock serves all three: `prebuilt` never analyzes an `rpm_package` (fast — stock-distribution
-    images, bootstrapping, CI), `source` never touches a download (provenance images) and its fail-targets
-    are a precise report of what's left to bootstrap, `hybrid` is the incremental-adoption default. Scope:
-    `pkg_source` governs the **image install** set; the buildroot's seed tooling stays the irreducible
-    prebuilt bootstrap (a later mode could extend source-preference to BuildRequires, seed as fixed bottom).
+### Repository and cell layout
 
-    **Format genericity (rpm now, deb-able later).** The expensive core — the resolved package graph,
-    scheduling/single-wavefront, content-keying/caching/RE, the sandbox, and the distribution/config
-    machinery — is already format-neutral (it walks resolved binary→binary edges, never format internals). A
-    second format (e.g. `.deb`) is **additive, not a refactor**: it plugs in at six seams — resolver/lock
-    backend (libdnf5↔libapt), source-build rule (`rpm_package`↔`deb_package`, sharing the
-    assemble→build→collect→gate skeleton + the format-neutral sandbox), buildroot assembler (rpm/rpmdb↔dpkg),
-    payload extractor / bootstrap ur-tool (rpm-cpio↔ar+tar), image installer (dnf↔dpkg), and the seed tooling
-    set. The only things expensive to retrofit — so kept neutral **now** — are three keystones:
-    **`PackageInfo`** (not `RpmInfo`), a **format-neutral lock schema** (no rpm-isms in shared fields), and
-    **distribution-carries-format** (a distribution binds its format + those six plugins; adding a Debian
-    distribution = a new distribution with `format = deb`). Simplifying constraint: **format ⊆ distribution;
-    an image is single-format** — a distribution *is* its format and no rpm depends on a deb, so there is
-    **no cross-format dependency resolution**, and a format selects all six plugins atomically. Do *not*
-    build a plugin framework now (one impl = premature interface); today's cost is naming/boundary discipline
-    only, deb plugins far-future.
+The root project consumes reusable machinery from the `tine` cell:
 
-    **Version-skew invariant (load-bearing for the above).** A distribution is **one coherent pin**:
-    from-source and prebuilt are two backings of the *same* pinned versions, not independent version
-    universes. This is what makes "from-source shadows prebuilt" consistent and "one closure, three
-    `pkg_source` modes" true. Bumping a from-source package *ahead* of the pin breaks both (its deps may be
-    unsatisfiable by the pinned prebuilt, and its closure can diverge from the prebuilt closure) — so a bump
-    means also building/bumping the affected deps or moving the pin.
-
-## Architecture
-
-### Seed & the single wavefront
-
-The **seed** is a **per-distribution** pinned set of distribution rpm packages (no rootfs;
-fedora first, centos next — decision 13), defined by a committed package-name manifest and
-resolved into an engine transaction by buckify (decision 2). Its RPMs are selected from the
-repository target's authoritative package pool. It supplies, as
-installable rpms, the **invoked build-tools**
-(compilers incl. the seed gcc; make, cmake, ninja, autoconf/automake,
-coreutils, bash, sed, gawk, rpm-build, redhat-rpm-config + macros) and the
-runtime libc/libstdc++ those tools link — manifest names the tools, the
-generator adds their transitive closure. Curated; grows on import; changes only
-on a pin/manifest bump → world rebuild (rare, expected).
-
-The **single wavefront** builds every shipped package once, bottom-up. The
-buildroot for P is assembled by libdnf5 `add_cmdline_packages` over the resolved
-closure — seed invoked-tool rpms (pinned inputs) and our linked-lib rpms (our
-glibc, libstdc++, P's library BRs; buck2 dep artifacts) install the same way —
-then installed into an installroot. Buck2 schedules the waves; later packages
-consume earlier built rpms through explicit `buildroot_deps`. Because deps build before
-dependents, every cap a package needs is already built when it builds.
-
-The classification rule (decision 7): **invoked-tool BR → seed rpm;
-linked-lib BR → our rpm.** Cycles route through invoked tools, so satisfying
-those from the seed cuts them (decision 6). Our gcc is preferred over the seed
-gcc once built (its codegen shapes shipped binaries); seed tools run against
-our glibc via forward-compat (decision 10). Each buildroot is assembled by
-*installing* its rpm closure (libdnf5), not by overlaying. Assembly is an
-**`anon_target` keyed on the sorted closure (its NEVRA set)**, so an identical
-closure is assembled **once and shared across all consumers at analysis time**
-(antlir2's `repo`/`repodata` pattern) — not merely deduplicated after the fact
-by the action cache, which still covers reuse across builds.
-
-We build glibc/gmp/mpfr/mpc/isl/kernel-headers, libgcc/libstdc++, our gcc, and
-every library/-devel a package links. glibc/libstdc++/libgcc appear in Fedora's
-`@build` base but are **linked**, so they're ours and present in every
-buildroot.
-
-The base group (the seed's invoked-tool set installed in every buildroot) is a
-curated comps-like list, validated empirically; buckify-rpm resolves it against
-the pin via libdnf5, records the transaction (binary→source via
-`get_source_name`), and flags the linked members as "ours."
-
-The libdnf5/python/createrepo tooling that *runs* assembly lives in an
-**engine root assembled from the seed rpms** (mock's bootstrap-chroot
-equivalent; a cached action — built once, reused), run via the chroot primitive
-(`chroot_run`, below). How that first engine root comes up without host tooling is the
-bootstrap regress — see below.
-
-### The chroot primitive (`sandbox` + `chroot_run`)
-
-Every build action that touches a chroot — buildroot assembly, `rpmbuild`,
-`%check`, each image-layer op, the toolchain compiler wrapper, and the bootstrap
-hops — goes through one primitive: a vendored **mkosi-sandbox** wrapper (the sole
-sandbox layer; buck2 has no built-in local one). Two layers: the **`sandbox`
-binary** (`tine/engine/sandbox.py` — a small argparse `main()` over
-mkosi-sandbox) and, above it, the **`chroot_run(...)`** Starlark helper
-(`tine/engine/rules.bzl`) that wires a driver — a plain `python_bootstrap_binary`
-target — into an engine root as a `RunInfo` command prefix for `ctx.actions.run`
-(internal, not a user-facing rule — decision 11).
-
-Modeled on mkosi's `sandbox_cmd()` (`../mkosi/mkosi/run.py:615`): a **`tools`** tree supplies
-`/usr`/`/bin`/`/lib`/`/sbin` (ro) — so the binary + its runtime come from a *pinned* chroot
-(engine root / buildroot / sysroot), never the host — plus the kernel API mounts and become-root
-in a user namespace. **That is all the sandbox sets up: the exec environment.** A driver that
-needs a **target** tree to install into or run against sets it up itself, from inside the
-namespace, via `rootfs.py` (which drives mkosi's own `FSOperation` classes —
-`OverlayOperation`/`BindOperation`/`DevOperation`/`TmpfsOperation`), rather than the launcher
-binding a fixed `/buildroot`: `rootfs.rootfs()` mounts a bind or overlay (+ apivfs) and
-`rootfs.chroot()` enters it.
-
-```
-sandbox --tools <exec-env> [--bind SRC:DST] [--ro-bind …] [--scratch NAME:DST]
-        [--setenv K=V] [--source-date-epoch N] [--network] [--bind-cwd] -- cmd …
-
-chroot_run(engine: Provider, exe: Dependency, network: bool = False) -> RunInfo
+```text
+root//distribution/       independently versioned package specs, sources, and generated BUCK files
+root//examples/image/     image smoke targets
+tine//package/            package-system-neutral providers and installation flow
+tine//package_system/rpm/ RPM repository, resolver, installer, extractor, and builder
+tine//engine/             engine bootstrap and sandbox command construction
+tine//rootfs/             bind/overlay mounting and stored-delta translation
+tine//image/              layer, UKI, and image composition rules
+tine//image_format/       tar/cpio/directory and disk output drivers
+tine//catalog/            default repositories, locks, releases, package managers, and buildroots
+tine//tools/              pinned development and catalog-refresh commands
 ```
 
-The target-root patterns (each set up by the driver via `rootfs.py`, not the launcher):
-- **install-into** (`install.py`): bind the output tree at `/buildroot` + apivfs, install there
-  (`dnf --installroot`) — the buildroot assembly and both bootstrap hops.
-- **overlay-and-chroot** (`image.py`): overlay the ancestor delta stack with a fresh upper, chroot
-  in, apply the ops (a `run` op execs the tree's own tools), capture the upper as the delta.
-- **run-inside** (`build.py`): no target root — `tools` = the buildroot, `rpmbuild` writes a
-  `%_topdir` scratch bind → the rpms.
-
-Properties: content-keyed on `(tools, binds, cmd, env)` digests; **reproducibility hooks
-centralized** — the sandbox injects `SOURCE_DATE_EPOCH` (a fixed constant for assembly, the
-per-package changelog epoch for build — see Rebuild semantics) + the dist macros and defaults
-`--unshare-net`, so no action can forget them; **RE-ready** (pure-Python userns, no setuid; trees
-are CAS in/out; deferred materialization + reflink).
-
-### Bootstrap & roots of trust
-
-The reproducible toolchain (rpm/libdnf5/Python) that runs buildroot assembly and
-buckify-rpm comes from the **seed rpms** in the engine root — but something
-host-independent must lay down the first rpm to break the regress.
-
-- **Roots of trust** — the only non-built inputs, all content-pinned: the
-  **buck2 binary** (DotSlash, sha256) — which also carries the **bundled
-  prelude** (no separate pin; it always matches the binary), the **bootstrap
-  python3** (`http_archive`, sha256, from python-build-standalone), and the **seed
-  rpms** (repository-pool download actions, sha256 `pkgid`). Host contract:
-  **unprivileged user namespaces**
-  (mkosi-sandbox, every action) and — for *bootstrap only* — **Python ≥ 3.14**
-  (stdlib `compression.zstd`; Fedora rpm payloads are zstd), satisfied by the
-  pinned python3 so no host Python is required.
-  Local image materialization additionally wants a **reflink-capable fs**
-  (btrfs/XFS — see Image building); RE workers need neither Python nor reflink,
-  only userns + CAS. Past chroot2 nothing else touches the host.
-- **Ur-tool = a minimal committed `tine/package_format/rpm/extract.py`** (our
-  source, not a pinned binary). It frames the rpm (lead + two headers) via the shared
-  **`rpmfile.py`** primitives and writes the payload as files (the newc parse is the
-  shared **`cpio.py`** reader — see *Bootable images*). Today it handles **v4** (`070701`
-  "newc" cpio payload — what the pinned Fedora 44 GA ships); the repository pool streams
-  each selected payload (Fedora ships it zstd-compressed) into a shared cpio artifact, which
-  the extractor unpacks.
-  **v6** (index-keyed payload; per-file metadata from the header — `BASENAMES`/`DIRNAMES`/
-  `FILEMODES`/…; rpm.org `format_v6.md`) is a **TODO**, gated on a pin that uses it.
-  **Payload only**: skips scriptlets, file caps, ownership, SELinux, device nodes
-  (the real rpm sets those when it builds chroot2), so it stays small and dumb.
-  Ours, not bsdtar, because **libarchive can't read rpm 6 output** (issue #4078)
-  and a tool we own tracks format bumps with a small patch.
-- **Trampoline** (all from pinned inputs, no host tooling beyond Python):
-  1. `python3.14 rpm/extract.py` payload-extracts the **tool-rpm subset** (rpm,
-     glibc, libsolv, libdnf5, python3, popt, sqlite, lua, openssl, bash,
-     coreutils, …) from the pinned seed rpms into **chroot1** — a runnable rpm +
-     deps (no rpmdb needed).
-  2. chroot into chroot1 and run **our** (seed) rpm/libdnf5 to do a *proper*
-     install of the same set into **chroot2** — scriptlets, rpmdb, then the park
-     sequence (`install.py` replicates `rpmdb --parkdb` directly on the sqlite db,
-     since that flag isn't in a released rpm yet) → a correct, reproducible
-     **engine root**.
-  3. **The rpm resolver and all buildroot assembly run in chroot2** (seed python3 +
-     libdnf5), networked for resolution. The host orchestrator (outside the chroot)
-     drives the per-distribution resolvers by nesting `buck2 run` (see buckify-rpm
-     below) — there is no in-chroot `buck2 build` loop.
-- **Host rpm = optional fast-path**: where a new-enough rpm (≥ 4.14, reads v6)
-  already exists, skip the extractor for hop-1 — never required, so a minimal/
-  non-Fedora RE worker still bootstraps from `rpm/extract.py`.
-
-Past chroot2, nothing touches host tooling — reproducibility holds end-to-end.
-
-### Upstream signature verification (planned)
-
-**Status: planned, not implemented.** Everything below is settled design; the change list at the end is the
-implementation order.
-
-Build-time integrity is already pinned atomically: the committed repository snapshot freezes repomd and its
-streams, primary metadata pins every RPM's sha256 `pkgid`, and the same snapshot declares the repository
-target's complete package pool. A remote transaction carries only `{source: "repo", repo, pkgid, nevra}`;
-the `(repo, pkgid)` pair selects the already-declared digest-checked artifact. What that chain does *not*
-give is authenticity of what got pinned — snapshot fetches `repomd.xml` over HTTPS at refresh, so a
-mirror/CDN compromise at snapshot time could poison every downstream hash — nor any check that packages
-are signed at all.
-
-- **Keys ride the catalog snapshot.** `rpm_remote_repository` gains a required `key` attr (the distro's
-  armored-key URL — F44's release key, rawhide's, CentOS Official); the URL rides the repo's manifest, and
-  `snapshot.py` fetches it and embeds the armored text in the authoritative snapshot
-  (`{repomd, streams, packages, key}` — still byte-stable). The repository target exposes the pinned key
-  beside its metadata and package representations. Adding or refreshing a repo (re)pins its key; a rotation
-  is a loud snapshot diff in review — which is also the honest caveat: the key arrives over the same HTTPS
-  channel it guards, so the trust root is the reviewed diff (trust-on-first-use), not the fetch. A stale
-  snapshot without `key` fails at demand with "run refresh-catalog".
-- **Verifier = libdnf5's `RpmSignature`** (a new `verify.py` driver in the `package_format` bundle;
-  `python3-libdnf5` is already in the engine). The path overload `check_package_signature(path)` bypasses
-  the `pkg_gpgcheck` config gate (never SKIPPED) and runs `rpmcliVerifySignatures` — the `rpmkeys -K`
-  engine: whole file, payload digest checked against payload bytes — with
-  `rpmtsSetVfyLevel(RPMSIG_SIGNATURE_TYPE)`, so an unsigned rpm is the distinct `FAILED_NOT_SIGNED` and
-  key-missing/untrusted/bad are separately classified (`../dnf5/libdnf5/rpm/rpm_signature.cpp:189-256`).
-  Keys: a `Base` whose `installroot` is scratch → `parse_key_file` + `import_key` land the pinned keys in
-  an ephemeral rpmdb keyring — the trusted set is exactly the pinned keys, and nothing touches the real
-  root. Rejected: hand-rolled OpenPGP (never); shelling out to `rpmkeys` (libdnf5 wraps the same engine,
-  upstream-maintained); rpm's own Python bindings — `hdrFromFdno` hard-codes `vfylevel=0`
-  (`../rpm/lib/package.cc:320`) so digest-only-valid *passes*, force-disables all payload-range checks
-  (`RPMVSF_NEEDPAYLOAD`, `../rpm/lib/rpmvs.cc:303`), the real verify engine (`rpmpkgVerifySigs`) has no
-  binding, and the engine would need `python3-rpm` added.
-- **Derived RPM representations belong to the repository target.** The raw download, signature-verified
-  RPM, decompressed payload, and any future transform are alternative fields of the package record exposed
-  by the `RpmPoolInfo` dynamic value, with one independent action per `(repository, pkgid, representation)`.
-  The generic `PackagePoolInfo` resolves to the same records, whose primary artifact is whichever
-  representation is safe to install. `download_closure` remains a dynamic selector: it chooses pool
-  artifacts and assembles a symlink tree, but never registers downloads, verification, or decompression
-  itself. Thus every consumer shares both the raw bytes and derived work. Local entries from our own builds
-  carry a `location`, project directly from their originating RPM directory, and stay unsigned by design
-  until release signing (see *Release pipeline*).
-- **The engine seed is attested at refresh, by the previous engine.** Verifying the seed with the engine it
-  creates would be self-vouching, so trust remains inductive: engine N verifies engine N+1's selected pool
-  artifacts, with the first committed snapshot as the trust-on-first-use base. This attestation changes the
-  repository package representation used downstream; it does not create a second closure-owned RPM fetch.
-- **Change list**: catalog key URLs + repository attrs → manifest → snapshot key data; `verify.py` and an
-  RPM-pool derived action; expose the verified artifact through `RpmPoolInfo`/`PackagePoolInfo`; make the
-  refresh driver use the previous engine for the trust transition; regenerate repository snapshots. Open
-  items: which key signs current rawhide (per-release key vs the `fedora.gpg` bundle) and an in-engine
-  `RpmSignature` smoke test.
-
-### Rebuild semantics
-
-X's buildroot install set = the **transitive runtime closure of X's
-BuildRequires** + the seed base. A BR edge A→B contributes not just B's rpm but
-B + B's whole runtime closure — *required*, since dnf won't install B without
-its runtime `Requires` (A, B are **binary subpackages**, not source packages —
-see dependency granularity below). This is composed by a **runtime-closure
-tset**: each binary subpackage's provider
-carries `{its own subpackage rpm}` ∪ `{its direct runtime-dep subpackages'
-tsets}`, so the lock records only *direct* edges (BuildRequires + runtime
-Requires) and the closure is flattened at assembly — A never re-enumerates B's
-deps, and tracks them as B changes. The closure is **hard `Requires` only — no
-weak deps** (weak-deps policy in buckify-rpm): buildroots match Koji, which
-installs none. X's own runtime Requires don't rebuild X; they're X's
-contribution to *its consumers'* closures, via the same tset.
-
-A tset references its children's targets, so the runtime graph must be a DAG;
-binary-subpackage granularity + hard-`Requires`-only keeps it one in almost all
-cases (library subpackages bottom out at glibc). The rare genuine exception is
-**mutually hard-`Require`'d libraries** (e.g. glibc ⇄ libgcc): buckify-rpm
-detects runtime SCCs and **condenses** each into a single shared closure node
-referenced by all members (the condensation is a DAG) — exact, since every
-member of a runtime SCC has the identical transitive closure. This is distinct
-from the *build*-cycle bootstrap-variant mechanism (decision 6 / buckify-rpm):
-build cycles break by reducing BuildRequires, runtime cycles by collapsing the
-closure.
-
-Edges are **content-keyed**: X tracks its spec/sources, the pinned seed content,
-and the full payload of every rpm in its buildroot closure. Any change to X or
-to a closure rpm rebuilds X; deep changes (glibc/gcc) fan out to a world
-rebuild. That cost is accepted, and three mechanisms bound it:
-- **Remote execution** distributes the cone across workers; the **RE action
-  cache** means an action whose inputs are unchanged is never re-run (across
-  machines and time).
-- **Early cutoff**: when a rebuilt action produces a **bit-identical** output,
-  DICE stops the cascade — consumers aren't recomputed. The equality is
-  output-digest equality (`app/buck2_build_api/src/actions/calculation.rs:798`).
-  So a consumer that build-requires a changed package but doesn't actually use
-  the changed bits rebuilds once, produces identical output, and cuts the
-  cascade there. This only fires if builds are **reproducible** (below).
-- **Dep files** (`docs/rule_authors/dep_files.md`): an action reports which of
-  its tagged inputs it actually used; a changed-but-unused input (e.g. an
-  unused header among a dep's many) doesn't re-run it.
-- **Content-based output paths** (`docs/rule_authors/content_based_paths.md`):
-  rpm and buildroot outputs are addressed by **content hash, not config hash**
-  (`has_content_based_path`), so a byte-identical output — a noarch rpm, or the
-  same closure assembled under two distributions — is **one artifact shared across
-  configurations**, extending the cross-consumer buildroot sharing above into the
-  config dimension and widening early cutoff's reach.
-
-Reproducibility is therefore load-bearing (not just a release property): without
-it, every rebuild differs byte-for-byte and early cutoff never fires, so every
-deep change cascades in full. Prerequisites:
-
-- **`SOURCE_DATE_EPOCH` is two distinct values, by design.** Every
-  `rpmtsCreate()` reads it into `ts->overrideTime` + the transaction id
-  (`../rpm/lib/rpmts.cc:995-1003`), so it clamps both the *installed* rpmdb
-  (`INSTALLTIME`/tid) and built file mtimes (`build/files.cc:1024-1050`,
-  `%clamp_mtime_to_source_date_epoch`) — but the right value differs per sandbox:
-  - **Build sandbox: per-package SDE, derived from the spec changelog**
-    (Fedora's `%source_date_epoch_from_changelog` default — top changelog entry's
-    date), committed/recorded in the lock so it's stable across machines and
-    doesn't drift with wall-clock. This is what stamps the *shipped* rpm's
-    mtimes, so it must track the package, not the build.
-  - **Assembly sandbox: a single fixed constant** (the seed pin's epoch),
-    **decoupled from the consumer's package SDE**. The buildroot rpmdb's
-    `INSTALLTIME`/tid must NOT vary by which consumer is assembling, or the same
-    dep closure installed for two consumers yields two rpmdbs → two buildroot
-    content keys → the buildroot-assembly cache (Seed & wavefront / Remote
-    execution) stops sharing across consumers. A constant assembly epoch keeps
-    an identical closure byte-identical regardless of consumer, so the cache
-    shares as claimed.
-- Pinned `%_buildhost` (Fedora's `@build` already ships add-determinism +
-  build-reproducibility-srpm-macros); and **`rpmdb --parkdb` after buildroot
-  assembly** to normalize the installed-rpmdb storage layer (see Action 1).
-
-The sandbox injects *whichever* SDE its caller passes (constant for assembly,
-per-package for build) — the centralization is the mechanism, the value is the
-caller's.
-
-### buckify-rpm (lock-generation driver)
-
-Run on import / spec change / staleness / seed refresh, NOT during normal builds
-(like `reindeer buckify`). It produces committed lock data; normal `buck2 build`
-consumes it as a static graph and never runs buckify. It is **two programs**:
-
-- A **format-independent host orchestrator** (`tine/tools/catalog.py`, a
-  `python_bootstrap_binary` run on the host as `buck2 run @tine//tools:refresh-catalog`).
-  It `uquery`s the catalog's pinning targets and drives their refresh sub-targets in two
-  phases: every repository's `catalog//:<repo>[snapshot]` (host — no engine), then every
-  engine's `catalog//:<engine>[resolve]`, nested as `buck2 run` *inside that engine*.
-  Both sub-targets share one contract: the binding carries every input, the orchestrator
-  appends only `--out <fragment>`. Nested `buck2 run` is fine — the child inherits cwd +
-  `BUCK_ISOLATION_DIR` and reuses the daemon.
-- Per-format **refresh drivers** (for rpm: `tine/package_format/rpm/snapshot.py`, plus
-  `plan.py` doubling as the resolver), bundled in the format's `package_format` plugin
-  and bound by the pinning rules themselves; deb/arch would add siblings.
-
-- **Snapshot** (`snapshot --manifest <repo.json> --out <dir>/<repo>.json`, each
-  repository target's `[snapshot]` sub-target). A repository is a first-class catalog citizen —
-  the **unit of repodata pinning**, shared by every distribution that references it —
-  so it pins independently of any distribution. Pinning is pure fetch-and-filter
-  (stdlib urllib + ElementTree, no libdnf5), so it runs on the **host**: fetches
-  `repomd.xml`, keeps only the `primary`/`filelists`/`group` streams (so libdnf5 never
-  chases the ones we drop), streams the pinned primary metadata, and writes one authoritative
-  snapshot: `{repomd, streams, packages}`. `packages` is the complete pkgid-keyed RPM index
-  (`{pkgid: {location, size}}`). `rpm_remote_repository` derives `<name>.json` as a
-  package-relative source; one repository-owned dynamic value reads it and declares both the
-  reconstructed repodata and one independent lazy RPM artifact per package. A distribution's
-  repositories track what its srcpkgs actually need:
-  the rawhide branch builds against a trailing rawhide snapshot (refresh often!), while
-  the frozen fedora44 GA tree keeps feeding the engine and the f44 branch.
-- **Resolve** (each engine target's `[resolve]` sub-target: the format's *plan* driver —
-  the same one that plans buildroots — bound to run inside that engine, over its
-  repositories' pinned repodata, with the engine's package set as the install specs).
-  The engine too is first-class — the **unit of closure pinning**, shared by every
-  distribution it builds (CentOS names the Fedora engine). The solve turns the engine's
-  top-level package set into its transitive closure, written as a plan *transaction*
-  (`[{source: "repo", repo, pkgid, nevra}]`) — which IS the engine's fragment. Engine
-  bootstrap selects those artifacts from the repository pools without consulting repodata
-  or declaring downloads. Nothing is derived per *distribution* at all:
-  its buildroot base (a list of install specs — Fedora's `@buildsys-build`, CentOS an
-  explicit package list) is never resolved (groups as `@group` specs, expanded per
-  build against the pinned comps), and individual BuildRequires are resolved and
-  fetched lazily per build against the pinned repodata. Repository snapshots are ordinary Buck
-  source inputs. Dynamic expansion registers their package actions once under the repository's
-  ownership; only the transaction selects which artifacts materialize. The catalog BUCK is thus
-  three flat declaration kinds, composed by
-  target name via their rpm wrappers: `remote_repository`, `engine`, and `distribution`. A first
-  refresh creates a missing repository snapshot; seed a new engine transaction with `{}`. Re-run
-  refresh-catalog when authored data or a pin changes.
-
-The bullets below — build-driven lock discovery, provider tie-break pins, Provides-drift
-checks, `import`/`refresh` — are **roadmap, not yet implemented**. What runs today: `resolve`,
-and an **interim static self-host lock** that already does the cycle/SCC handling — `rpm_branch`
-(`rpmjson.bzl`) computes per-branch `buildroot_deps` from the importer's srcpkg.json metadata —
-provides = binary names ∪ `Provides` ∪ file lists; X build-depends on P iff X's BuildRequires
-intersect P's provides; SCC-condensed to a DAG, with intra-cycle caps falling back to the
-upstream seed — so a buildroot prefers our own builds wherever an acyclic order exists (see the
-build actions below).
-- **Build-driven lock discovery.** The BUCK file is always dep-free (edges live
-  in the lock). buckify loops `buck2 build :pkg[br]`: the rule assembles the
-  real buildroot from the current lock and runs `rpmbuild -br`; on exit 11 it
-  reports unmet caps, buckify resolves them → targets, adds edges, re-runs;
-  converges at exit 0. Authority is the real build in the real environment (no
-  discovery-vs-build skew). rpm flow (`../rpm/build/build.cc:459-477`) layers it
-  for free: static BRs fail first (before `%prep`), then
-  `%generate_buildrequires` runs and the merged set is re-checked — so the
-  generator's own tooling (static BRs) is present first, and the emitted
-  `.src.rpm`/`.buildreqs.nosrc.rpm` carries the full static+dynamic BR set
-  (merged at `build.cc:300-303`) for the cross-check. The lock may start empty
-  or be seeded with a repodata BR estimate (an iteration-count optimization;
-  the loop corrects it).
-- **Static BR evaluation is environment-dependent too** (`%if 0%{?fedora}`,
-  `%bcond` defaults, macro-package contents, arch). Canonical parse environment
-  = the real final buildroot with the real macro defines (`dist .aos`, `%bcond`,
-  arch — the same command-line overrides used for the build); a seed-only
-  buildroot is the bootstrap parse only. Locks are keyed per variant
-  (bootstrap-bcond targets get their own BR set) with **per-distribution and
-  per-arch slots** in the format from day one (single fedora distribution, x86_64
-  initially — decision 13). Dynamic-BR re-discovery
-  likewise runs in the real final buildroot (the staleness check), because
-  generator output depends on interpreter/toolchain versions, macro versions,
-  and conditionals — `rpmbuild -ba`'s exit-11 backstop means a wrong lock fails
-  loudly, never silently.
-- **Resolution = libdnf5 over the available rpms** (seed inputs + our built
-  rpm artifacts; no Fedora repodata, no libsolv-direct). The build loop
-  *generates* the dynamic BRs; mapping the full BR list → precise direct edges
-  is `Goal::resolve()` reading `TransactionPackage` reasons: **USER = direct-edge
-  provider**, DEPENDENCY = transitive closure (baked into the buildroot, not an
-  edge) — direct-vs-transitive decided at resolve time, no "rpm reports only
-  unmet" inference. binary→source via `get_source_name`; rich/file deps via
-  `filter_provides`(Reldep)/`filter_file`. The pool reads provides + file lists
-  straight from rpm **headers** (`add_cmdline_packages`), so it has every
-  auto-generated cap (sonames, `pkgconfig()`, `python3dist()`, file deps) that
-  `rpmspec` can't produce — and since the wavefront builds deps first, there's
-  no not-yet-built cap to fall back to Fedora for. Pool-building is a buck2
-  action keyed on (available rpms, query) and **folded into `[br]`**, so it's
-  cache-correct and reflects the available set as it grows mid-run (a
-  start-of-run in-process snapshot would miss siblings built during the run).
-  **Determinism doesn't rest on build order**, though: because resolution keys
-  on the *content* of the available set (not insertion order) and the tie-break
-  total-order is computed over whatever set is present, a sibling that appears
-  mid-run can only *change* a resolution, never make it order-dependent — so
-  buckify converges to a **fixpoint** and finishes with one authoritative
-  re-resolve over the **final, complete** available set. That final pass is what
-  the lock records; a cap that became newly-ambiguous as siblings landed
-  surfaces there (fail-closed → demand a pin), not as a silent build-order
-  artifact. Escape hatch if ever slow at scale = createrepo_c `--update` (not
-  expected at our scale).
-- **Provider tie-break (deterministic, recorded).** When a cap has >1 provider
-  the choice is made in **our query layer**, not by solver scoring — libdnf5
-  deliberately doesn't expose libsolv's `SOLVER_FAVOR` (prior art for the shape:
-  OBS prjconf `Prefer:`/`Substitute:`, Yocto `PREFERRED_PROVIDER`,
-  `../libsolv/src/solver.h:255`). Three layers: (1) a committed **pin table**
-  (`cap → package`, a generator *input*) for curated compat/`(A or B)` choices;
-  (2) a **total-order default heuristic** for the rest — highest EVR → native
-  arch → name → full NEVRA — so nothing falls back to libsolv pool/insertion
-  order; (3) **fail-closed**: a cap with >1 real provider that neither a pin nor
-  an unambiguous heuristic-winner resolves errors at lock-gen, demanding a
-  recorded pin (same stance as "fail on a BR resolving to no target"). Mechanism
-  (verified libdnf5 API): direct edges resolve via
-  `PackageQuery::filter_provides` → apply policy → `Goal::add_rpm_install(chosen
-  Package)` (`goal.hpp:119`, a concrete package, not a spec — recorded as the
-  USER-reason edge); providers we never want (compat duplicates, multilib
-  `.i686`) are removed **pool-wide** via `PackageSack::set_user_excludes`
-  (`package_sack.hpp:122`) / `excludepkgs`, so the *transitive* DEPENDENCY
-  closure the solver pulls is pinned too (OBS `Prefer: -pkg`/`Substitute`
-  analog); per-edge concretes handle `(A or B)` where a loser is wanted
-  elsewhere. With losers excluded, libdnf5's already-set `SOLVER_FORCEBEST`
-  picks highest EVR unambiguously. Many "ties" aren't real — Fedora's default
-  meta-packages (`python3` → default `python3.N`) designate a winner, inherited
-  on import. Determinism also rests on **pinned libsolv** (with the seed); a
-  libsolv bump is a deliberate refresh event.
-- **Weak deps: off in buildroots — and images (matches Koji).** Resolution runs
-  with `install_weak_deps=False` (→ libsolv's whole weak-dep pass disabled; refs
-  in reference material), so the recorded BR closure and runtime-closure tset
-  carry **hard `Requires` only** — never Recommends/**Supplements** (the
-  easy-to-miss reverse one, fired from the supplementing package's side)/Suggests/
-  Enhances. Not a "determinism vs fidelity" tradeoff: **Fedora's buildroot
-  fidelity *is* no-weak-deps** — every mock Fedora/EL template sets
-  `install_weak_deps=0` — so matching Koji and a minimal deterministic closure
-  are the same choice. Action 1 sets the flag too (its closure is already
-  weak-dep-free by construction). **Images do the same** (unlike a default `dnf
-  install`, which keeps Recommends): everything we ship is an explicit hard
-  dependency, so weak deps are off **everywhere**, one closure rule throughout.
-- **Cross-check + drift.** The loop's successful `-ba` proves sufficiency; the
-  USER-reason set writes the precise direct edges; a periodic re-resolve guards
-  resolution determinism / provider ties (catches a newly-built package that
-  starts providing an already-provided cap, turning a settled resolution
-  ambiguous → fail-closed → refresh PR); fail on any BR resolving to no
-  in-repo/seed target. Each package's lock also records its **direct
-  runtime-Requires edges** (the runtime-closure tset's children — so a
-  BuildRequires on it pulls its full runtime closure into the consumer's
-  buildroot, flattened via the tset). Post-build, two symmetric checks: actual
-  Requires ⊆ resolved closure, and **Provides-drift** (actual Provides vs what
-  resolution recorded — a vanished cap / bumped soname marks every consumer
-  that resolved against it stale → the bot regenerates their locks).
-- **Cycle handling** (decision 6): the BuildRequires graph above is condensed with
-  **Tarjan SCC** and the **intra-cycle edges dropped to the seed**. Source granularity is
-  right because `rpmbuild -ba` is all-or-nothing: producing *any* subpackage of B (e.g.
-  `libmount`) builds the whole util-linux source, carrying its `BuildRequires:
-  systemd-devel`, so a 2-cycle survives binary granularity. Exception: a cap in
-  `buildroot_only_packages`, i.e. `glibc32` (only in koji's buildroot
-  repo, not in the compose/seed) keeps its edge across the cycle.
-- **Lock output = pure data, not build logic**: a `@generated`
-  `buildrequires.lock.bzl` per package (resolved BR edges, runtime closure,
-  **and the committed per-package build
-  `SOURCE_DATE_EPOCH`** from the changelog) loaded by a stable hand-written BUCK
-  (`rpm_package(name, spec, br_lock = BR_LOCK)`). The lock is **keyed by
-  `distribution × arch`** (decision 13): `BR_LOCK` is a structured
-  map, and the rule selects the active slice via the configuration — i.e. the
-  distribution/arch is read from the config (`select(config//distribution)` is implicit in
-  how the rule indexes `BR_LOCK`), not passed per-call, so one `rpm_package`
-  call serves every distribution it's built under and adding centos adds slices, not
-  call sites. Humans never edit generator output; overrides are generator
-  *inputs*. Plus the seed-base manifest. (**Phase-1 reality:** no per-package
-  `buildrequires.lock.bzl` or config-keyed `BR_LOCK` yet — `rpm_package` takes an
-  explicit `distribution = "catalog//:<distribution>"` attr alongside `package`/`version`/
-  `subpackages`/`srcs`/`build_requires`/`source_date_epoch`/`dist`, and the consumer
-  loops over distributions; the config-keyed form above is the planned evolution
-  per decisions 13/14.)
-- **Staleness check (CI)** covers both layers: re-run `rpmspec` and `-br` in the
-  resolved final buildroots and diff both BR sets against the lock — not just
-  the exit code (exit 11 catches unsatisfiable drift; the set-diff catches
-  newly evaluated BRs already satisfied by the buildroot, i.e. a missing
-  scheduling edge). The `-ba` backstop covers static BRs too (CHECKBUILDREQUIRES
-  stage).
-- **Remediation = a bot flow, never an edit.** `buckify-rpm refresh <pkg>`
-  assembles the buildroot from the *stale* closure (the generator's tooling is
-  in static BRs, which regenerate deterministically), runs the `-br` fixpoint,
-  rewrites the lock; CI auto-opens a dependabot-style PR (reviewable data diff).
-  Devs hitting exit 11 run the same command. Seed updates are not a remediation
-  mechanism — lock correctness is owned by this loop against final buildroots.
-
-### Import & refresh
-
-`buckify-rpm import [--plan] <pkg>` is recursive by default — imports the
-package plus its entire not-yet-imported dependency closure (build AND runtime):
-1. **Closure plan from the snapshot's repodata** (the one place full Fedora
-   repodata is used): walk BRs (koji records dynamically-generated BRs in source
-   repodata → good estimates) + binary subpackages' runtime Requires → provides
-   → binary → source → recurse over missing packages, stopping at imported
-   packages and recorded external/seed mappings. `--plan` prints the set ("adds
-   37 source packages") for confirmation; operators cut branches via explicit
-   external/seed mappings or bcond decisions (committed generator inputs).
-2. **Scaffold** (order-independent): dist-git checkout at the **exact commit
-   the snapshot's build came from**, not HEAD — derived per package from
-   repodata `<rpm:sourcerpm>` (the build NVR) → Koji `getBuild(nvr).source` =
-   `git+<dist-git-url>#<commit>` (the rpm header has no commit — `VCS` is empty
-   in Fedora; Koji is the only source). The commit is recorded/committed for
-   reproducibility. (Koji is an import-time tooling query — a network service,
-   like repodata; normal builds never touch it.) Then `sources` tarballs →
-   lookaside; parse specs in the canonical buildroot; write
-   `buildrequires.lock.bzl` seeded with static edges + repodata BR estimates +
-   the one-time hand-template BUCK.
-3. **Converge discovery**: one `buck2 build` of the new `[br]` sub-targets
-   (lock edges schedule the dep cone automatically); diff report vs lock →
-   update → fixpoint (usually zero iterations thanks to the estimates).
-4. `buck2 build` the packages (full builds; exit-11 backstop confirms).
-
-Cycles found during bulk import are handled the same way (SCC condensation →
-intra-cycle edges dropped to the seed, see buckify-rpm), so import doesn't fail
-per package.
-
-### rpm_package rule
-
-**Dependency granularity: source builds, binary edges.** A `rpm_package` target
-is one **source** package; `rpmbuild -ba` is all-or-nothing, so building any
-subpackage builds the whole source target. But every **dependency edge and
-runtime closure** is at **binary-subpackage** granularity — each subpackage is a
-named sub-target (enumerated via `rpmspec`) carrying its *own* `Requires` closure
-(`foo-devel`'s ≠ `foo-libs`'s). **Auto-generated `-debuginfo`/`-debugsource`
-subpackages are a special case**: `rpmspec -q` does *not* list them (rpmbuild
-synthesizes them at `%install` from `%debug_package`, not from spec-declared
-`%package` stanzas), so the lock must **predict** them — one `<sub>-debuginfo`
-per binary-bearing subpackage plus a single `<src>-debugsource`, gated on the
-same `%_enable_debug_packages`/`%debug_package` macro state rpm uses — and add
-them to the declared sub-target set. Otherwise the fidelity gate below (declared
-set == rpmbuild's actual output) fails on every compiled package. Nothing
-build-requires debuginfo, so they carry no edges; they exist as addressable
-sub-targets for the (open) debuginfo-shipping decision. A BR resolves (cap → binary rpm → owning source
-via `get_source_name`) to a *specific subpackage* sub-target, so lock edges are
-**binary→binary, never source→source**. Consequence: **scheduling fans in at
-source granularity** (the provider's whole source target must build to produce
-the subpackage), while the **buildroot installs only that subpackage + its
-runtime closure**, not the provider's other subpackages.
-
-The buildroot is an **overlay stack**, assembled then built against — all bound to the
-**distribution** target (its plan/install/build drivers, run in the engine root). The
-distribution's **base packages** (`@buildsys-build`) are assembled once into a shared lowerdir
-— a `plan → download → install` triple keyed on `(distribution, base set)`, so every package of
-a distribution reuses the one base install — and X's **BuildRequires** layer on top as a
-**delta**: the same triple again, but the plan resolves against the merged base (already-installed
-base packages provide instead of reappearing) and the install lands in an overlay upper. Action 4
-overlay-merges the stack and runs rpmbuild in it. A package with `buildroot_deps` (the self-host
-lock) additionally prepends an **extra-packages repo** to the *delta's* plan: a nested
-`_extra_repository` anon target createrepos the deps' rpms dirs into a local `file://` repo,
-shared on `(distribution, extra_packages)`. Its lower priority number outranks upstream, so a BR
-takes our build even when upstream carries a newer NEVRA — and where a BR pulls our newer build
-over a base package, the delta overlays (upgrades) it.
-
-- **Action 1 — plan** (`distribution.plan`, `plan.py`): resolve a buildroot install set —
-  the base set for the base install, or X's `BuildRequires` for the delta (resolved
-  incrementally against the base via `--lower`, so it lists only the inbound increment) —
-  via libdnf5 over the distribution's `remote_repository` (its pinned repodata snapshot,
-  loaded as a `file://` repo, **no weak deps** — `install_weak_deps=False`), and write a
-  sorted `transaction.json`. A remote item is `{source: "repo", repo, pkgid, nevra}`;
-  `(repo, pkgid)` is the complete artifact identity. An item resolved from our local
-  extra-packages repo adds `location`, the RPM-directory index plus basename needed to project
-  it from a build output. Repos carry dnf **priorities** (lower wins): the extra-packages
-  repo gets 50 vs the upstream 99, so our own build is taken even when upstream
-  carries a newer NEVRA we didn't import yet. Re-runs on any repodata change, but its
-  output is byte-stable unless *this* buildroot's closure actually changed. Each repo's
-  metadata XML is parsed **once per distribution, not once per plan**: the distribution
-  target prebuilds the repo's libdnf5 `.solv` cache as an artifact (`plan make-cache`, in
-  the engine root) and every plan seeds its ephemeral cachedir from it (libdnf5's
-  root-cache clone, pointed at the seeds via `system_cachedir`); a missed seed just
-  falls back to the parse.
-- **Action 2 — select closure** (`dynamic_actions`): read `transaction.json` and symlink each
-  RPM into `closure/`. For a remote item, resolve the named repository target's `PackagePoolInfo`
-  dynamic value and look up `pkgid`; the pool record supplies both the canonical basename and artifact.
-  The repository target already owns the digest-checked download, so the dynamic callback only selects
-  artifacts and never registers work. Only selected RPMs materialize, and every consumer of the same
-  repository/package pair shares its owner. A missing pair is snapshot skew and fails with “run
-  refresh-catalog”; there is no closure-owned fallback. Local items use `location` to project the RPM in
-  place from the originating build-output directory.
-- **Action 3 — assemble** (`distribution.install`, `install.py`): `add_cmdline_packages`
-  the downloaded closure into `installroot` → `Transaction::run()` (the closure
-  is already the exact set — no repo resolution, no network), at the **fixed
-  assembly `SOURCE_DATE_EPOCH`** (the seed-pin constant, *not* the consumer's
-  package epoch, so identical closures content-key identically across consumers;
-  clamps `INSTALLTIME`/tid). Then **park the rpmdb** — `install.py` replicates
-  `rpmdb --parkdb` directly on the sqlite db (WAL/SHM teardown + `journal_mode=
-  DELETE` + `VACUUM`, then drop the side files; the flag isn't in a released rpm
-  yet) — and scrub tooling bookkeeping, so the root content-keys deterministically
-  (the rpmdb is part of every buildroot's content key; its WAL/free-page noise
-  would otherwise defeat early cutoff). Runs via `chroot_run` in the engine
-  root, with the buildroot as `--installroot`; `%post`/scriptlets run chrooted
-  in it. The **base** install (the base set, empty `--lower`) is a fresh full root; the
-  **delta** install (`--lower` the base) overlay-merges the base read-only and installs into a
-  persisted upper, captured to an OCI changeset — the layer buck stores. (The base install —
-  Actions 1-3 over the base set — is a shared `anon_target` keyed on `(distribution, base set)`,
-  so every package of a distribution collapses onto one base analysis + build; the per-package
-  delta runs inline. Deduping *different* install requests that resolve to the *same* closure —
-  via content-based-path outputs on the closure — remains a **future** refinement.)
-- **Action 4 — build** (`distribution.build`, `build.py`): rpmbuild runs from the
-  buildroot's own tools — the driver overlay-merges the buildroot stack (the shared base
-  lowerdir + this package's BR delta) via `rootfs`, over an ephemeral upper, and chroots in,
-  like the image step driver (no nested sandbox). rpmbuild resolves
-  every `Source`/`Patch` to `%{_sourcedir}/<basename>` (always basename, the URL
-  reference-only — `../rpm/build/parsePreamble.cc:144-153`), so `_topdir` is set to
-  a bound scratch dir (`--define "_topdir …"`) and each buck-downloaded source is
-  **copied** into `SOURCES/` under its basename. Then `rpmbuild --define
-  "_buildhost reproducible" -ba --nocheck --noclean`; `--nocheck` skips `%check`
-  (enabling tests is an open question below); exit 11 ⇒ "lock stale, re-run
-  buckify". Output: the rpms — **static** sub-targets
-  per subpackage (enumerated via rpmspec + predicted debuginfo, no `dynamic_output`),
-  consumed by dependents and by image assembly. The build tree itself is **scratch,
-  not an output**: `%_topdir` is staged in buck's per-action scratch dir
-  (`BUCK_SCRATCH_PATH` — under `buck-out/v2/tmp`, forwarded through the sandbox's
-  env scrub) and deleted once the rpms are collected. Persisting it as a declared
-  output swamped buck-out (a kernel build tree is ~46 GB) for a tree nothing yet
-  consumes.
-- **Post-build check (a buck2 `validation`)**: built rpm Requires ⊆ resolved
-  runtime closure. This and the sibling correctness gates — the **fidelity gate**
-  (declared subpackage set == rpmbuild's actual output, above), **Provides-drift**,
-  the **buildroot reproducibility byte-compare**, and the **seed-lock fixpoint** —
-  are wired as `ValidationInfo`, so `buck2 build` runs them as cached graph nodes
-  that don't block unrelated targets: cheap per-package gates always-on, the
-  expensive double-build/repro and staleness checks **optional**
-  (`--enable-optional-validations`). (`docs/rule_authors/validation.md`)
-- **Sub-target `[br]`** (discovery + the pool-build/resolve action): inputs =
-  available rpms + spec + current BR set. `add_cmdline_packages` →
-  `Goal::add_install(BR strings)` → `resolve()` (USER-reason = direct providers,
-  the lock output) → `run()` → `rpmbuild -br`. Exit 11 = success-with-report
-  (unmet caps + `.buildreqs.nosrc.rpm` requires). buck2-cached on inputs; used
-  by import and the staleness check.
-
-### buck-out footprint (what persists, and why)
-
-The durable value in buck-out is the two ends of the pipeline: **pinned inputs** (downloaded rpms,
-tarballs, repodata snapshots, the engine root — expensive to re-fetch or re-bootstrap, cheap to keep)
-and **built rpms** (the product: consumed by dependents' buildroots and by images). Everything in
-between is implementation detail, reproducible from those two ends; each class is managed by its
-ratio of reproduction cost × reuse probability to size:
-
-- **rpmbuild build trees (`%_topdir`): scratch, never stored.** Staged in buck's per-action scratch
-  dir and deleted once the rpms are collected (Action 4). Zero reuse by construction: an unchanged
-  package doesn't rebuild, and a changed package restarts at `%prep` — there is deliberately no
-  intra-package incrementality (`.c → .o` reuse would need ccache-style content tricks that break
-  honest content keying); the caching unit is the whole build action, and rebuild cost is bounded by
-  RE + the action cache + early cutoff instead, so nothing between spec-in and rpms-out is worth
-  keeping. (Before this policy a single kernel build tree persisted ~46 GB.)
-- **buildroots: artifacts by necessity, freely reclaimable.** They must be artifacts — they're inputs
-  to *separate* actions (build, `[br]`), and the anon-target key gives them
-  **spatial** reuse: one assembly per identical closure per wavefront, shared across consumers. Their
-  **temporal** reuse is poor, though — many of our packages form one tightly connected
-  build-dependency graph, so a content change in any dep invalidates every consumer's buildroot.
-  They are large (a few GB) while quick to re-assemble from locally cached rpms (seconds to
-  minutes). So they're cache, not product: reclaimable via `buck clean --stale` (requires enabling
-  `buck2.defer_write_actions` and `sqlite_materializer_state`).
-
-### Authoritative repository pools: one owner per RPM
-
-Buck2 download outputs are owner-scoped, so registering a download inside every resolved closure
-would fetch and store the same package once per consumer. The repository is therefore the ownership
-boundary. Its committed snapshot is atomic: filtered repodata and the complete primary-metadata
-package index are refreshed together. `rpm_remote_repository` infers `<name>.json` in its caller's
-cell/package; the file may be absent until the first refresh. It expands the source through one
-repository-owned dynamic value, declaring one independent, content-addressed raw RPM action per
-`pkgid`. The target exposes handles to the same resolved records through format-neutral
-`PackagePoolInfo` and RPM-specific `RpmPoolInfo` providers.
-
-Transactions do not repeat transport details. A remote entry is
-`{source: "repo", repo, pkgid, nevra}`; only local build outputs add `location`. The dynamic closure
-selector uses `(repo, pkgid)` to choose the repository-owned artifact, while Buck materializes only
-the selected actions. A missing package is an inconsistent or stale snapshot and fails loudly; it
-never creates another owner.
-
-Refreshing the catalog streams the pinned primary metadata to regenerate the complete package index.
-It does not inspect consumers, build transaction sub-targets, or approximate current graph usage.
-There is one refresh-catalog lifecycle, and resolver multilib rejection remains a normal correctness
-check on the real transaction.
-
-The RPM-specific provider is also the extension point for operations on downloaded packages. Payload
-decompression is implemented as one lazy, streaming action beside every raw RPM; engine bootstrap selects
-that shared cpio representation while installation selects the raw RPM. Signature verification, reflinked
-forms, and other representations follow the same record map. Closures select the representation they need;
-they do not own the transformation. This preserves sharing for operations as well as downloads.
-
-A rolling repository can still garbage-collect a location recorded by an old snapshot. That is an
-upstream availability property, handled by timely snapshot refreshes or an authoritative mirror/archive,
-not by deriving a second package inventory from the build graph. Repositories that provision an engine
-have a stricter lifecycle constraint: until refresh stages current and candidate engine generations, the
-old engine transaction must remain realizable while its repository snapshot is replaced and the engine is
-re-resolved. Engine repositories must therefore be immutable archives (as the frozen Fedora GA tree is);
-rolling repositories may supply distribution buildroots, but must not bootstrap an engine.
-
-### Toolchains for in-repo native code (dogfooding)
-
-Our built rpms also provide the **toolchains/sysroots** for in-repo non-rpm
-native code (the prelude's `cxx_library`/`go_binary`/`rust_binary`), so the same
-artifacts that ship in the image build the in-repo code — no host dependency.
-
-Third-party deps for this in-repo code use the language's BUCK-generator
-(distinct from rpm builds, which vendor — see build-time network policy): **Rust
-→ reindeer** (`Cargo.toml`/`.lock`; crate sources are sha256-pinned `http_archive`s
-that ride the same content-addressed download path as seed rpms and upstream
-tarballs — fetched lazily into CAS, no per-source patch); **Go → gobuckify**
-(`prelude/go/tools/gobuckify/`: `go.mod` + `gobuckify.json` → `go list` →
-rendered BUCK, buck2's Gazelle-style analog), with `gopackagesdriver` exposing
-the graph to Go tooling. Both run before the build like reindeer.
-
-- **Sysroot = an rpm buildroot.** A `toolchain_sysroot` target reuses **Action 1**
-  (libdnf5 assembly) to install a closure into an installroot — `{gcc, gcc-c++,
-  binutils, glibc-devel, libstdc++-devel}` for C/C++, `+ go` or `+ rust/cargo`
-  for those — a content-keyed tree. It pulls the compiler subpackages + target
-  `-devel` subpackages **+ the compiler's own runtime closure** (glibc,
-  libstdc++, libgcc, gmp/mpfr/mpc/isl, zlib) via the same runtime-closure tset
-  and binary-subpackage granularity.
-- **One tree, no `--sysroot`.** The **buildroot = sysroot = rootfs**: thin adapter
-  rules wrap the tree into the prelude toolchain providers (`GoToolchainInfo`
-  `go/toolchain.bzl:25` — `go`/`compiler`/`linker`/`cgo` `RunInfo` + `env_go_root`
-  `Artifact`; `CxxToolchainInfo` `cxx/cxx_toolchain_types.bzl:246` — `*CompilerInfo`
-  whose `compiler` is an arbitrary `RunInfo`). Each compiler/linker `RunInfo`
-  points at a **`sandbox` invocation (`--tools` = the sysroot)** that runs the
-  real tool at canonical paths. Inside the chroot the compiler's own
-  `PT_INTERP`/`DT_NEEDED` resolve to **our** loader/libs *and* its default header/
-  lib search finds **our** `-devel` content — the same tree, **no `--sysroot`** —
-  exactly how `gcc` runs in an rpm `%build`. The whole process tree (gcc → cc1/
-  as/ld, rustc → cc/ld, cgo) works because it all sees our tree as `/`; no
-  per-binary loader tricks or patchelf.
-- **buck2 covers the rest.** It runs the wrapper like any compiler command
-  (compiler wrappers are idiomatic), and handles input materialization, output
-  capture, cwd, env, caching, RE. The only non-canonical paths are the project
-  sources/outputs, **bind-mounted into the chroot at their (project-relative)
-  paths** and reaching the compiler as ordinary `-I`/`-o`/input args — not sysroot
-  machinery; buck2's relative-path discipline makes this line up.
-- **Properties.** Hermetic, content-keyed, RE-distributable, cached; native code
-  builds against the exact distribution toolchain; bump a toolchain rpm → native
-  consumers rebuild, early-cutoff-trimmed. One graph: native targets depend on
-  the toolchain rpm targets, which depend on the seed (only bootstrapping the
-  toolchain itself falls back to the seed). **Cross-compilation** is the sole
-  case that would reintroduce a separate target sysroot + `--sysroot` (host
-  toolchain + target sysroot); single-arch native (x86_64→x86_64) never hits it.
-
-### Image building
-
-The deliverable. An **imperative, ordered-step pipeline** — *not* antlir2's
-declarative depgraph. A **layer** = one action: `(parent tree) + (ordered list
-of operations) → new tree`; layers **chain** (layer N's tree is layer N+1's
-input); a terminal **pack** action turns a tree into an **archive** (disk image,
-tar, …). We deliberately drop antlir2's `dynamic_output`/`anon_target`/`plugins`
-feature model **for op ordering** (provides/requires/toposort) — fixed order is
-fine — keeping the image side **plain chained actions over tree artifacts**
-(simpler and more debuggable than a declarative depgraph). The **one
-exception is `install_rpms`**, which adopts antlir2's rpm model wholesale (a
-build-time dnf *plan*; see Runtime dependencies below) — inter-package runtime
-deps are dnf's to resolve, not ours, so that op alone runs a dynamic
-resolve-then-materialize inside itself.
-
-**Realized so far (first slice).** The core layer/pack model is implemented in
-`@tine//defs/rules:image.bzl` (rules `image_layer`, `image_pack`, macro `os_image`)
-over two format-neutral drivers bound to a distribution's engine root: `image.py` (the step
-driver) and `pack.py` (the packer). A base layer's `install` reuses the rpm
-plan→materialize→install flow — factored out of `rpm_package` into the shared
-`assemble_root` helper (`package/distribution.bzl`) — so `install_rpms` is a separate
-buck action producing the layer's base tree, exactly as below. The step driver overlays the
-ancestor delta stack with a fresh upper, **chroots into the merge** (via `rootfs.py`) and
-applies an ordered op list (`run`/`mkdir`/`symlink`/`remove`) against it — a `run` op just
-execs from the tree's own tools under apivfs, no nested sandbox — capturing only the upper as
-the layer's delta (see *Layering via overlayfs deltas*). The packer drops the rpmdb, then writes a
-deterministic `tar` (stdlib `tarfile`, since the minimal engine root ships no `tar`)
-or a `directory`. Demonstrated end-to-end by `root//image:demo`. **Roadmap (not yet
-built):** the wider op vocabulary (`copy_tree`/`add_files` from targets, `chmod`/
-`chown`/`set_user`), in-layer ordering of install relative to other ops (today
-install precedes ops, finer order via separate layers), the `cpio`/`make_disk`/
-`make_oci`/sysext packers, the boot sub-pipelines (`build_initrd`/`build_uki`/
-`install_kernel`), the antlir2-style build-time `rpm_plan` early-cutoff seam (today
-install resolves over the distribution's buildroot repos, not a separate image repo bag),
-and the distribution `default_os` config transition. The rest of this section is that
-design intent.
-
-**Layering via overlayfs deltas (design intent; supersedes the interim reflink copy).** A layer stores only
-its **delta**, not a full merged tree. Building layer N mounts an **overlayfs** with every ancestor delta as
-a read-only `lowerdir` and a fresh `upperdir`, runs that layer's ops/install against the merged view, and
-captures **only the upper**. `LayerInfo` carries the **ordered ancestor stack** (each entry a delta
-artifact); a child appends its own; the terminal pack overlay-merges the whole stack once (over an ephemeral
-upper) and archives that view. Base layers (`install`, no parent) are the bottom of the stack — a full root,
-no whiteouts. This
-replaces the current "reflink-copy the parent, mutate in place" step driver (`image.py`), so a layer's disk
-cost is the diff (its upper), not a per-layer copy.
-
-- **Deletions travel as OCI whiteouts, not a sidecar.** buck's artifact model is content + one exec bit +
-  symlinks + dirs (verified: `FileMetadata { digest, is_executable }` in buck2
-  `buck2_common/…/file_ops/metadata.rs`) — it cannot round-trip overlay whiteouts (char `0:0` device nodes)
-  or `trusted.overlay.*` xattrs through CAS. So a delta encodes removals **inline as OCI-changeset regular
-  files** — `.wh.<name>` (a deleted path) and `.wh..wh..opq` (an opaque dir) — keeping every stored artifact
-  plain files (RE-safe, reflink-friendly, and a valid OCI layer for free): no second artifact, no device
-  nodes, no xattrs on disk.
-- **Reconstructed to native overlay at mount, unprivileged (verified).** Native overlayfs doesn't read
-  `.wh.` (only fuse-overlayfs does), so at mount we translate them into overlay-native markers — needing
-  **no privilege**: a whiteout is a char `0:0` node and the kernel exempts whiteout nodes from `CAP_MKNOD`
-  (`vfs_mknod`'s `is_whiteout` case), so `os.mknod(p, S_IFCHR, 0)` succeeds in the sandbox's userns; an
-  opaque dir is `user.overlay.opaque=y` under an **`-o userxattr`** mount, settable by the file owner. Both
-  verified in an unprivileged `unshare -Urm` userns. The reconstruction copies **no delta**: each delta stays
-  a read-only `lowerdir`, framed by tiny sidecar "markers" layers (only device nodes + empty dirs, so the
-  cost is O(markers), not O(delta size)). A layer stacked **above** the delta holds the char `0:0` whiteouts
-  — one for each deleted target, plus one hiding the literal `.wh.`/`.wh..wh..opq` marker file so it doesn't
-  leak into the merge. Opaque dirs must mask *lower* layers without hiding the delta's own contents, so they
-  go in a second sidecar layer stacked **below** the delta (`user.overlay.opaque=y` on an empty dir there).
-  Per delta the local stack is therefore `above : delta : below`.
-- **Why native overlay, not fuse or btrfs.** fuse-overlayfs reads `.wh.` directly (no reconstruction) but
-  drags in a fuse binary + `/dev/fuse`; btrfs subvolumes preserve everything but need privilege + a GC hook
-  buck doesn't give us (antlir2's road). Native overlay + `userxattr` keeps the
-  sandbox fuse-free, dependency-free, and unprivileged — matching our posture.
-- **Plumbing (realized).** All root setup happens **inside the payload**, not in the `sandbox` launcher —
-  because reconstructing a whiteout is a `mknod` of a char 0:0 node, which only the sandbox's *own*
-  user+mount namespace permits, and that namespace exists only *after* `sandbox` execs. `sandbox.py` is
-  therefore a pure **exec-environment leaf**: it binds the `--tools` engine tree onto `/` + the kernel APIs
-  and becomes root — no `--root`/`--apivfs`/`/buildroot`. A driver that needs a target tree sets it up itself
-  via **`rootfs.py`** (a `rootfs_lib` wrapping mkosi's own `FSOperation` classes — `OverlayOperation`,
-  `BindOperation`, `DevOperation`, `TmpfsOperation` — driven with `.execute()` from inside the
-  namespace): `rootfs.rootfs()` mounts the target as a bind or an overlay (with apivfs underneath) and tears
-  the mounts down in order on exit; `rootfs.chroot()` (mkosi's own `chroot`, re-exported) enters it.
-  `install.py` now binds its output at `/buildroot` + apivfs and installs there itself (the old
-  `sandbox --root … --apivfs`). `rootfs.rootfs()` also owns the OCI↔native delta translation: on entry it
-  frames each delta with **sidecar marker layers** (no copy) into the lowerdir list, and on exit — with a
-  writable upper — it re-OCI-ifies that upper. So `image.py` just overlays the stack with a fresh upper
-  (`--out` delta) + `--work` dir, **chroots into the merge**, and applies the ops — a `run` op now execs
-  directly from the tree's own tools under apivfs, **no nested sandbox** — while the reconstruct/capture
-  happen around it. `pack.py` gets the same merge but with an **ephemeral** upper (no `upperdir`, so nothing
-  is captured): it drops the rpmdb + runs tmpfiles *into that throwaway upper* and archives the merged view —
-  **no copy of the base tree**, no staging output. For a build layer, overlayfs leaves the `workdir` dirty,
-  so it's a throwaway **declared** scratch output; the ephemeral upper, reconstruction scratch, and
-  mountpoint all live in a private `TemporaryDirectory`. Verified
-  end-to-end: `root//image:{base,demo,chained,opaque}` (single-component + whiteout + opaque-dir round-trips)
-  and the rpm path
-  (engine bootstrap + buildroot + `zlib-ng`, all through the migrated `install.py`).
-
-**File metadata: authored tmpfiles, applied at pack (no rpmdb).** Because the stored tree is content + exec
-only, non-exec modes, ownership, caps, and xattrs are **not** carried — and we deliberately **do not**
-reconstruct them from the rpmdb. Instead each layer may declare **tmpfiles.d snippets** (inline in BUCK);
-`LayerInfo` accumulates them down the chain, and the terminal pack applies them just before archiving, in
-two `systemd-tmpfiles` passes run from the engine over the flattened merged tree:
-
-- **Pass 1 — our snippets, always.** `systemd-tmpfiles --create --root=<merged> -` with the accumulated
-  snippets piped to stdin (the positional `-`). A positional without `--replace` processes **only** that
-  config — the image's own `tmpfiles.d` is untouched — so this applies exactly our declared metadata.
-  `--root` bypasses NSS and reads the **tree's own** `/etc/passwd`/`/etc/group` (verified in the man page),
-  so image-defined sysusers resolve.
-- **Pass 2 — the image's own definitions, format-gated.** `systemd-tmpfiles --create --root=<merged>` with
-  no positional scans the tree's `/usr/lib/tmpfiles.d` + `/etc/tmpfiles.d` and materializes them into the
-  image. Run only for formats consumed **without a systemd first-boot** (directory/rootfs/container);
-  skipped for bootable images, where first boot does it. When both run, order pass 2 **before** pass 1 so
-  our snippets win on conflict.
-- **What actually lands.** `chmod` and file/dir creation are captured for **archive** formats (the metadata
-  lives inside the tar/erofs blob); ownership chowns are best-effort in the single-uid userns
-  (`--suppress-chown` noops them) and are finalized at first boot by the image's own tmpfiles — which is why
-  pass 2 is format-gated. **setuid is banned** (a deliberate image policy — no setuid bits), **SELinux is a
-  relabel** from policy at pack/boot (non-bootc images don't ship labels), and **file capabilities** (the
-  one class tmpfiles can't express — e.g. `newuidmap`/`ping`) are set by an explicit `run` + `setcap` op
-  only when an image needs them.
-- **Directory-format caveat.** For a `directory` output taken via `buck2 build --out`, the copy
-  (`build/out.rs` → `std::fs::copy`) keeps modes + symlinks but **drops xattrs and ownership**; and buck's
-  content+exec model normalizes modes back to the exec bit on any cache/materialization round-trip. So
-  directory-format metadata is **best-effort** (a fresh, local, no-RE run); the **archive** formats
-  (tar/erofs) are the faithful path — metadata there lives inside the blob, invisible to buck's model.
-
-- **Ops batched per action (the disk lever).** A layer action runs a thin
-  step-driver that applies its op list **in order** against the parent stack (an overlay `upperdir` over the
-  ancestor lowers — see *Layering via overlayfs deltas* above), then
-  captures **one** output delta. So **# trees = # layers, not # ops** — batch
-  freely. Granularity is the Docker-layer-design knob: **split `install_rpms`
-  and other expensive/independently-cached ops** into their own layers; **batch
-  cheap, co-changing ops** (config writes, sysusers, os-release). Disk is bounded
-  by: **CAS file-dedup** (a tree is content-addressed files; unchanged files
-  across parent/child share blobs → marginal cost ≈ the diff), **deferred
-  materialization** (intermediate layer trees stay in CAS, off local disk), and
-  **reflinked local materialization** (require a reflink-capable fs — btrfs/XFS;
-  the antlir2/mkosi `reflink_flavor` pattern).
-- **Operation vocabulary (modeled on mkosi).** A small primitive set + terminal
-  packers:
-  - *Start*: `from_scratch` / `from_base(tree)` (mkosi base trees).
-  - *Populate*: `install_rpms(packages)` — install a set of requested package
-    subjects/NEVRAs, **resolved exactly as antlir2 does** (mkosi
-    `install_distribution`): a build-time **dnf plan** (libdnf5) solves their
-    transitive runtime closure over the distribution's package set, then only the
-    resolved rpms are materialized and installed. Inter-package runtime deps are
-    **dnf's to resolve, not buck2 edges** — see Runtime dependencies below.
-    `copy_tree`/`add_files` — build artifacts + config trees (mkosi
-    skeleton/extra trees).
-  - *Mutate*: `run(cmd)` chrooted in the tree — the general escape hatch
-    subsuming most mkosi `configure_*`/`run_*` (os-release, machine-id, locale,
-    ssh, clock, `systemd-sysusers`, `systemd-tmpfiles`, `depmod`, presets);
-    `remove`, `symlink`, `mkdir`, `chmod/chown`, `set_user`.
-  - *Boot sub-pipelines* (themselves layer-like): `build_initrd`, `build_uki`
-    (mkosi `make_uki` via `ukify`/`systemd-measure`), `install_kernel`.
-  - *Pack* (terminal → archive): `make_disk` — partitions + filesystems +
-    dm-verity via **`systemd-repart`** (mkosi `make_image`); `make_tar`,
-    `make_cpio`, `make_directory`, `make_oci`, and the extension formats
-    (`sysext`/`confext`/`esp`/`portable`). mkosi `OutputFormat`: directory, tar,
-    cpio, disk, oci, esp, sysext, confext, portable.
-- **Implementation: mkosi as reference + tool source.** Each layer is a sandboxed
-  driver that sets up its target tree via `rootfs.py` — `systemd-repart`/`sysusers`/`dnf`
-  run in the engine against a bound/overlaid tree, chrooted commands run inside it —
-  **reusing the systemd tools mkosi drives**
-  (`systemd-repart`, `ukify`/`systemd-measure`, `systemd-sysusers`/`tmpfiles`,
-  dm-verity, libdnf5) rather than reinventing the hard parts. Whether to shell
-  out to those tools or call mkosi's Python helpers is an implementation detail;
-  the *operations* are mkosi's and the *tools* are systemd's.
-- **Composition: higher-level primitives over the low-level actions.** Built
-  with **macros + Starlark op-bundles + multi-action rules** (not antlir2's
-  `anon_target`/`plugins`): keep the driver's op set primitive, and build
-  higher-level ops as Starlark that **lowers to primitives** (`add_user("svc")`
-  → `run(["systemd-sysusers", …])`); bundle op-lists into reusable layer
-  functions (`base_layer(packages)`); a top macro
-  (`os_image(name, packages, config_ops, format)`) expands to the full layer
-  chain + pack. Macro→many targets (granular, separately cached, intermediate
-  layers addressable; can use buck2 sub-targets) vs rule→one target (clean
-  interface, internal actions hidden) chooses caching granularity per primitive.
-- **Runtime dependencies — antlir2's model, verbatim (image install only).**
-  For installing packages into images we mirror antlir2 exactly: rpms are a
-  **flat, content-addressed repo bag**, *not* a dependency graph, and the
-  runtime closure is **solved by dnf at build time** rather than walked through
-  buck2 edges. `install_rpms` lowers to antlir2's chain: (1) a **`rpm_plan`
-  action** runs libdnf5 over the repodata of the distribution's package set + the
-  requested subjects → a **transaction** (the resolved NEVRA set); (2) only
-  those NEVRAs are **materialized** into a local repo (the dynamic step,
-  antlir2's `compiler_plan_to_local_repos`); (3) the install op lays them down.
-  The plan's repodata is generated from our **lock metadata**
-  (provides/requires/versions — already a buckify-rpm input, so no rpm builds
-  are needed to produce it), making the plan cheap; `pkg_source` (decision 14)
-  still chooses each *resolved* node's backing (download vs from-source) when
-  its artifact is materialized, and the version-skew invariant keeps the solved
-  closure mode-independent. **Rebuild scope is antlir2's cutoff, not graph
-  edges**: any built or bumped rpm changes the repodata, so every image's
-  `rpm_plan` re-runs (cheap), but its transaction is byte-identical unless
-  *this* image's resolved closure actually changed — so the expensive install
-  and the layers below it cut off (early cutoff) for every image the change
-  doesn't reach.
-- **Why image install differs from buildroot assembly.** The difference is
-  **mechanism, not policy** — both stay hard-`Requires`-only, weak-deps off (the
-  one closure rule, Weak deps decision). Buildroots feed an **explicit,
-  pre-flattened set** from the **`RuntimeDepTSet`** (buck2 edges,
-  `add_cmdline_packages`, no solve) so an identical closure is byte-stable across
-  consumers (assembly-cache sharing, see Rebuild semantics). Images instead
-  **declare top-level package names and let dnf solve the closure** at plan time
-  over the repo bag — antlir2's ergonomics and caching, without threading the
-  buck-edge closure into the image graph. With pinned versions and weak-deps off
-  the two yield the *same* hard closure; they just compute it differently. The
-  buck-modeled runtime closure still exists and stays load-bearing — buildroot
-  assembly and buckify-rpm's prebuilt auto-complete (decision 14) both rely on
-  it — it is simply **not** what drives image install.
-- **Why buildroots can't (mostly) switch to the plan.** The gate isn't
-  prebuilt-vs-from-source, it's **separable-fixed-set vs interleaved-per-package
-  closure**. A package's BR closure **interleaves** from-source and prebuilt
-  members (a prebuilt dep of a from-source BR pulls in further from-source deps,
-  and back), so the prebuilt portion can't be carved out and resolved by a plan
-  independently — and the `RuntimeDepTSet` already carries those prebuilt leaves
-  for free; re-deriving them would need the from-source metadata in the bag
-  anyway. That closure is also **already resolved at lock time** (buckify-rpm's
-  solve) and installed solve-free via `add_cmdline_packages`, which is what keeps
-  it byte-stable across consumers. The lone exception is the **fixed,
-  consumer-independent seed/base/invoked-tool floor** (no from-source members):
-  it *could* be an `rpm_plan`, but it's already resolved once and shared, so that
-  would be cosmetic unification, not a capability gain. The deeper reason images
-  benefit and buildroots don't: the plan's win is **authoring by name**, and only
-  images have that surface — buildroot BRs are spec-derived and resolved once.
-- **No rpmdb in the finalized image (image-mode).** `install_rpms` lays files
-  down via libdnf5/rpm, but the terminal pack **drops the installed rpmdb** from
-  the shipped tree — the product is an immutable, image-based OS (no runtime
-  `dnf`/`rpm` transactions; updates ship whole images), so it carries no
-  installed-package database. **This resolves the signed-rpm question**: with no
-  in-image rpmdb to hold signed headers and no on-device package-signature
-  verification, the **unsigned rpm stays the graph output** and images need no
-  in-graph signed rpms — signing stays a pure release leaf (Release pipeline).
-  (A future package-managed variant that *does* ship a writable rpmdb would make
-  signed rpms an in-graph input to `install_rpms` for that variant only — the
-  same exception class as the embedded EFI signature; not in scope now.)
-- **Fit with the rest.** Each image picks a **distribution** (`default_os` =
-  fedora|centos) which transitions the package graph to that distribution's
-  seed/locks/toolchain (decision 13). Downstream of the rpm graph (`install_rpms`
-  consumes our built rpm artifacts, set resolved by the build-time dnf plan above
-  — not walked from the lock). **Content-keyed layer
-  caching + early cutoff** (Docker-layer-like but correct — a layer producing an
-  identical tree cuts off downstream). **Reproducible** (`SOURCE_DATE_EPOCH`,
-  deterministic packers). **Signing**: detached sigs (disk-image `.sig`, signed
-  dm-verity roothash, OCI cosign) are release-tier leaves; the **embedded EFI/UKI
-  Secure Boot signature is an in-graph input** to `make_disk` via the
-  `signing_toolchain` (see Release pipeline).
-- **Tradeoff vs antlir2.** We keep antlir2's rpm resolution **verbatim** (the
-  dnf plan above), so we give up nothing on package **provides/requires** — dnf
-  still validates and solves them. What we drop is antlir2's feature-graph
-  **auto-ordering of the non-rpm ops** (provides/requires/toposort over
-  file/user/config items): our op list is fixed-order instead. We gain
-  simplicity and a readable sequence; the safety net holds — `install_rpms`
-  (dnf) enforces real package dependencies and
-  a broken `run` step fails loudly.
-
-### Integration testing (barrage)
-
-Integration tests use **barrage** (`../barrage`), an asyncio framework that runs
-many tests **concurrently in one process**. We exploit buck2's **decoupled,
-pluggable test executor** (the thing Bazel lacks — and a decisive reason to stay
-on buck2) to pool all selected tests into a single streamed barrage process.
-
-- **User surface.** A `barrage_test` rule (+ a `barrage_suite` macro) per test
-  file or selector — deps are ordinary targets:
-  ```
-  barrage_test(name, srcs=[*.py], selectors=[...]?, images={name: target},
-               bins={name: target}, data=[...], deps=[...], labels=[...], env={})
-  ```
-  `images` come from the image-building rules, `bins` from `rust_binary`/
-  `cxx_binary`/rpm-subpackage targets. The rule emits `ExternalRunnerTestInfo`
-  with the selectors in `command`, the named image/bin artifacts in `env`
-  (`BARRAGE_IMAGE_<name>`/`BARRAGE_BIN_<name>` handles, so buck2 builds them),
-  and `labels`. Test code resolves deps by name via those env vars (a thin
-  `barrage.deps` helper).
-- **barrage IS the test executor.** barrage implements buck2's gRPC
-  `TestExecutor` (`app/buck2_test_api/src/protocol.rs:37` — `external_runner_spec`
-  + `end_of_test_requests`); `.buckconfig [test] external_runner` points at it.
-  buck2 streams one spec per target **as that target's deps finish building**
-  (`TestDriver` FuturesUnordered → out-of-order) — the streaming we want. For
-  each spec barrage calls back **`prepare_for_local_execution`**
-  (`protocol.rs:102`, *"return the actual command with all args, env and cwd to
-  be executed locally"*) → buck2 materializes that test's artifacts + resolves
-  the handles to real paths → barrage extracts the selector + paths, imports the
-  test module, and schedules it onto its **live event loop** (in-process,
-  concurrent with selectors already running). Per-test results go back via
-  `report_test_result`; `end_of_test_results` at the end. One barrage process for
-  the whole `buck2 test` run.
-- **Selection & runtime selectors.** `buck2 test <patterns>` + `--include/
-  --exclude <label>` choose which targets build/run; everything after `--` is
-  forwarded raw to the executor (`TEST_EXECUTOR_ARGS`, `raw=true`,
-  `app/buck2_client/src/commands/test.rs:182`), so `buck2 test //tests:boot --
-  'test_boot.py::Boot::test_x' -x` passes barrage's own selectors/flags at
-  runtime; the executor intersects per-target selectors ∩ runtime filter.
-  Runtime selectors filter what *runs*; buck2 still builds the selected targets'
-  deps — so size targets by dep grouping, use `--` for ad-hoc narrowing.
-- **Pooling vs RE.** Pooled-in-one-process ⟹ the barrage process runs **local**
-  (`prepare_for_local_execution`); the artifact *builds* and the images/VMs the
-  tests spawn still use RE/cache. buck2 *can* run tests on RE per-test (executor
-  calls `execute2` with an RE `executor_override`; `CommandExecutorConfig`/
-  `re_client` in `app/buck2_test/src/orchestrator.rs`; `--unstable-allow-*-tests-
-  on-re`) — but that's one remote action per test (distribution + isolation, no
-  pooling). An RE action is atomic on inputs, so pooled + streaming + RE-
-  distributed can't all coexist: pick the pooled-local executor (RE for builds +
-  spawned images) for barrage's concurrency win, or per-test-RE for heavy
-  isolated tests — chosen per target via `executor_overrides`; targets can mix.
-
-### Misc
-
-- **Distribution identity**: our dist tag is **`.aos`**, plus our `%vendor`/
-  `%packager`/`%distribution`. Applied as **command-line macro overrides**
-  (`--define "dist .aos"`, etc.) on **every** `rpmspec`/`-br`/`-ba`/`-bk`
-  invocation — command-line defines win over the seed `redhat-rpm-config`'s
-  `%dist` (`.fcNN`). It must be byte-identical across spec parse, `[br]`
-  discovery, and build, since `%dist` feeds `Release` → the NVR → the lock and
-  the content key; a single committed macro set (in buckify-rpm config + the
-  rule) is the source of truth, passed the same way everywhere.
-- **Build-time network: never granted.** `--unshare-net` in *every* sandbox
-  (assembly, build) — **matches Koji's network-isolated chroot**, so
-  anything that builds in Fedora builds for us. `rpmbuild` never fetches
-  (`Source`/`Patch` is a local basename, URL reference-only —
-  `parsePreamble.cc:144-153`); only a spec's own scriptlets running a fetcher
-  (cargo/go/npm/pip/maven) reach the network, which Fedora forbids and instead
-  **vendors** two ways we already handle: **deps-as-rpms** (each dep its own rpm
-  via `BuildRequires`, tool pointed at an offline repo) — just graph
-  nodes/edges; and **vendor-tarball-as-`Source`** (deps bundled in a second
-  tarball in lookaside, listed in `sources`) — rides our existing
-  `http_file`-by-sha256 path, no new mechanism, already captured at import.
-  Dynamic-BR generators read their manifests offline, so `[br]` works under
-  `--unshare-net` too. We import specs as-is, so the only consequence is
-  **import-closure size** (deps-as-rpms pulls in many tiny crate/module rpms) — a
-  scope question, not a mechanism one. **No allow-network escape hatch**: a
-  fetching spec fails loudly (the signal to vendor it); network-dependent
-  `%check` tests are patched/skipped as Fedora does.
-- **Compiler preference**: once our gcc is built, the buildroot installs it over
-  the seed gcc (NEVRA-newer) so subsequent packages compile with our gcc; other
-  invoked tools stay seed (they don't shape output bits). No stage transition —
-  just "our gcc wins when present."
-- **Remote execution**: seed artifacts and built rpms are CAS inputs/outputs;
-  workers need unprivileged userns only (no setuid binary — mkosi-sandbox is
-  pure Python; deferred materialization keeps intermediate rpms off local disk).
-  Cost mitigations: the buildroot-assembly action is cached (unchanged closure
-  → no reassembly), plus worker-local rpm caches.
-- **Unprivileged-build validation** (phase 1): confirm `rpmbuild` under
-  `--suppress-chown` produces correct ownership *metadata* (Fedora sets it via
-  `%attr`/`%defattr`, recorded independent of on-disk ownership) — verify incl.
-  `%post` scriptlets and `setcap`/file-capability cases against a real build.
-
-### Storage & remote cache
-
-- **Git monorepo** — specs, patches, BUCK files (small text).
-- **Source lookaside** (S3/static HTTP) — upstream tarballs, referenced by
-  `url + sha256` (≈ dist-git lookaside). Durable, append-only.
-  Fetched via buck2's **native content-addressed download** (`http_file`/
-  `http_archive`, sha256-pinned — `download_file.rs`), **never a `run(curl)`
-  action**: the known digest makes the result a hermetic CAS blob, the
-  daemon/materializer fetches it lazily into CAS, so **RE workers need only
-  CAS access, not lookaside egress**, and consumers content-key on the digest.
-  Repository-pool RPM actions use the same mechanism (RE-compatible), with the primary
-  metadata's sha256 `pkgid` as their content identity.
-- **RE action cache + CAS** — derived artifacts incl. built rpms; sources pass
-  through (deferred materialization keeps them off disk). Evictable, never a
-  source of truth (expired → re-fetch from lookaside / re-build). OSS pitfall:
-  no TTL refresh → expired artifacts fail deferred-materialization builds until
-  daemon restart (Restarter mitigates) → configure generous CAS retention.
-- **Pinned Fedora repo** (the catalog manifest's source) — refresh-catalog snapshots its
-  filtered repodata and complete package index as one authoritative unit. The repository target
-  owns the corresponding content-pinned RPM actions; engine, buildroot, and image
-  transactions select from that shared pool by `(repo, pkgid)`.
-
-Remote cache: buck2 OSS speaks Bazel REAPI v2 (`[buck2_re_client]` →
-`action_cache_address` / `engine_address` / `cas_address`; examples in
-`examples/remote_execution/` for NativeLink/BuildBarn/BuildBuddy/EngFlow).
-Choice: **NativeLink**, cache-only first (AC + CAS, local execution), growing
-into the RE engine in phase 6. REAPI `UpdateActionResult` is auth-gated → CI
-builders get the AC-write credential; workstations are AC-read-only.
-
-### Configuration layering
-
-Nothing infra-shaped is hardcoded; committed defaults + local overrides, so a
-fresh clone builds with zero local config.
-- **buck2-level** (RE endpoints): committed `.buckconfig`; overrides via
-  gitignored `.buckconfig.local` / `$HOME` config / `--config` (buck2's
-  precedence chain, `docs/concepts/buckconfig.md`).
-- **Tool-level** (buckify-rpm, lookaside): committed `tools/config.toml` +
-  gitignored user override + env.
-- **Sorting rule** — *never in action keys* (pure transport): lookaside
-  mirrors/proxies, RE endpoints. *Content-identifying, committed*: source
-  `url + sha256` in lock data (sha is the identity; a mirror swap may re-run
-  downloads but identical outputs cut off downstream).
-
-### Release pipeline: signing
-
-**Principle: signing is a leaf, off the build graph; the production key is never
-a build input.** Prior art is consistent — Bazel/`rules_oci` `cosign_sign` and
-the KMS-at-release pattern keep signing a post-build step emitting **detached**
-signatures (artifact digest unchanged); in-build keystore signing is the
-anti-pattern (forces the key into the build, breaks hermeticity). The organizing
-split is **detached → leaf, embedded → not**:
-
-- **Detached set (true leaves)** — container images (cosign/sigstore manifest
-  referencing the digest), disk images (detached `.sig` / signed dm-verity
-  roothash), **rpms** (header sig — but nothing downstream verifies it: images
-  install unsigned rpms and **drop the rpmdb at pack time** (Image building), so
-  there's no on-device signature check; the **unsigned** rpm is the graph output
-  and the **signed** rpm is a release-only copy for the published repo), repo
-  metadata (detached
-  GPG). These are top-level `//release:sign-*` targets nothing depends on; the
-  action is `local_only`, `allow_cache_upload=False`, prod key touched only at
-  release. Reproducibility and early cutoff are untouched (signed output never
-  feeds back).
-- **Embedded set (the exception)** — EFI PE binaries (kernel, systemd-boot/
-  sd-stub, UKI) carry an **Authenticode** signature *inside* the binary, which
-  the firmware verifies in the Secure Boot chain. The signed binary is therefore
-  an **input** to image assembly, not a leaf — it can't be detached.
-
-**Reproducible signatures.** UEFI Secure Boot requires **RSA PKCS#1 v1.5**
-(Ed25519/ECDSA aren't accepted in `db`), which is **deterministic** — same key +
-same PE bytes → identical signature. The only non-determinism is *time*: the
-optional RFC 3161 timestamp (a TSA countersignature) and the `signingTime`
-attribute — **omit/pin both** (Secure Boot doesn't check time) and signed boot
-binaries are bit-reproducible. Prerequisite: the **unsigned** PE must itself be
-reproducible first (stable PE layout/alignment, `SOURCE_DATE_EPOCH`, no build-id
-randomness) — folds into the existing reproducibility prerequisites. (Detached
-cosign uses randomized ECDSA / keyless Fulcio+Rekor → not reproducible, but it's
-a leaf, so it doesn't matter.)
-
-**dev vs prod = one `signing_toolchain`, selected by `//signing:mode`.** The
-enabler: siguldry (`../siguldry`) exposes signing keys as a **PKCS#11 module**
-(`libsiguldry_pkcs11.so`) reachable over a **Unix socket**, usable by `sbsign`/
-`pesign`/`openssl`/`systemd-measure`. So both modes run the *same signer tool*;
-only the key reference differs. A `signing_toolchain` rule yields a `SigningInfo`
-provider (`{signer_tool, key_ref, cert, pkcs11_module?, sandbox_mounts,
-cacheable, exec_requirements}`); a `//signing:mode` constraint (`dev`|`prod`,
-default `dev`) picks the instance; consuming rules (the in-graph embedded boot
-signer *and* the off-graph leaf signers) are mode-agnostic.
-- **`:dev`** — committed RSA key+cert as **declared inputs** → hermetic,
-  content-keyed, **cacheable**, reproducible; runs anywhere incl. RE. The dev
-  cert is enrolled in the test Secure Boot env (OVMF `db`/MOK) so **dev images
-  boot the real chain** and tests mimic prod.
-- **`:siguldry` (prod)** — `key_ref` = a `pkcs11:` URI (a string, not an
-  artifact), `pkcs11_module` = `libsiguldry_pkcs11.so` (built from the
-  `../siguldry` workspace as a buck2 target — a real input), plus the bridge
-  **Unix socket** bound into the sandbox and client TLS creds from the exec env
-  (*not* inputs). `allow_cache_upload=False`, `local_only`/pinned to a signing
-  exec platform. Same deterministic RSA PKCS#1 v1.5 → only key/cert/signature
-  bytes differ from dev.
-
-Consequences: the **secret stays out of content-key/CAS** (URI is a string, the
-`.so` is public, creds are ambient) — so prod signing is **non-cacheable** (buck2
-can't prove input-equality without the key), re-invoking siguldry each run
-(correct for a release leaf; the signature is still deterministic). The **graph
-shape is identical across modes**, so dev faithfully exercises prod's signing
-topology — per-key reproducibility expressed as a buck2 mode. siguldry's
-Unix-socket design composes with our sandbox: bind the one socket and keep
-**`--unshare-net`** (a socket, not network egress — matches "build-time network
-never granted"). In prod, only the boot-binary subgraph + the release leaf
-signers are non-cacheable/release-tier; everything else is unchanged.
-
-### CI
-
-- **Build hermetically with RE** (action-cache write) — this *is* the canonical,
-  shippable build; unchanged actions hit the cache so it's slow only the first
-  time, and early cutoff + reproducibility trim cascades.
-- **Run the barrage integration tests** as `buck2 test` targets; a test failure
-  doesn't block the rpm artifact (gating is a CI policy).
-- **Reproducibility audit**: build-twice-compare per package (or a periodic
-  full rebuild) — load-bearing because early cutoff depends on it. Maintain a
-  quarantine list (compare modulo known-bad files + tracking issue) so repro
-  flakes don't wedge CI.
-- **Staleness check** (see buckify-rpm): re-run `rpmspec`/`-br` in final
-  buildroots and diff against the lock; mismatch → bot opens a refresh PR.
-
-## Phased implementation
-
-**Phase 1 — repo skeleton + one rpm end-to-end (local).** Monorepo
-`.buckconfig`, `defs/` (our rule skeletons), and the pinned buck2 input:
-the **buck2 binary via DotSlash** (a committed descriptor that fetches a
-content-addressed prebuilt and verifies its hash — as buck2's own
-`bootstrap/buck2` does — so a fresh clone gets a known buck2, no install step).
-The **standard prelude is the binary's bundled copy** (`[external_cells]
-prelude = bundled`) — the source of `genrule`/`cxx_*`/`go_*`/`rust_*`/`gobuckify`
-+ the toolchain providers our rules and the dogfooding/reindeer paths rely on.
-Bundling means the prelude **always matches the binary** (no separate pin, no
-submodule), which removes the binary↔prelude version-alignment rough edge
-entirely; the cost is the prelude source isn't checked out in-tree (read it via
-`buck2 audit` or upstream). The rest of the dev tooling (python3 bootstrap, ruff,
-ty, buildifier) is pinned in `tools/BUCK` and fetched + sha256-verified by buck
-itself (see `http_tool`); the dev commands are `buck run tine//tools:…` targets.
-**`buckify-rpm resolve` lands in phase 1,
-not phase 2** — the bootstrap
-trampoline's engine root needs the *full* resolved closure (rpm, glibc, libsolv,
-libdnf5, python3, sqlite, openssl, lua, popt, coreutils, bash, … + every
-transitive dep) plus the invoked-tool base, which is far too large to hand-write
-correctly. So phase 1 builds the `resolve` subcommand + host orchestrator first
-(manifest → each distribution resolved in its own engine → committed
-per-distribution fragments `tine/catalog/<distribution>.json`, loaded statically and
-declared in the catalog cell's BUCK); the lock is
-generated, never hand-written. The
-**bootstrap trampoline** (`extract.py` → engine root,
-host Python ≥ 3.14) + vendored mkosi-sandbox stands up the engine root; the
-**engine** — the assemble (libdnf5) + build (rpmbuild) drivers bound to that root
-and shipped as an `EngineInfo` — is carried by each **`distribution`** target
-(buildroot pool + base + engine; the Phase-1 realization of decision 13, before
-the full `config//distribution` transition). `distribution/packages/` holds 2–3
-hand-written leaf packages (e.g. zlib); `rpm_package` assembles the buildroot from
-seed rpms (no local deps yet) and builds them. **Multi-distribution from the start**:
-zlib builds against both `fedora44` and `centos10`, the shared Fedora engine
-assembling both buildroots. *Verify: rpm installs, `rpm -qp --requires/--provides`
-sane, ownership metadata correct under `--suppress-chown` (the unprivileged-build
-validation), rebuild is a cache hit, spec edit rebuilds. **Buildroot
-reproducibility**: assemble twice and byte-compare the whole installroot
-**including the rpmdb at `%_dbpath`** (Fedora: `/usr/lib/sysimage/rpm`, with
-`/var/lib/rpm` a compat symlink) — confirms `rpmdb --parkdb` + a pinned
-sqlite/rpm + a fixed install closure make the db byte-stable, not just the
-emitted rpms.* **Sub-target model spike** (retires the two-granularity risk; see the
-rpm_package rule): zlib → `zlib`/`zlib-devel`/`zlib-static`/… and a second
-package build-requiring only `[zlib-devel]`. Prove one `rpmbuild -ba` emits all
-subpackages as `sub_targets`, each with its own `DefaultInfo` + `RuntimeDepTSet`,
-and the consumer edges on just `[zlib-devel]` (closure `{zlib-devel, zlib}` — a
-`zlib` change *correctly* rebuilds it, the lib being a real input). For
-**per-output cutoff**, change a sibling *outside* that closure
-(`zlib-static`/`-doc`): the action re-emits all subpackages, the sibling's digest
-changes, but the consumed rpms are byte-identical → consumer **not** rebuilt.
-*Verify also: the declared subpackage set — including the **predicted
-`-debuginfo`/`-debugsource`** subpackages — matches `rpmbuild`'s actual output
-(mismatch fails the action — the fidelity gate); pick zlib precisely because it
-produces debuginfo, so the gate exercises the prediction.*
-
-**Phase 2 — buckify-rpm static resolution + lock generation.** (Seed generation
-already landed in phase 1.) Spec parsing in a seed-only buildroot, Provides
-resolution from rpm headers (libdnf5), runtime-closure baking, lock-data
-generation for a few dozen packages incl. one with real local dep edges; the
-per-package changelog `SOURCE_DATE_EPOCH` is recorded into each lock here.
-*Verify: graph matches `dnf builddep` on samples; `buck2 build //distribution/packages/...`
-builds in correct waves; re-running seed generation against the same pin
-reproduces the committed `distribution/` byte-for-byte.*
-
-**Phase 3 — dynamic BuildRequires discovery (build-driven).** The `[br]`
-sub-target + the discovery loop + the post-convergence resolve cross-check
-(writes precise direct edges, flags incidentally-satisfied missing edges).
-Cover a `%pyproject_buildrequires` package. CI staleness check (bootstrap vs
-seed buildroots; real final buildroots once phase 4 lands). *Verify: discovered
-set matches `dnf builddep` on the `.buildreqs.nosrc.rpm`; an incidentally
-satisfied direct BR is caught; full build exits 0.*
-
-**Phase 4 — our toolchain + invoked/linked rule + cycles.** Buildroot = seed
-invoked-tools base + our linked libs; implement the classification (decision 7).
-Build our gcc bootstrapped by the seed gcc (decision 10) and prefer it once
-built; glibc/libstdc++/libgcc as our linked libs everywhere. Build cycles are
-condensed by SCC and their intra-cycle edges dropped to the seed, so the mega-SCC
-core (gcc ↔ glibc ↔ systemd ↔ …) builds against upstream binaries; self-hosting
-that core (rebuild against our own round) is a later increment. The reproducibility
-gate (build-twice-compare) lands in CI here at the latest; early-cutoff
-cascade-trimming depends on it. *Verify: gcc↔glibc builds (both via the seed gcc);
-a cycle member's buildroot resolves its intra-cycle BuildRequires from the seed; a
-package links our glibc not seed's; seed tools run against our glibc; editing a
-non-base package doesn't rebuild the base.*
-
-**Phase 5 — CI: hermetic build + tests + reproducibility.** Hermetic build per
-merged commit with RE action-cache write (canonical/shippable artifacts);
-integration-test jobs; reproducibility audit + quarantine list; the staleness
-bot. *Verify: an unchanged-commit re-run is ~all cache hits; a no-op change to
-a deep dep trims at early cutoff rather than rebuilding the world; a repro flake
-is quarantined, not wedging CI.*
-
-**Phase 6 — scale-out + RE.** Import the full core subset; RE platform config
-(engine, not just cache); buildroot materialization optimizations as measured.
-*Verify: full `buck2 build //distribution/packages/...` clean and warm; provenance
-spot-check inside buildroots (our gcc used, our glibc linked, no seed libraries
-linked into shipped binaries).*
-
-**Phase 7 — image building.** The layer step-driver under mkosi-sandbox (op
-vocabulary above, reusing systemd tools); `install_rpms` resolved by a
-build-time dnf plan (antlir2's model — a flat content-addressed repo bag,
-libdnf5 solves the runtime closure, only the resolved rpms materialized — *not*
-the lock's buck-edge closure); pack to a disk image via `systemd-repart` +
-dm-verity; `build_uki` + embedded Secure Boot signing via the dev
-`signing_toolchain`; the `os_image` macro composing base→config→pack. *Verify: a
-minimal bootable image builds reproducibly; boots under OVMF with the dev Secure
-Boot cert enrolled; an unchanged config layer is a cache hit while changing
-`install_rpms` rebuilds from that layer down; **bumping an rpm outside the
-image's resolved closure re-runs the `rpm_plan` but the transaction is identical,
-so install + downstream layers cut off** (antlir2's per-image cutoff); the
-finalized image (rpmdb dropped at pack) reproduces byte-for-byte; disk stays
-bounded (CAS file-dedup + reflinked materialization).*
-
-**Phase 8 — integration testing (barrage).** The `barrage_test`/`barrage_suite`
-rules + the barrage gRPC `TestExecutor` (wired via `.buckconfig [test]`); a few
-`barrage_test` targets with image+bin deps. *Verify: `buck2 test //tests/...`
-builds each test's deps and runs all selectors in **one** streamed barrage
-process; specs arrive as deps finish (streaming, not build-all-first); `-- <sel>`
-narrows at runtime; per-test results are reported individually; a failing test
-doesn't block others; an RE `executor_override` runs a chosen test per-test on
-RE.*
-
-## Open questions (not yet settled)
-
-- **Release pipeline** (signing settled above): repo compose (createrepo + our
-  comps), and **debuginfo/debugsource + srpm *shipping*** — note the build side
-  is settled (debuginfo subpackages are predicted and built as sub-targets, see
-  rpm_package rule); what's open is only whether/how they're published (a
-  debuginfo repo, `debuginfod`, srpm repo).
-- **Upstream-update workflow**: tracking Fedora updates after import, rebasing
-  local patches, how version bumps flow into lock refresh.
-- **Package tests (`%check`)**: if/when we want them, drop `--nocheck` from the
-  primary rpmbuild action and run them as part of the package build. Build
-  trees are huge and discarded after a successful build, so they can't be run
-  as a separate action. Likely with a per-package opt-out for broken or
-  too expensive suites.
-
-## Reference material
-
-- rpm: exit 11 (`include/rpm/rpmbuild.h:58`); BR flow
-  (`build/build.cc:459-477`, static-check → %prep → %generate_buildrequires →
-  merged re-check; merged header at `build.cc:300-303`); `.buildreqs.nosrc.rpm`
-  naming (`build/build.cc:481-484`); `RPMTAG_SOURCERPM`=1044, `RPMTAG_VCS`=5034
-  (`include/rpm/rpmtag.h`) — VCS empty in Fedora (verified), so dist-git commit
-  comes from Koji `getBuild(nvr).source` = `git+<url>#<commit>`, not the rpm;
-  `-ba --noclean` clears CLEAN+RMBUILD
-  (`tools/rpmbuild.cc:275`,719); `-bk --short-circuit` runs only %check
-  (`rpmbuild.cc:664-667`); **`rpmdb --parkdb`** = rebuild-with-`RPMDB_FLAG_PARK`
-  (`lib/rpmts.cc:175`, `tools/rpmdb.cc:27,124`) → sqlite WAL/SHM teardown +
-  `journal_mode=DELETE` + VACUUM (`lib/backend/sqlite.cc:217-228`), `--root` via
-  `rpmcliAllPoptTable`; **`SOURCE_DATE_EPOCH`** → `ts->overrideTime`/tid for any
-  transaction (`lib/rpmts.cc:995-1003`, clamps `INSTALLTIME`) + build mtime
-  clamp (`build/files.cc:1024-1050`); **source resolution = `%{_sourcedir}/<basename>`**
-  (`build/parsePreamble.cc:144-153`), dir macros `_topdir`/`_sourcedir`
-  (`macros.in:273,286`); docs `docs/manual/spec.md`, `docs/man/rpmbuild.1.scd`.
-- buck2: dynamic-dep / anon-target limits
-  (`docs/rule_authors/dynamic_dependencies.md`, `anon_targets.md`,
-  `app/buck2_action_impl/src/dynamic/deferred.rs:248`); action knobs
-  (`context/run.rs:246-299`); **early cutoff = output-digest equality**
-  (`app/buck2_build_api/src/actions/calculation.rs:798`); dep files
-  (`docs/rule_authors/dep_files.md`); buckconfig precedence
-  (`docs/concepts/buckconfig.md`); RE examples (`examples/remote_execution/`).
-  **Two-granularity feasibility (verified):** a subtarget is a *collection of
-  providers* (`docs/concepts/glossary.md:232`), declared via `sub_targets =
-  {name: [providers]}` (pervasive in prelude, e.g. `prelude/apple/
-  apple_bundle.bzl:264`, `prelude/android/android_apk.bzl:88`) — so each
-  subpackage carries its own `DefaultInfo` + `RuntimeDepTSet`; consumers take an
-  edge on a specific subpackage via `dep.sub_target("name")` /
-  `dep[DefaultInfo].sub_targets[...]` (`app/buck2_build_api/src/interpreter/
-  rule_defs/provider/dependency.rs:228-251`); multi-output action → requesting
-  one output runs the whole `rpmbuild`; per-output digest → per-subpackage early
-  cutoff (`calculation.rs:798`). `TransitiveSet` is first-class. Native toolchains from rpms:
-  `GoToolchainInfo`
-  (`prelude/go/toolchain.bzl:25` — `RunInfo` binaries + `env_go_root` Artifact),
-  `CxxToolchainInfo`/`*CompilerInfo` (`prelude/cxx/cxx_toolchain_types.bzl:143`,
-  246 — `compiler` is arbitrary `RunInfo`, so a sandbox-wrapper fits).
-  **Test execution (decoupled):** `ExternalRunnerTestInfo`
-  (`app/buck2_build_api/src/interpreter/rule_defs/provider/builtin/external_runner_test_info.rs`);
-  gRPC `TestExecutor`/`TestOrchestrator` (`app/buck2_test_api/src/protocol.rs:37`
-  `external_runner_spec`/`end_of_test_requests`, `:102` `prepare_for_local_execution`
-  = "return the actual command … to be executed locally", `execute2`/
-  `report_test_result`); streaming via `TestDriver` FuturesUnordered
-  (`app/buck2_test/src/command.rs`); RE tests via `CommandExecutorConfig`/
-  `re_client` (`app/buck2_test/src/orchestrator.rs`) + `--unstable-allow-*-tests-
-  on-re`; raw runner args `TEST_EXECUTOR_ARGS` (`app/buck2_client/src/commands/
-  test.rs:182`); reference runner `app/buck2_test_runner/`. Docs
-  `docs/rule_authors/test_execution.md`. **Bazel has no pluggable test executor /
-  `prepare_for_local_execution` — pooling+streaming is buck2-only.**
-- libdnf5 (`~/Projects/dnf5`, Python bindings): `Goal::resolve()`/
-  `Transaction::run()` (`base/goal.hpp:409`, `base/transaction.hpp:135`);
-  `TransactionItemReason` (`transaction/transaction_item_reason.hpp:32`);
-  `add_cmdline_packages` (`repo/repo_sack.hpp:98`); `Package::get_source_name/
-  get_provides/get_requires/get_files` (`rpm/package.hpp`);
-  `PackageQuery::filter_provides/filter_file` (`rpm/package_query.hpp:416,783`).
-  Provider tie-break: `Goal::add_rpm_install(Package/PackageSet)`
-  (`base/goal.hpp:119,128`) installs a concrete chosen provider;
-  `PackageSack::set_user_excludes` (`rpm/package_sack.hpp:122`) / `excludepkgs`
-  disfavors pool-wide; libdnf5 sets `SOLVER_FORCEBEST` internally
-  (`rpm/solv/goal_private.cpp:412`) and exposes **no** `SOLVER_FAVOR`
-  (`../libsolv/src/solver.h:255`, `policy.c:463`). Weak deps:
-  `install_weak_deps` (`conf/config_main.hpp:148`) → `SOLVER_FLAG_IGNORE_
-  RECOMMENDED` (`rpm/solv/goal_private.cpp:416`) → libsolv `dontinstallrecommended`
-  gates the whole weak-dep pass incl. Supplements (`../libsolv/src/solver.c:4448`,
-  2975); Fedora buildroots set `install_weak_deps=0` in every mock template
-  (`../mock/mock-core-configs/etc/mock/templates/fedora-branched.tpl:31`).
-- mkosi-sandbox: `../mkosi/mkosi/sandbox.py` (ctypes-only userns; CLI
-  `--bind/--ro-bind/--dev/--tmpfs/--unshare-net/--suppress-chown/
-  --suppress-sync/--become-root`; `enter()` sets up the ns then execs). Vendor +
-  adapt.
-- image building: mkosi (`../mkosi`) is the operation/tool reference — build
-  phases + ops (`mkosi/__init__.py`: `install_distribution`, `install_*_trees`,
-  the `configure_*`/`run_*` script phases, `build_uki`/`make_uki`, `make_image`),
-  partitions/verity via `systemd-repart` (`mkosi/partition.py`), UKI via
-  `ukify`/`systemd-measure` (`mkosi/bootloader.py`, `mkosi/initrd.py`), output
-  formats (`mkosi/config.py` `OutputFormat`: directory/tar/cpio/disk/oci/esp/
-  sysext/confext/portable). antlir2 (`../antlir`) = the declarative feature model
-  we **don't** adopt (depgraph provides/requires + `anon_target`/`plugins`/
-  `dynamic_output`); its Rust image compiler + `systemd-repart` packaging are
-  alternative inspiration.
-- barrage (`../barrage`): asyncio concurrent test framework; `python3 -m barrage
-  [opts] [selectors...]` runs many tests in one process; selectors are
-  path/name-based (`file::Class::method`); tests spawn image/executable
-  subprocesses (`barrage.subprocess`). Implements buck2's `TestExecutor` (above).
-- signing: siguldry (`../siguldry`) — keys exposed as a PKCS#11 module
-  `libsiguldry_pkcs11.so` over a Unix socket, usable by `sbsign`/`pesign`/
-  `openssl`/`systemd-measure` from network-isolated builds (`README.md`,
-  `docs/diagrams/architecture.dot`, `siguldry-pkcs11/`, `sigul-pesign-bridge/`).
-  Deterministic schemes: RSA PKCS#1 v1.5, Ed25519 (RFC 8032), ECDSA+RFC 6979;
-  Authenticode non-determinism = optional RFC 3161 timestamp + `signingTime`
-  attribute (omit/pin) — reproducible-builds.org "Timestamps"; UEFI Secure Boot
-  requires RSA. Bazel prior art: `rules_oci` `cosign_sign`/`cosign_attest`
-  (detached, post-build), KMS-at-release (salrashid), in-build keystore =
-  anti-pattern.
+The `catalog` cell is consumer-overridable. Repository URLs, OS releases, engine package lists, package
+managers, and buildroots are data owned by the active catalog rather than hard-coded in the reusable rules.
+The `buildroots` cell maps importer-generated names such as `buildroots//fedora:rawhide` to catalog targets.
+
+Catalog targets use `<family>.<release>[.<component>].<role>` names. A rolling channel such as Rawhide
+occupies the release segment. Singular `.repository` targets own remotes, plural `.repositories` targets
+define universes, and release, engine, package-manager, and buildroot targets use their corresponding
+suffixes. Declaration macros require the suffix appropriate to their role. An engine's identity describes
+its provenance rather than every release that may consume it.
+
+The package source tree at `distribution/` is a separate Git repository. It is intentionally not part of
+the reusable `tine` cell: package policy and imported source data change independently of build machinery.
+
+### Component model
+
+The package model separates identity and policy from the exact inputs used by an action:
+
+```text
+PackageSystemInfo (RPM drivers)
+        │
+        ├── PackageRepositoryInfo ──┐
+        │                           ├── RepositoryUniverseInfo
+        │                           │          │
+        │                           │          ├── OsReleaseInfo
+        │                           │          │       │
+        │                           └──────────┴── PackageManagerInfo ── image installation
+        │                                                  │
+        │                                                  └── BuildrootInfo ── rpm_package
+        │
+        └── engine lock ── EngineInfo ─────────────────────────────── rpm_package
+                                   └───────────────────────────────── image tooling
+```
+
+The providers have deliberately narrow roles:
+
+- `PackageSystemInfo` bundles the drivers for one native binary-package ecosystem: snapshot, extract,
+  install, `createrepo`, plan, and build. RPM is the only implementation today.
+- `PackageRepositoryInfo` represents one repository and binds it to a package system. A repository is not
+  inherently owned by an OS release.
+- `RepositoryUniverseInfo` defines one homogeneous solve universe: required repositories, named optional
+  groups, and groups enabled by default. Selection preserves declaration order, de-duplicates identical
+  targets, and rejects conflicting repository IDs.
+- `OsReleaseInfo` associates OS identity with one repository universe.
+- `PackageManagerInfo` selects the exact repositories used for a solve, applies priority overrides, chooses
+  an engine, and owns reusable solver caches.
+- `BuildrootInfo` materializes the shared base root installed by a package manager.
+- `EngineInfo` contains a runnable root filesystem and the sandbox used to enter it. It is independent of
+  OS identity and may serve multiple compatible package managers.
+
+This split is visible in the default catalog. Fedora 44, Rawhide, and CentOS Stream 10 are separate OS
+releases. Rawhide and CentOS use their own repositories while sharing the Fedora 44 engine. CentOS models
+BaseOS as required, AppStream as a default repository group, and CRB as an optional group enabled by the
+current package manager.
+
+An image names a package manager only when it installs native packages. It names an engine separately for
+mutation, packing, UKI, disk, and VM tools. A package target names a buildroot because its shared base root,
+not OS identity alone, is its relevant input.
+
+### Catalog pinning and refresh
+
+Normal builds do not resolve against live network repositories. The catalog contains two generated forms
+of committed lock data:
+
+- `<repository>.json` pins filtered `repomd.xml`, the primary/filelists/group streams needed by libdnf5,
+  and the complete primary-metadata package inventory keyed by SHA-256 `pkgid`;
+- `<engine>.json` pins the engine transaction as a list of `{source, repo, pkgid, nevra}` records.
+
+`tine/tools/buck run tine//tools:refresh-catalog` refreshes them in two phases:
+
+1. Run every remote repository's `[snapshot]` sub-target on the host. `snapshot.py` downloads and verifies
+   repodata, drops unused streams, validates package locations, and writes deterministic JSON.
+2. Run every engine's `[resolve]` sub-target inside the current engine. `plan.py` resolves the authored
+   top-level engine package list against the freshly pinned repository trees and writes the new transaction.
+
+`verify-catalog` performs the same generation and fails when committed JSON differs. Repository snapshots
+are ordinary Buck source inputs, so changes invalidate only consumers of the changed data.
+
+`rpm_remote_repository()` derives its optional snapshot from `<target-name>.json`. This lets a new
+repository target analyze before its first refresh; consuming its empty package pool fails with an explicit
+instruction to refresh the catalog. A new engine lock is seeded as JSON data and must contain a usable
+bootstrap transaction before that engine can resolve itself.
+
+### Authoritative repository package pools
+
+Each remote repository target owns its package artifacts. Its dynamic value expands the committed snapshot
+into:
+
+- reconstructed pinned repodata;
+- one digest-checked raw RPM artifact per `pkgid`;
+- one decompressed cpio payload representation per RPM.
+
+The raw RPM and derived payload are alternative representations of the same `package_artifact` record.
+Downloads and decompression are registered once under repository ownership, rather than under every engine,
+buildroot, or image closure.
+
+`download_closure()` is therefore a selector despite its historical name. It reads a resolved transaction,
+looks up each `(repository, pkgid)` in the authoritative pool, and creates a symlinked directory containing
+the requested representation. It never creates a second download. Buck materializes only artifacts selected
+by a consuming transaction, while every consumer shares their owning actions.
+
+Local RPMs produced by this repository use transaction entries with `source = "local"` and a location into
+an input RPM directory. They are projected directly from the producing target rather than copied into a
+second pool.
+
+Why repository ownership matters:
+
+- one digest and one action graph node define each upstream RPM;
+- raw, verified, decompressed, or future representations have a natural shared owner;
+- engine, buildroot, and image closures become cheap selectors;
+- repository snapshot skew fails at the lookup boundary instead of silently downloading different bytes.
+
+### Engine bootstrap
+
+An engine is a pinned execution environment, not an OS release. It supplies rpm, Python, libdnf5,
+`createrepo_c`, core utilities, sandbox dependencies, and currently the image-building/VM tools.
+
+Bootstrapping breaks the dependency on host RPM tooling in two stages:
+
+1. The repository pool supplies pre-decompressed payload cpio artifacts for the locked engine transaction.
+   The minimal `extract.py`/`cpio.py` path unpacks them into `chroot1` without running scriptlets or creating
+   an rpmdb.
+2. The package-system installer runs from `chroot1` and properly installs the raw RPM closure into
+   `chroot2`, including scriptlets and the rpmdb. `chroot2` becomes the reusable `EngineInfo` root.
+
+The bootstrap extractor currently supports the RPM v4/newc form used by the pinned Fedora repository. It
+does not implement RPM v6's index-based payload metadata. The second-stage install is authoritative for
+package metadata, ownership behavior available through the unprivileged sandbox, and scriptlets.
+
+The host contract is intentionally small:
+
+- the pinned Buck2 binary and its bundled prelude;
+- the pinned bootstrap Python used to run the minimal extractor and development tools;
+- unprivileged user namespaces and the filesystem/kernel facilities required by mkosi-sandbox/overlayfs;
+- `/dev/kvm` only when running the VM target.
+
+### Execution isolation and target roots
+
+All build actions run through `chroot_run()` and `tine/engine/sandbox.py`. The sandbox binds the engine's
+userspace read-only over an otherwise isolated namespace, supplies API and temporary filesystems, clears the
+host environment, disables network by default, and uses mkosi-sandbox's unprivileged fakeroot behavior
+(`--suppress-chown`, `--suppress-sync`, and `--become-root`).
+
+The sandbox only creates the execution environment. Drivers own their target-root layout through
+`rootfs.rootfs()`:
+
+- a fresh install binds an output directory at `/buildroot`;
+- an incremental install or image operation mounts an ordered lower stack plus a persisted upper;
+- an RPM build mounts its buildroot stack with an ephemeral upper and binds action scratch at `/build`;
+- pack/disk operations merge a stack with an ephemeral upper so cleanup does not modify stored layers.
+
+This division keeps one namespace boundary while letting each driver express the root it needs. Nesting a
+second sandbox inside an engine would duplicate isolation, complicate mounts, and make remote execution
+harder.
+
+`chroot_run(relaxed = True)` is reserved for interactive leaves. The engine still supplies userspace, but
+devices, `/run`, environment, current directory, and network come from the host, and the command remains the
+invoking user. `image_vm` is its only current consumer; build actions never use relaxed mode.
+
+### Native package installation
+
+`install_packages()` is the shared native-package installation primitive used by RPM builds and images. It
+has three actions:
+
+1. **Plan.** Run `PackageSystemInfo.plan` against the package manager's exact repositories, priorities, and
+   solver cache. Weak dependencies are disabled. Existing lower layers are mounted read-only so installed
+   packages can satisfy an incremental request.
+2. **Select.** Use the resulting transaction to select raw RPMs from repository pools. If local package
+   outputs are present, an anonymous target runs `createrepo`, adds that repository at a higher priority,
+   and lets the same libdnf5 solve choose between local and upstream packages.
+3. **Install.** Run `PackageSystemInfo.install` over the exact RPM directory. A fresh request produces a
+   complete root; an incremental request persists only the overlay upper as a delta.
+
+Fresh base installs are anonymous targets keyed by package manager, sorted install specs, and local package
+inputs. Buck therefore shares the base buildroot analysis/action graph across packages that use the same
+build profile. Package-specific BuildRequires layers remain inline and are installed over the shared base.
+
+After installation, `install.py` checkpoints and vacuums the SQLite rpmdb, removes WAL/SHM/lock files, and
+scrubs libdnf5/ldconfig bookkeeping that would otherwise make identical roots differ. It also captures names
+and overlay metadata into Buck-storable form.
+
+### RPM import and build flow
+
+The independent `distribution/` repository contains imported source-package metadata and generated BUCK
+files. The importer emits data; the Starlark in `package_system/rpm/generated.bzl` validates that data and
+creates targets.
+
+For each branch, `rpm_branch()` currently:
+
+- combines common and `x86_64` BuildRequires;
+- indexes each imported binary package's name, `Provides`, and file paths;
+- maps BuildRequires capabilities to source-package targets;
+- computes strongly connected components and drops ordinary intra-cycle edges to upstream packages;
+- retains explicitly configured buildroot-only edges and rejects cycles they reintroduce;
+- creates one `rpm_package` target per source package.
+
+This is a static, import-time self-hosting approximation. It is useful today but is not the planned final
+dependency lock: rich dependency parsing is intentionally limited, the architecture is fixed to `x86_64`,
+and runtime package closures are still delegated to libdnf5 at buildroot-plan time.
+
+An `rpm_package` action:
+
+1. obtains the shared base root from its `BuildrootInfo`;
+2. resolves and installs its BuildRequires delta, preferring RPMs from `buildroot_deps` over upstream;
+3. overlays the base and delta, stages its spec/sources in Buck action scratch, and runs `rpmbuild -ba`;
+4. freezes `%autorelease`, `_buildhost`, the dist tag, and the per-package source date epoch;
+5. collects binary RPMs and the source RPM into one output directory;
+6. exposes each declared binary subpackage as a Buck sub-target and checks that declared outputs exist.
+
+The build currently uses `--nocheck`. Automatically generated debuginfo/debugsource RPMs are retained in the
+directory output but are tolerated rather than exposed as declared sub-targets. Successful build scratch is
+discarded; failed scratch remains available for diagnosis.
+
+### Filesystem layer representation
+
+Buck directory artifacts cannot faithfully store overlay whiteout devices, opaque-directory xattrs, or a
+backslash in a path component. Tine stores filesystem deltas in a regular-file representation:
+
+- `.wh.<name>` represents a whiteout;
+- `.wh..wh..opq` represents an opaque directory;
+- `.esc.<percent-escaped-name>` represents a path component Buck cannot store.
+
+`rootfs.capture()` translates a native overlay upper into this form after unmounting. Before a later mount,
+`rootfs.rootfs()` constructs sparse sidecar layers that translate the stored markers back to native
+overlayfs whiteouts/xattrs and thaw escaped names. Stored layers remain ordinary Buck artifacts and can
+therefore move through its CAS.
+
+Directory modes are made traversable so Buck can materialize/delete them, and Buck's artifact model does
+not preserve general ownership, capabilities, xattrs, or every mode bit. Image metadata that matters at
+delivery time is expressed through authored tmpfiles snippets and applied while packing. SELinux labels are
+not currently produced.
+
+### Image construction
+
+`LayerInfo` carries an ordered stack of filesystem deltas plus deferred tmpfiles snippets. `image_layer`
+first performs package installation when requested, then applies ordered JSON operations (`run`, `mkdir`,
+`symlink`, and `remove`) in a new overlay upper. A `run` operation chroots into the merged image and executes
+the image's own tools.
+
+Package installation and image tooling are explicit, separate inputs:
+
+- `package_manager` determines what native packages can be resolved;
+- `engine` supplies the layer driver and terminal image tools;
+- `extra_packages` allows a direct layer rule to prefer local RPM output directories.
+
+Terminal outputs merge the stack only when needed:
+
+- `image_pack` writes deterministic tar or uncompressed newc cpio archives, or a directory artifact;
+- `uki_layer` adds a unified kernel image and systemd-boot files as another persisted delta;
+- `image_disk` uses offline `systemd-repart` to create a GPT image with an ESP and discoverable root
+  partition by default;
+- `image_vm` runs the raw image with the engine's `systemd-vmspawn`, QEMU, and OVMF stack.
+
+Packing removes the rpmdb in an ephemeral upper and applies deferred tmpfiles metadata. Tar/cpio entries are
+ordered, ownership is normalized, and mtimes are clamped to the newest installed package build time (or a
+fixed fallback for package-less images). The cpio reader/writer aligns regular-file payloads and uses
+`copy_file_range` when possible so large archives can share extents on reflink-capable filesystems.
+
+`bootable_image()` composes:
+
+```text
+base initrd package image (cpio)
+              │
+root filesystem layer ──> UKI/systemd-boot layer ──> systemd-repart disk ──> vmspawn runner
+```
+
+The base initrd is a separate package image with `/init` pointing to systemd and an
+`/etc/initrd-release` marker. `uki.py` discovers the installed kernel, appends a kernel-modules cpio, runs
+`ukify`, and installs systemd-boot. The default disk uses a fixed partition UUID seed. The smoke image uses
+`console=hvc0 rw selinux=0`; SELinux is disabled because the build does not yet produce filesystem labels.
+
+The image build tools live in the engine and are not installed into the image merely to build it. Image
+mutation commands are the exception: they intentionally use the image's own binaries inside the image root.
+
+### Reproducibility and caching
+
+Reproducibility is both a release property and a caching requirement. Current mechanisms include:
+
+- repository metadata, package bytes, and source archives pinned by SHA-256;
+- committed engine transactions containing repository/package identities;
+- a fixed assembly `SOURCE_DATE_EPOCH` for roots that should be shared across consumers;
+- per-package source date epochs for RPM output timestamps and build headers;
+- a fixed `_buildhost` and frozen rpmautospec macros;
+- parked/vacuumed rpmdbs and scrubbed package-manager caches;
+- sorted transaction JSON, archive entries, source staging, and output collection;
+- fixed image partition UUID seeding and normalized archive metadata;
+- content-based paths for repository-owned RPM and payload artifacts.
+
+These measures make action-cache reuse meaningful and prepare the graph for remote execution. The repository
+does not yet run a systematic build-twice reproducibility audit, and raw filesystem image byte-for-byte
+reproducibility still needs dedicated validation.
+
+## Decision record
+
+The following decisions remain the rationale for the current design. Detailed source-code research that led
+to them belongs in commit history or focused notes; this section records the durable conclusion.
+
+### Use Buck2 as the graph and cache
+
+Buck2 was chosen because package builds benefit from content-addressed artifacts, lazy action execution,
+sub-target providers for binary RPM outputs, and a test protocol that can later host the Barrage executor.
+Its lack of an implicit local sandbox also lets Tine use the same mkosi-sandbox boundary locally and on
+future remote workers. Bazel's broader language-rule ecosystem mattered less than these properties for an
+RPM-heavy repository.
+
+Buck cannot add ordinary target dependencies discovered from an action output. Dynamic actions may select
+among declared inputs but cannot turn newly discovered BuildRequires into a new static graph. Therefore
+dependency discovery/import must produce committed or analysis-time lock data before normal builds.
+
+### Commit catalog and dependency lock data
+
+Repository snapshots and engine transactions are generated data, but committing them makes normal
+resolution independent of live repository state and reviewable. Buck may still fetch content-pinned
+artifacts. A refresh is an explicit update operation rather than an invisible part of every build. This is
+analogous to a language dependency lockfile, only it also pins repository metadata.
+
+### Let repositories own upstream packages
+
+Putting downloads in each closure duplicated ownership and left derived operations without a stable home.
+The authoritative pool instead makes the repository snapshot the single definition of every upstream
+package. Closures select artifacts; they do not fetch or transform them.
+
+### Separate package system, OS release, package manager, and buildroot
+
+The former distribution object bundled repository membership, engine tooling, and buildroot policy. That
+made optional repositories awkward, implied that an engine belonged to one distribution, and provided no
+clean place for request-specific local repositories.
+
+The current vocabulary follows the actual responsibilities:
+
+- the package system defines operations;
+- the repository universe defines membership and normal enablement policy;
+- the OS release defines identity and selects a repository universe;
+- the package manager defines one exact solve universe and engine;
+- the buildroot materializes the shared base packages.
+
+This is also why a release is not called a distribution target: Fedora 44 and CentOS Stream 10 are release
+identities, while repositories and engines can be reused across those identities when compatible.
+
+### Keep native package managers homogeneous
+
+Every repository universe and package manager belongs to one native package system. RPM and a future DEB
+system must not participate in one dependency solve. Supplemental content systems such as Flatpak may
+eventually coexist with RPM in an image, but compatibility rules are deliberately deferred until a second
+system exists. `PackageSystemInfo` is for native binary package ecosystems, not every possible image
+content type.
+
+### Keep engines independent from releases
+
+An engine is a tools root. Treating it as part of OS identity would require CentOS to provide libdnf5 or
+would duplicate compatible tooling roots. Explicit engine dependencies make reuse visible and content-keyed,
+and let images choose richer tooling without shipping those tools.
+
+### Use one sandbox boundary and let drivers mount target roots
+
+The engine userspace must be pinned, the host environment must not leak into builds, and package scriptlets
+need unprivileged fakeroot semantics. Vendored mkosi-sandbox supplies those properties without host RPM,
+mock, bwrap, or a second nested sandbox. Drivers mount their own target roots because install, build, image,
+pack, and disk actions need different layouts.
+
+### Store image layers as deltas
+
+Copying a complete root for every image step scales with total image size rather than change size. Ordered
+overlay deltas let child layers and terminal outputs reuse their ancestors. Encoding whiteouts and opaque
+directories as regular files keeps those deltas compatible with Buck's artifact/CAS model.
+
+### Prefer exact transactions over package-manager network access
+
+Resolution uses pinned local repodata; installation consumes an exact directory of already selected RPMs.
+This keeps network out of build actions, makes the transaction an inspectable early-cutoff boundary, and
+separates “which packages?” from “apply these packages and scriptlets.” Weak dependencies are disabled to
+match buildroot policy and avoid unreviewed closure growth.
+
+### Build each source package once and expose subpackages
+
+One `rpmbuild -ba` naturally emits all binary subpackages and the source RPM. Running it once avoids repeated
+work and inconsistent sibling outputs. Buck sub-targets give downstream packages addressable binary outputs
+without pretending each subpackage is a separate build action.
+
+## Operating the current system
+
+The wrapper commands work from anywhere in the root project:
+
+```text
+tine/tools/buck run tine//tools:refresh-catalog
+tine/tools/buck run tine//tools:verify-catalog
+tine/tools/buck run tine//tools:fmt
+tine/tools/buck run tine//tools:check
+```
+
+Representative smoke builds are:
+
+```text
+tine/tools/buck build root//distribution/packages/fedora/rawhide:zlib-ng
+tine/tools/buck build root//examples/image:demo
+tine/tools/buck build root//examples/image:boot-demo
+```
+
+The first validates package import, package-manager selection, buildroot assembly, and RPM collection.
+Packages with `buildroot_deps` additionally exercise local-package preference. The image targets validate
+package installation, delta layering, archive packing, and UKI/disk composition. Running `boot-demo-vm`
+validates the interactive VM runner and writes to its disk artifact in place; build or copy a fresh image
+when a pristine disk matters.
+
+## Current limitations
+
+These are properties of the implementation today, not merely ideas for future optimization:
+
+- RPM is the only package system, and generated package metadata is fixed to `x86_64`.
+- The imported self-host dependency graph is inferred from stored BuildRequires/Provides/file metadata; it
+  does not run RPM's dynamic BuildRequires protocol.
+- Build cycles fall back to upstream RPMs for ordinary intra-SCC edges, so the package set is not a fully
+  self-hosted fixed point.
+- There is no generic `PackageInfo`/runtime-closure provider selecting between upstream and source-built
+  packages for arbitrary image closures.
+- RPM builds use `--nocheck`; package test policy is not implemented.
+- Debuginfo/debugsource outputs are not first-class declared sub-targets.
+- Upstream package signatures are not verified. SHA-256 pinning gives integrity after refresh, not
+  authenticity at refresh time.
+- The bootstrap extractor supports the pinned RPM v4/newc payload form, not RPM v6 metadata.
+- General ownership, capabilities, xattrs, and SELinux labels do not survive as Buck directory metadata.
+- Directory image output cannot represent backslashes in names; archive outputs should be used instead.
+- Bootable images currently disable SELinux and do not use dm-verity or Secure Boot signing.
+- Remote execution, Barrage integration, release publishing, and systematic reproducibility audits are not
+  wired into CI.
+
+## Roadmap
+
+The roadmap is organized by architectural capability rather than old numbered phases. Ordering within a
+section is approximate and should follow the next concrete product need.
+
+### Package graph and self-hosting
+
+1. Replace the current metadata intersection with a generated package lock that records precise direct
+   BuildRequires and binary/runtime relationships. Use RPM's exit-11 dynamic BuildRequires protocol for
+   packages that generate requirements during `%prep`.
+2. Introduce the source/prebuilt package-provider model only when an image or buildroot needs to choose
+   backing per package. Preserve one coherent version pin so upstream and source-built variants have the
+   same dependency graph.
+3. Model runtime closures at binary-subpackage granularity and make debuginfo/debugsource outputs explicit
+   where consumers or publishing require them.
+4. Extend importer/build configuration beyond the fixed `x86_64` slice.
+5. Add RPM v6 bootstrap extraction when a pinned repository requires it.
+6. Decide and implement `%check` policy. Because successful build scratch is discarded, checks most likely
+   belong in the primary RPM action with per-package opt-outs for broken or prohibitively expensive suites.
+
+The durable self-hosting rule remains: invoked build tools may come from the pinned seed, while libraries
+linked into shipped outputs should come from source-built packages once their graph is available. Cycles
+must be explicit; silently pretending a cyclic source graph is acyclic is not acceptable.
+
+### Supply-chain authenticity and release output
+
+The accepted direction for upstream authenticity is:
+
+1. Pin reviewed distribution signing keys in repository snapshots.
+2. Add a repository-owned verified RPM representation using libdnf5/rpm signature verification.
+3. Make installation select verified artifacts while preserving raw and payload representations.
+4. Handle engine trust inductively: an existing trusted engine verifies the inputs of its successor rather
+   than allowing a new engine to vouch for itself.
+
+The exact Rawhide key policy and first-trust/bootstrap procedure remain open. HTTPS plus committed SHA-256
+locks currently provides reviewable integrity but is not a substitute for signature verification.
+
+A later release pipeline needs repository composition, comps metadata, source/debuginfo publication policy,
+provenance/attestations, and signing. Secure Boot signing should use deterministic RSA PKCS#1 v1.5 without
+timestamps. Development keys can be declared/cacheable inputs; production keys should be exposed through a
+restricted signing service/PKCS#11 boundary and run as non-cacheable release actions.
+
+### Image hardening and formats
+
+Near-term image gaps are:
+
+- offline SELinux labeling instead of `selinux=0`;
+- deterministic ext4/FAT byte-level validation and any required normalization;
+- dm-verity and measured/Secure Boot integration;
+- OCI, sysext/confext, ESP, and other terminal formats as real consumers require them;
+- a richer but still ordered operation vocabulary for copying artifacts and setting metadata;
+- deciding whether image tooling should move from the shared package engine into a dedicated image engine.
+
+The layer model should remain ordered actions over deltas. A provides/requires feature solver is unnecessary
+unless real composition requirements appear.
+
+### Scale, configuration, and testing
+
+- Configure remote cache/execution only after the local action graph and host contract are stable. Engine
+  roots and ordinary filesystem artifacts are intended to be CAS inputs; relaxed VM actions remain local.
+- Add build-twice reproducibility audits because early cutoff is useful only when rebuilt outputs are
+  byte-identical. Track known exceptions explicitly rather than weakening all comparisons.
+- Integrate Barrage through Buck2's external test executor so many image/integration tests can share one
+  streamed process while still reporting per-test results.
+- Add leaf-selected OS/package-manager transitions when consumers need one target graph to build against
+  multiple releases. The transition must select existing provider boundaries rather than reintroduce a
+  monolithic distribution object.
+- Add native language toolchains backed by package/image roots only when in-repository C/C++/Go/Rust builds
+  need them.
+- Define the upstream-update workflow: import Fedora changes, rebase local patches, refresh snapshots and
+  generated metadata, and verify that version skew has not invalidated source/upstream interchangeability.
+
+## Reference points
+
+Useful implementation entry points:
+
+- `tine/package/{system,repository,release,manager,buildroot,install}.bzl`
+- `tine/package_system/rpm/rules.bzl` and
+  `tine/package_system/rpm/{snapshot,plan,install,createrepo,build,extract,decompress}.py`
+- `tine/engine/{rules.bzl,sandbox.py}` and `tine/rootfs/rootfs.py`
+- `tine/image/rules.bzl`, `tine/image/uki.py`, and `tine/image_format/{pack,disk}.py`
+- `tine/tools/catalog.py` and `tine/catalog/BUCK`
+- `distribution/apt` and `tine/package_system/rpm/generated.bzl`
+
+External projects that informed the design:
+
+- Buck2 for action/dynamic-dependency semantics, sub-targets, content-based paths, and test execution;
+- rpm and libdnf5 for build, resolution, transaction, and signature behavior;
+- mkosi/mkosi-sandbox for user-namespace isolation, root mounting, UKIs, and repart-based images;
+- Antlir2 for repository/package-selection ideas and as a comparison point for image feature graphs;
+- Barrage for the planned streamed integration-test executor;
+- Siguldry for a possible production PKCS#11 signing boundary.

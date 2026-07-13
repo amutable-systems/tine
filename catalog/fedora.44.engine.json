@@ -1,0 +1,1058 @@
+[
+  {
+    "nevra": "alternatives-1.33-5.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "0179df0fadb4de141ec94d765a539cf4ebfaf986de19b7a81850a1ed324d290c",
+    "source": "repo"
+  },
+  {
+    "nevra": "audit-libs-4.1.4-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "5dcea7a072a4d5b7bd7dbeb11badf011ce3299097a9816ffe1ec6fd17b79328f",
+    "source": "repo"
+  },
+  {
+    "nevra": "authselect-1.7.1-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "3dd63f279248807a0b96e2c35288117eb987ac1a68bdabc575c87c174e2700ba",
+    "source": "repo"
+  },
+  {
+    "nevra": "authselect-libs-1.7.1-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "ecdc8487654c247e74b72e101a7071a1d93572b7488c588dd6d05929bcf9c019",
+    "source": "repo"
+  },
+  {
+    "nevra": "bash-5.3.9-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "2ccb046d638f5ad23f5613222a78ee71067dc43f0bdf03b60ce311536bc4bed5",
+    "source": "repo"
+  },
+  {
+    "nevra": "bzip2-libs-1.0.8-23.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "ead652ccea75f1345305c82e97759a360da5e4f46b2f1862a18ebf0f8547d2b9",
+    "source": "repo"
+  },
+  {
+    "nevra": "ca-certificates-2025.2.80_v9.0.304-6.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "8cafab44ee1d744480860f18e06f9060cc1a2afd87ce926ec33abf5ae11a8980",
+    "source": "repo"
+  },
+  {
+    "nevra": "capstone-5.0.6-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "3d32f0ed325f082f001db1727f98e7efca85372e26000faaee7ca8dfb10c142b",
+    "source": "repo"
+  },
+  {
+    "nevra": "coreutils-9.10-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "a418ac69e4d9b6b22c2e6db27cf8121abb6fa31512a79ee16c66211ed359bbe6",
+    "source": "repo"
+  },
+  {
+    "nevra": "coreutils-common-9.10-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "556c75b9c32e60499ba83f6464a143621d971362af21203ea7e73f13037ad455",
+    "source": "repo"
+  },
+  {
+    "nevra": "cracklib-2.9.11-10.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "f644c25594b5b7190804e737c0857461710cc92e29d824e1e7283ea1a44c47d7",
+    "source": "repo"
+  },
+  {
+    "nevra": "createrepo_c-libs-1.2.1-5.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "926810dc9bd5e93e296cce9ccd8be3486e4b5d0e7e645950f8baed40f1ed25dc",
+    "source": "repo"
+  },
+  {
+    "nevra": "crypto-policies-20251128-3.git19878fe.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "bc91e5ceafb7c9884654dc86da14187493a16cec8e6a279d625efb0e3aa4d005",
+    "source": "repo"
+  },
+  {
+    "nevra": "cryptsetup-libs-2.8.4-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "f8ae96eca560476b9681060ee31ccff8d8bb0bada48b96500ed0a89692d130af",
+    "source": "repo"
+  },
+  {
+    "nevra": "curl-8.18.0-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "c0339c79fc1e20070a2b35518072552dfa53508e1acfdb7d03530aea87fd5c6a",
+    "source": "repo"
+  },
+  {
+    "nevra": "cyrus-sasl-lib-2.1.28-35.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "0175ce156be22a2d129754c74ad0089d02a94a5255cec33320b51c2cc884c47e",
+    "source": "repo"
+  },
+  {
+    "nevra": "daxctl-libs-84-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "47237a5f8f24da7840e0302459565688d729b6a057b12d57b18e72ebf8e0ee25",
+    "source": "repo"
+  },
+  {
+    "nevra": "device-mapper-1.02.212-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "d559d7d859ef61fc8676e8dda182ad8df88aac68fc64dea195076dae93210cc4",
+    "source": "repo"
+  },
+  {
+    "nevra": "device-mapper-libs-1.02.212-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "faaf83a68262d5bff1e09ae4f7b5596b1acd349b410b3cf3baf7d73e80017b2a",
+    "source": "repo"
+  },
+  {
+    "nevra": "dosfstools-4.2-18.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "11a1ddea2c27bcd9c764f086a1b8fed459a39d9a56be5db14a95128a9df074d0",
+    "source": "repo"
+  },
+  {
+    "nevra": "drpm-0.5.3-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "aef76b722ef541b469392d1baeae27da4e6b217055d0046559a15019e7eedbf6",
+    "source": "repo"
+  },
+  {
+    "nevra": "e2fsprogs-1.47.3-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "60c0177457ce6df7168aad1eafea9c5af0ceb5ec0b341b1b44db5f99ffbf7681",
+    "source": "repo"
+  },
+  {
+    "nevra": "e2fsprogs-libs-1.47.3-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "eb44580c503917972d623c5cda8b31f527019b08c62e3223e909d91dc1eaa3ef",
+    "source": "repo"
+  },
+  {
+    "nevra": "edk2-ovmf-20260213-4.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "c80210cf5519d0eb2e71c17d2f9bb1c371449c9cd645420ded8efe858be307eb",
+    "source": "repo"
+  },
+  {
+    "nevra": "elfutils-default-yama-scope-0.194-5.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "2121b17e901c1f5af259f0f195630fc2e5ccd2c33650ea9df80742bff2c01afc",
+    "source": "repo"
+  },
+  {
+    "nevra": "elfutils-libelf-0.194-5.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "c6e88a9939475529c00f67d9f376ccfeaacc582696e01a63c92ee89c481090cb",
+    "source": "repo"
+  },
+  {
+    "nevra": "elfutils-libs-0.194-5.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "f538129f345b2150b1b3445e69910128d545fbfc8024f363c2b33e9a7307e534",
+    "source": "repo"
+  },
+  {
+    "nevra": "expat-2.7.3-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "ff5544dbe56e48b95d6f8bc39dc35b624fc39e1dfe70c486a225ef7c5fdfa211",
+    "source": "repo"
+  },
+  {
+    "nevra": "fedora-gpg-keys-44-1.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "586631445cb43412af8125af71c44d3eca2851f074154a81093faec6514dac5f",
+    "source": "repo"
+  },
+  {
+    "nevra": "fedora-release-44-17.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "c7e33c968399c79130abe3bb8c0581cf00aa5a6980659ebe708f91b21198b584",
+    "source": "repo"
+  },
+  {
+    "nevra": "fedora-release-common-44-17.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "bb924ec01ceadcd2aee69c8e7352a73cb9ebf1826eeb33ba82b87938994379cf",
+    "source": "repo"
+  },
+  {
+    "nevra": "fedora-release-identity-basic-44-17.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "42eba834594cf3ab9a4cc09991e0dc2e471499092a3ea7c14b64b4ac4f083538",
+    "source": "repo"
+  },
+  {
+    "nevra": "fedora-repos-44-1.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "8ea372905db4c40c2fb53048e6bf008eafc1c448416c7cd638bedfd6836de48f",
+    "source": "repo"
+  },
+  {
+    "nevra": "filesystem-3.18-52.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "7abc643d653bf2773c38e183e0e33489cab4880c8a540b315fcd7fff09c6c52c",
+    "source": "repo"
+  },
+  {
+    "nevra": "findutils-1:4.10.0-7.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "b1f9fe72be7a0cf0fb53ec00ef9e6b8ccc9987cb5f55e9de02bbc67f9cf3b5cf",
+    "source": "repo"
+  },
+  {
+    "nevra": "fmt-11.2.0-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "1ba4d955ff7ee1ce4c95bf8a76349b5aa7481ed0370d2503eb7b23130460d13c",
+    "source": "repo"
+  },
+  {
+    "nevra": "fuse3-libs-3.18.2-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "b236de21338ae23b4a5470a8e19068d10aaa3bde11435fdd9aa3d15dd0c9138b",
+    "source": "repo"
+  },
+  {
+    "nevra": "gdbm-1:1.23-11.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "3cab341f8d7325a3645764038eaf5deacc5e4343b104472354ee67f5ff1cca9f",
+    "source": "repo"
+  },
+  {
+    "nevra": "gdbm-libs-1:1.23-11.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "3fb13a4e2d4292ef3482732f51de572ded34bdf4c657c2dc4dbafe8d0ba2d4b8",
+    "source": "repo"
+  },
+  {
+    "nevra": "glib2-2.88.0-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "e0b5895e0ea8e760e53423eea8d531ce5f9988f3ae992c4b791cdd3a2958d558",
+    "source": "repo"
+  },
+  {
+    "nevra": "glibc-2.43-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "90ddf81832ba518f8768264a6944d0b02e030acc7e78aa2ed907d7e77d0a069f",
+    "source": "repo"
+  },
+  {
+    "nevra": "glibc-common-2.43-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "379fd21487772fc584d7ad40490452ca56844a7690b3506a99cc0b366cb41868",
+    "source": "repo"
+  },
+  {
+    "nevra": "glibc-gconv-extra-2.43-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "b40c06bf66819b056297ab4241645fa68e933950e1709b6837c5efa64fe077cb",
+    "source": "repo"
+  },
+  {
+    "nevra": "glibc-minimal-langpack-2.43-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "93370d17e3ed960b26c7b9fb79582366b718ec5bad32d259af80459e17aea21e",
+    "source": "repo"
+  },
+  {
+    "nevra": "gmp-1:6.3.0-5.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "94b960c5eaba00c1cb56abdbed05bd348d1256360cf68fd9cd7a24b3232d6558",
+    "source": "repo"
+  },
+  {
+    "nevra": "gnulib-l10n-20241231-2.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "5e55fb0fd56734e71aa6ebeba0a66fde69c07964b43591464a0bb2edf96d18e7",
+    "source": "repo"
+  },
+  {
+    "nevra": "gnutls-3.8.12-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "a1338ac7c9621e221a6813e1ba8b6c1f832e55ecfa61eaa650e6a2b5d6c0f411",
+    "source": "repo"
+  },
+  {
+    "nevra": "grep-3.12-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "0b1e3d96f14f6346d0af992a8cdc1af696ff8e616311abfdee49d6a3a3f1e746",
+    "source": "repo"
+  },
+  {
+    "nevra": "gzip-1.14-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "a94d5384a9e8c30b31f5a85ae2ca953f8b0af946f425103f942457770fb268b4",
+    "source": "repo"
+  },
+  {
+    "nevra": "igvm-libs-0.4.0-9.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "f088d1e79e7900fb72588f78e63256703e3ab40f2c08999ba3aeb69b921ef21c",
+    "source": "repo"
+  },
+  {
+    "nevra": "ipxe-roms-qemu-20240119-5.gitde8a0821.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "fdc23157ef570b5cc041314610e4baed8f5201c6a10d1d3d08855f0d65c434dc",
+    "source": "repo"
+  },
+  {
+    "nevra": "json-c-0.18-8.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "af4cf667585ec8618b8bf352b4323bb69422130be253fdc4803e2f720dfd893c",
+    "source": "repo"
+  },
+  {
+    "nevra": "kbd-2.9.0-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "328a0c13e89f21cd71362e13ddb9424da0a1f854431563f1ec742fd4444671e8",
+    "source": "repo"
+  },
+  {
+    "nevra": "kbd-legacy-2.9.0-3.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "8921ca506c4ad119c297a5c33af2d8f959c736744a01ef68de23511cd8f389f4",
+    "source": "repo"
+  },
+  {
+    "nevra": "kbd-misc-2.9.0-3.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "8fbb817f5b7909c3057f8d64745bf263aa67f8fb383dbb592e7943c6b18b3452",
+    "source": "repo"
+  },
+  {
+    "nevra": "keyutils-libs-1.6.3-7.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "28b1b356688c24c51affa429feaf908425d52e42758ee068836cdb547aedf8dc",
+    "source": "repo"
+  },
+  {
+    "nevra": "kmod-34.2-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "a43624a70c2f9782a3dc75c8e8c789a65004835e2ea23ab63cb52b8ad2d8a5f0",
+    "source": "repo"
+  },
+  {
+    "nevra": "kmod-libs-34.2-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "f048ca8c013278d1ffc8a6b8ff1b6c1782fc19878fe9a55068b1441771fa2c10",
+    "source": "repo"
+  },
+  {
+    "nevra": "krb5-libs-1.22.2-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "29be5c79ea96c3594f8512117397250eef0831ec3d4fb377cb0af0b59538eb70",
+    "source": "repo"
+  },
+  {
+    "nevra": "libacl-2.3.2-6.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "38a4c106c2b56c6b3701f7bdbb6f0874159da347a2ffbbe48a6233cf5b91abaa",
+    "source": "repo"
+  },
+  {
+    "nevra": "libaio-0.3.111-23.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "1b7c593db22f20ef220fede7886ee3a8184b2c5b446a46fff886234487e1963c",
+    "source": "repo"
+  },
+  {
+    "nevra": "libarchive-3.8.4-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "40c57e51dbf9e79105154bf8c2659bd54c7d6cfef1c6c0fe38208a19b4a84389",
+    "source": "repo"
+  },
+  {
+    "nevra": "libattr-2.5.2-8.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "524d8916b69977f52dc74a447a1b3bca4f2e106ab8a59788e8953f33527ffb30",
+    "source": "repo"
+  },
+  {
+    "nevra": "libblkid-2.41.3-12.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "1cc22f556069fbd183b817e79e0881a504f0adbaab371bc34fbea41239839972",
+    "source": "repo"
+  },
+  {
+    "nevra": "libbpf-2:1.6.3-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "1c06ae3b08dbfe01d53d65825f5c4b6d593ae71f430759e76ee72f299de7ff3b",
+    "source": "repo"
+  },
+  {
+    "nevra": "libcap-2.77-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "4601aa22a90d64d022c203203fed150231aa052945ad37a74527ebc2ecd3db96",
+    "source": "repo"
+  },
+  {
+    "nevra": "libcap-ng-0.9.2-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "0e774e3ce39521be43ec7fc55e2ca79fe6af7fcc6cefd50b0d597e0271899e00",
+    "source": "repo"
+  },
+  {
+    "nevra": "libcbor-0.13.0-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "e5ed0379715086b19c4cf34ba02b5df1543e0648fe8bb1e0b0e7df315b508bc6",
+    "source": "repo"
+  },
+  {
+    "nevra": "libcom_err-1.47.3-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "c163f4fce53aa42e032c04299cecf9cc57e69437515a095e667b5a91b7859878",
+    "source": "repo"
+  },
+  {
+    "nevra": "libcurl-minimal-8.18.0-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "b1dc521a1636c591bddba12b27755501360f13abcd8e7c1f1d6074541ca96e11",
+    "source": "repo"
+  },
+  {
+    "nevra": "libdnf5-5.4.1.0-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "8d082202f3419c5c12d40f3978f680b0a94a84a423c151ff7593372cf17b03f3",
+    "source": "repo"
+  },
+  {
+    "nevra": "libeconf-0.7.9-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "f8212f510faaa3d6dca692478a686f44f0c27bdad9741e83e3940c17a2d4eb69",
+    "source": "repo"
+  },
+  {
+    "nevra": "libfdisk-2.41.3-12.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "4ebde883059a1fe70ab80bcde9f92a942793f8617b4beb9d3b22b749df32cfee",
+    "source": "repo"
+  },
+  {
+    "nevra": "libfdt-1.7.2-9.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "aeee9e558d8b775ff697d2be4e8e55951054f070a81d58b14b8bc92d1427c2be",
+    "source": "repo"
+  },
+  {
+    "nevra": "libffi-3.5.2-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "a7dae96d30d007140c7dab605df40e55f90ef16f04392dd8ded32fa230c10dd6",
+    "source": "repo"
+  },
+  {
+    "nevra": "libgcc-16.0.1-0.10.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "a541f09bf0efded051844bbe65be14c8ebbc327f4201548718d6d1ee106d7075",
+    "source": "repo"
+  },
+  {
+    "nevra": "libibverbs-61.0-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "b85d44b2b508eb0be45937e8181fb2f3af2ded89bd175e8c4cfe2e8d43bafd2e",
+    "source": "repo"
+  },
+  {
+    "nevra": "libidn2-2.3.8-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "430ed4991a4364fe88bc220c1771c768b8ef4ebcc9ad6af3afcfea8ab609fa18",
+    "source": "repo"
+  },
+  {
+    "nevra": "libjpeg-turbo-3.1.3-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "e65c9eac2a534c5eed152451bd092d4f2ed491e739bd00dc6f03c66b3e996171",
+    "source": "repo"
+  },
+  {
+    "nevra": "liblastlog2-2.41.3-12.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "407949f993e60da2a4124edbceca0b454e4be38ce28a6e411ce04ff7175a1b55",
+    "source": "repo"
+  },
+  {
+    "nevra": "libmodulemd-2.15.2-7.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "12550ef33a45ea19fdb48f2166c6adbe2c92f005e184524cfb589c0eb711256c",
+    "source": "repo"
+  },
+  {
+    "nevra": "libmount-2.41.3-12.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "1dcdadd3515c2998694c5928eca95e701134aaa0f267eb541ff612759a54fb6c",
+    "source": "repo"
+  },
+  {
+    "nevra": "libnghttp2-1.68.0-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "5e3ad64d5ba88c7dbc553b743b42eb91c279a408e175156aa806637803bb8a14",
+    "source": "repo"
+  },
+  {
+    "nevra": "libnl3-3.12.0-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "f2b9bc51d69cef3b8610eb0446d176b442e266b4288f4ad40246a0886130b902",
+    "source": "repo"
+  },
+  {
+    "nevra": "libnsl2-2.0.1-5.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "23373b28ffac80ed35b4d39f0e7133c05b9cf72b7e45811ecda1decd3489ad1a",
+    "source": "repo"
+  },
+  {
+    "nevra": "libpkgconf-2.5.1-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "b59040138169f46c60b79230941ffc0dbce15b9e897bd46d1e83361a393400b8",
+    "source": "repo"
+  },
+  {
+    "nevra": "libpmem-2.1.0-5.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "02241149939f6c5e60ea07f9eb44102048b5f941f7942f3945665797a60b10ff",
+    "source": "repo"
+  },
+  {
+    "nevra": "libpng-2:1.6.55-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "8184900bf4799de0a4e7ecaf38f4cde801cca0427bf84459d110877b7cc7f448",
+    "source": "repo"
+  },
+  {
+    "nevra": "libpwquality-1.4.5-15.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "d388f6f45ddc2f20f35be561117392a9a5bf4701bc059a6fc2ac56532d16f1a7",
+    "source": "repo"
+  },
+  {
+    "nevra": "librdmacm-61.0-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "190e90ab4398524a53d0ba7a8a32c44234cb3e717cac01627f1fdf03eafc351f",
+    "source": "repo"
+  },
+  {
+    "nevra": "librepo-1.20.0-5.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "b3d5c7a974bf25fdf70add8f66d6e0eb0e24d5ccd41400afcfe2fc93dde7f1bb",
+    "source": "repo"
+  },
+  {
+    "nevra": "libseccomp-2.6.0-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "79e590043e47b09369e7757f2c62ed4f2fe56e4d90c70f5f61fab7b52ba33ef2",
+    "source": "repo"
+  },
+  {
+    "nevra": "libselinux-3.10-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "a87a2a7dcb22f68c9df32a6036f0c4431cf7e06e4e862cd3c1ee28d089232ace",
+    "source": "repo"
+  },
+  {
+    "nevra": "libsemanage-3.10-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "adb8f9fe0f5295c7555d3caa46f7ad8d78781e87ae6ffd1a4378c10fe6002d6f",
+    "source": "repo"
+  },
+  {
+    "nevra": "libsepol-3.10-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "d1557823d5ee478dd8d6955df961c596503963d3cc62b9eea3ec55ccedd01e6e",
+    "source": "repo"
+  },
+  {
+    "nevra": "libslirp-4.9.1-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "4e70775e33f783dc90c18ac80518e6b630569e59c63146888a6939f3a2862074",
+    "source": "repo"
+  },
+  {
+    "nevra": "libsmartcols-2.41.3-12.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "0fb43ce71eaed2512e7eac7e5b513289845b9174f66d918e0cd7c8d612b6fe15",
+    "source": "repo"
+  },
+  {
+    "nevra": "libsolv-0.7.36-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "09e8e5cc688be987f55b6544a54b5ebbd2295091ad6abe2e599bdc705c1bd219",
+    "source": "repo"
+  },
+  {
+    "nevra": "libss-1.47.3-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "10727db6321fa651879fc5250ca88a58372b68076f0caaf9f3d0a144b377b83c",
+    "source": "repo"
+  },
+  {
+    "nevra": "libstdc++-16.0.1-0.10.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "b1cc45a89d1785f1fc6404f430ff1fec40f577b2822e78b5ef8ba82e46797591",
+    "source": "repo"
+  },
+  {
+    "nevra": "libtasn1-4.21.0-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "32806a98942dc5492838b4642cb830ce20f478609733326fb9388539930d6596",
+    "source": "repo"
+  },
+  {
+    "nevra": "libtirpc-1.3.7-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "4024c6a9601cb6244f5e06a58a4a54bb6b7a65be2d9f79dd660276b306274eb3",
+    "source": "repo"
+  },
+  {
+    "nevra": "libunistring-1.1-11.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "578749cc0f7ac197be5434e65c42f9e88112e3561be731edd52c820cdcacfae5",
+    "source": "repo"
+  },
+  {
+    "nevra": "liburing-2.13-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "02a61fe09711808b2a709cb744ab69f73bf34ea359e27ffde1b01d0173faebb3",
+    "source": "repo"
+  },
+  {
+    "nevra": "libuuid-2.41.3-12.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "123dca469014499c008df49d3a7a1052f18455ae3b96bf56e559ba1f0f7d8efb",
+    "source": "repo"
+  },
+  {
+    "nevra": "libverto-0.3.2-12.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "3e2ef69df14272b2f666be05312242cb65c0e385bd813007362204b5e19c7cb0",
+    "source": "repo"
+  },
+  {
+    "nevra": "libxcrypt-4.5.2-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "4be1ebfa6079b11d5b4e5119c702df69153788cef8c5b71600482617bdc4ab25",
+    "source": "repo"
+  },
+  {
+    "nevra": "libxdp-1.6.3-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "574a6108ae49837d93014645d29c1d3d2c5300c6d3cdef8c4a4ba7b070cfe703",
+    "source": "repo"
+  },
+  {
+    "nevra": "libxml2-2.12.10-6.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "8df2fb3b424781f56306909f83e9cedd64b68eaa14dc8d52e050b79867d9714d",
+    "source": "repo"
+  },
+  {
+    "nevra": "libyaml-0.2.5-18.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "acb3fcb1381f1cd0cb337c34ce7109547e602945911c5c5ef1b3d4c8f719a852",
+    "source": "repo"
+  },
+  {
+    "nevra": "libzstd-1.5.7-5.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "af98832cf1d93eabb442d18520bad10f03f4278a99d54c5d071b2903f6f50fac",
+    "source": "repo"
+  },
+  {
+    "nevra": "lua-libs-5.4.8-5.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "f0e198863835e3e159457fe8de7f47e60896277aaf380fdd3363875a0c985586",
+    "source": "repo"
+  },
+  {
+    "nevra": "lz4-libs-1.10.0-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "3e5697a9804a0c9fe1f1cd2b5a9c99e474bc6c6e2b543a8b1794f2649c013077",
+    "source": "repo"
+  },
+  {
+    "nevra": "lzo-2.10-16.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "60c3891e156fee41e3ac6ecfd31a14e9a17f3cc0d06763d4439f54a7d7c7c41e",
+    "source": "repo"
+  },
+  {
+    "nevra": "mpdecimal-4.0.1-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "f9495b4a3f05e370f6ad6fea7632c83473d94609fe9f8d508a8696bcecf5ab6f",
+    "source": "repo"
+  },
+  {
+    "nevra": "mtools-4.0.49-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "934375f55eca0de9013b9600a14b58d892602369ddfd64ba118b328ec6d9ea4e",
+    "source": "repo"
+  },
+  {
+    "nevra": "ncurses-base-6.6-1.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "19c6053ad3e76d47f330da92e5c97e2b9a3617b4ddd8fa2139d9066092cfc181",
+    "source": "repo"
+  },
+  {
+    "nevra": "ncurses-libs-6.6-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "d9afd13714bac08fdfbe9b9f5bc5d298497fc1c3fee31fb2e1274ed95ab3d96a",
+    "source": "repo"
+  },
+  {
+    "nevra": "ndctl-libs-84-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "afc277f5f421c60165b3b10e345a021f407202858692efe8dcc15874fef56207",
+    "source": "repo"
+  },
+  {
+    "nevra": "nettle-3.10.1-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "36d7fea745c4d0b17f6dbee48c8f6fe3ca444984aee8ecab863dffa5b5042114",
+    "source": "repo"
+  },
+  {
+    "nevra": "numactl-libs-2.0.19-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "2db3352b24cf45b937ef351513c91a557effe96ede3720634f30a9977cc9d37b",
+    "source": "repo"
+  },
+  {
+    "nevra": "openssh-10.2p1-7.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "ba29ac48c8ba320c839de497884ca20c9e098b7b537b7720941d2e9e9506d03f",
+    "source": "repo"
+  },
+  {
+    "nevra": "openssl-libs-1:3.5.5-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "2f02efa7a21a6a15a7b6b0be62769ff222dc88433fec355e87f78c1ee619fd3f",
+    "source": "repo"
+  },
+  {
+    "nevra": "p11-kit-0.26.2-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "546dc2915396a230d5f8f8107d8313f2291a21f310a373d8fd7c751b6f02ecc3",
+    "source": "repo"
+  },
+  {
+    "nevra": "p11-kit-trust-0.26.2-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "1b060cb633e2375782f62e943ba9ccced1d1286105eb350a75bd063a9dcd6fa3",
+    "source": "repo"
+  },
+  {
+    "nevra": "pam-1.7.2-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "3d05d154fb7682875e0ba899f212b1c430bb7a0f3689990583194d284ee6ea3a",
+    "source": "repo"
+  },
+  {
+    "nevra": "pam-libs-1.7.2-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "e5137b3eefb0c1d026ac4b6cd79e2296bcbccbb02268043d31948cdf6168b409",
+    "source": "repo"
+  },
+  {
+    "nevra": "pcre2-10.47-1.fc44.1.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "9e3498c301b011ed0f517090e45798fbd3063a10b46468f2f8359738975f8702",
+    "source": "repo"
+  },
+  {
+    "nevra": "pcre2-syntax-10.47-1.fc44.1.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "f764ad48aff82dc0805ce5db071e91c805dea73dcc9696f8686583b1a2b19c16",
+    "source": "repo"
+  },
+  {
+    "nevra": "pixman-0.46.2-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "a2647f765cbea1cee0a0472223efd7538676e9272b5e9725dd3e37d44e0d81c6",
+    "source": "repo"
+  },
+  {
+    "nevra": "pkgconf-2.5.1-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "ee3f9558c65ca0a92de766ce54e218be780e703f8d2b1353ebbbff762f067d6e",
+    "source": "repo"
+  },
+  {
+    "nevra": "pkgconf-m4-2.5.1-1.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "5b45fb58dec26385b34f937b2917608abd66d531eb7d78a878e8ed426c65eff5",
+    "source": "repo"
+  },
+  {
+    "nevra": "pkgconf-pkg-config-2.5.1-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "da2ce9b6c5e9fac1da7e418be923ff2bbd202180e4812d7b91f118fcd549ede5",
+    "source": "repo"
+  },
+  {
+    "nevra": "popt-1.19-10.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "95d460bfdc12f762ead084ae00f1686ae8bb22ebeed86c097db8a80dd3cf270d",
+    "source": "repo"
+  },
+  {
+    "nevra": "python-pip-wheel-26.0.1-2.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "cba3f75725616f404b032d50eac2e65c52f2d14af16b041735c93699dd83564f",
+    "source": "repo"
+  },
+  {
+    "nevra": "python3-3.14.3-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "7db6a488efe47ee7a811e22ea40f44dfc1b795204a49c5f420e9ff2a2dc959eb",
+    "source": "repo"
+  },
+  {
+    "nevra": "python3-cffi-2.0.0-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "a4136efc056cfdb435f6dcde65328bc38afa02e5a54cb5f41400ee29a46cb031",
+    "source": "repo"
+  },
+  {
+    "nevra": "python3-createrepo_c-1.2.1-5.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "526a8ba2d8829d28c32dd5471eea33eec58e47b09c7136b25c537551e1102b66",
+    "source": "repo"
+  },
+  {
+    "nevra": "python3-cryptography-46.0.6-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "f294ae01fd2fe11acc8103a6ebcb146b37986e93dcbbcab27e49afc18c5b7b29",
+    "source": "repo"
+  },
+  {
+    "nevra": "python3-libdnf5-5.4.1.0-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "fb74853c57f5a7c93dfcd713800fb2e68af84b1c6ee42cf912476b787752ed6e",
+    "source": "repo"
+  },
+  {
+    "nevra": "python3-libs-3.14.3-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "130aad43ab0ccca75d52c89d9862701a0c55136cb6b8aba4e34d21d3fd8b2849",
+    "source": "repo"
+  },
+  {
+    "nevra": "python3-pefile-2024.8.26-7.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "5e002bd55d02f8d7bc2aac43a623009375c0101dca44ab2bbff3c5ade80fe68f",
+    "source": "repo"
+  },
+  {
+    "nevra": "python3-pycparser-2.22-8.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "797e4b985fa497c7e50467f38c150e9e5ea2a13371731c433bc83ce54f553e86",
+    "source": "repo"
+  },
+  {
+    "nevra": "python3-zstandard-0.25.0-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "80b1d012306dd36f4606b4346f003807a9d80a3f04cf591c4748b2730d51308f",
+    "source": "repo"
+  },
+  {
+    "nevra": "qatlib-25.08.0-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "27a579954c265de162a619366ed25746d1db62cd8f0ac636f019f65cac1d4cce",
+    "source": "repo"
+  },
+  {
+    "nevra": "qatzip-libs-1.3.1-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "c81d933fec0d111b82ab93fc437bdb42e38b34bdb77d6f9d55c4b269f74c83e1",
+    "source": "repo"
+  },
+  {
+    "nevra": "qemu-common-2:10.2.2-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "66e008d86b0d1e01227982e35bcd87e85b2c1d1dbbd3cde33982122f852aab99",
+    "source": "repo"
+  },
+  {
+    "nevra": "qemu-system-x86-core-2:10.2.2-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "aeb4d54df2adc4cadbb49c271e7edded2d546483f4e348f2d81fe18db64630bd",
+    "source": "repo"
+  },
+  {
+    "nevra": "rdma-core-common-61.0-2.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "d2223723e597ec5a74f3eb3213fd85818b0b1b21b7cf7f2c725fd422ea28fc31",
+    "source": "repo"
+  },
+  {
+    "nevra": "readline-8.3-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "d1f99a29cb7d03781bdf69ae8dcc7aebe7fe45205a36f3756bc67bbe26609608",
+    "source": "repo"
+  },
+  {
+    "nevra": "rpm-6.0.1-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "17527fbfd103607a4cad760214196dde1dca98d879e731c239e5fbd0b27c3c84",
+    "source": "repo"
+  },
+  {
+    "nevra": "rpm-libs-6.0.1-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "24297b88ac826cf3dd209396504695747c94851ef26f0e8bccbf92572f219a6d",
+    "source": "repo"
+  },
+  {
+    "nevra": "rpm-sequoia-1.10.1-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "53e36d3e7b57605f8664720545b7453c3e9682993403c7e25e10640c9573e74e",
+    "source": "repo"
+  },
+  {
+    "nevra": "seabios-bin-1.17.0-10.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "bf535c77c3f7dd2b2b13011c12ed1bf79a69487b13aba7a3d6d7fbcea4787259",
+    "source": "repo"
+  },
+  {
+    "nevra": "seavgabios-bin-1.17.0-10.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "96f9d4163871630aa1a6eff66889626ea80f16f3110ba2f2238fe22a0b654789",
+    "source": "repo"
+  },
+  {
+    "nevra": "sed-4.9-7.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "f1cf741fb40f3a911f32ad0161c689c4b9811a604599fc41f33c867c775cd4d1",
+    "source": "repo"
+  },
+  {
+    "nevra": "setup-2.15.0-28.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "55d58325996df10b4be2f1a9b963dbec3cea3099e43f9f4295eea6e8adfaf7b8",
+    "source": "repo"
+  },
+  {
+    "nevra": "shadow-utils-2:4.19.0-6.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "7ea22c0d61060a3c8bb854a1b6ab540f1d0858d3fe8e3b463e0a017dd31fba4b",
+    "source": "repo"
+  },
+  {
+    "nevra": "snappy-1.2.2-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "d184204061e5b218328dfcc298b6d7aee4a4d668a89e6987eaa21d3b1632b160",
+    "source": "repo"
+  },
+  {
+    "nevra": "sqlite-libs-3.51.2-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "b9a9f1ce6cd359622b100b9d313e6859adf2a0574e5e75ff166baab3e67ccd6f",
+    "source": "repo"
+  },
+  {
+    "nevra": "systemd-259.5-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "7e34df0b5f65a61a6000088b9a3b1b40bda7ccd0dcc82e0dfcecd68b1dde86cf",
+    "source": "repo"
+  },
+  {
+    "nevra": "systemd-boot-unsigned-259.5-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "13c2fc26df976c2e6d807cae7c4fdd2ee7c1b2c2f23f1d7546a8b7a72ac85edb",
+    "source": "repo"
+  },
+  {
+    "nevra": "systemd-container-259.5-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "f692ec3fd22361e7a5d27fd75617502e003fd154fad6965d3fa4e4f69d014979",
+    "source": "repo"
+  },
+  {
+    "nevra": "systemd-libs-259.5-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "4aff97347f72c79681b4b330f2c8c37cf8810484a4f16b378ff37c85d7d57eb3",
+    "source": "repo"
+  },
+  {
+    "nevra": "systemd-shared-259.5-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "5d6513561599f9d19b94f4c195f9d7554a7df5de197224abc3245edb0b4e73cf",
+    "source": "repo"
+  },
+  {
+    "nevra": "systemd-sysusers-259.5-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "7eb26750b4080014232a7426d18e429aa8f92b3bb7741dcf8406f4857eab33f8",
+    "source": "repo"
+  },
+  {
+    "nevra": "systemd-udev-259.5-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "cdb28edce5db3b2d16b44c0dee56da59c322340acb3efc3649b43abfa04625d1",
+    "source": "repo"
+  },
+  {
+    "nevra": "systemd-ukify-259.5-1.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "e0e94b415552d772ebf0286bbd8b7f895cd214f5181b08b5ee487105e445de81",
+    "source": "repo"
+  },
+  {
+    "nevra": "tzdata-2026a-1.fc44.noarch",
+    "repo": "fedora.44.repository",
+    "pkgid": "4a222031f4a5ce8dbdaaa76e2a25a51eb3fd5b274dc47ac0b30bb6a7fccb5cd4",
+    "source": "repo"
+  },
+  {
+    "nevra": "util-linux-2.41.3-12.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "6981e614c75e0c15e0f25405d9c6f3f6db8a2014d571516c3b6e7c5801c483c8",
+    "source": "repo"
+  },
+  {
+    "nevra": "util-linux-core-2.41.3-12.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "e258f6d4f1aa9cc2f36af4603545a32e5c864b4f6c62b8c6d550c91278c63c67",
+    "source": "repo"
+  },
+  {
+    "nevra": "xen-libs-4.21.1-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "b7e460a993e46d66f55e4664fcab70606a938b83af63bdd70ff9b38f6d1a88d2",
+    "source": "repo"
+  },
+  {
+    "nevra": "xen-licenses-4.21.1-1.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "215734506f7f66c39b8dccab108ef3ddc0794dec4b5b969f3891df11860f699e",
+    "source": "repo"
+  },
+  {
+    "nevra": "xz-libs-1:5.8.2-2.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "dfe774d950f79fd04deb36c3ff3863c6b8072a41ba578de1c20d33b8e2c2aa45",
+    "source": "repo"
+  },
+  {
+    "nevra": "zchunk-libs-1.5.1-4.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "c29059a94b664d9190a945e945887a9acd167e13f6c6437b8eb45578ff5adbd5",
+    "source": "repo"
+  },
+  {
+    "nevra": "zlib-ng-compat-2.3.3-3.fc44.x86_64",
+    "repo": "fedora.44.repository",
+    "pkgid": "53ee3cd7082b1a34e4901f13079b1840648113c809effb5b78e7725235a7d939",
+    "source": "repo"
+  }
+]

@@ -1,4 +1,6 @@
-"""Repositories: pinned metadata, package artifacts, and dynamic transaction selection."""
+"""Native package repositories, universes, and dynamic transaction selection."""
+
+load(":system.bzl", "PackageSystemInfo")
 
 package_representation = record(
     artifact = Artifact,
@@ -23,15 +25,148 @@ PackagePoolValueInfo = provider(
     fields = {"packages": provider_field(dict[str, package_artifact])},
 )
 
-RepoInfo = provider(
-    doc = "A package repository.",
+PackageRepositoryInfo = provider(
+    doc = "A repository belonging to one native package system.",
     fields = {
         "id": provider_field(str),
         "dir": provider_field(Artifact),
+        "package_system": provider_field(Dependency),
         # DNF uses lower numbers first; 99 is its default.
         "priority": provider_field(int, default = 99),
     },
 )
+
+RepositoryUniverseInfo = provider(
+    doc = "A homogeneous repository universe and its default selection policy.",
+    fields = {
+        "package_system": provider_field(Dependency),
+        "required_repositories": provider_field(list[Dependency]),
+        "optional_repository_groups": provider_field(dict[str, list[Dependency]]),
+        "default_repository_groups": provider_field(list[str]),
+    },
+)
+
+def _add_repository(
+        package_system: Dependency,
+        repository: Dependency,
+        repositories: list[Dependency],
+        by_id: dict[str, Dependency]) -> None:
+    repo = repository[PackageRepositoryInfo]
+    if repo.package_system.label != package_system.label:
+        fail(
+            "repository '{}' uses package system {}, expected {}".format(
+                repo.id,
+                repo.package_system.label,
+                package_system.label,
+            ),
+        )
+    previous = by_id.get(repo.id)
+    if previous != None:
+        if previous.label != repository.label:
+            fail("repository id '{}' is provided by both {} and {}".format(repo.id, previous.label, repository.label))
+        return
+    by_id[repo.id] = repository
+    repositories.append(repository)
+
+def merge_repositories(
+        package_system: Dependency,
+        candidates: list[Dependency]) -> list[Dependency]:
+    """Validate and de-duplicate repositories while preserving declaration order."""
+    repositories = []
+    by_id = {}
+
+    for repository in candidates:
+        _add_repository(package_system, repository, repositories, by_id)
+
+    return repositories
+
+def select_repositories(
+        universe: Dependency,
+        enable_repository_groups: list[str],
+        disable_repository_groups: list[str]) -> list[Dependency]:
+    """Resolve a repository universe's required, default, and requested groups."""
+    info = universe[RepositoryUniverseInfo]
+    disabled = {name: True for name in disable_repository_groups}
+    for name in disabled:
+        if name not in info.default_repository_groups:
+            fail("repository group '{}' is not enabled by default".format(name))
+
+    group_names = [name for name in info.default_repository_groups if name not in disabled]
+    for name in enable_repository_groups:
+        if name not in info.optional_repository_groups:
+            fail("unknown repository group '{}'".format(name))
+        if name not in group_names:
+            group_names.append(name)
+
+    candidates = list(info.required_repositories)
+    for name in group_names:
+        candidates.extend(info.optional_repository_groups[name])
+    return merge_repositories(info.package_system, candidates)
+
+def _repository_universe_impl(ctx: AnalysisContext) -> list[Provider]:
+    candidates = list(ctx.attrs.required_repositories)
+    for repositories in ctx.attrs.optional_repository_groups.values():
+        candidates.extend(repositories)
+    merge_repositories(ctx.attrs.package_system, candidates)
+
+    seen = {}
+    for name in ctx.attrs.default_repository_groups:
+        if name in seen:
+            fail("default repository group '{}' is listed twice".format(name))
+        if name not in ctx.attrs.optional_repository_groups:
+            fail("default repository group '{}' is not declared".format(name))
+        seen[name] = True
+
+    return [
+        DefaultInfo(),
+        RepositoryUniverseInfo(
+            package_system = ctx.attrs.package_system,
+            required_repositories = ctx.attrs.required_repositories,
+            optional_repository_groups = ctx.attrs.optional_repository_groups,
+            default_repository_groups = ctx.attrs.default_repository_groups,
+        ),
+    ]
+
+_repository_universe = rule(
+    impl = _repository_universe_impl,
+    attrs = {
+        "package_system": attrs.dep(providers = [PackageSystemInfo]),
+        "required_repositories": attrs.list(attrs.dep(providers = [PackageRepositoryInfo])),
+        "optional_repository_groups": attrs.dict(
+            attrs.string(),
+            attrs.list(attrs.dep(providers = [PackageRepositoryInfo])),
+            default = {},
+        ),
+        "default_repository_groups": attrs.list(attrs.string(), default = []),
+    },
+)
+
+def repository_universe(name: str, **kwargs) -> None:
+    if not name.endswith(".repositories"):
+        fail("repository_universe name must end with '.repositories': {}".format(name))
+    _repository_universe(
+        name = name,
+        **kwargs
+    )
+
+def remote_repository_base(ctx: AnalysisContext, repo_dir: Artifact) -> list[Provider]:
+    """Register the package-system-neutral interface to a remote repository."""
+    rid = ctx.label.name
+    system = ctx.attrs.package_system[PackageSystemInfo]
+    manifest = ctx.actions.write("manifest.json", json.encode({"baseurl": ctx.attrs.baseurl, "id": rid}))
+    sub_targets = {
+        "manifest": [DefaultInfo(default_output = manifest)],
+        "snapshot": [DefaultInfo(), RunInfo(args = cmd_args(system.snapshot[RunInfo], "--manifest", manifest))],
+    }
+    return [
+        DefaultInfo(default_output = repo_dir, sub_targets = sub_targets),
+        PackageRepositoryInfo(
+            id = rid,
+            dir = repo_dir,
+            package_system = ctx.attrs.package_system,
+            priority = ctx.attrs.priority,
+        ),
+    ]
 
 def _contains_only(value: str, alphabet: str) -> bool:
     for character in value.elems():
@@ -165,7 +300,7 @@ def download_closure(
         representation: str = "installable") -> Artifact:
     closure = ctx.actions.declare_output(name, dir = True)
     pools = {
-        repository[RepoInfo].id: repository[PackagePoolInfo].value
+        repository[PackageRepositoryInfo].id: repository[PackagePoolInfo].value
         for repository in repositories
         if repository.get(PackagePoolInfo) != None
     }

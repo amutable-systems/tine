@@ -1,7 +1,7 @@
 """Build reusable execution environments and run commands inside them."""
 
-load("//package:format.bzl", "PackageFormatInfo")
-load("//package:repository.bzl", "RepoInfo", "download_closure")
+load("//package:repository.bzl", "PackageRepositoryInfo", "RepositoryUniverseInfo", "download_closure", "select_repositories")
+load("//package:system.bzl", "PackageSystemInfo")
 
 ASSEMBLY_SDE = 1739577600
 
@@ -42,8 +42,15 @@ def chroot_run(
     return RunInfo(args = run)
 
 def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
-    fmt = ctx.attrs.package_format[PackageFormatInfo]
-    repositories = ctx.attrs.repositories
+    system = ctx.attrs.package_system[PackageSystemInfo]
+    universe = ctx.attrs.repository_universe[RepositoryUniverseInfo]
+    if universe.package_system.label != ctx.attrs.package_system.label:
+        fail("engine repository universe uses a different package system")
+    repositories = select_repositories(
+        ctx.attrs.repository_universe,
+        ctx.attrs.enable_repository_groups,
+        ctx.attrs.disable_repository_groups,
+    )
 
     # Select installable and payload representations from the locked seed transaction.
     packages = download_closure(ctx, ctx.attrs.lock, repositories = repositories)
@@ -58,7 +65,7 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     # Bootstrap chroot1 without an RPM database or scriptlets.
     chroot1 = ctx.actions.declare_output("chroot1", dir = True)
     ctx.actions.run(
-        cmd_args(fmt.extract[RunInfo], chroot1.as_output(), payloads),
+        cmd_args(system.extract[RunInfo], chroot1.as_output(), payloads),
         category = "extract",
     )
 
@@ -68,7 +75,7 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
         cmd_args(
             chroot_run(
                 engine = EngineInfo(root = chroot1, sandbox = ctx.attrs._sandbox),
-                exe = fmt.install,
+                exe = system.install,
             ),
             "--packages-dir",
             packages,
@@ -82,9 +89,9 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     info = EngineInfo(root = chroot2, sandbox = ctx.attrs._sandbox)
 
     # Refresh resolves the engine lock against the freshly pinned repositories.
-    resolve = cmd_args(chroot_run(engine = info, exe = fmt.plan), "solve", "--arch", ctx.attrs.arch)
+    resolve = cmd_args(chroot_run(engine = info, exe = system.plan), "solve", "--arch", ctx.attrs.arch)
     for repository in repositories:
-        repo = repository[RepoInfo]
+        repo = repository[PackageRepositoryInfo]
         resolve.add("--repo", cmd_args(repo.dir, format = repo.id + "={}"))
     for package in ctx.attrs.packages:
         resolve.add("--install", package)
@@ -105,13 +112,15 @@ engine = rule(
             attrs.string(),
             doc = "top-level engine package names (authored; the lock pins the closure)",
         ),
-        "repositories": attrs.list(
-            attrs.dep(providers = [RepoInfo]),
-            doc = "immutable pinned repos `[resolve]` solves against (builds read only the lock)",
+        "repository_universe": attrs.dep(
+            providers = [RepositoryUniverseInfo],
+            doc = "repository universe used to resolve the engine",
         ),
-        "package_format": attrs.dep(
-            providers = [PackageFormatInfo],
-            doc = "the package format plugin (extract/install, plus plan for `[resolve]`)",
+        "enable_repository_groups": attrs.list(attrs.string(), default = []),
+        "disable_repository_groups": attrs.list(attrs.string(), default = []),
+        "package_system": attrs.dep(
+            providers = [PackageSystemInfo],
+            doc = "the native package-system drivers used to bootstrap the engine",
         ),
         "lock": attrs.source(
             doc = "the @generated engine transaction (source/repo/pkgid/nevra); seed with `{}`",

@@ -1,66 +1,101 @@
-"""The active catalog: repositories, engines, and distributions, declared directly."""
+"""The active catalog: repositories, OS releases, engines, package managers, and build profiles."""
 
-# This BUCK lives in the *catalog* cell (default `[cells] catalog = tine/catalog`), so
-# the declarations are scoped to whichever catalog is active. Everything pinned is
-# first-class and shareable: a repository pins its repodata once, an engine pins its
-# closure once, and distributions compose them by target name. tine provides the
-# machinery (the rules + rpm wrappers); the catalog cell provides the data.
-#
-# A consumer overrides by repointing `[cells] catalog` at their own dir and supplying
-# their own catalog BUCK. tine's default declarations here then do not apply — the
-# override replaces data *and* declaration.
-#
-# Each repository has one @generated `<name>.json` authoritative snapshot: pinned repodata plus
-# its pkgid-keyed RPM index. `rpm_remote_repository` derives that package-relative source from
-# the target name and expands it into the lazy pool; refresh creates it when absent. Engine JSONs
-# are transactions and must be seeded with `{}`. Run `buck run tine//tools:refresh-catalog` after
-# adding either declaration.
-load("@tine//package_format/rpm:rules.bzl", "rpm_distribution", "rpm_engine", "rpm_remote_repository")
+# Repoint the `catalog` cell to replace these declarations. Repository snapshots are generated
+# as `<name>.json`; engine transaction files must start as `{}`. Refresh after adding either.
+load("@tine//package:buildroot.bzl", "buildroot")
+load("@tine//package:manager.bzl", "package_manager")
+load("@tine//package:release.bzl", "os_release")
+load("@tine//package:repository.bzl", "repository_universe")
+load("@tine//package_system/rpm:rules.bzl", "rpm_engine", "rpm_remote_repository")
 
-# Frozen GA tree, so pins are reproducible. (Add the live `updates` tree once we handle
-# its mutability — superseded rpms age out and pinned URLs 404.)
+_RPM = "@tine//package_system/rpm:package_system"
+
+# Frozen GA tree; live updates can drop packages referenced by old pins.
 rpm_remote_repository(
-    name = "fedora",
+    name = "fedora.44.repository",
     baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/",
     visibility = ["PUBLIC"],
 )
 
-# Rolling tree (no frozen GA): the pin drifts on refresh like CentOS's, and rawhide's
-# repodata churns daily, so pinned stream URLs go stale quickly — refresh often.
+# Rolling tree whose pinned URLs require frequent refreshes.
 rpm_remote_repository(
-    name = "fedora-rawhide",
+    name = "fedora.rawhide.repository",
     baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/",
     visibility = ["PUBLIC"],
 )
 
-# CentOS Stream is a *rolling* repo (no frozen GA), so these pins drift on refresh like
-# Fedora's updates would — fine for now.
+# CentOS Stream pins also drift on refresh.
 rpm_remote_repository(
-    name = "baseos",
+    name = "centos.10-stream.baseos.repository",
     baseurl = "https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/",
     visibility = ["PUBLIC"],
 )
 
 rpm_remote_repository(
-    name = "appstream",
+    name = "centos.10-stream.appstream.repository",
     baseurl = "https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/",
     visibility = ["PUBLIC"],
 )
 
 rpm_remote_repository(
-    name = "crb",
+    name = "centos.10-stream.crb.repository",
     baseurl = "https://mirror.stream.centos.org/10-stream/CRB/x86_64/os/",
     visibility = ["PUBLIC"],
 )
 
-# The Fedora engine: the execution environment whose libdnf5 assembles any rpm
-# distribution's buildroot. Deps arrive transitively, so only top-level packages:
-# coreutils (scriptlets), libseccomp (the nested sandbox dlopen's it), and
-# ca-certificates (TLS trust for the self-hosted, networked lock resolver) aren't
-# guaranteed transitively, so they're explicit. python3-createrepo_c writes the
-# buildroot repositories' repodata (libdnf5 only reads it).
+repository_universe(
+    name = "fedora.44.repositories",
+    package_system = _RPM,
+    required_repositories = [":fedora.44.repository"],
+    visibility = ["PUBLIC"],
+)
+
+repository_universe(
+    name = "fedora.rawhide.repositories",
+    package_system = _RPM,
+    required_repositories = [":fedora.rawhide.repository"],
+    visibility = ["PUBLIC"],
+)
+
+repository_universe(
+    name = "centos.10-stream.repositories",
+    package_system = _RPM,
+    required_repositories = [":centos.10-stream.baseos.repository"],
+    optional_repository_groups = {
+        "appstream": [":centos.10-stream.appstream.repository"],
+        "crb": [":centos.10-stream.crb.repository"],
+    },
+    default_repository_groups = ["appstream"],
+    visibility = ["PUBLIC"],
+)
+
+os_release(
+    name = "fedora.44.release",
+    family = "fedora",
+    version = "44",
+    repository_universe = ":fedora.44.repositories",
+    visibility = ["PUBLIC"],
+)
+
+os_release(
+    name = "fedora.rawhide.release",
+    family = "fedora",
+    version = "rawhide",
+    repository_universe = ":fedora.rawhide.repositories",
+    visibility = ["PUBLIC"],
+)
+
+os_release(
+    name = "centos.10-stream.release",
+    family = "centos",
+    version = "10-stream",
+    repository_universe = ":centos.10-stream.repositories",
+    visibility = ["PUBLIC"],
+)
+
+# Shared RPM engine plus the image assembly and VM tools. These tools stay out of images.
 rpm_engine(
-    name = "fedora44.engine",
+    name = "fedora.44.engine",
     packages = [
         "rpm",
         "python3",
@@ -69,45 +104,63 @@ rpm_engine(
         "coreutils",
         "libseccomp",
         "ca-certificates",
+        "systemd-udev",
+        "systemd-ukify",
+        "python3-pefile",
+        "e2fsprogs",
+        "dosfstools",
+        "mtools",
+        "systemd-container",
+        "qemu-system-x86-core",
+        "edk2-ovmf",
+        "openssh",
     ],
-    repositories = [":fedora"],
+    repository_universe = ":fedora.44.repositories",
     visibility = ["PUBLIC"],
 )
 
-rpm_distribution(
-    name = "fedora44",
-    engine = ":fedora44.engine",
-    repositories = [":fedora"],
-    # The always-installed buildroot base, as install specs; it and individual
-    # BuildRequires are resolved + fetched per build against the pinned repodata.
-    # `@buildsys-build` names the comps group (mandatory members, expanded at build time
-    # against the pinned comps).
-    buildroot = ["@buildsys-build"],
+package_manager(
+    name = "fedora.44.package-manager",
+    release = ":fedora.44.release",
+    engine = ":fedora.44.engine",
     visibility = ["PUBLIC"],
 )
 
-# Rawhide srcpkgs need rawhide BuildRequires — the frozen-GA fedora44 pool is too old (e.g.
-# systemd's `package-notes` doesn't exist in F44 at all), and importing/bootstrapping every
-# too-new BR ourselves needs the full transitive bootstrap (too early). Trailing rawhide keeps
-# every package cold-rebuildable; our own builds still outrank it via repo priority. Builds
-# run in the fedora44 engine.
-rpm_distribution(
-    name = "rawhide",
-    engine = ":fedora44.engine",
-    repositories = [":fedora-rawhide"],
-    buildroot = ["@buildsys-build"],
+# Rawhide and CentOS packages use their own repositories with the shared Fedora engine.
+package_manager(
+    name = "fedora.rawhide.package-manager",
+    release = ":fedora.rawhide.release",
+    engine = ":fedora.44.engine",
     visibility = ["PUBLIC"],
 )
 
-rpm_distribution(
-    name = "centos10",
-    # CentOS Stream ships no libdnf5, so it can't provision its own engine — it's a
-    # build *target* only, built by the shared Fedora engine.
-    engine = ":fedora44.engine",
-    repositories = [":baseos", ":appstream", ":crb"],
-    # No @buildsys-build comps group on CentOS; this is mock's chroot_setup_cmd
-    # (centos-stream-10.tpl) verbatim.
-    buildroot = [
+package_manager(
+    name = "centos.10-stream.package-manager",
+    release = ":centos.10-stream.release",
+    engine = ":fedora.44.engine",
+    enable_repository_groups = ["crb"],
+    visibility = ["PUBLIC"],
+)
+
+buildroot(
+    name = "fedora.44.buildroot",
+    package_manager = ":fedora.44.package-manager",
+    packages = ["@buildsys-build"],
+    visibility = ["PUBLIC"],
+)
+
+buildroot(
+    name = "fedora.rawhide.buildroot",
+    package_manager = ":fedora.rawhide.package-manager",
+    packages = ["@buildsys-build"],
+    visibility = ["PUBLIC"],
+)
+
+# CentOS has no @buildsys-build group; this matches mock's chroot_setup_cmd.
+buildroot(
+    name = "centos.10-stream.buildroot",
+    package_manager = ":centos.10-stream.package-manager",
+    packages = [
         "bash",
         "bzip2",
         "centos-stream-release",

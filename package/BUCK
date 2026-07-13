@@ -1,1 +1,1 @@
-"""Format-neutral package, repository, and distribution machinery."""
+"""Native package systems, repositories, releases, managers, and buildroots."""

@@ -1,6 +1,6 @@
-"""The RPM package-format backend and its driver bundle."""
+"""The RPM native package system and its driver bundle."""
 
-load("//package:format.bzl", "package_format")
+load("//package:system.bzl", "package_system")
 
 # Host tools bootstrap the engine; remaining drivers run inside it.
 
@@ -23,7 +23,7 @@ python_bootstrap_binary(
 python_bootstrap_library(name = "util", srcs = ["util.py"])
 
 python_bootstrap_binary(name = "install", main = "install.py", deps = ["//rootfs:rootfs"])
-python_bootstrap_binary(name = "create_repository", main = "create_repository.py")
+python_bootstrap_binary(name = "createrepo", main = "createrepo.py")
 python_bootstrap_binary(name = "plan", main = "plan.py", deps = ["//rootfs:rootfs"])
 python_bootstrap_binary(name = "build", main = "build.py", deps = [":util", "//rootfs:rootfs"])
 
@@ -33,12 +33,13 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-package_format(
-    name = "package_format",
+package_system(
+    name = "package_system",
+    id = "rpm",
     extract = ":extract",
     snapshot = ":snapshot",
     install = ":install",
-    create_repository = ":create_repository",
+    createrepo = ":createrepo",
     plan = ":plan",
     build = ":build",
     visibility = ["PUBLIC"],
