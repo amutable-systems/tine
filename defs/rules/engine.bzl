@@ -1,9 +1,9 @@
 """The engine: the reusable execution environment and how to run commands in it.
 
-`engine` builds one (seed packages → installed chroot); `engine_cmd` is the generic
-enter-the-engine prefix (also an engine target's own RunInfo, so `buck run
-catalog//:<e>.engine -- <cmd>` gives a shell in the engine); `chroot_run` binds an
-executable target to an engine at the fixed assembly epoch.
+`engine` builds one (seed packages → installed chroot); `chroot_run` enters it at the
+fixed assembly epoch, optionally binding an executable target. It is also an engine
+target's own RunInfo, so `buck run catalog//:<e>.engine -- <cmd>` gives a shell in the
+engine.
 """
 
 load(":package_format.bzl", "PackageFormatInfo")
@@ -22,23 +22,41 @@ EngineInfo = provider(
     },
 )
 
-def engine_cmd(engine: Provider) -> cmd_args:
-    """The command prefix entering `engine` (an EngineInfo); the command goes after `--`."""
-    return cmd_args(engine.sandbox[RunInfo], "--tools", engine.root, "--bind-cwd", "--source-date-epoch", str(ASSEMBLY_SDE))
+def chroot_run(
+        engine: Provider,
+        exe: Dependency | str | None = None,
+        network: bool = False,
+        relaxed: bool = False) -> RunInfo:
+    """Enter `engine`, optionally binding `exe`, as a RunInfo.
 
-def chroot_run(engine: Provider, exe: Dependency, network: bool = False) -> RunInfo:
-    """Bind `exe` to `engine` (an EngineInfo) as a RunInfo.
+    Pure string assembly — no actions. A dependency's default output is executed as-is
+    inside the chroot; a string names a command supplied by the engine. Without `exe`,
+    arguments appended to the RunInfo supply the command, as for a runnable engine target.
+    The drivers are python_bootstrap_binary targets whose entry carries a shebang; their
+    host RunInfo goes unused. The engine's sandbox only provides the exec environment; a
+    driver that needs a target root to install into or run against sets it up itself (see
+    rootfs.py).
 
-    Pure string assembly — no actions. `exe`'s default output is executed as-is inside
-    the chroot (the drivers are python_bootstrap_binary targets whose entry carries a
-    shebang; their host RunInfo goes unused). The engine's sandbox only provides the
-    exec environment; a driver that needs a target root to install into or run against
-    sets it up itself (see rootfs.py)."""
-    info = exe[DefaultInfo]
-    run = engine_cmd(engine)
+    `relaxed` is for interactive RunInfo leaves needing host devices and services. It
+    keeps the engine's userspace but inherits /run, devices, network, environment and cwd
+    from the host; build actions must use the isolated default."""
+    run = cmd_args(
+        engine.sandbox[RunInfo],
+        "--tools",
+        engine.root,
+    )
+    if relaxed:
+        run.add("--relaxed")
+    else:
+        run.add("--bind-cwd", "--source-date-epoch", str(ASSEMBLY_SDE))
     if network:
         run.add("--network")
-    run.add("--", cmd_args(info.default_outputs[0], hidden = info.other_outputs))
+    run.add("--")
+    if isinstance(exe, Dependency):
+        info = exe[DefaultInfo]
+        run.add(cmd_args(info.default_outputs[0], hidden = info.other_outputs))
+    elif exe != None:
+        run.add(exe)
     return RunInfo(args = run)
 
 def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -104,7 +122,7 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     return [
         DefaultInfo(default_output = chroot2, sub_targets = sub_targets),
         info,
-        RunInfo(args = engine_cmd(info)),
+        chroot_run(info),
     ]
 
 engine = rule(
