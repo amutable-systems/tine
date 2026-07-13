@@ -15,6 +15,7 @@ from pathlib import Path
 import libdnf5
 import libdnf5.comps
 import libdnf5.conf
+
 import rootfs
 
 # A multilib package in a pinned-arch transaction indicates a bad solve.

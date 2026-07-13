@@ -1,8 +1,8 @@
-"""Distribution rules: the format-neutral machinery //distribution composes."""
+"""Format-neutral distribution and package-installation rules."""
 
-load(":engine.bzl", "EngineInfo", "chroot_run")
-load(":package_format.bzl", "PackageFormatInfo")
-load(":repo.bzl", "RepoInfo", "download_closure")
+load("//engine:rules.bzl", "EngineInfo", "chroot_run")
+load(":format.bzl", "PackageFormatInfo")
+load(":repository.bzl", "RepoInfo", "download_closure")
 
 # Prefer local builds even when upstream has a newer version.
 _EXTRA_REPO_PRIORITY = 50

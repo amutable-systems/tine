@@ -1,7 +1,7 @@
 """Build RPM targets from generated package metadata and self-hosting edges."""
 
 load("@prelude//:native.bzl", "native")
-load(":rpm.bzl", "rpm_package")
+load(":rules.bzl", "rpm_package")
 
 # Keep these records aligned with the importer's generated schema.
 # buildifier: disable=name-conventions  (a record *type*, conventionally UpperCamelCase)

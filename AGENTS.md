@@ -10,10 +10,10 @@
 
 ## Layout
 
-The `tine` cell: reusable, format-neutral machinery — rules in `defs/rules`, the rpm format
-plugin + drivers in `distribution/rpm`, the vendored sandbox in `distribution`, dev tooling here.
-Carries no distribution *data*. The repo root consumes the cell: it supplies the data
-(`root//distribution`) and package targets (`root//distribution/packages`) plus toolchain wiring.
+The `tine` cell contains reusable machinery organized by subsystem. Starlark rules and their
+drivers live together in `engine`, `package`, `package_format`, `rootfs`, and `archive`. Vendored
+code lives in `vendor`. The default catalog remains in `catalog`; consumers may repoint that cell.
+Package sources and targets live in the root repository under `distribution`.
 
 ## Commands
 

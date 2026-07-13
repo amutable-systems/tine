@@ -4,7 +4,8 @@
 target-version = "py314"
 line-length = 109
 # Exclude build outputs and the verbatim vendored sandbox.
-extend-exclude = ["buck-out", "distribution/mkosi/sandbox.py"]
+extend-exclude = ["buck-out", "vendor/mkosi/sandbox.py"]
+src = ["archive", "package_format/rpm", "rootfs", "vendor"]
 lint.select = [
     "E",    # pycodestyle
     "W",    # pycodestyle (trailing whitespace)
@@ -17,11 +18,11 @@ lint.select = [
 [tool.ty.environment]
 python-version = "3.14"
 # Runtime trees use a flat import namespace; third-party imports come from `--python`.
-extra-paths = ["distribution"]
+extra-paths = ["archive", "package_format/rpm", "rootfs", "vendor"]
 
 [tool.ty.src]
 # Match Ruff's exclusions.
-exclude = ["buck-out", "distribution/mkosi/sandbox.py"]
+exclude = ["buck-out", "vendor/mkosi/sandbox.py"]
 
 [tool.ty.rules]
 unused-type-ignore-comment = "ignore"

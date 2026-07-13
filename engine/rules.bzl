@@ -1,7 +1,7 @@
 """Build reusable execution environments and run commands inside them."""
 
-load(":package_format.bzl", "PackageFormatInfo")
-load(":repo.bzl", "RepoInfo", "download_closure")
+load("//package:format.bzl", "PackageFormatInfo")
+load("//package:repository.bzl", "RepoInfo", "download_closure")
 
 ASSEMBLY_SDE = 1739577600
 
@@ -118,6 +118,6 @@ engine = rule(
         ),
         "arch": attrs.string(default = "x86_64", doc = "the resolution arch"),
         # EngineInfo carries this into the rest of the graph.
-        "_sandbox": attrs.exec_dep(default = "tine//distribution:sandbox", providers = [RunInfo]),
+        "_sandbox": attrs.exec_dep(default = "tine//engine:sandbox", providers = [RunInfo]),
     },
 )

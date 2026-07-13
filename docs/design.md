@@ -266,9 +266,9 @@ Every build action that touches a chroot — buildroot assembly, `rpmbuild`,
 `%check`, each image-layer op, the toolchain compiler wrapper, and the bootstrap
 hops — goes through one primitive: a vendored **mkosi-sandbox** wrapper (the sole
 sandbox layer; buck2 has no built-in local one). Two layers: the **`sandbox`
-binary** (`tine/distribution/sandbox.py` — a small argparse `main()` over
+binary** (`tine/engine/sandbox.py` — a small argparse `main()` over
 mkosi-sandbox) and, above it, the **`chroot_run(...)`** Starlark helper
-(`tine/defs/rules/engine.bzl`) that wires a driver — a plain `python_bootstrap_binary`
+(`tine/engine/rules.bzl`) that wires a driver — a plain `python_bootstrap_binary`
 target — into an engine root as a `RunInfo` command prefix for `ctx.actions.run`
 (internal, not a user-facing rule — decision 11).
 
@@ -321,7 +321,7 @@ host-independent must lay down the first rpm to break the regress.
   Local image materialization additionally wants a **reflink-capable fs**
   (btrfs/XFS — see Image building); RE workers need neither Python nor reflink,
   only userns + CAS. Past chroot2 nothing else touches the host.
-- **Ur-tool = a minimal committed `tine/distribution/rpm/extract.py`** (our
+- **Ur-tool = a minimal committed `tine/package_format/rpm/extract.py`** (our
   source, not a pinned binary). It frames the rpm (lead + two headers) via the shared
   **`rpmfile.py`** primitives and writes the payload as files (the newc parse is the
   shared **`cpio.py`** reader — see *Bootable images*). Today it handles **v4** (`070701`
@@ -493,15 +493,15 @@ Run on import / spec change / staleness / seed refresh, NOT during normal builds
 (like `reindeer buckify`). It produces committed lock data; normal `buck2 build`
 consumes it as a static graph and never runs buckify. It is **two programs**:
 
-- A **format-independent host orchestrator** (`tine/distribution/buckify.py`, a
-  `python_bootstrap_binary` run on the host as `buck2 run @tine//distribution:buckify`).
+- A **format-independent host orchestrator** (`tine/tools/catalog.py`, a
+  `python_bootstrap_binary` run on the host as `buck2 run @tine//tools:refresh-catalog`).
   It `uquery`s the catalog's pinning targets and drives their refresh sub-targets in two
   phases: every repository's `catalog//:<repo>[snapshot]` (host — no engine), then every
   engine's `catalog//:<engine>[resolve]`, nested as `buck2 run` *inside that engine*.
   Both sub-targets share one contract: the binding carries every input, the orchestrator
   appends only `--out <fragment>`. Nested `buck2 run` is fine — the child inherits cwd +
   `BUCK_ISOLATION_DIR` and reuses the daemon.
-- Per-format **refresh drivers** (for rpm: `tine/distribution/rpm/snapshot.py`, plus
+- Per-format **refresh drivers** (for rpm: `tine/package_format/rpm/snapshot.py`, plus
   `plan.py` doubling as the resolver), bundled in the format's `package_format` plugin
   and bound by the pinning rules themselves; deb/arch would add siblings.
 
@@ -954,7 +954,7 @@ resolve-then-materialize inside itself.
 over two format-neutral drivers bound to a distribution's engine root: `image.py` (the step
 driver) and `pack.py` (the packer). A base layer's `install` reuses the rpm
 plan→materialize→install flow — factored out of `rpm_package` into the shared
-`assemble_root` helper (`defs/rules/distribution.bzl`) — so `install_rpms` is a separate
+`assemble_root` helper (`package/distribution.bzl`) — so `install_rpms` is a separate
 buck action producing the layer's base tree, exactly as below. The step driver overlays the
 ancestor delta stack with a fresh upper, **chroots into the merge** (via `rootfs.py`) and
 applies an ordered op list (`run`/`mkdir`/`symlink`/`remove`) against it — a `run` op just

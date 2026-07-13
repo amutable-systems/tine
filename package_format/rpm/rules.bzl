@@ -1,11 +1,11 @@
 """RPM-bound repository, engine, distribution, and package rules."""
 
-load(":distribution.bzl", "DistributionInfo", "distribution", "install_packages", "remote_repository_base")
-load(":engine.bzl", "chroot_run", engine_rule = "engine")  # aliased: `engine` is an arg below
-load(":package_format.bzl", "PackageFormatInfo")
-load(":repo.bzl", "PackagePoolInfo", "PackagePoolValueInfo", "package_artifact", "package_representation")
+load("//engine:rules.bzl", "chroot_run", engine_rule = "engine")  # aliased: `engine` is an arg below
+load("//package:distribution.bzl", "DistributionInfo", "distribution", "install_packages", "remote_repository_base")
+load("//package:format.bzl", "PackageFormatInfo")
+load("//package:repository.bzl", "PackagePoolInfo", "PackagePoolValueInfo", "package_artifact", "package_representation")
 
-_RPM_PACKAGE_FORMAT = "@tine//distribution/rpm:package_format"
+_RPM_PACKAGE_FORMAT = "@tine//package_format/rpm:package_format"
 
 rpm_metadata = record(
     location = str,
@@ -118,7 +118,7 @@ remote_repository = rule(
         "priority": attrs.int(default = 99),
         "snapshot": attrs.option(attrs.source(), default = None),
         "_decompress": attrs.exec_dep(
-            default = "tine//distribution/rpm:decompress",
+            default = "tine//package_format/rpm:decompress",
             providers = [RunInfo],
         ),
     },

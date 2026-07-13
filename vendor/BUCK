@@ -1,0 +1,7 @@
+"""Vendored runtime dependencies."""
+
+python_bootstrap_library(
+    name = "mkosi",
+    srcs = ["mkosi/__init__.py", "mkosi/sandbox.py"],
+    visibility = ["PUBLIC"],
+)

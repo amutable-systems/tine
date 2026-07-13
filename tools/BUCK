@@ -80,6 +80,11 @@ python_bootstrap_binary(
     main = "dev.py",
 )
 
+python_bootstrap_binary(
+    name = "catalog",
+    main = "catalog.py",
+)
+
 # Source checks; ty resolves imports against the engine root.
 # FIXME: type check python in every engine? Some python dependencies will only be
 # available in certain engines.
@@ -115,14 +120,14 @@ command_alias(
     exe = ":dev",
 )
 
-# Buckify resolves the active catalog and project root itself.
+# The catalog tool resolves the active catalog and project root itself.
 command_alias(
     name = "refresh-catalog",
     args = [
         "--buck",
         "$(source buck)",
     ],
-    exe = "//distribution:buckify",
+    exe = ":catalog",
 )
 
 command_alias(
@@ -132,5 +137,5 @@ command_alias(
         "--buck",
         "$(source buck)",
     ],
-    exe = "//distribution:buckify",
+    exe = ":catalog",
 )

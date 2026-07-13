@@ -1,0 +1,45 @@
+"""The RPM package-format backend and its driver bundle."""
+
+load("//package:format.bzl", "package_format")
+
+# Host tools bootstrap the engine; remaining drivers run inside it.
+
+python_bootstrap_library(name = "rpmfile", srcs = ["rpmfile.py"])
+
+python_bootstrap_binary(
+    name = "extract",
+    main = "extract.py",
+    deps = ["//archive:cpio", "//rootfs:rootfs", ":rpmfile"],
+    visibility = ["PUBLIC"],
+)
+
+python_bootstrap_binary(
+    name = "decompress",
+    main = "decompress.py",
+    deps = [":rpmfile"],
+    visibility = ["PUBLIC"],
+)
+
+python_bootstrap_library(name = "util", srcs = ["util.py"])
+
+python_bootstrap_binary(name = "install", main = "install.py", deps = ["//rootfs:rootfs"])
+python_bootstrap_binary(name = "create_repository", main = "create_repository.py")
+python_bootstrap_binary(name = "plan", main = "plan.py", deps = ["//rootfs:rootfs"])
+python_bootstrap_binary(name = "build", main = "build.py", deps = [":util", "//rootfs:rootfs"])
+
+python_bootstrap_binary(
+    name = "snapshot",
+    main = "snapshot.py",
+    visibility = ["PUBLIC"],
+)
+
+package_format(
+    name = "package_format",
+    extract = ":extract",
+    snapshot = ":snapshot",
+    install = ":install",
+    create_repository = ":create_repository",
+    plan = ":plan",
+    build = ":build",
+    visibility = ["PUBLIC"],
+)

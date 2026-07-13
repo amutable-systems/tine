@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import libdnf5
+
 import rootfs
 
 DBPATH = "usr/lib/sysimage/rpm"

@@ -42,7 +42,7 @@ def _resolve(buck: str, target: str, catalog_dir: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="buckify")
+    p = argparse.ArgumentParser(prog="catalog")
     p.add_argument("--catalog-dir", help="catalog dir to (re)generate (default: catalog//)")
     p.add_argument(
         "--buck", default="buck", help="buck binary to nest (aliases pass the pinned one; default: PATH)"
@@ -78,7 +78,7 @@ def main(argv: list[str] | None = None) -> None:
             _resolve(args.buck, target, catalog_dir)
 
     if not snapshots and not resolves:
-        raise SystemExit("buckify: no repository/engine refresh targets found in catalog//...")
+        raise SystemExit("catalog: no repository/engine refresh targets found in catalog//...")
 
     if args.verify:
         print("==> verifying the committed catalog matches", file=sys.stderr)
