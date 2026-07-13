@@ -11,6 +11,7 @@ daemon (see buckify.py for why that holds and why the buck binary is passed in).
 import argparse
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -27,7 +28,12 @@ def _run(cmd: list[str | Path], **kwargs) -> None:
 
 
 def _buck_out(buck: str, *args: str) -> str:
-    return subprocess.run([buck, *args], check=True, capture_output=True, text=True).stdout.strip()
+    proc = subprocess.run([buck, *args], capture_output=True, text=True)
+    if proc.returncode != 0:
+        # on failure, relay buck's own stderr, which has the actually useful message
+        print(proc.stderr, end="", file=sys.stderr, flush=True)
+        raise SystemExit(proc.returncode)
+    return proc.stdout.strip()
 
 
 def _cell_root(buck: str, cell: str) -> Path:
