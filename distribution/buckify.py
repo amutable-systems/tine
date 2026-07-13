@@ -16,8 +16,12 @@ Both sub-targets share one contract: the binding carries every input; the orches
 appends only `--out <fragment>`.
 
 Repos snapshot first so a same-run engine resolve solves over the repodata being pinned.
-The fragments ARE the lock, and each declared target reads its own at build time, so
-there's nothing to amalgamate or scaffold here.
+Repository JSON is a source input that its target dynamically expands into repodata and the
+complete package pool; engine JSON is the transaction selected from those pools at build time.
+There is nothing to amalgamate or scaffold here. Until refresh has staged current/candidate
+engine generations, repositories that provision an engine must be immutable: their old
+transaction must remain realizable after the repository snapshot is replaced and before that
+engine is re-resolved.
 
 Nested buck is supported: a `buck run` target executes with cwd = the invocation
 dir and inherits PATH + BUCK_ISOLATION_DIR, so a child `buck` reuses the same

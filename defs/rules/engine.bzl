@@ -43,20 +43,26 @@ def chroot_run(engine: Provider, exe: Dependency, network: bool = False) -> RunI
 
 def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     fmt = ctx.attrs.package_format[PackageFormatInfo]
-    repos = [r[RepoInfo] for r in ctx.attrs.repositories]
+    repositories = ctx.attrs.repositories
 
-    # Action A — download the seed: the lock *is* a transaction ([{url, sha256, size}],
-    # committed by `[resolve]` at refresh), so the closure downloads straight from it —
-    # no repodata is consulted at build time. The lock is a source file read at action
-    # time (dynamic), so an unlocked engine (fragment seeded `{}`) analyzes fine and
-    # fails only when actually demanded.
-    packages = download_closure(ctx, ctx.attrs.lock)
+    # Action A — select the seed: the lock is a transaction committed by `[resolve]`, so the
+    # closures select raw RPMs and their pool-owned payload representations directly without
+    # consulting repodata at build time. The source file is read dynamically, so an unlocked
+    # `{}` engine analyzes and fails only when demanded.
+    packages = download_closure(ctx, ctx.attrs.lock, repositories = repositories)
+    payloads = download_closure(
+        ctx,
+        ctx.attrs.lock,
+        name = "extract.closure",
+        repositories = repositories,
+        representation = "payload",
+    )
 
     # Action B — chroot1: payload-extract the whole seed (no db, no scripts) with
     # the format's bootstrap ur-tool.
     chroot1 = ctx.actions.declare_output("chroot1", dir = True)
     ctx.actions.run(
-        cmd_args(fmt.extract[RunInfo], chroot1.as_output(), packages),
+        cmd_args(fmt.extract[RunInfo], chroot1.as_output(), payloads),
         category = "extract",
     )
 
@@ -85,9 +91,9 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     # first, so the solve sees the same refresh's pins; no network needed) — and the
     # orchestrator commits the transaction it writes as the lock fragment.
     resolve = cmd_args(chroot_run(engine = info, exe = fmt.plan), "solve", "--arch", ctx.attrs.arch)
-    for repository in repos:
-        resolve.add("--repo", cmd_args(repository.dir, format = repository.id + "={}"))
-        resolve.add("--baseurl", "{}={}".format(repository.id, repository.baseurl))
+    for repository in repositories:
+        repo = repository[RepoInfo]
+        resolve.add("--repo", cmd_args(repo.dir, format = repo.id + "={}"))
     for package in ctx.attrs.packages:
         resolve.add("--install", package)
     sub_targets = {
@@ -95,15 +101,30 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     }
 
     # The RunInfo makes the engine itself runnable: `buck run <root> -- <cmd>` enters it.
-    return [DefaultInfo(default_output = chroot2, sub_targets = sub_targets), info, RunInfo(args = engine_cmd(info))]
+    return [
+        DefaultInfo(default_output = chroot2, sub_targets = sub_targets),
+        info,
+        RunInfo(args = engine_cmd(info)),
+    ]
 
 engine = rule(
     impl = _engine_impl,
     attrs = {
-        "packages": attrs.list(attrs.string(), doc = "the engine's package set as top-level install names (authored; the lock pins the closure)"),
-        "repositories": attrs.list(attrs.dep(providers = [RepoInfo]), doc = "the pinned repos `[resolve]` solves the closure against (builds read only the lock)"),
-        "package_format": attrs.dep(providers = [PackageFormatInfo], doc = "the package format plugin (extract + install drivers, plus plan for `[resolve]`)"),
-        "lock": attrs.source(doc = "the @generated lock fragment — the engine closure as a plan transaction ([{url, sha256, size}]); seed with `{}`"),
+        "packages": attrs.list(
+            attrs.string(),
+            doc = "top-level engine package names (authored; the lock pins the closure)",
+        ),
+        "repositories": attrs.list(
+            attrs.dep(providers = [RepoInfo]),
+            doc = "immutable pinned repos `[resolve]` solves against (builds read only the lock)",
+        ),
+        "package_format": attrs.dep(
+            providers = [PackageFormatInfo],
+            doc = "the package format plugin (extract/install, plus plan for `[resolve]`)",
+        ),
+        "lock": attrs.source(
+            doc = "the @generated engine transaction (source/repo/pkgid/nevra); seed with `{}`",
+        ),
         "arch": attrs.string(default = "x86_64", doc = "the resolution arch"),
         # The one place the sandbox enters the graph: it rides out inside EngineInfo.
         "_sandbox": attrs.exec_dep(default = "tine//distribution:sandbox", providers = [RunInfo]),

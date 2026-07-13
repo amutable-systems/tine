@@ -4,10 +4,10 @@
 Runs *inside* the engine root. Loads each repository's pinned `repodata/`
 (--repo id=dir, a `file://` metadata-only tree), resolves the requested install set's
 transitive runtime closure (hard requires only, install_weak_deps=False), and writes the
-resolved packages as the *transaction*: a JSON list of {url, sha256, size}, where the url is the
-repo's real remote baseurl (--baseurl id=url) + the package's location, and the sha256 + size come
-straight from the repodata (size lets download_file skip buck's HEAD probe). `download` (Action 2)
-then fetches exactly this subset.
+resolved packages as the *transaction*. Remote entries are `{source: "repo", repo, pkgid,
+nevra}`: `(repo, pkgid)` alone selects an artifact from the authoritative repository pool.
+Local entries add `location: <input-directory index>/<filename>` so they project directly
+from an RPM directory built in this graph.
 
 Two resolution bases: against an empty root (a fresh buildroot / a base image
 layer), or — with `--lower` — against an existing installed tree (a child image
@@ -115,19 +115,15 @@ def load_base(
 
 
 def plan(
-    repos: list[tuple[str, Path, str, int]],
+    repos: list[tuple[str, Path, int]],
     install: list[str],
     cachedir: Path,
     installroot: Path | None,
     arch: str,
     seeds: list[Path],
-) -> list[dict[str, str | int]]:
-    base = load_base(
-        [(rid, path, priority) for rid, path, _, priority in repos], cachedir, installroot, arch, seeds
-    )
-
-    # id -> real remote baseurl, so a resolved package's location becomes a download URL.
-    baseurls = {rid: url.rstrip("/") + "/" for rid, _, url, _ in repos}
+    local_repos: set[str],
+) -> list[dict[str, str]]:
+    base = load_base(repos, cachedir, installroot, arch, seeds)
 
     goal = libdnf5.base.Goal(base)
     # add_install (not add_rpm_install) so `@group` specs resolve too. Groups take only
@@ -162,14 +158,22 @@ def plan(
         chk = pkg.get_checksum()
         if chk.get_type_str() != "sha256":
             raise SystemExit(f"expected sha256 repodata checksum for {pkg.get_nevra()}")
-        resolved.append(
-            {
-                "url": baseurls[pkg.get_repo_id()] + pkg.get_location(),
-                "sha256": chk.get_checksum(),
-                "size": pkg.get_download_size(),  # lets download_file skip buck's HEAD size probe
-            }
-        )
-    resolved.sort(key=lambda e: e["url"])  # byte-stable transaction
+        rid = pkg.get_repo_id()
+        pkgid = chk.get_checksum().lower()
+        if len(pkgid) != 64 or any(character not in "0123456789abcdef" for character in pkgid):
+            raise SystemExit(f"invalid sha256 pkgid for {pkg.get_nevra()}: {pkgid!r}")
+        entry = {
+            "nevra": pkg.get_nevra(),
+            "repo": rid,
+            "pkgid": pkgid,
+            "source": "local" if rid in local_repos else "repo",
+        }
+        if rid in local_repos:
+            entry["location"] = pkg.get_location()
+        resolved.append(entry)
+    resolved.sort(
+        key=lambda entry: (entry["repo"], entry["nevra"], entry["pkgid"], entry.get("location", ""))
+    )
     print(f"plan: resolved {len(resolved)} packages", file=sys.stderr)
     return resolved
 
@@ -191,12 +195,11 @@ def main(argv: list[str] | None = None) -> None:
 
     solve = sub.add_parser("solve", parents=[common], help="resolve the closure, writing the transaction")
     solve.add_argument(
-        "--baseurl",
+        "--local-repo",
         action="append",
         default=[],
-        required=True,
-        metavar="ID=URL",
-        help="a repo's real remote baseurl as id=url (for download URLs); repeatable",
+        metavar="ID",
+        help="a --repo whose packages are local build artifacts; repeatable",
     )
     solve.add_argument(
         "--priority",
@@ -221,7 +224,11 @@ def main(argv: list[str] | None = None) -> None:
         help="a prebuilt repo cache dir (a make-cache output) to seed the solve from; repeatable",
     )
     solve.add_argument("--cachedir", default="/var/tmp/plan-cache")
-    solve.add_argument("--out", required=True, help="output transaction JSON ([{url, sha256, size}])")
+    solve.add_argument(
+        "--out",
+        required=True,
+        help="output transaction JSON (remote: source/repo/pkgid/nevra; local adds location)",
+    )
 
     cache = sub.add_parser("make-cache", parents=[common], help="just load the repos (no solve)")
     cache.add_argument("--out", required=True, help="output cache dir, reusable via `solve --cache`")
@@ -247,13 +254,13 @@ def main(argv: list[str] | None = None) -> None:
         print(f"plan: cached {len(dirs)} repo(s)", file=sys.stderr)
         return
 
-    urls = parse_kv(args.baseurl, "--baseurl")
-    if dirs.keys() != urls.keys():
-        raise SystemExit(f"--repo ids {sorted(dirs)} and --baseurl ids {sorted(urls)} must match")
     priorities = parse_kv(args.priority, "--priority")
     if unknown := priorities.keys() - dirs.keys():
         raise SystemExit(f"--priority for unknown repo ids {sorted(unknown)}")
-    repos = [(rid, Path(d).resolve(), urls[rid], int(priorities.get(rid, "99"))) for rid, d in dirs.items()]
+    local_repos = set(args.local_repo)
+    if unknown := local_repos - dirs.keys():
+        raise SystemExit(f"--local-repo names unknown repo ids {sorted(unknown)}")
+    repos = [(rid, Path(d).resolve(), int(priorities.get(rid, "99"))) for rid, d in dirs.items()]
     seeds = [Path(c).resolve() for c in args.cache]
 
     with ExitStack() as stack:
@@ -262,7 +269,7 @@ def main(argv: list[str] | None = None) -> None:
             # No upperdir: an ephemeral upper, so libdnf5's cache writes into the
             # installroot land in scratch and the merge is effectively read-only.
             installroot = stack.enter_context(rootfs.rootfs("/installroot", lowers=args.lower))
-        tx = plan(repos, args.install, Path(args.cachedir), installroot, args.arch, seeds)
+        tx = plan(repos, args.install, Path(args.cachedir), installroot, args.arch, seeds, local_repos)
     # Explicit encoding/newline: the `[resolve]` binding commits this output as the
     # engine lock, so it must be byte-identical regardless of locale or platform.
     Path(args.out).write_text(json.dumps(tx, indent=2) + "\n", encoding="utf-8", newline="\n")

@@ -1,4 +1,4 @@
-"""rpm-file primitives: header framing, tag access, payload decompression.
+"""rpm-file primitives: header framing, tag access, and streaming payload decompression.
 
 Stdlib only (compression.zstd needs host python >= 3.14). Used by extract.py (payload → files) to
 read a downloaded rpm without the real rpm stack.
@@ -9,15 +9,16 @@ then the payload. Each header is `\x8e\xad\xe8\x01` + reserved + nindex + nbytes
 locate tag values without parsing the whole file."""
 
 import compression.zstd
+import gzip
 import lzma
+import shutil
 import struct
-import zlib
 from collections.abc import Buffer
-from typing import NamedTuple
+from typing import BinaryIO, NamedTuple
 
 MAGIC = b"\x8e\xad\xe8\x01"
 LEAD = 96
-CPIO_MAGIC = b"070701"  # newc — an already-uncompressed payload (decompress() passes it through)
+CPIO_MAGIC = b"070701"  # newc — an already-uncompressed payload passes through
 
 
 class Header(NamedTuple):
@@ -59,14 +60,21 @@ def headers(data: Buffer) -> tuple[Header, Header]:
     return sig, main
 
 
-def decompress(payload: bytes) -> bytes:
-    """Return the raw cpio payload, decompressing by magic (an already-cpio payload passes through)."""
-    if payload[:4] == b"\x28\xb5\x2f\xfd":
-        return compression.zstd.decompress(payload)
-    if payload[:6] == b"\xfd7zXZ\x00":
-        return lzma.decompress(payload)
-    if payload[:2] == b"\x1f\x8b":
-        return zlib.decompress(payload, wbits=zlib.MAX_WBITS | 16)
-    if payload[:6] == CPIO_MAGIC:
-        return payload
-    raise SystemExit(f"unknown payload compressor (magic {payload[:6].hex()})")
+def decompress_stream(source: BinaryIO, output: BinaryIO) -> None:
+    """Stream one payload from `source`'s current offset into an uncompressed cpio."""
+    start = source.tell()
+    magic = source.read(6)
+    source.seek(start)
+    if magic[:4] == b"\x28\xb5\x2f\xfd":
+        reader = compression.zstd.ZstdFile(source, mode="rb")
+    elif magic == b"\xfd7zXZ\x00":
+        reader = lzma.LZMAFile(source, mode="rb")
+    elif magic[:2] == b"\x1f\x8b":
+        reader = gzip.GzipFile(fileobj=source, mode="rb")
+    elif magic == CPIO_MAGIC:
+        shutil.copyfileobj(source, output, length=1024 * 1024)
+        return
+    else:
+        raise SystemExit(f"unknown payload compressor (magic {magic.hex()})")
+    with reader:
+        shutil.copyfileobj(reader, output, length=1024 * 1024)

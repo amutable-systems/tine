@@ -10,9 +10,11 @@
 # their own catalog BUCK. tine's default declarations here then do not apply — the
 # override replaces data *and* declaration.
 #
-# The lock is one @generated `<name>.json` fragment per repository and per engine, read
-# by the target itself at build time (nothing is derived per distribution). When adding
-# one, seed its fragment with `{}` and refresh to fill it: `buck run tine//tools:refresh-catalog`.
+# Each repository has one @generated `<name>.json` authoritative snapshot: pinned repodata plus
+# its pkgid-keyed RPM index. `rpm_remote_repository` derives that package-relative source from
+# the target name and expands it into the lazy pool; refresh creates it when absent. Engine JSONs
+# are transactions and must be seeded with `{}`. Run `buck run tine//tools:refresh-catalog` after
+# adding either declaration.
 load("@tine//defs/rules:rpm.bzl", "rpm_distribution", "rpm_engine", "rpm_remote_repository")
 
 # Frozen GA tree, so pins are reproducible. (Add the live `updates` tree once we handle

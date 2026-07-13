@@ -46,8 +46,9 @@ def _starlark_srcs(buck: str) -> list[Path]:
     # belong to the check and orphan files are ignored as dead code. The universe is
     # every in-repo cell; the prelude (external, bundled) and the deliberately empty
     # `none` cell aren't ours to query. The result is kept to the tine tree's own files
-    # (tine itself plus the embedded toolchains/catalog cells). (No `-v 0` on uquery:
-    # it mutes results.)
+    # (tine itself plus the embedded toolchains/catalog cells), minus load()ed repository
+    # JSON — buildifier would reformat it as starlark. (No `-v 0` on uquery: it
+    # mutes results.)
     cells = json.loads(_buck_out(buck, "audit", "cell", "--json"))
     roots = {path: name for name, path in sorted(cells.items()) if name not in ("none", "prelude")}
     universe = " + ".join(sorted(f"{name}//..." for name in roots.values()))
@@ -55,7 +56,7 @@ def _starlark_srcs(buck: str) -> list[Path]:
     files = sorted(
         project / f for f in _buck_out(buck, "uquery", f"allbuildfiles({universe})").splitlines() if f
     )
-    return [f for f in files if f.is_relative_to(Path(cells["tine"]))]
+    return [f for f in files if f.is_relative_to(Path(cells["tine"])) and f.suffix != ".json"]
 
 
 def _check(args: argparse.Namespace) -> None:

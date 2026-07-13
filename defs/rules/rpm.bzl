@@ -2,28 +2,167 @@
 rpm-bound catalog wrappers (rpm_remote_repository / rpm_engine / rpm_distribution).
 
 The wrappers preconfigure their format-neutral rule with the rpm plugin
-(`@tine//distribution/rpm:package_format`) and default each lock to the `<name>.json`
-fragment beside the caller's BUCK (seed it with `{}`; `buck run tine//tools:refresh-catalog` fills it).
-A catalog BUCK composes them package-relative: a distribution names its engine and
-repository sibling targets.
+(`@tine//distribution/rpm:package_format`). A repository reads its authoritative snapshot
+from `<name>.json` when present; an engine reads its committed transaction from `<name>.json`,
+both beside the caller's BUCK. Run `buck run tine//tools:refresh-catalog` to create missing
+repository snapshots; seed a new engine transaction with `{}` first. A catalog BUCK composes
+them package-relative: a distribution names its engine and repository sibling targets.
 """
 
-load(":distribution.bzl", "DistributionInfo", "distribution", "install_packages", "remote_repository")
+load(":distribution.bzl", "DistributionInfo", "distribution", "install_packages", "remote_repository_base")
 load(":engine.bzl", "chroot_run", engine_rule = "engine")  # aliased: `engine` is an arg below
+load(":package_format.bzl", "PackageFormatInfo")
+load(":repo.bzl", "PackagePoolInfo", "PackagePoolValueInfo", "package_artifact", "package_representation")
 
 _RPM_PACKAGE_FORMAT = "@tine//distribution/rpm:package_format"
 
-def rpm_remote_repository(name: str, baseurl: str, lock: str | None = None, **kwargs) -> None:
-    """A remote_repository preconfigured for rpm (see the module docstring)."""
+rpm_metadata = record(
+    location = str,
+    pkgid = str,
+)
+
+RpmPoolInfo = provider(
+    doc = "A repository-owned dynamic RPM pool.",
+    fields = {"value": provider_field(DynamicValue)},
+)
+
+RpmPoolValueInfo = provider(
+    doc = "Resolved RPM-specific package metadata and artifacts keyed by pkgid.",
+    fields = {"rpms": provider_field(dict[str, package_artifact])},
+)
+
+def _materialize_repository_impl(
+        actions: AnalysisActions,
+        baseurl: str,
+        decompress: RunInfo,
+        id: str,
+        repo: OutputArtifact,
+        snapshot: ArtifactValue) -> list[Provider]:
+    data = snapshot.read_json()
+    if type(data) != type({}):
+        fail("repository '{}' snapshot is not an object; run refresh-catalog".format(id))
+    repomd_xml = data.get("repomd", "")
+    if not repomd_xml:
+        fail(
+            "repository '{}' is not locked yet (snapshot missing or empty); run refresh-catalog".format(id),
+        )
+
+    tree = {"repodata/repomd.xml": actions.write("repomd.xml", repomd_xml)}
+    for stream in data.get("streams", []):
+        out_name = stream["out"]
+        out = actions.declare_output(out_name)
+        actions.download_file(
+            out,
+            stream["url"],
+            sha256 = stream["sha256"],
+            size_bytes = stream["size"],
+        )
+        tree["repodata/" + out_name] = out
+    actions.copied_dir(repo, tree)
+
+    rpms = {}
+    for pkgid, package in data.get("packages", {}).items():
+        location = package["location"]
+        raw = actions.declare_output("packages", pkgid + ".rpm", has_content_based_path = True)
+        actions.download_file(
+            raw,
+            baseurl.rstrip("/") + "/" + location.lstrip("/"),
+            sha256 = pkgid,
+            size_bytes = package["size"],
+        )
+        payload = actions.declare_output("payloads", pkgid + ".cpio", has_content_based_path = True)
+        actions.run(
+            cmd_args(decompress, raw, payload.as_output()),
+            category = "rpm_payload",
+            identifier = pkgid,
+        )
+        rpms[pkgid] = package_artifact(
+            artifact = raw,
+            metadata = rpm_metadata(location = location, pkgid = pkgid),
+            name = location.rsplit("/", 1)[-1],
+            representations = {
+                "payload": package_representation(artifact = payload, suffix = ".cpio"),
+            },
+        )
+    return [
+        PackagePoolValueInfo(packages = rpms),
+        RpmPoolValueInfo(rpms = rpms),
+    ]
+
+_materialize_repository = dynamic_actions(
+    impl = _materialize_repository_impl,
+    attrs = {
+        "baseurl": dynattrs.value(str),
+        "decompress": dynattrs.value(RunInfo),
+        "id": dynattrs.value(str),
+        "repo": dynattrs.output(),
+        "snapshot": dynattrs.artifact_value(),
+    },
+)
+
+def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
+    repo = ctx.actions.declare_output("repo", dir = True)
+    snapshot = ctx.attrs.snapshot
+    if snapshot == None:
+        # Keep the repository target analyzable before its first refresh. The dynamic pool
+        # still fails as unlocked if a consumer requests it; `[snapshot]` does not resolve it.
+        snapshot = ctx.actions.write("empty-snapshot.json", "{}")
+    pool = ctx.actions.dynamic_output_new(_materialize_repository(
+        baseurl = ctx.attrs.baseurl,
+        decompress = ctx.attrs._decompress[RunInfo],
+        id = ctx.label.name,
+        repo = repo.as_output(),
+        snapshot = snapshot,
+    ))
+    return remote_repository_base(ctx, repo) + [
+        PackagePoolInfo(value = pool),
+        RpmPoolInfo(value = pool),
+    ]
+
+# The pool is deliberately the RPM-specific ownership boundary: payload decompression,
+# signature checks, reflink transforms, or future derived representations belong beside each
+# raw action and can be exposed through the RpmPoolInfo dynamic value without complicating
+# transaction selection.
+remote_repository = rule(
+    impl = _remote_repository_impl,
+    attrs = {
+        "baseurl": attrs.string(),
+        "package_format": attrs.dep(providers = [PackageFormatInfo]),
+        "priority": attrs.int(default = 99),
+        "snapshot": attrs.option(attrs.source(), default = None),
+        "_decompress": attrs.exec_dep(
+            default = "tine//distribution/rpm:decompress",
+            providers = [RunInfo],
+        ),
+    },
+)
+
+def rpm_remote_repository(
+        name: str,
+        baseurl: str,
+        **kwargs) -> None:
+    """Declare one repository target owning its repodata and authoritative RPM pool.
+
+    The package-relative `<name>.json` is one authoritative unit: filtered repodata plus
+    a `packages` map keyed by pkgid. It may be absent before the first catalog refresh. The
+    target reads it dynamically, owns one independent raw artifact per entry, and exposes
+    the generic pool and RPM-specific representations.
+    """
+    snapshots = glob([name + ".json"])
     remote_repository(
         name = name,
         baseurl = baseurl,
-        lock = lock or (name + ".json"),
         package_format = _RPM_PACKAGE_FORMAT,
+        snapshot = snapshots[0] if snapshots else None,
         **kwargs
     )
 
-def rpm_engine(name: str, packages: list[str], repositories: list[str], lock: str | None = None, **kwargs) -> None:
+def rpm_engine(
+        name: str,
+        packages: list[str],
+        repositories: list[str],
+        lock: str | None = None,
+        **kwargs) -> None:
     """An engine preconfigured for rpm (see the module docstring)."""
     engine_rule(
         name = name,
@@ -34,7 +173,12 @@ def rpm_engine(name: str, packages: list[str], repositories: list[str], lock: st
         **kwargs
     )
 
-def rpm_distribution(name: str, engine: str, repositories: list[str], buildroot: list[str], **kwargs) -> None:
+def rpm_distribution(
+        name: str,
+        engine: str,
+        repositories: list[str],
+        buildroot: list[str],
+        **kwargs) -> None:
     """A distribution preconfigured for rpm (see the module docstring).
 
     Nothing is derived per distribution — no lock: its engine and repositories carry
@@ -111,13 +255,29 @@ _rpm_package = rule(
         "spec": attrs.source(doc = "the rpm spec file (derived from `package` by the macro)"),
         "package": attrs.string(doc = "the rpm package Name: (distinct from the buck target name)"),
         "srcs": attrs.list(attrs.source(), default = [], doc = "Source/Patch files"),
-        "release": attrs.string(doc = "dist-stripped Release base; the build freezes %autorelease = <release>%{?dist}"),
-        "subpackages": attrs.list(attrs.string(), doc = "declared binary subpackage names (the %package list)"),
-        "build_requires": attrs.list(attrs.string(), default = [], doc = "the package's BuildRequires, installed as a delta over the shared base buildroot"),
-        "buildroot_deps": attrs.list(attrs.dep(), default = [], doc = "our packages whose rpms overlay the buildroot (self-hosted BRs)"),
+        "release": attrs.string(
+            doc = "dist-stripped Release base; the build freezes %autorelease = <release>%{?dist}",
+        ),
+        "subpackages": attrs.list(
+            attrs.string(),
+            doc = "declared binary subpackage names (the %package list)",
+        ),
+        "build_requires": attrs.list(
+            attrs.string(),
+            default = [],
+            doc = "the package's BuildRequires, installed as a delta over the shared base buildroot",
+        ),
+        "buildroot_deps": attrs.list(
+            attrs.dep(),
+            default = [],
+            doc = "our packages whose rpms overlay the buildroot (self-hosted BRs)",
+        ),
         "source_date_epoch": attrs.int(doc = "per-package SDE from the changelog"),
         "dist": attrs.string(default = ".aos"),
-        "distribution": attrs.dep(providers = [DistributionInfo], doc = "catalog//:<distribution> — buildroot + engine that builds it"),
+        "distribution": attrs.dep(
+            providers = [DistributionInfo],
+            doc = "catalog//:<distribution> — buildroot + engine that builds it",
+        ),
     },
 )
 

@@ -164,11 +164,11 @@ The treadmill mentioned above is also common to all three approaches, and orthog
 distinct drivers. One is *wanting* updates (tracking rawhide for CVE fixes and new versions) —
 that's voluntary and stays under any approach.
 
-The other is *forced* re-pins: rawhide's compose is garbage-collected on every push, so a pinned
-transaction's URLs rot within days even if we wanted to change nothing, and cold-rebuildability
-breaks. That is purely an availability problem, and mirroring/archiving the pinned seed
-closure ourselves fixes it under A, B, and C alike: rawhide is then touched only at deliberate
-import/refresh time. The cost is mostly storage infrastructure.
+The other is *forced* re-pins: rawhide's compose is garbage-collected on every push, so package
+locations recorded by an authoritative repository snapshot can disappear within days even if we
+wanted to change nothing, and cold-rebuildability breaks. That is purely an availability problem,
+and mirroring/archiving the snapshotted RPM pool fixes it under A, B, and C alike: rawhide is then
+touched only at deliberate import/refresh time. The cost is mostly storage infrastructure.
 
 # Appendix: Current fedora/rawhide mega-SCC
 

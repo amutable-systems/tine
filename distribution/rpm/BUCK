@@ -2,10 +2,10 @@
 
 load("//defs/rules:package_format.bzl", "package_format")
 
-# The rpm-format drivers (sources beside this file: extract/install/createrepo/
-# plan/build/snapshot.py). They run under the pinned host python3 (extract, snapshot)
-# or inside an engine root provisioned by the consumer (the rest). Bare `//` here
-# resolves to the tine cell (the cell of this BUCK), so the cell self-references
+# The rpm-format drivers (sources beside this file: extract/decompress/install/createrepo/
+# plan/build/snapshot.py). They run under the pinned host python3 (extract, decompress,
+# snapshot) or inside an engine root provisioned by the consumer (the rest). Bare `//`
+# here resolves to the tine cell (the cell of this BUCK), so the cell self-references
 # without qualification.
 
 # Shared rpm-file primitives (header framing + payload decompression), stdlib only: read a
@@ -22,6 +22,15 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
+# Repository-owned raw-RPM -> cpio payload transform. Each pool entry declares one
+# content-addressed action with this host tool; consumers materialize only selected payloads.
+python_bootstrap_binary(
+    name = "decompress",
+    main = "decompress.py",
+    deps = [":rpmfile_lib"],
+    visibility = ["PUBLIC"],
+)
+
 # Shared helpers for the drivers (stdlib only).
 python_bootstrap_library(name = "util", srcs = ["util.py"])
 
@@ -35,10 +44,10 @@ python_bootstrap_binary(name = "createrepo", main = "createrepo.py")
 python_bootstrap_binary(name = "plan", main = "plan.py", deps = ["//distribution:rootfs_lib"])
 python_bootstrap_binary(name = "build", main = "build.py", deps = [":util", "//distribution:rootfs_lib"])
 
-# The lock generator: snapshot pins one repository's repodata — pure fetch-and-filter
-# (stdlib), so it runs on the host, bound per repository with just that repo's
-# manifest. Public so a consumer can bind it on their side (the cell only owns the
-# drivers).
+# The snapshot generator pins one repository's filtered repodata and streams its primary
+# metadata into the authoritative pkgid-keyed RPM index. It runs on the host, bound per
+# repository with just that repo's manifest. Public so a consumer can bind it on their side
+# (the cell only owns the drivers).
 python_bootstrap_binary(
     name = "snapshot",
     main = "snapshot.py",
@@ -53,7 +62,7 @@ package_format(
     extract = ":extract",
     snapshot = ":snapshot",
     install = ":install",
-    createrepo = ":createrepo",
+    create_repository = ":createrepo",
     plan = ":plan",
     build = ":build",
     visibility = ["PUBLIC"],

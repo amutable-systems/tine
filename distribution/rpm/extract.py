@@ -5,13 +5,15 @@ A minimal, dependency-free rpm payload extractor (host Python, stdlib only, via 
 so a *real* rpm/libdnf5 can take over from there. Payload only — it skips scriptlets, file caps,
 ownership, SELinux, device nodes; the real rpm sets those when it builds chroot2.
 
-Supports v4 (070701 "newc" cpio payload) — what Fedora 44 ships. It frames the rpm with `rpmfile`,
-decompresses the payload (Fedora ships it zstd-compressed), and unpacks the newc cpio via the shared
+Supports v4 (070701 "newc" cpio payload) — what Fedora 44 ships. Repository pools normally hand it
+their shared, pre-decompressed `.cpio` representation; it also accepts a raw RPM for standalone
+use, frames it with `rpmfile`, and decompresses its payload. Both paths unpack with the shared
 `cpio` module (also the image packer's writer). v6 (index-keyed payload, per-file metadata from
 header tags) is a TODO gated on a pin that uses it; libarchive can't read rpm 6, which is why this
 is ours.
 """
 
+import mmap
 import sys
 import tempfile
 from pathlib import Path
@@ -27,13 +29,19 @@ def extract(rpm_path: Path, dest: Path) -> int:
     cpio. `cpio.unpack` is fd/mmap-based, so the decompressed payload goes through a temp file; rpm
     payloads are only 4-byte-aligned (not block-aligned), so unpack can't share an extent here
     regardless — it falls back to a userspace copy; only the block-aligned Writer archives clone."""
-    data = rpm_path.read_bytes()
-    _sig, main = rpmfile.headers(data)
-    payload = rpmfile.decompress(data[main.end :])
-    with tempfile.TemporaryFile() as tmp:
-        tmp.write(payload)
-        tmp.flush()
-        return cpio.unpack(tmp.fileno(), dest)
+    with rpm_path.open("rb") as rpm:
+        with mmap.mmap(rpm.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            _sig, main = rpmfile.headers(data)
+        rpm.seek(main.end)
+        with tempfile.TemporaryFile() as tmp:
+            rpmfile.decompress_stream(rpm, tmp)
+            tmp.flush()
+            return cpio.unpack(tmp.fileno(), dest)
+
+
+def extract_payload(payload: Path, dest: Path) -> int:
+    with payload.open("rb") as stream:
+        return cpio.unpack(stream.fileno(), dest)
 
 
 def _expand(paths: list[Path]) -> list[Path]:
@@ -50,8 +58,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit("usage: rpm-extract.py DEST RPM|DIR [RPM|DIR...]")
     dest, rpms = Path(args[0]), _expand([Path(p) for p in args[1:]])
     total = 0
-    for rpm_path in rpms:
-        total += extract(rpm_path, dest)
+    for package in rpms:
+        total += extract_payload(package, dest) if package.suffix == ".cpio" else extract(package, dest)
     print(f"extracted {total} files from {len(rpms)} rpm(s) into {dest}", file=sys.stderr)
 
 
