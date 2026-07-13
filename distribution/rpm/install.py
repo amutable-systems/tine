@@ -1,22 +1,8 @@
 #!/usr/bin/python3
-"""install — install a complete set of rpms into a root.
+"""Install an exact RPM set into a fresh root or persisted overlay delta.
 
-One driver for the engine-root bootstrap (Action B), the buildroot assembly
-(Action 3), and a child image layer's incremental install: the input dir is
-*exactly* the set to install — the seed closure for the engine root, the plan's
-resolved closure otherwise — so this just cmdline-installs every rpm in
---packages-dir into --installroot via libdnf5 (no resolution against repos, no
-network), then parks the rpmdb + scrubs so the root content-keys
-deterministically (SDE injected by the sandbox clamps the rpmdb).
-
-Two target shapes: by default --target is a fresh root, bound rw and installed
-into. With --lower (an existing tree as a delta stack, bottom..top), the stack is
-overlay-merged with --target as the persisted upper, so the install lands as this
-layer's *delta* (captured to OCI-changeset form on exit); the rewritten rpmdb
-copies up into the delta, keeping the merged tree's db authoritative.
-
-Runs inside whichever root provides libdnf5: chroot1 (the payload-extracted seed)
-when bootstrapping the engine, the engine root itself when assembling a buildroot.
+The same driver bootstraps engines, assembles buildroots, and extends image
+layers. It parks the rpmdb and removes nondeterministic bookkeeping before capture.
 """
 
 import argparse
@@ -30,9 +16,7 @@ import rootfs
 
 DBPATH = "usr/lib/sysimage/rpm"
 
-# Install into a fixed path (bound to the real output tree) rather than the buck-out output
-# path directly, so nothing captures the hashed path and libdnf5's scriptlet chroots find a
-# working apivfs there. The writes land in the output tree through the bind.
+# A fixed install path avoids embedding Buck hashes and supports scriptlet chroots.
 BUILDROOT = "/buildroot"
 
 
@@ -42,10 +26,7 @@ def install(rpms_dir: Path, installroot: Path, cachedir: Path, *, system: bool =
     cfg.installroot = str(installroot)
     cfg.cachedir = str(cachedir)
     cfg.install_weak_deps = False
-    # No signature verification: the seed's own sha256 pins integrity. `gpgcheck` is the deprecated
-    # repo option; the checks that actually gate a `Transaction::run()` are pkg_gpgcheck (repo
-    # packages) and localpkg_gpgcheck (command-line packages — what add_cmdline_packages feeds), the
-    # pair dnf5's --nogpgcheck sets.
+    # Package digests are already pinned; disable both checks used by Transaction.run().
     cfg.pkg_gpgcheck = False
     cfg.localpkg_gpgcheck = False
     base.setup()
@@ -54,19 +35,15 @@ def install(rpms_dir: Path, installroot: Path, cachedir: Path, *, system: bool =
     paths = [str(p) for p in sorted(rpms_dir.glob("*.rpm"))]
     sack.add_cmdline_packages(paths)
     if system:
-        # An incremental install: load the existing tree's rpmdb so the increment's
-        # dependencies on already-installed packages resolve (a fresh root has no db).
+        # Let installed packages satisfy dependencies for incremental installs.
         sack.load_repos(libdnf5.repo.Repo.Type_SYSTEM)
 
-    # Install everything from the dir — it's already the exact set, so there's nothing
-    # to resolve against repos. The query is scoped to the cmdline packages we just
-    # added (with only the system repo besides, everything else is already installed).
+    # The directory is the exact set; scope the query to its command-line packages.
     query = libdnf5.rpm.PackageQuery(base)
     if system:
         query.filter_repo_id(["@commandline"])
     goal = libdnf5.base.Goal(base)
-    # SWIG makes the query iterable at runtime but ty can't see __iter__; the
-    # annotation restores the element type so the loop body type-checks.
+    # SWIG exposes iteration at runtime but not in its type information.
     packages: list[libdnf5.rpm.Package] = list(query)  # ty: ignore
     for pkg in packages:
         goal.add_rpm_install(pkg)
@@ -84,20 +61,11 @@ def install(rpms_dir: Path, installroot: Path, cachedir: Path, *, system: bool =
 
 
 def parkdb(installroot: Path) -> None:
-    """Park the installed rpmdb for byte-stability.
-
-    Replicates rpm's own `rpmdb --parkdb` (not yet in a released rpm) directly on
-    the sqlite db: the sequence rpm runs on close when RPMDB_FLAG_PARK is set
-    (rpm lib/backend/sqlite.cc) — checkpoint+truncate the WAL, switch to a
-    rollback journal so the -wal/-shm side files are torn down, then VACUUM to
-    compact into a deterministic page layout. With the seed-pinned sqlite this
-    makes the rpmdb byte-stable, so the root content-keys deterministically.
-    """
+    """Checkpoint, compact, and remove side files for a byte-stable rpmdb."""
     dbdir = installroot / DBPATH
     db = dbdir / "rpmdb.sqlite"
     if not db.exists():
-        # sqlite3.connect would silently create an empty db; a missing rpmdb means
-        # the install didn't land, so fail instead of parking a bogus empty file.
+        # sqlite3.connect would silently create a bogus empty database.
         raise SystemExit(f"no rpmdb at {db}; the install did not populate it")
     con = sqlite3.connect(db, isolation_level=None)
     try:
@@ -106,26 +74,19 @@ def parkdb(installroot: Path) -> None:
         con.execute("VACUUM")
     finally:
         con.close()
-    # Drop side files + the empty lock so the parked tree is a single db file
-    # (rpm recreates them on next open); their presence/noise would defeat early
-    # cutoff on the root's content key.
+    # rpm recreates these files; retaining them would destabilize the content key.
     for junk in ("rpmdb.sqlite-wal", "rpmdb.sqlite-shm", ".rpm.lock"):
         (dbdir / junk).unlink(missing_ok=True)
 
 
 def scrub(installroot: Path) -> None:
-    """Remove non-deterministic tooling bookkeeping so the whole tree content-keys
-    deterministically (not just the rpmdb).
-    """
+    """Remove nondeterministic tooling bookkeeping."""
     shutil.rmtree(installroot / "usr/lib/sysimage/libdnf5", ignore_errors=True)
     (installroot / "var/cache/ldconfig/aux-cache").unlink(missing_ok=True)
 
 
 def resolv_symlink(installroot: Path) -> None:
-    """A resolv.conf symlink (Fedora-style, into /run) so a networked tool can
-    nofollow-bind the host's over it — /etc is ro in the sandbox, so the mountpoint
-    must already exist (and be a symlink).
-    """
+    """Create the Fedora-style mountpoint for the sandbox's resolver bind."""
     resolv = installroot / "etc/resolv.conf"
     resolv.unlink(missing_ok=True)
     resolv.symlink_to("../run/systemd/resolve/stub-resolv.conf")
@@ -147,8 +108,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--no-parkdb", action="store_true")
     args = p.parse_args(argv)
 
-    # Paths are project-relative (buck-out) and resolved against the bound cwd; make them
-    # absolute for libdnf5/rpm and create the output root (the bind's source must exist).
+    # libdnf5 needs absolute paths, and bind sources must exist.
     target = Path(args.target).resolve()
     target.mkdir(parents=True, exist_ok=True)
     packages_dir = Path(args.packages_dir).resolve()
@@ -166,8 +126,7 @@ def main(argv: list[str] | None = None) -> None:
     with root:
         installroot = Path(BUILDROOT)
 
-        # set fixed machine-id; systemd %post otherwise initializes a fresh random one
-        # into every root, which breaks re-usability in buck
+        # Prevent systemd scriptlets from generating a random machine ID.
         etc = installroot / "etc"
         etc.mkdir(exist_ok=True)
         (etc / "machine-id").write_text("uninitialized\n")
@@ -180,11 +139,7 @@ def main(argv: list[str] | None = None) -> None:
             resolv_symlink(installroot)
 
     if not incremental:
-        # A fresh full root is stored as-is (the --lower upper was captured by rootfs on
-        # teardown), so escape any name buck can't store — after teardown, so the walk
-        # doesn't descend into the apivfs mounts. Mounts that *don't* thaw (the engine
-        # root under --tools) see such names escaped; the engine package set is curated,
-        # so none arise there today.
+        # Capture after teardown so the walk cannot descend into apivfs mounts.
         rootfs.capture(target)
 
 

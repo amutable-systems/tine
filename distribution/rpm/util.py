@@ -6,24 +6,15 @@ import os
 import shutil
 from pathlib import Path
 
-# Errnos meaning "clone/hardlink isn't supported here" — anything else (permissions, IO
-# errors) is a real failure and propagates.
-# Same as what `cp --reflink=auto` treats as "clone not supported"; ENOTTY is the kernel's generic
-# "fd doesn't support this ioctl.
+# Fall back only when the filesystem does not support cloning or linking.
 _CLONE_FALLBACK_ERRNOS = frozenset({errno.ENOTTY, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV})
 _LINK_FALLBACK_ERRNOS = frozenset({errno.EMLINK, errno.EOPNOTSUPP, errno.EXDEV})
 
 
 def clone_file(src: Path, dst: Path, allow_link: bool = False) -> None:
-    """Copy src to dst without duplicating storage where the fs allows it.
+    """Clone, optionally hardlink, or copy src to dst while preserving its mode.
 
-    Like `cp --reflink=auto` with a hardlink fallback: CoW clone (btrfs/XFS), else
-    hardlink, else plain copy. Hardlinks share the inode, so they're only safe between
-    write-once outputs that live and die together; that needs an explicit allow_link=True
-    opt-in, since through a hardlink a later write to either file reaches the other.
-
-    src's mode is preserved for executable %{SOURCE} scripts. A hardlink
-    shares it via the inode; the clone and copy paths copy it explicitly.
+    Hardlinking requires an explicit opt-in because later writes affect both paths.
     """
     with open(src, "rb") as s, open(dst, "wb") as d:
         try:

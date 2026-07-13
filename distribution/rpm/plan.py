@@ -1,37 +1,9 @@
 #!/usr/bin/python3
-"""plan — Action 1: resolve a package closure over the upstream repo.
+"""Resolve package transactions or prebuild libdnf5 repository caches.
 
-Runs *inside* the engine root. Loads each repository's pinned `repodata/`
-(--repo id=dir, a `file://` metadata-only tree), resolves the requested install set's
-transitive runtime closure (hard requires only, install_weak_deps=False), and writes the
-resolved packages as the *transaction*. Remote entries are `{source: "repo", repo, pkgid,
-nevra}`: `(repo, pkgid)` alone selects an artifact from the authoritative repository pool.
-Local entries add `location: <input-directory index>/<filename>` so they project directly
-from an RPM directory built in this graph.
-
-Two resolution bases: against an empty root (a fresh buildroot / a base image
-layer), or — with `--lower` — against an existing installed tree (a child image
-layer installing *more* packages). For the latter the parent's delta stack is
-overlay-merged read-only (an ephemeral upper, never captured) and used as the
-installroot, so libdnf5 loads its rpmdb as the system repo and resolves
-incrementally: the transaction lists only the *inbound* packages, with
-already-installed ones satisfying dependencies instead of reappearing.
-
-Only metadata is read here (no packages downloaded), so it re-runs whenever a repo's
-repodata changes — but the transaction is byte-identical unless *this* closure actually
-changed, so the download + install cut off rather than rebuilding.
-
-Also the engine-closure resolver (reindeer-style, run on refresh, NOT during builds):
-an engine's `[resolve]` sub-target binds this same driver — inside that engine, over
-its repos' pinned repodata — and the orchestrator (//distribution:buckify) commits the
-transaction as the engine's lock fragment. The lock *is* a transaction: engine
-bootstrap downloads straight from it, consulting no repodata. One solver, two bindings.
-
-Loading a repo means parsing its XML into libdnf5's .solv cache — for Fedora ~1GB of
-XML (filelists is 3/4 of it), re-paid by every plan action since the sandbox cachedir
-is ephemeral. The `make-cache` command runs just the load, with `--out` as the cachedir:
-the distribution rule captures it per repo as a buck artifact, and every solve seeds its
-cachedir from those (`--cache`), so the XML is parsed once per repo, not once per plan.
+Solves against pinned metadata and optionally an existing lower stack. Remote
+packages are identified by repository and pkgid; local packages also record their
+input location. `make-cache` amortizes metadata parsing across solve actions.
 """
 
 import argparse
@@ -45,9 +17,7 @@ import libdnf5.comps
 import libdnf5.conf
 import rootfs
 
-# Providers we never want in a closure: 32-bit multilib duplicates. The resolution arch
-# is pinned, so a 32-bit provider in the transaction means the solve went wrong; fail
-# loudly rather than silently shipping an .i686.
+# A multilib package in a pinned-arch transaction indicates a bad solve.
 MULTILIB_ARCHES = ("i686", "i386", "i586")
 
 
@@ -58,15 +28,7 @@ def load_base(
     arch: str,
     seeds: list[Path] | None = None,
 ) -> libdnf5.base.Base:
-    """A Base with `repos` ((id, pinned-repodata dir, dnf priority) triples) loaded, ready to solve.
-
-    With `seeds` (per-repo cache dirs from `make-cache`), libdnf5's root-cache clone is
-    pointed at them via system_cachedir: a repo whose working cache is empty copies the
-    seeded repodata + .solv in and mmaps it instead of re-parsing the XML. libdnf5 keys
-    each seed subdir by the repo's file:// baseurl (the repo dir's absolute path), so a
-    stale or foreign seed just misses and the load falls back to the parse — slower,
-    never wrong.
-    """
+    """Load pinned repositories, optionally seeding libdnf5's parsed metadata cache."""
     base = libdnf5.base.Base()
     cfg = base.get_config()
     cfg.cachedir = str(cachedir)
@@ -74,26 +36,20 @@ def load_base(
     if installroot is not None:
         cfg.installroot = str(installroot)
     if seeds:
-        # One system_cachedir holding every seed's `<id>-<hash>` subdir, by symlink —
-        # libdnf5 only ever copies *out* of it, so read-only buck outputs are fine.
+        # libdnf5 only copies out of system_cachedir, so Buck outputs can stay read-only.
         seed_root = cachedir.parent / (cachedir.name + "-seed")
         seed_root.mkdir(parents=True, exist_ok=True)
         for seed in seeds:
             for sub in sorted(seed.iterdir()):
                 (seed_root / sub.name).symlink_to(sub)
         cfg.system_cachedir = str(seed_root)
-    # Freshness is buck's problem (the repodata and seeds are pinned action inputs),
-    # not wall-clock age's; never expire a cache that validates.
+    # Buck pins freshness through action inputs, not wall-clock age.
     cfg.metadata_expire = -1
-    # Load filelists + comps (both pinned): file-path BuildRequires (e.g. /usr/bin/foo) resolve
-    # against filelists, not just the subset primary.xml carries; `@group` install specs (the
-    # buildroot base) expand against comps. The snapshot's repomd lists only the pinned
-    # streams, so nothing else is fetched regardless.
+    # Filelists resolves path dependencies; comps expands `@group` install specs.
     cfg.get_optional_metadata_types_option().set(
         f"{libdnf5.conf.METADATA_TYPE_FILELISTS},{libdnf5.conf.METADATA_TYPE_COMPS}"
     )
-    # Pin the resolution arch (x86_64-only for now) so repo loading + provider
-    # selection don't depend on host detection.
+    # Do not let host detection affect provider selection.
     base.get_vars().set("arch", arch)
     base.get_vars().set("basearch", arch)
     base.setup()
@@ -103,11 +59,10 @@ def load_base(
         rc = sack.create_repo(rid).get_config()
         rc.baseurl = f"file://{path}"  # pinned repodata read locally
         rc.get_pkg_gpgcheck_option().set(False)
-        # dnf semantics: lower number wins, across versions -- an outranking repo's package is
-        # taken even when another repo carries a newer NEVRA (how our own builds beat upstream).
+        # Lower priorities win even when another repository has a newer NEVRA.
         rc.get_priority_option().set(priority)
     if installroot is not None:
-        # The installroot's rpmdb too, so installed packages provide instead of re-resolving.
+        # Load the rpmdb so installed packages satisfy dependencies.
         sack.load_repos()
     else:
         sack.load_repos(libdnf5.repo.Repo.Type_AVAILABLE)
@@ -126,18 +81,14 @@ def plan(
     base = load_base(repos, cachedir, installroot, arch, seeds)
 
     goal = libdnf5.base.Goal(base)
-    # add_install (not add_rpm_install) so `@group` specs resolve too. Groups take only
-    # their mandatory members — mock's `@buildsys-build` semantics.
+    # add_install supports groups; use only their mandatory members.
     settings = libdnf5.base.GoalJobSettings()
     settings.set_group_package_types(libdnf5.comps.PackageType_MANDATORY)
     for spec in install:
         goal.add_install(spec, settings)
     tx = goal.resolve()
 
-    # Resolving against an installed base (the buildroot's BR delta, an incremental image
-    # layer) reports each requested spec the base already satisfies as ALREADY_INSTALLED —
-    # benign: the base provides it, so it just doesn't reappear in the transaction. BuildRequires
-    # overlap the base heavily, so fail only on the real problems, not these notices.
+    # An installed lower legitimately satisfies requested packages without adding them.
     problems = [
         log.to_string()
         for log in tx.get_resolve_logs()
@@ -146,8 +97,7 @@ def plan(
     if problems:
         raise SystemExit("plan resolution failed:\n  " + "\n  ".join(problems))
 
-    # The inbound half of the transaction: outbound/kept items (REPLACED, REASON_CHANGE —
-    # possible only when resolving against an installroot) aren't packages to download.
+    # Only inbound transaction items need downloading.
     resolved = []
     for tp in tx.get_transaction_packages():
         if not libdnf5.transaction.transaction_item_action_is_inbound(tp.get_action()):
@@ -249,7 +199,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "make-cache":
         out = Path(args.out).resolve()
         out.mkdir(parents=True, exist_ok=True)
-        # The priority only orders the solve; any value caches the same.
+        # Priority does not affect cached metadata.
         load_base([(rid, Path(d).resolve(), 99) for rid, d in dirs.items()], out, None, args.arch)
         print(f"plan: cached {len(dirs)} repo(s)", file=sys.stderr)
         return
@@ -266,12 +216,10 @@ def main(argv: list[str] | None = None) -> None:
     with ExitStack() as stack:
         installroot = None
         if args.lower:
-            # No upperdir: an ephemeral upper, so libdnf5's cache writes into the
-            # installroot land in scratch and the merge is effectively read-only.
+            # An ephemeral upper keeps the lower stack unchanged.
             installroot = stack.enter_context(rootfs.rootfs("/installroot", lowers=args.lower))
         tx = plan(repos, args.install, Path(args.cachedir), installroot, args.arch, seeds, local_repos)
-    # Explicit encoding/newline: the `[resolve]` binding commits this output as the
-    # engine lock, so it must be byte-identical regardless of locale or platform.
+    # Engine locks must be byte-identical across locales and platforms.
     Path(args.out).write_text(json.dumps(tx, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 

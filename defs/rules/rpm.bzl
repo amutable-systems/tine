@@ -1,13 +1,4 @@
-"""rpm format defs: rpm_package (build one source rpm into its binary rpms) plus the
-rpm-bound catalog wrappers (rpm_remote_repository / rpm_engine / rpm_distribution).
-
-The wrappers preconfigure their format-neutral rule with the rpm plugin
-(`@tine//distribution/rpm:package_format`). A repository reads its authoritative snapshot
-from `<name>.json` when present; an engine reads its committed transaction from `<name>.json`,
-both beside the caller's BUCK. Run `buck run tine//tools:refresh-catalog` to create missing
-repository snapshots; seed a new engine transaction with `{}` first. A catalog BUCK composes
-them package-relative: a distribution names its engine and repository sibling targets.
-"""
+"""RPM-bound repository, engine, distribution, and package rules."""
 
 load(":distribution.bzl", "DistributionInfo", "distribution", "install_packages", "remote_repository_base")
 load(":engine.bzl", "chroot_run", engine_rule = "engine")  # aliased: `engine` is an arg below
@@ -104,8 +95,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     repo = ctx.actions.declare_output("repo", dir = True)
     snapshot = ctx.attrs.snapshot
     if snapshot == None:
-        # Keep the repository target analyzable before its first refresh. The dynamic pool
-        # still fails as unlocked if a consumer requests it; `[snapshot]` does not resolve it.
+        # Analysis succeeds before refresh; consuming the empty pool still fails clearly.
         snapshot = ctx.actions.write("empty-snapshot.json", "{}")
     pool = ctx.actions.dynamic_output_new(_materialize_repository(
         baseurl = ctx.attrs.baseurl,
@@ -119,10 +109,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
         RpmPoolInfo(value = pool),
     ]
 
-# The pool is deliberately the RPM-specific ownership boundary: payload decompression,
-# signature checks, reflink transforms, or future derived representations belong beside each
-# raw action and can be exposed through the RpmPoolInfo dynamic value without complicating
-# transaction selection.
+# Derived RPM representations belong to the repository-owned pool.
 remote_repository = rule(
     impl = _remote_repository_impl,
     attrs = {
@@ -141,13 +128,7 @@ def rpm_remote_repository(
         name: str,
         baseurl: str,
         **kwargs) -> None:
-    """Declare one repository target owning its repodata and authoritative RPM pool.
-
-    The package-relative `<name>.json` is one authoritative unit: filtered repodata plus
-    a `packages` map keyed by pkgid. It may be absent before the first catalog refresh. The
-    target reads it dynamically, owns one independent raw artifact per entry, and exposes
-    the generic pool and RPM-specific representations.
-    """
+    """Declare a repository backed by the optional package-relative `<name>.json`."""
     snapshots = glob([name + ".json"])
     remote_repository(
         name = name,
@@ -179,10 +160,7 @@ def rpm_distribution(
         repositories: list[str],
         buildroot: list[str],
         **kwargs) -> None:
-    """A distribution preconfigured for rpm (see the module docstring).
-
-    Nothing is derived per distribution — no lock: its engine and repositories carry
-    the pins."""
+    """A distribution preconfigured for RPM."""
     distribution(
         name = name,
         engine = engine,
@@ -195,20 +173,12 @@ def rpm_distribution(
 def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     distribution = ctx.attrs.distribution[DistributionInfo]
 
-    # The buildroot is an overlay stack. The distribution's base packages go into a shared
-    # lowerdir — identical for every package, so all of a distribution's builds collapse onto one
-    # base install — and this package's BuildRequires layer on top as a delta resolved against the
-    # merged base (already-installed base packages satisfy deps instead of reappearing). Action 4
-    # runs rpmbuild against the whole stack overlay-merged.
+    # Share the base buildroot; add package-specific BuildRequires as a delta.
     base = install_packages(ctx, ctx.attrs.distribution, distribution.buildroot_base_packages)
     buildroot = [base]
 
     if ctx.attrs.build_requires or ctx.attrs.buildroot_deps:
-        # Self-hosting: each buildroot_dep is another package we build whose rpms provide some of
-        # this package's BuildRequires. Its whole binary-rpm set (the dep's default output dir)
-        # goes into the delta as extra packages, so the resolve prefers our build over Fedora's
-        # (and can upgrade a base package where a BR pulls our newer build over it). These are real
-        # buck deps, so the DAG builds them first (the staircase).
+        # Self-hosted package outputs outrank upstream while resolving the delta.
         extra_packages = [d[DefaultInfo].default_outputs[0] for d in ctx.attrs.buildroot_deps]
         buildroot = buildroot + [install_packages(
             ctx,
@@ -220,8 +190,7 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
 
     rpms = ctx.actions.declare_output("rpms", dir = True)
 
-    # One declared output per binary subpackage (from .bzl's "subpackages"
-    # list), so each is an addressable sub-target (:pkg[devel], ...).
+    # Declare addressable outputs for every binary subpackage.
     sub_outputs = {s: ctx.actions.declare_output(s + ".rpm") for s in ctx.attrs.subpackages}
 
     build = cmd_args(
@@ -282,8 +251,5 @@ _rpm_package = rule(
 )
 
 def rpm_package(package: str, spec = None, **kwargs) -> None:
-    """Build an rpm package.
-
-    The spec is `<package>.spec` (a rule attr can't default off another attr, so the
-    macro derives it at load time)."""
+    """Build an RPM, defaulting the spec to `<package>.spec`."""
     _rpm_package(package = package, spec = spec or package + ".spec", **kwargs)

@@ -2,20 +2,12 @@
 
 load("//defs/rules:package_format.bzl", "package_format")
 
-# The rpm-format drivers (sources beside this file: extract/decompress/install/createrepo/
-# plan/build/snapshot.py). They run under the pinned host python3 (extract, decompress,
-# snapshot) or inside an engine root provisioned by the consumer (the rest). Bare `//`
-# here resolves to the tine cell (the cell of this BUCK), so the cell self-references
-# without qualification.
+# Host tools bootstrap the engine; remaining drivers run inside it.
 
-# Shared rpm-file primitives (header framing + payload decompression), stdlib only: read a
-# downloaded rpm without the real rpm stack (used by extract).
+# Stdlib-only RPM framing and payload decompression.
 python_bootstrap_library(name = "rpmfile_lib", srcs = ["rpmfile.py"])
 
-# The bootstrap ur-tool, stdlib only, run by host python3 (not a chroot tool, so not
-# per-engine): payload-extracts the downloaded seed to stand up the first chroot. The newc
-# parse is the shared cpio_lib (also the image packer's writer); rootfs_lib supplies the
-# `capture` pass making the extracted tree buck-storable (escaped unit names).
+# Bootstrap extractor; capture escapes names Buck cannot store.
 python_bootstrap_binary(
     name = "extract",
     main = "extract.py",
@@ -23,8 +15,7 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-# Repository-owned raw-RPM -> cpio payload transform. Each pool entry declares one
-# content-addressed action with this host tool; consumers materialize only selected payloads.
+# Repository-owned raw-RPM to cpio transform.
 python_bootstrap_binary(
     name = "decompress",
     main = "decompress.py",
@@ -32,32 +23,24 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-# Shared helpers for the drivers (stdlib only).
+# Stdlib-only driver helpers.
 python_bootstrap_library(name = "util", srcs = ["util.py"])
 
 python_bootstrap_binary(name = "install", main = "install.py", deps = ["//distribution:rootfs_lib"])
 python_bootstrap_binary(name = "createrepo", main = "createrepo.py")
 
-# plan doubles as the engine-closure resolver and the repo-cache prebuilder: builds
-# bind it per buildroot/layer (seeded from make-cache outputs), and an engine's
-# `[resolve]` sub-target binds it at refresh to re-solve the lock (the engine lock is
-# a plan transaction).
+# Planner also creates solver caches and refreshes engine locks.
 python_bootstrap_binary(name = "plan", main = "plan.py", deps = ["//distribution:rootfs_lib"])
 python_bootstrap_binary(name = "build", main = "build.py", deps = [":util", "//distribution:rootfs_lib"])
 
-# The snapshot generator pins one repository's filtered repodata and streams its primary
-# metadata into the authoritative pkgid-keyed RPM index. It runs on the host, bound per
-# repository with just that repo's manifest. Public so a consumer can bind it on their side
-# (the cell only owns the drivers).
+# Host-side repository snapshot generator.
 python_bootstrap_binary(
     name = "snapshot",
     main = "snapshot.py",
     visibility = ["PUBLIC"],
 )
 
-# The rpm package format plugin: the build drivers, selected generically as
-# `@tine//distribution/rpm:package_format` by the orchestration layer (per a
-# distribution's `package_format`). The distribution + repo bind them to run in an engine root.
+# Generic package-format bundle for the RPM drivers.
 package_format(
     name = "package_format",
     extract = ":extract",

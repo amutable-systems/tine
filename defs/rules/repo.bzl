@@ -19,23 +19,16 @@ PackagePoolInfo = provider(
 
 PackagePoolValueInfo = provider(
     doc = "A resolved authoritative package pool keyed by stable package id.",
-    # Values are format-specific records with the common `artifact` (installable bytes),
-    # `name` (canonical basename), and `representations` (derived artifact map) fields.
-    # Keeping the richer record lets the same map also back a format-specific provider
-    # without duplicating a 175k-entry dictionary.
+    # The same rich records also back format-specific providers without copying the map.
     fields = {"packages": provider_field(dict[str, package_artifact])},
 )
 
 RepoInfo = provider(
-    # `dir` holds the `repodata/` the plan resolves against. Two flavors:
-    #   - remote: `dir` is pinned repodata; the same target also exposes dynamic generic
-    #     and format-specific pool handles from the same authoritative snapshot.
-    #   - local: `dir` is a createrepo'd tree with its RPMs present.
     doc = "A package repository.",
     fields = {
         "id": provider_field(str),
         "dir": provider_field(Artifact),
-        # dnf semantics: lower number wins; 99 is libdnf's default.
+        # DNF uses lower numbers first; 99 is its default.
         "priority": provider_field(int, default = 99),
     },
 )
@@ -53,9 +46,7 @@ def _is_ascii(value: str) -> bool:
     return True
 
 def _closure_name(canonical_name: str, pkgid: str, suffix: str) -> str:
-    # NAME_MAX is normally 255 bytes. Repository RPM basenames are ASCII; retain as much
-    # as fits while the full digest makes the result collision-free. Keeping the canonical
-    # prefix also preserves the stable package-name extraction order needed by bootstrap.
+    # Retain a readable prefix while the full digest prevents NAME_MAX collisions.
     if not _is_ascii(canonical_name) or not _is_ascii(suffix):
         fail("package representation names must be ASCII: {!r}, {!r}".format(canonical_name, suffix))
     tail = "--" + pkgid + suffix
@@ -71,8 +62,7 @@ def _download_closure(
         extra_packages: list[Artifact],
         pools: dict[str, ResolvedDynamicValue],
         representation: str) -> list[Provider]:
-    # The solve is dynamic, but every remote package artifact already has a stable owner.
-    # This callback only selects the transaction's artifacts and assembles the symlink tree.
+    # Select already-owned artifacts; the transaction never creates new downloads.
     entries = tx.read_json()
     if type(entries) != type([]):
         fail("transaction is not a list (an engine lock still seeded `{}`?); run refresh-catalog")
@@ -113,7 +103,7 @@ def _download_closure(
             if representation != "installable":
                 fail("local packages do not expose the {!r} representation".format(representation))
 
-            # Extra-package metadata uses <rpms-dir index>/<filename> as location_href.
+            # Local hrefs identify an input directory and filename.
             location = entry.get("location")
             if type(location) != type(""):
                 fail("local transaction entry lacks a location: {}".format(entry))
@@ -173,16 +163,6 @@ def download_closure(
         extra_packages: list[Artifact] = [],
         name: str = "install.closure",
         representation: str = "installable") -> Artifact:
-    """Select `tx` from authoritative repository pools into a symlink-tree directory.
-
-    Remote entries are `{source: "repo", repo, pkgid, nevra}` and must exist in their
-    repository's pool. Local entries additionally name an `extra_packages` directory and are
-    projected in place. Closure filenames combine the pool-owned canonical basename with the
-    content id, preserving deterministic bootstrap extraction order without collisions or
-    transaction-controlled names. `representation` selects either the installable package or
-    a pool-owned derived artifact such as an RPM payload. Only selected artifacts are
-    materialized; a missing entry is snapshot skew, not an invitation to create another owner.
-    """
     closure = ctx.actions.declare_output(name, dir = True)
     pools = {
         repository[RepoInfo].id: repository[PackagePoolInfo].value

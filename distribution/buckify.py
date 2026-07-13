@@ -1,33 +1,7 @@
-"""buckify — the format-independent host orchestrator for (re)generating a catalog.
+"""Refresh catalog snapshots, then resolve engine transactions against those pins.
 
-Runs on the host (a python_bootstrap_binary), invoked via the command_alias targets
-`buck run tine//tools:<refresh-catalog|verify-catalog>`. It does NOT pin or resolve
-anything itself; it drives the per-format refresh drivers in two phases:
-
-  1. snapshot every repository: `buck uquery` finds the `remote_repository` targets and
-     runs each one's `[snapshot]` sub-target (the format's host snapshot driver + that
-     repo's `[manifest]` — no engine involved), writing <dir>/<repo>.json.
-  2. resolve every engine's closure: uquery finds the `engine` targets and runs each
-     one's `[resolve]` sub-target (the format's plan driver run *inside that engine*,
-     over its repositories' pinned repodata), writing <dir>/<engine>.json — the engine
-     lock is the transaction the solve emits.
-
-Both sub-targets share one contract: the binding carries every input; the orchestrator
-appends only `--out <fragment>`.
-
-Repos snapshot first so a same-run engine resolve solves over the repodata being pinned.
-Repository JSON is a source input that its target dynamically expands into repodata and the
-complete package pool; engine JSON is the transaction selected from those pools at build time.
-There is nothing to amalgamate or scaffold here. Until refresh has staged current/candidate
-engine generations, repositories that provision an engine must be immutable: their old
-transaction must remain realizable after the repository snapshot is replaced and before that
-engine is re-resolved.
-
-Nested buck is supported: a `buck run` target executes with cwd = the invocation
-dir and inherits PATH + BUCK_ISOLATION_DIR, so a child `buck` reuses the same
-daemon (verified against the buck source). The buck binary is passed in (--buck)
-because this is a python child, not buck itself (buck finds *itself* via
-current_exe, which a python process can't use).
+The host orchestrator discovers refresh subtargets and appends only their output path.
+Nested Buck reuses the invoking daemon through the inherited isolation directory.
 """
 
 import argparse
@@ -51,8 +25,7 @@ def _name_of(target: str, suffix: str = "") -> str:
 
 
 def _run(buck: str, target: str, args: list[str]) -> None:
-    # `-v 0 --console none` mutes buck's own wrapper output (build id, "BUILD SUCCEEDED",
-    # network) for the nested run; the driver's progress on stderr still comes through.
+    # Mute nested Buck while preserving driver progress on stderr.
     subprocess.run([buck, "-v", "0", "run", target, "--console", "none", "--", *args], check=True)
 
 
@@ -85,17 +58,14 @@ def main(argv: list[str] | None = None) -> None:
         help="assert the committed catalog matches what the pinned resolvers produce (CI)",
     )
     args = p.parse_args(argv)
-    # Default to the active catalog cell, so a consumer that repoints `[cells] catalog`
-    # regenerates their own lock without passing --catalog-dir. Anchor an explicit
-    # (possibly relative) dir before the project-root switch below.
+    # Default to the active catalog; anchor overrides before changing cwd.
     if args.catalog_dir:
         catalog_dir = Path(args.catalog_dir).absolute()
     else:
         catalog_dir = Path(_buck_out(args.buck, "audit", "cell", "catalog", "--paths-only"))
     catalog_dir.mkdir(parents=True, exist_ok=True)
 
-    # The nested `buck run`s' python wrappers resolve against the project root — run them
-    # there (a no-op when tine is the root), so buckify itself works from anywhere.
+    # Run nested commands from the project root so wrappers resolve consistently.
     with contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")):
         snapshots = _refresh_targets(args.buck, "remote_repository")
         for target in snapshots:

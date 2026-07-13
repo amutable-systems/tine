@@ -1,21 +1,7 @@
-"""rpm-extract — the bootstrap ur-tool.
+"""Bootstrap an engine by extracting RPM v4 newc payloads without RPM tooling.
 
-A minimal, dependency-free rpm payload extractor (host Python, stdlib only, via the shared
-`rpmfile` framer). It breaks the bootstrap regress: it lays down the tool-rpm subset into chroot1
-so a *real* rpm/libdnf5 can take over from there. Payload only — it skips scriptlets, file caps,
-ownership, SELinux, device nodes; the real rpm sets those when it builds chroot2.
-
-Supports v4 (070701 "newc" cpio payload) — what Fedora 44 ships. Repository pools normally hand it
-their shared, pre-decompressed `.cpio` representation; it also accepts a raw RPM for standalone
-use, frames it with `rpmfile`, and decompresses its payload. Both paths unpack with the shared
-`cpio` module (also the image packer's writer). v6 (index-keyed payload, per-file metadata from
-header tags) is a TODO gated on a pin that uses it; libarchive can't read rpm 6, which is why this
-is ours.
-
-Like every stored tree, the extracted chroot goes through `rootfs.capture` at the end: names buck
-can't store (systemd's backslash-escaped units, which ride in once the engine carries systemd)
-become inert `.esc.` markers. chroot1 is only ever an exec environment (`--tools`), never booted
-or mounted as a delta, so the escaped unit files staying escaped is harmless.
+Repository pools normally provide pre-decompressed cpio, while raw RPM support
+keeps the tool usable alone. Metadata and scriptlets are deferred to the real install.
 """
 
 import mmap
@@ -29,12 +15,7 @@ import rpmfile
 
 
 def extract(rpm_path: Path, dest: Path) -> int:
-    """Extract an rpm's payload into dest. Returns the number of files written.
-
-    Frame the rpm (lead + two headers) with `rpmfile`, decompress the payload, and unpack the newc
-    cpio. `cpio.unpack` is fd/mmap-based, so the decompressed payload goes through a temp file; rpm
-    payloads are only 4-byte-aligned (not block-aligned), so unpack can't share an extent here
-    regardless — it falls back to a userspace copy; only the block-aligned Writer archives clone."""
+    """Extract an RPM payload into dest and return the number of files written."""
     with rpm_path.open("rb") as rpm:
         with mmap.mmap(rpm.fileno(), 0, access=mmap.ACCESS_READ) as data:
             _sig, main = rpmfile.headers(data)

@@ -1,30 +1,8 @@
-"""rootfs — set up a target root inside the sandbox (and translate layer deltas).
+"""Mount target roots and translate stored OCI markers to native overlayfs state.
 
-`sandbox.py` provides only the exec environment (the engine's `/usr` + the kernel API mounts)
-and become-root in a user+mount namespace. A driver that needs to install into, or run
-commands against, a *target* tree sets that tree up itself here — reusing mkosi's own
-`FSOperation` primitives — instead of asking the launcher to bind a fixed `/buildroot`.
-
-`rootfs()` mounts the target and yields it: a plain bind, or an overlayfs over a stack of
-layer *deltas*. It owns the whole overlay dance so callers don't. Each delta is stored as an
-overlay upperdir with deletions encoded as OCI-changeset regular files — `.wh.<name>` (a
-whiteout) and `.wh..wh..opq` (an opaque dir) — because buck's artifact model carries only
-content + an exec bit (no device nodes, no xattrs). Names buck can't store at all — a literal
-backslash (e.g. systemd's escaped unit names) crashes its path handling — get the same
-treatment: `capture` renames them to `.esc.<escaped>` and the mount thaws them back (see
-`_escape`). On the way in, `rootfs()` reconstructs all these markers into native form *without
-copying any delta* (tiny sidecar marker layers — see `_markers`; only `.esc.` entries are
-copied, and those are rare and tiny); on the way out, with a writable `upperdir`, it captures
-the freshly built upper back into OCI form so buck can store it. Full roots get the same
-`capture` at the end of their install, so every stored tree is buck-safe and every layer of a
-mount — the bottom full root included — is framed. A caller that then runs commands *from* the
-mounted root steps into it with `chroot=True` (mkosi's `chroot`, entered around the yield).
-
-A whiteout is a char 0:0 device node, which the kernel exempts from CAP_MKNOD (`vfs_mknod`'s
-is_whiteout case); an opaque dir is `user.overlay.opaque=y` under an `-o userxattr` mount,
-settable by the file owner — so both directions work from the sandbox's unprivileged userns.
-Everything lives in the sandbox's private mount namespace, torn down on exit; we still unwind
-in order (submounts → overlay unmount → capture) so the upper is consistent before buck reads it.
+Buck cannot store device nodes, xattrs, or backslashes in paths, so deltas encode them as
+regular marker files. Sidecar layers reconstruct markers on entry; persisted uppers are
+captured back to the storage form after unmounting.
 """
 
 import os
@@ -52,16 +30,11 @@ _ESC = ".esc."  # `.esc.<escaped>`: a name buck can't store, percent-escaped
 _OPAQUE_XATTR = b"user.overlay.opaque"  # an opaque dir's native form (userxattr namespace)
 
 
-# ---- OCI delta <-> native overlay translation ----------------------------------------------
+# OCI delta to native overlay translation.
 
 
 def _escape(name: str) -> str:
-    """Escape one path component into a buck-storable marker name, or return it unchanged.
-
-    buck crashes on a literal backslash in an artifact path (its path relativization
-    rejects it and wedges the daemon), so such names — plus anything already carrying the
-    marker prefix, for injectivity — become `.esc.` + the name with `%` -> `%25` and
-    `\\` -> `%5C`."""
+    """Escape a path component Buck cannot store, preserving injectivity."""
     if "\\" not in name and not name.startswith(_ESC):
         return name
     return _ESC + name.replace("%", "%25").replace("\\", "%5C")
@@ -80,10 +53,7 @@ class _Kind(Enum):
 
 
 def _classify(name: str) -> tuple[_Kind, str]:
-    """Decode one stored delta entry name into (kind, payload): the whited-out target for
-    WHITEOUT, "" for OPAQUE, the entry's true (unescaped) name for NORMAL. `.esc.` wrapping
-    is undone first, so an escaped whiteout still classifies as a whiteout. The single
-    decoder for the OCI-marker vocabulary — `_thaw` and `_markers` both route through it."""
+    """Decode a stored name into its marker kind and payload."""
     true = _unescape(name) if name.startswith(_ESC) else name
     if true == _OPAQUE:
         return _Kind.OPAQUE, ""
@@ -93,9 +63,7 @@ def _classify(name: str) -> tuple[_Kind, str]:
 
 
 def _whiteout_marker(name: str) -> str:
-    """Encode a whiteout of `name` as its stored marker filename: `.wh.` + the name, then
-    escaped (the target name may itself be unstorable). The encode inverse of `_classify`'s
-    WHITEOUT case; `capture` writes this."""
+    """Encode a possibly unstorable whiteout target."""
     return _escape(_WH + name)
 
 
@@ -105,10 +73,7 @@ def _whiteout(directory: Path, name: str) -> None:
 
 
 def _thaw(src: Path, dst: Path) -> None:
-    """Copy the `.esc.`-named delta entry `src` to `dst` (its true name), recursively
-    thawing everything inside: nested escaped names, `.wh.` whiteouts, opaque markers.
-    The one place reconstruction copies delta content — O(escaped entries), which are
-    rare (escaped names) and tiny (unit symlinks, slice files)."""
+    """Copy an escaped entry under its true name, recursively decoding markers."""
     if src.is_symlink() or not src.is_dir():
         shutil.copy2(src, dst, follow_symlinks=False)
         return
@@ -125,16 +90,7 @@ def _thaw(src: Path, dst: Path) -> None:
 
 
 def _markers(delta: Path, dest: Path) -> tuple[Path | None, Path | None]:
-    """Express `delta`'s OCI markers as sidecar overlay layers *without copying the delta*.
-
-    Returns `(above, below)` — layers to stack directly above and below the delta — either
-    `None` when unused. The delta itself stays a read-only lowerdir. `above` carries native
-    char 0:0 whiteouts (both for each deleted target and to hide the literal `.wh.`/opaque
-    marker files, which would otherwise leak into the merge) plus the thawed copies of any
-    `.esc.` entries under their true names; `below` carries empty opaque dirs, which must
-    sit *below* the delta so they mask lower layers without hiding the delta's own
-    contents. The cost is O(markers), not O(delta).
-    """
+    """Express stored markers as sparse sidecar layers above and below `delta`."""
     above, below = dest / "above", dest / "below"
     used_above = used_below = False
     for p in delta.rglob("*"):
@@ -161,10 +117,7 @@ def _markers(delta: Path, dest: Path) -> tuple[Path | None, Path | None]:
 
 
 def _reconstruct(lowers: list[Path], scratch: Path) -> list[Path]:
-    """Turn the delta stack `lowers` (bottom..top) into an overlayfs lowerdir list (top..
-    bottom), framing each delta with the sidecar marker layers `_markers` builds in
-    `scratch`. No delta is copied. The bottom is a full install root — no deletions, but
-    it can carry `.esc.` names, so it's framed like the rest (one extra tree walk)."""
+    """Frame stored deltas as an overlayfs lowerdir list in top-to-bottom order."""
     components: list[Path] = []
     for i, lo in enumerate(reversed(lowers)):
         above, below = _markers(lo, scratch / f"m{i}")
@@ -184,17 +137,8 @@ def _is_opaque(d: Path) -> bool:
 
 
 def capture(tree: Path) -> None:
-    """Rewrite `tree` in place into buck-storable form: char 0:0 whiteouts become
-    `.wh.<name>` files, `user.overlay.opaque` dirs get a `.wh..wh..opq` file, and any
-    name buck can't store is renamed to its `.esc.` escape, and every dir is made
-    owner-rwx. Runs on every stored tree — a captured overlay upper here, a fresh full
-    root at the end of its install — so a mount can assume every layer is in this form.
-    (Deepest-first, so a rename never invalidates an unprocessed descendant path.)"""
-    # rpm ships read-only dirs (e.g. 0555 /usr/lib), which buck can't delete out of
-    # buck-out again (and the renames below need writable parents) — so open every dir
-    # up to owner-rwx first. Dir modes aren't authoritative in a stored tree anyway:
-    # buck's artifact model carries only content + the exec bit, and shipped metadata
-    # is applied at pack time from tmpfiles.d.
+    """Rewrite native overlay state and unstorable names into regular marker files."""
+    # Buck must be able to delete and rename through package-supplied read-only directories.
     for p in tree.rglob("*"):
         st = p.lstat()
         if stat.S_ISDIR(st.st_mode) and stat.S_IMODE(st.st_mode) & 0o700 != 0o700:
@@ -213,7 +157,7 @@ def capture(tree: Path) -> None:
             p.rename(p.parent / escaped)
 
 
-# ---- root setup ----------------------------------------------------------------------------
+# Root setup.
 
 
 def _bind(src: str | Path, dst: str | Path) -> None:
@@ -223,8 +167,7 @@ def _bind(src: str | Path, dst: str | Path) -> None:
 
 
 def _apivfs(stack: ExitStack, target: Path) -> None:
-    """Mount the API filesystems a chrooted install/scriptlet expects under `target` (mkosi's
-    apivfs set): /dev (+devpts), /proc, and writable /run, /tmp, /var/tmp."""
+    """Mount the API and temporary filesystems expected by scriptlets."""
     ttyname = os.ttyname(2) if os.isatty(2) else ""
     DevOperation(ttyname, str(target / "dev")).execute()
     stack.callback(umount2, str(target / "dev"), MNT_DETACH)
@@ -247,34 +190,21 @@ def rootfs(
     binds: list[tuple[str | Path, str | Path]] | None = None,
     chroot: bool = False,
 ) -> Iterator[Path]:
-    """Mount `target` as a root and yield it. Either `bind` (a tree bound rw) or `lowers` (a
-    stack of stored deltas, overlay-merged). With `lowers`, an `upperdir`/`workdir` captures a
-    persisted layer delta (`image.py`); without one, the overlay still gets an **ephemeral**
-    upper so the merge is writable but throwaway — a caller (e.g. `pack.py`) can mutate the
-    tree without copying it, and nothing is captured. `binds` adds extra rw binds inside the
-    mounted root — (src, dst) with dst target-relative — e.g. a scratch dir a chrooted command
-    writes its outputs to. `chroot=True` also steps into the mounted root for the duration of
-    the yield (the yielded path is then `/`), so the caller execs commands from the tree's own
-    tools directly. Delta markers are reconstructed on the way in. Teardown unwinds in order
-    (chroot exit → extra binds/apivfs submounts → overlay unmount → capture)."""
+    """Mount a bind or overlay root, optionally chrooting and persisting an upper delta."""
     target = Path(target)
     with ExitStack() as stack:
         if lowers is not None:
-            # Callers pass buck-out paths relative to the bound cwd; resolve to absolute here
-            # (before any chroot) since the delta walk and overlay mount need real paths.
+            # Resolve Buck-relative paths before entering a possible chroot.
             resolved = [Path(lo).resolve() for lo in lowers]
             scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="rootfs.")))
             components = _reconstruct(resolved, scratch)
             if upperdir is not None:
-                # Persisted delta (building a layer): capture the built upper to OCI on exit.
                 if workdir is None:
                     raise ValueError("rootfs(upperdir=...) needs a matching workdir=")
                 upper, work = Path(upperdir), Path(workdir)
                 stack.callback(capture, upper)  # runs after the overlay unmount below
             else:
-                # Transient writable merge (e.g. pack dropping the rpmdb + running tmpfiles):
-                # an ephemeral upper discarded with the scratch dir — never captured. Also lets
-                # a single-component stack mount (a lone lowerdir with no upper is rejected).
+                # A writable ephemeral upper also permits a single-component stack.
                 upper, work = scratch / "upper", scratch / "work"
             upper.mkdir(parents=True, exist_ok=True)
             work.mkdir(parents=True, exist_ok=True)
@@ -292,7 +222,6 @@ def rootfs(
             _bind(src, dest)  # BindOperation creates the mountpoint itself
             stack.callback(umount2, str(dest), MNT_DETACH)
         if chroot:
-            # Entered last so it unwinds first: the umount callbacks above hold paths
-            # that only resolve outside the chroot.
+            # Enter last so callbacks resolve paths after the chroot unwinds.
             stack.enter_context(_chroot(str(target)))
         yield Path("/") if chroot else target

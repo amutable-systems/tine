@@ -1,14 +1,9 @@
-# Python tooling config for the monorepo's in-tree tools (buckify-rpm, the
-# sandbox/assembly/build drivers, rpm-extract). Formatting + linting via ruff,
-# type-checking via ty — both pinned in tools/BUCK and fetched by buck itself.
-# Loosely tracks barrage/mkosi's config; mypy intentionally omitted.
+# Tooling for the in-tree Python drivers.
 
 [tool.ruff]
 target-version = "py314"
 line-length = 109
-# buck-out: build outputs (a sibling when the cell is embedded, inside the cell when it
-# is the project root) — keeps editor integrations and directory-wide runs out of them.
-# The vendored sandbox.py is upstream's verbatim — never our code to lint/format.
+# Exclude build outputs and the verbatim vendored sandbox.
 extend-exclude = ["buck-out", "distribution/mkosi/sandbox.py"]
 lint.select = [
     "E",    # pycodestyle
@@ -21,18 +16,11 @@ lint.select = [
 
 [tool.ty.environment]
 python-version = "3.14"
-# Third-party imports (libdnf5, createrepo_c) resolve from the *engine root* — the
-# pinned environment the drivers actually run in — not the host. The `check` dev
-# command builds the engine root and points ty at it with `--python <root>/usr` (kept
-# on the CLI, not here, because the path only exists after that build step).
-# The tools share a flat import namespace at run time (the bootstrap/chroot
-# run-trees are flat), so the rpm/ drivers import `sandbox`/`mkosi.sandbox` as
-# top-level modules — add distribution/ as a search root so ty resolves them.
+# Runtime trees use a flat import namespace; third-party imports come from `--python`.
 extra-paths = ["distribution"]
 
 [tool.ty.src]
-# buck-out: build outputs (see the ruff exclude above); the vendored upstream file is
-# not part of our typed surface.
+# Match Ruff's exclusions.
 exclude = ["buck-out", "distribution/mkosi/sandbox.py"]
 
 [tool.ty.rules]

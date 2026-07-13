@@ -1,14 +1,7 @@
 #!/usr/bin/python3
-"""createrepo — generate repodata for a local package repository (Action 0).
+"""Generate deterministic repodata for a local package repository.
 
-Runs *inside* the engine root (which carries python3 + python3-createrepo_c), so
-the metadata is produced by the *pinned* createrepo_c, never the host's. Reads a
-directory of rpms (a distribution's buildroot-repo package tree), hardlinks them into
-the output repo directory, and writes a standard `repodata/` alongside — so the
-result is an actual local repository libdnf5 resolves against via a `file://`
-baseurl. The repomd revision is pinned to SOURCE_DATE_EPOCH (injected by the
-sandbox), so identical inputs yield byte-identical repodata and the repo
-content-keys deterministically.
+Runs inside the engine so the pinned createrepo_c produces the metadata.
 """
 
 import argparse
@@ -28,8 +21,7 @@ _STREAMS = (
 
 
 def _link_or_copy(src: Path, dst: Path) -> None:
-    # Hardlink (cheap, and a real inode — unlike a symlink, which dangles once the
-    # tree is bound into a sandbox); fall back to a copy across filesystems.
+    # Symlinks would dangle when the repository is rebound into a sandbox.
     try:
         os.link(src, dst)
     except OSError:
@@ -42,8 +34,7 @@ def createrepo(entries: list[tuple[str, Path]], out: Path, revision: str) -> Non
     if not entries:
         raise SystemExit("no packages given")
 
-    # libdnf5 resolves each package's location_href relative to the repo baseurl,
-    # so the rpms live in the repo dir (under their href) next to repodata/.
+    # location_href is relative to the repository base URL.
     for href, rpm in entries:
         dst = out / href
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -64,8 +55,7 @@ def createrepo(entries: list[tuple[str, Path]], out: Path, revision: str) -> Non
     for w in writers.values():
         w.close()
 
-    # repomd.xml ties the records together; pin the revision (not wall-clock) so
-    # the repodata is reproducible.
+    # Pin the revision instead of using wall-clock time.
     repomd = cr.Repomd()
     repomd.set_revision(revision)
     for name, _ in _STREAMS:
@@ -90,16 +80,14 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--out", required=True, help="output repo dir (rpms + repodata/)")
     args = p.parse_args(argv)
     entries = [(Path(p).name, Path(p).resolve()) for p in args.package]
-    # Keyed by dir index so a consumer can map a resolved location back to the input dir it
-    # came from (buck's dynamic download projects the rpm from there).
+    # Directory indices let consumers map locations back to Buck inputs.
     for i, d in enumerate(args.packages_dir):
         entries += [
             (f"{i}/{p.name}", p)
             for p in sorted(Path(d).resolve().glob("*.rpm"))
             if not p.name.endswith(".src.rpm")
         ]
-    # Injected by the sandbox via --source-date-epoch; default keeps the tool
-    # runnable standalone.
+    # The fallback keeps standalone use possible.
     revision = os.environ.get("SOURCE_DATE_EPOCH", "0")
     createrepo(entries, Path(args.out).resolve(), revision)
 

@@ -1,17 +1,7 @@
-"""snapshot — pin one repository's metadata and authoritative RPM inventory.
+"""Pin a repository's build metadata and authoritative RPM inventory.
 
-Run on refresh (via the repository target's `[snapshot]` sub-target, driven by the host
-orchestrator //distribution:buckify), NOT during builds. A repository is a first-class
-catalog citizen shared across distributions, so it pins independently of any of them —
-and pinning is pure fetch-and-filter (urllib + ElementTree, no libdnf5), so unlike the
-engine-closure resolve this runs on the host, needing no engine.
-
-Reads the repository's manifest ({id, baseurl}, materialized from the catalog BUCK),
-fetches `repodata/repomd.xml`, drops every <data> record except the build streams, and
-writes one authoritative snapshot: filtered repomd, its pinned streams, and a pkgid-keyed
-package index parsed from the pinned primary stream. Buck reconstructs `repodata/` from the
-streams while the RPM pool declares one lazy raw artifact and its derived payload representation
-per package. Re-running against an unchanged upstream reproduces the snapshot byte-for-byte.
+Refresh runs this host-side fetch-and-filter step independently per repository.
+The snapshot contains filtered repomd, pinned streams, and a pkgid-keyed package index.
 """
 
 import argparse
@@ -31,15 +21,10 @@ from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlsplit
 
-# repomd.xml's namespace (the <data>/<location>/<checksum> elements live here).
 _REPOMD_NS = "http://linux.duke.edu/metadata/repo"
 _PRIMARY_NS = "http://linux.duke.edu/metadata/common"
 _XML_NS = "http://www.w3.org/XML/1998/namespace"
-# The repodata streams the build-time solve needs: primary (provides/requires) + filelists
-# (file-path provides, for file-dep BuildRequires), plus group (comps) when the repo publishes
-# it — plan expands `@group` installs (the buildroot base) against it at build time.
-# other/updateinfo and the db/zck/xz re-encodings aren't needed and are dropped so libdnf5
-# never tries to fetch them.
+# Keep only streams needed for dependencies, path providers, and package groups.
 _BUILD_STREAMS = ("primary", "filelists")
 _OPTIONAL_STREAMS = ("group",)
 
@@ -191,7 +176,7 @@ def snapshot_repodata(rid: str, baseurl: str) -> dict:
     with urllib.request.urlopen(base + "repodata/repomd.xml") as f:
         repomd = f.read()
 
-    ET.register_namespace("", _REPOMD_NS)  # keep the default (unprefixed) namespace on output
+    ET.register_namespace("", _REPOMD_NS)  # Preserve the default namespace.
     root = ET.fromstring(repomd)
 
     kept = []
@@ -201,7 +186,7 @@ def snapshot_repodata(rid: str, baseurl: str) -> dict:
     for data in list(root.findall(f"{{{_REPOMD_NS}}}data")):
         stream_type = data.get("type")
         if stream_type not in _BUILD_STREAMS + _OPTIONAL_STREAMS:
-            root.remove(data)  # drop other/updateinfo/*_db/*_zck
+            root.remove(data)
             continue
         if stream_type in kept:
             raise SystemExit(f"{rid}: repomd.xml contains duplicate {stream_type!r} streams")
@@ -209,7 +194,7 @@ def snapshot_repodata(rid: str, baseurl: str) -> dict:
 
         loc = data.find(f"{{{_REPOMD_NS}}}location")
         chk = data.find(f"{{{_REPOMD_NS}}}checksum[@type='sha256']")
-        size = data.find(f"{{{_REPOMD_NS}}}size")  # compressed size avoids a download-action HEAD probe
+        size = data.find(f"{{{_REPOMD_NS}}}size")  # Avoid a later HEAD request.
         href = loc.get("href") if loc is not None else None
         if href is None or chk is None or chk.text is None or size is None or size.text is None:
             raise SystemExit(f"{rid}: {data.get('type')} record lacks a location, sha256 checksum, or size")
@@ -257,9 +242,7 @@ def _write_snapshot(path: Path, fragment: dict) -> None:
             newline="\n",
         ) as output:
             temporary = Path(output.name)
-            # The package pool is large (~175k entries across the default catalog). Keep
-            # one complete entry per line instead of letting indent=2 turn every generated
-            # record into four lines; the shape remains ordinary JSON and diffs stay useful.
+            # One package per line keeps this large generated file reviewable.
             output.write('{\n  "packages": {\n')
             packages = sorted(fragment["packages"].items())
             for index, (pkgid, package) in enumerate(packages):

@@ -1,4 +1,3 @@
 [env]
-# Put the pinned `buck` (and any other tools/ scripts) on $PATH so they can be
-# invoked by name instead of by path. Relative to this config's directory.
+# Expose pinned repository tools by name.
 _.path = ["./tools"]

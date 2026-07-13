@@ -1,12 +1,7 @@
-"""rpm-file primitives: header framing, tag access, and streaming payload decompression.
+"""Frame RPM headers, access tags, and stream payload decompression.
 
-Stdlib only (compression.zstd needs host python >= 3.14). Used by extract.py (payload → files) to
-read a downloaded rpm without the real rpm stack.
-
-An rpm on disk is: a 96-byte legacy lead, a signature header (padded to 8), the main header,
-then the payload. Each header is `\x8e\xad\xe8\x01` + reserved + nindex + nbytes, an index of
-16-byte entries `(tag, type, store-offset, count)`, then the value store. We frame the headers and
-locate tag values without parsing the whole file."""
+This stdlib-only path lets the bootstrap extractor read RPMs without the RPM stack.
+"""
 
 import compression.zstd
 import gzip
@@ -22,10 +17,7 @@ CPIO_MAGIC = b"070701"  # newc — an already-uncompressed payload passes throug
 
 
 class Header(NamedTuple):
-    """One rpm header section. `start` is the intro magic; `store`..`end` the value store.
-
-    `tags` maps a tag to `(type, offset-within-store, count)`; `loc` turns that into the value's
-    absolute position, so a caller can read or overwrite it in place."""
+    """An RPM header and its tag offsets into the value store."""
 
     start: int
     store: int
@@ -52,8 +44,7 @@ def _header(view: memoryview, off: int) -> Header:
 
 
 def headers(data: Buffer) -> tuple[Header, Header]:
-    """The signature + main header sections; the payload begins at `main.end`. `data` is anything
-    buffer-like (bytes or an mmap of the rpm), so a caller can frame without reading the whole file."""
+    """Return the signature and main headers from a buffer-like RPM."""
     view = memoryview(data)
     sig = _header(view, LEAD)
     main = _header(view, sig.end + (-sig.end % 8))  # the signature header is padded to 8

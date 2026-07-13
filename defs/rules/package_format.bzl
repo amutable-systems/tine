@@ -1,9 +1,7 @@
 """The package format plugin: a format's drivers, bundled as one target."""
 
 PackageFormatInfo = provider(
-    # `extract` bootstraps the engine (a host RunInfo — no chroot exists yet) and
-    # `snapshot` pins repository metadata + its package inventory on the host at refresh; the rest are
-    # python_bootstrap_binary deps a consumer binds to an engine on demand (chroot_run).
+    # Host tools bootstrap and snapshot; remaining drivers run in an engine.
     doc = "A format's drivers — the per-format plugin.",
     fields = {
         "extract": provider_field(Dependency),  # payload extractor / bootstrap ur-tool
@@ -29,10 +27,7 @@ def _package_format_impl(ctx: AnalysisContext) -> list[Provider]:
         ),
     ]
 
-# A package format plugin: every format-specific driver (a python_bootstrap_binary a
-# consumer binds to an engine via chroot_run), declared in that format's subdir
-# (`//distribution/<format>:package_format`) so the orchestration layer selects them by
-# `data["package_format"]` without naming a format.
+# Bundle format-specific drivers behind a generic provider.
 package_format = rule(
     impl = _package_format_impl,
     attrs = {
