@@ -204,6 +204,8 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
         build.add(cmd_args("--source", src))
     for s, out in sub_outputs.items():
         build.add("--subpackage", cmd_args(out.as_output(), format = s + "={}"))
+    for name in sorted(ctx.attrs.macros):
+        build.add("--macro", name + "=" + ctx.attrs.macros[name])
     ctx.actions.run(build, category = "rpmbuild")
 
     sub_targets = {s: [DefaultInfo(default_output = out)] for s, out in sub_outputs.items()}
@@ -232,6 +234,12 @@ _rpm_package = rule(
             attrs.dep(),
             default = [],
             doc = "our packages whose rpms overlay the buildroot (self-hosted BRs)",
+        ),
+        "macros": attrs.dict(
+            key = attrs.string(),
+            value = attrs.string(),
+            default = {},
+            doc = "extra rpm macro definitions for the build (rpmbuild --define)",
         ),
         "source_date_epoch": attrs.int(doc = "per-package SDE from the changelog"),
         "dist": attrs.string(default = ".aos"),

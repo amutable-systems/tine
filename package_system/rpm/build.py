@@ -40,6 +40,13 @@ def main(argv: list[str] | None = None) -> int:
         metavar="NAME=PATH",
         help="declared binary subpackage -> per-subpackage output rpm path",
     )
+    p.add_argument(
+        "--macro",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="extra rpm macro definition, passed to rpmbuild as --define",
+    )
     args = p.parse_args(argv)
 
     # Use action scratch space and discard leftovers from a failed prior run.
@@ -71,19 +78,20 @@ def main(argv: list[str] | None = None) -> int:
         apivfs=True,
         chroot=True,
     ):
+        defines = [
+            "--define", "_topdir /build",
+            "--define", f"dist {args.dist}",
+            "--define", "_buildhost reproducible",
+            # rpm otherwise ignores SOURCE_DATE_EPOCH for the BUILDTIME header.
+            "--define", "use_source_date_epoch_as_buildtime 1",
+        ]  # fmt: skip
+        # --macro NAME=VALUE becomes --define "NAME VALUE"
+        for m in args.macro:
+            defines += ["--define", m.replace("=", " ", 1)]
         rc = subprocess.run(
-            [
-                "/usr/bin/rpmbuild",
-                "--define", "_topdir /build",
-                "--define", f"dist {args.dist}",
-                "--define", "_buildhost reproducible",
-                # rpm otherwise ignores SOURCE_DATE_EPOCH for the BUILDTIME header.
-                "--define", "use_source_date_epoch_as_buildtime 1",
-                "-ba", "--nocheck", "--noclean",
-                f"/build/SPECS/{spec.name}",
-            ],
+            ["/usr/bin/rpmbuild", *defines, "-ba", "--nocheck", "--noclean", f"/build/SPECS/{spec.name}"],
             env=env,
-        ).returncode  # fmt: skip
+        ).returncode
     if rc != 0:
         return rc
 
