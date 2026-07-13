@@ -250,6 +250,6 @@ _rpm_package = rule(
     },
 )
 
-def rpm_package(package: str, spec = None, **kwargs) -> None:
+def rpm_package(package: str, spec: str | None = None, **kwargs) -> None:
     """Build an RPM, defaulting the spec to `<package>.spec`."""
     _rpm_package(package = package, spec = spec or package + ".spec", **kwargs)

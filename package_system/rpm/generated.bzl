@@ -15,7 +15,7 @@ SourceMetadata = record(
 SrcpkgMetadata = record(
     build_requires = dict[str, list[str]],  # "_all" + per-arch conditional extras
     # producing build arch → pkgname → {Files, Requires, Recommends, Provides}
-    binaries = dict,
+    binaries = dict[str, dict[str, dict[str, list[str]]]],
     sources = list[SourceMetadata],
     version = str,  # main-package version; recorded metadata, not consumed by the build (spec drives it)
     release = str,
@@ -26,26 +26,39 @@ SrcpkgMetadata = record(
 # TODO: Generalize the currently pinned build architecture.
 _ARCH = "x86_64"
 
-def _build_requires(meta: dict) -> list[str]:
+# buildifier: disable=name-conventions  (a type alias, conventionally UpperCamelCase)
+PackageMetadata = dict[str, typing.Any]
+
+def _build_requires(meta: SrcpkgMetadata) -> list[str]:
     """Combine common and architecture-specific BuildRequires."""
-    brs = meta["build_requires"]
+    brs = meta.build_requires
     return sorted(brs["_all"] + brs.get(_ARCH, []))
 
-# buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package + its source http_files)
-# buildifier: disable=function-docstring-args
-def rpm_package_json(package: str, buildroot: str, meta: dict, buildroot_deps: list[str] = [], rpm_macros: dict[str, str] = {}) -> None:
-    """Validate generated metadata and project it onto `rpm_package`."""
+def _parse_metadata(meta: PackageMetadata) -> SrcpkgMetadata:
+    """Validate one generated JSON value and return its typed representation."""
+    data = dict(meta)
+    data["sources"] = [SourceMetadata(**source) for source in data["sources"]]
+    return SrcpkgMetadata(**data)
 
-    # Convert nested source dictionaries before validating the outer record.
-    meta = dict(meta)
-    meta["sources"] = [SourceMetadata(**s) for s in meta["sources"]]
-    m = SrcpkgMetadata(**meta)  # fails on schema mismatch
+# buildifier: disable=unnamed-macro  (declares source http_files and one rpm_package)
+def _declare_rpm_package(
+        package: str,
+        buildroot: str,
+        meta: SrcpkgMetadata,
+        buildroot_deps: list[str],
+        rpm_macros: dict[str, dict[str, str]] = {}) -> None:
     spec = "{}/{}.spec".format(package, package)
     srcs = []
-    for s in m.sources:
-        out = s.url.rsplit("/", 1)[-1]
+    for source in meta.sources:
+        out = source.url.rsplit("/", 1)[-1]
         target = "{}--{}".format(package, out)
-        native.http_file(name = target, out = out, urls = [s.url], sha256 = s.sha256sum, size_bytes = s.size)
+        native.http_file(
+            name = target,
+            out = out,
+            urls = [source.url],
+            sha256 = source.sha256sum,
+            size_bytes = source.size,
+        )
         srcs.append(":" + target)
     srcs += native.glob(["{}/*".format(package)], exclude = [spec])
     rpm_package(
@@ -54,13 +67,29 @@ def rpm_package_json(package: str, buildroot: str, meta: dict, buildroot_deps: l
         spec = spec,
         buildroot = buildroot,
         srcs = srcs,
-        release = m.release,
-        dist = m.dist,
-        source_date_epoch = m.source_date_epoch,
-        subpackages = sorted(m.binaries[_ARCH]),
+        release = meta.release,
+        dist = meta.dist,
+        source_date_epoch = meta.source_date_epoch,
+        subpackages = sorted(meta.binaries[_ARCH]),
         build_requires = _build_requires(meta),
         buildroot_deps = buildroot_deps,
         macros = rpm_macros,
+    )
+
+# buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package + its source http_files)
+# buildifier: disable=function-docstring-args
+def rpm_package_json(
+        package: str,
+        buildroot: str,
+        meta: PackageMetadata,
+        buildroot_deps: list[str] = [],
+        rpm_macros: dict[str, dict[str, str]] = {}) -> None:
+    """Validate generated metadata and project it onto `rpm_package`."""
+    _declare_rpm_package(
+        package = package,
+        buildroot = buildroot,
+        meta = _parse_metadata(meta),
+        buildroot_deps = buildroot_deps,
     )
 
 def _cap(dep: str) -> str:
@@ -90,7 +119,7 @@ def _br_caps(br: str) -> list[str]:
             caps.append(_cap(tok))
     return caps
 
-def _sccs(edges: dict) -> dict:
+def _sccs(edges: dict[str, list[str]]) -> dict[str, int]:
     """Map nodes to strongly connected components using iterative Tarjan."""
     order = sorted(edges)
     steps = len(order)
@@ -140,14 +169,16 @@ def _sccs(edges: dict) -> dict:
                     low[parent] = min(low[parent], low[v])
     return comp
 
-def _buildroot_locks(packages: dict, buildroot_only_packages: list[str]) -> dict:
+def _buildroot_locks(
+        packages: dict[str, SrcpkgMetadata],
+        buildroot_only_packages: list[str]) -> dict[str, list[str]]:
     """Build an acyclic package-to-self-hosted-provider map.
 
     Cyclic edges fall back to upstream unless a buildroot-only package requires them.
     The retained graph must still be acyclic."""
     provides = {}  # capability -> {package: True}
     for name in sorted(packages):
-        for arch_bins in packages[name]["binaries"].values():
+        for arch_bins in packages[name].binaries.values():
             for binname in arch_bins:
                 bm = arch_bins[binname]
                 for cap in [binname] + bm["Provides"] + bm["Files"]:
@@ -184,14 +215,19 @@ def _buildroot_locks(packages: dict, buildroot_only_packages: list[str]) -> dict
     return locks
 
 # buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package_json per branch package)
-def rpm_branch(buildroot: str, packages: dict, buildroot_only_packages: list[str] = [], rpm_macros: dict[str, dict[str, str]] = {}) -> None:
+def rpm_branch(
+        buildroot: str,
+        packages: dict[str, PackageMetadata],
+        buildroot_only_packages: list[str] = [],
+        rpm_macros: dict[str, dict[str, str]] = {}) -> None:
     """Declare a branch and its self-hosting buildroot edges."""
-    locks = _buildroot_locks(packages, buildroot_only_packages)
-    for name in sorted(packages):
-        rpm_package_json(
+    metadata = {name: _parse_metadata(meta) for name, meta in packages.items()}
+    locks = _buildroot_locks(metadata, buildroot_only_packages)
+    for name in sorted(metadata):
+        _declare_rpm_package(
             package = name,
             buildroot = buildroot,
-            meta = packages[name],
+            meta = metadata[name],
             buildroot_deps = [":" + dep for dep in locks[name]],
             rpm_macros = rpm_macros.get(name, {}),
         )

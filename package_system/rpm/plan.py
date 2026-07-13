@@ -11,6 +11,7 @@ import json
 import sys
 from contextlib import ExitStack
 from pathlib import Path
+from typing import Literal, NotRequired, TypedDict
 
 import libdnf5
 import libdnf5.comps
@@ -20,6 +21,14 @@ import rootfs
 
 # A multilib package in a pinned-arch transaction indicates a bad solve.
 MULTILIB_ARCHES = ("i686", "i386", "i586")
+
+
+class TransactionPackage(TypedDict):
+    nevra: str
+    repo: str
+    pkgid: str
+    source: Literal["local", "repo"]
+    location: NotRequired[str]
 
 
 def load_base(
@@ -78,7 +87,7 @@ def plan(
     arch: str,
     seeds: list[Path],
     local_repos: set[str],
-) -> list[dict[str, str]]:
+) -> list[TransactionPackage]:
     base = load_base(repos, cachedir, installroot, arch, seeds)
 
     goal = libdnf5.base.Goal(base)
@@ -99,7 +108,7 @@ def plan(
         raise SystemExit("plan resolution failed:\n  " + "\n  ".join(problems))
 
     # Only inbound transaction items need downloading.
-    resolved = []
+    resolved: list[TransactionPackage] = []
     for tp in tx.get_transaction_packages():
         if not libdnf5.transaction.transaction_item_action_is_inbound(tp.get_action()):
             continue
@@ -113,12 +122,12 @@ def plan(
         pkgid = chk.get_checksum().lower()
         if len(pkgid) != 64 or any(character not in "0123456789abcdef" for character in pkgid):
             raise SystemExit(f"invalid sha256 pkgid for {pkg.get_nevra()}: {pkgid!r}")
-        entry = {
-            "nevra": pkg.get_nevra(),
-            "repo": rid,
-            "pkgid": pkgid,
-            "source": "local" if rid in local_repos else "repo",
-        }
+        entry = TransactionPackage(
+            nevra=pkg.get_nevra(),
+            repo=rid,
+            pkgid=pkgid,
+            source="local" if rid in local_repos else "repo",
+        )
         if rid in local_repos:
             entry["location"] = pkg.get_location()
         resolved.append(entry)

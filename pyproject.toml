@@ -5,7 +5,7 @@ target-version = "py314"
 line-length = 109
 # Exclude build outputs and the verbatim vendored sandbox.
 extend-exclude = ["buck-out", "vendor/mkosi/sandbox.py"]
-src = ["archive", "package_system/rpm", "rootfs", "vendor"]
+src = ["archive", "image", "image_format", "package_system/rpm", "rootfs", "vendor"]
 lint.select = [
     "E",    # pycodestyle
     "W",    # pycodestyle (trailing whitespace)
@@ -13,16 +13,17 @@ lint.select = [
     "I",    # isort
     "UP",   # pyupgrade
     "B",    # flake8-bugbear
+    "ANN",  # flake8-annotations
 ]
 
 [tool.ty.environment]
 python-version = "3.14"
 # Runtime trees use a flat import namespace; third-party imports come from `--python`.
-extra-paths = ["archive", "package_system/rpm", "rootfs", "vendor"]
+extra-paths = ["archive", "image", "image_format", "package_system/rpm", "rootfs", "vendor"]
 
 [tool.ty.src]
 # Match Ruff's exclusions.
 exclude = ["buck-out", "vendor/mkosi/sandbox.py"]
 
 [tool.ty.rules]
-unused-type-ignore-comment = "ignore"
+all = "error"

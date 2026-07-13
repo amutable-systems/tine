@@ -17,7 +17,7 @@ EngineInfo = provider(
 # buildifier: disable=function-docstring-args
 # buildifier: disable=function-docstring-return
 def chroot_run(
-        engine: Provider,
+        engine: EngineInfo,
         exe: Dependency | str | None = None,
         network: bool = False,
         relaxed: bool = False) -> RunInfo:

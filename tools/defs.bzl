@@ -21,7 +21,11 @@ _tool = rule(
 )
 
 # buildifier: disable=function-docstring-args
-def http_tool(name, platforms, path = None, visibility = None):
+def http_tool(
+        name: str,
+        platforms: dict[str, dict[str, str]],
+        path: str | None = None,
+        visibility: list[str] | None = None) -> None:
     """Pin a raw binary or archive member for each supported CPU."""
     urls = select({_CPU_SETTING[cpu]: [e["url"]] for cpu, e in platforms.items()})
     sha256 = select({_CPU_SETTING[cpu]: e["sha256"] for cpu, e in platforms.items()})

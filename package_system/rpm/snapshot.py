@@ -19,6 +19,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
+from typing import Protocol, TypedDict
 from urllib.parse import unquote, urlsplit
 
 _REPOMD_NS = "http://linux.duke.edu/metadata/repo"
@@ -27,6 +28,33 @@ _XML_NS = "http://www.w3.org/XML/1998/namespace"
 # Keep only streams needed for dependencies, path providers, and package groups.
 _BUILD_STREAMS = ("primary", "filelists")
 _OPTIONAL_STREAMS = ("group",)
+
+
+class PackageEntry(TypedDict):
+    location: str
+    size: int
+
+
+class RepositoryStream(TypedDict):
+    out: str
+    url: str
+    sha256: str
+    size: int
+
+
+class RepositorySnapshot(TypedDict):
+    packages: dict[str, PackageEntry]
+    repomd: str
+    streams: list[RepositoryStream]
+
+
+class RepositoryManifest(TypedDict):
+    id: str
+    baseurl: str
+
+
+class BinaryReader(Protocol):
+    def read(self, size: int = -1, /) -> bytes: ...
 
 
 def _relative_href(rid: str, what: str, href: str | None) -> str:
@@ -77,9 +105,9 @@ def _metadata_int(rid: str, what: str, value: str | None, *, minimum: int) -> in
     return number
 
 
-def _parse_primary(rid: str, source) -> dict[str, dict[str, str | int]]:
+def _parse_primary(rid: str, source: BinaryReader) -> dict[str, PackageEntry]:
     """Stream a primary XML file into the snapshot's compact pkgid-keyed package map."""
-    packages: dict[str, dict[str, str | int]] = {}
+    packages: dict[str, PackageEntry] = {}
     expected = None
     count = 0
     package_tag = f"{{{_PRIMARY_NS}}}package"
@@ -115,7 +143,7 @@ def _parse_primary(rid: str, source) -> dict[str, dict[str, str | int]]:
 
         package_size = size.get("package") if size is not None else None
         download_size = _metadata_int(rid, f"primary package {pkgid}", package_size, minimum=1)
-        entry: dict[str, str | int] = {"location": href, "size": download_size}
+        entry = PackageEntry(location=href, size=download_size)
         if previous := packages.get(pkgid):
             if previous["size"] != entry["size"]:
                 raise SystemExit(f"{rid}: duplicate pkgid {pkgid} has conflicting sizes")
@@ -129,7 +157,7 @@ def _parse_primary(rid: str, source) -> dict[str, dict[str, str | int]]:
     return packages
 
 
-def _snapshot_packages(rid: str, stream: dict[str, str | int]) -> dict[str, dict[str, str | int]]:
+def _snapshot_packages(rid: str, stream: RepositoryStream) -> dict[str, PackageEntry]:
     """Download, verify, decompress, and parse the pinned primary stream."""
     digest = hashlib.sha256()
     expected_size = int(stream["size"])
@@ -170,7 +198,7 @@ def _snapshot_packages(rid: str, stream: dict[str, str | int]) -> dict[str, dict
             return _parse_primary(rid, source)
 
 
-def snapshot_repodata(rid: str, baseurl: str) -> dict:
+def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
     """Pin one repo's build-time repodata; see the module docstring for the shape."""
     base = baseurl.rstrip("/") + "/"
     with urllib.request.urlopen(base + "repodata/repomd.xml") as f:
@@ -206,12 +234,12 @@ def snapshot_repodata(rid: str, baseurl: str) -> dict:
         if output in outputs:
             raise SystemExit(f"{rid}: repomd.xml streams share output basename {output!r}")
         outputs.add(output)
-        stream = {
-            "out": output,
-            "url": base + href,
-            "sha256": _sha256(rid, f"{stream_type} stream", chk.text),
-            "size": _metadata_int(rid, f"{stream_type} stream", size.text, minimum=1),
-        }
+        stream = RepositoryStream(
+            out=output,
+            url=base + href,
+            sha256=_sha256(rid, f"{stream_type} stream", chk.text),
+            size=_metadata_int(rid, f"{stream_type} stream", size.text, minimum=1),
+        )
         streams.append(stream)
         if data.get("type") == "primary":
             primary = stream
@@ -226,7 +254,7 @@ def snapshot_repodata(rid: str, baseurl: str) -> dict:
     return {"packages": packages, "repomd": filtered, "streams": streams}
 
 
-def _write_snapshot(path: Path, fragment: dict) -> None:
+def _write_snapshot(path: Path, fragment: RepositorySnapshot) -> None:
     """Atomically replace a snapshot with deterministic, reviewable UTF-8 JSON."""
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
@@ -282,7 +310,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = p.parse_args(argv)
 
-    entry = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    entry: RepositoryManifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
     print(f"{entry['id']}: snapshotting repodata…", file=sys.stderr)
     fragment = snapshot_repodata(entry["id"], entry["baseurl"])
     out = Path(args.out)

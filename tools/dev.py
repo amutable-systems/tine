@@ -11,9 +11,9 @@ def _bold(label: str) -> None:
     print(f"\033[1m{label}\033[0m", flush=True)
 
 
-def _run(cmd: list[str | Path], **kwargs) -> None:
+def _run(cmd: list[str | Path], *, stderr: int | None = None) -> None:
     # Tools print their own diagnostics; propagate failures without a traceback.
-    proc = subprocess.run(cmd, **kwargs)
+    proc = subprocess.run(cmd, stderr=stderr)
     if proc.returncode != 0:
         raise SystemExit(proc.returncode)
 
@@ -50,7 +50,16 @@ def _check(args: argparse.Namespace) -> None:
     _run([args.ruff, "check", "--no-cache", cell])
     _bold("ty")
     # Resolve third-party imports from the pinned engine runtime.
-    _run([args.ty, "check", "--project", cell, "--python", Path(args.engine) / "usr"])
+    _run(
+        [
+            args.ty,
+            "check",
+            "--project",
+            cell,
+            "--python",
+            Path(args.engine) / "usr",
+        ]
+    )
     _bold("buildifier")
     # Do not require repetitive argument and return sections in docstrings.
     _run(
