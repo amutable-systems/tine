@@ -2,7 +2,7 @@
 
 load("//engine:rules.bzl", "EngineInfo", "chroot_run")
 load(":manager.bzl", "PackageManagerInfo")
-load(":repository.bzl", "PackageRepositoryInfo", "select_package_artifacts")
+load(":repository.bzl", "LocalPackageRepositoryInfo", "PackageRepositoryInfo", "select_package_artifacts")
 load(":system.bzl", "PackageSystemInfo")
 
 _EXTRA_REPO_PRIORITY = 50
@@ -47,7 +47,7 @@ def resolve_packages(
         package_manager_dep: Dependency,
         install: list[str],
         stack: list[Artifact],
-        extra_packages: list[Artifact]) -> Artifact:
+        extra_packages: list[Artifact] = []) -> Artifact:
     """Plan an install and select its exact package artifacts."""
     package_manager = package_manager_dep[PackageManagerInfo]
     repositories = package_manager.repositories
@@ -76,8 +76,13 @@ def resolve_packages(
     for repository in repositories:
         repo = repository[PackageRepositoryInfo]
         plan.add("--repo", cmd_args(repo.dir, format = repo.id + "={}"))
-        plan.add("--priority", "{}={}".format(repo.id, package_manager.priorities[repo.id]))
-        plan.add("--cache", package_manager.solver_caches[repo.id])
+        priority = package_manager.priorities.get(repo.id, repo.priority)
+        plan.add("--priority", "{}={}".format(repo.id, priority))
+        if repository.get(LocalPackageRepositoryInfo) != None:
+            plan.add("--local-repo", repo.id)
+        cache = package_manager.solver_caches.get(repo.id)
+        if cache != None:
+            plan.add("--cache", cache)
     for lower in stack:
         plan.add("--lower", lower)
     for cap in install:

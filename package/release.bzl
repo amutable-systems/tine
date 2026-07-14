@@ -7,6 +7,7 @@ OsReleaseInfo = provider(
     fields = {
         "family": provider_field(str),
         "version": provider_field(str),
+        "package_sets": provider_field(dict[str, list[str]]),
         "package_system": provider_field(Dependency),
         "repository_universe": provider_field(Dependency),
     },
@@ -14,12 +15,18 @@ OsReleaseInfo = provider(
 
 def _os_release_impl(ctx: AnalysisContext) -> list[Provider]:
     universe = ctx.attrs.repository_universe[RepositoryUniverseInfo]
+    package_sets = {}
+    for name, packages in ctx.attrs.package_sets.items():
+        if not name or not packages:
+            fail("os_release: package set names and contents cannot be empty")
+        package_sets[name] = sorted(packages)
 
     return [
         DefaultInfo(),
         OsReleaseInfo(
             family = ctx.attrs.family,
             version = ctx.attrs.version,
+            package_sets = package_sets,
             package_system = universe.package_system,
             repository_universe = ctx.attrs.repository_universe,
         ),
@@ -30,6 +37,12 @@ _os_release = rule(
     attrs = {
         "family": attrs.string(doc = "distribution family, such as fedora or centos"),
         "version": attrs.string(doc = "release, suite, or rolling-channel name"),
+        "package_sets": attrs.dict(
+            attrs.string(),
+            attrs.list(attrs.string()),
+            default = {},
+            doc = "named native package sets supplied by release policy",
+        ),
         "repository_universe": attrs.dep(providers = [RepositoryUniverseInfo]),
     },
 )

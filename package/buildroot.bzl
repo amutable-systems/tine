@@ -12,7 +12,17 @@ BuildrootInfo = provider(
 )
 
 def _buildroot_impl(ctx: AnalysisContext) -> list[Provider]:
-    root = install_packages(ctx, ctx.attrs.package_manager, ctx.attrs.packages)
+    manager = ctx.attrs.package_manager[PackageManagerInfo]
+    packages = ctx.attrs.packages
+    if ctx.attrs.package_set != None:
+        if packages:
+            fail("buildroot: packages and package_set are mutually exclusive")
+        packages = manager.package_sets.get(ctx.attrs.package_set)
+        if packages == None:
+            fail("buildroot: unknown package set {!r}".format(ctx.attrs.package_set))
+    if not packages:
+        fail("buildroot: packages or package_set must be specified")
+    root = install_packages(ctx, ctx.attrs.package_manager, packages)
     return [
         DefaultInfo(default_output = root),
         BuildrootInfo(
@@ -25,7 +35,16 @@ _buildroot = rule(
     impl = _buildroot_impl,
     attrs = {
         "package_manager": attrs.dep(providers = [PackageManagerInfo]),
-        "packages": attrs.list(attrs.string(), doc = "packages installed in every package buildroot"),
+        "packages": attrs.list(
+            attrs.string(),
+            default = [],
+            doc = "explicit packages installed in every package buildroot",
+        ),
+        "package_set": attrs.option(
+            attrs.string(),
+            default = None,
+            doc = "release package set installed in every package buildroot",
+        ),
     },
 )
 

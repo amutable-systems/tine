@@ -132,6 +132,12 @@
     "source": "repo"
   },
   {
+    "nevra": "erofs-utils-1.9.2-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "ab9b69c2208a7f81a18b241379246deda119d28dcde96d6d899f9a4ceaf219e9",
+    "source": "repo"
+  },
+  {
     "nevra": "expat-2.8.1-1.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkgid": "269e4cc05b67d3116fbe325012bd0b09f89ae78504fea1b09e40a75292100000",
@@ -270,6 +276,12 @@
     "source": "repo"
   },
   {
+    "nevra": "intel-qpl-1.9.0-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "a476d1415aba2e3307c4f0b5140d3f85a33bd219ed50a23e7ad0799cb44dca58",
+    "source": "repo"
+  },
+  {
     "nevra": "ipxe-roms-qemu-1:2.0.0^20260614git13a83f4-3.fc45.noarch",
     "repo": "fedora.rawhide.repository",
     "pkgid": "184933a1a07fb8c66853cf51d5adb84de07440279f8e215aa3e1f59f86320b4e",
@@ -393,6 +405,12 @@
     "nevra": "libcurl-8.21.0-1.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkgid": "dbfd90f9c038e25c250152ff1708a1f07978fa1eaff3f7a0e29aee767be61105",
+    "source": "repo"
+  },
+  {
+    "nevra": "libdeflate-1.25-4.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "3a4960e8fc92de7d0595be2bd992bc0f9c1cf6be5c8f6b0e8829ce1aa91b448c",
     "source": "repo"
   },
   {
@@ -1050,6 +1068,12 @@
     "source": "repo"
   },
   {
+    "nevra": "veritysetup-2.8.7~rc2-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "344e493216afaf2b31a2f55a3f45ee0d148229cef361906f9d03fba6624567d4",
+    "source": "repo"
+  },
+  {
     "nevra": "xen-libs-4.21.1-8.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkgid": "3e68db43bdbebed4200700d3a2072fdd3a4a8793c037cd4224523df85072bb06",
@@ -1065,6 +1089,12 @@
     "nevra": "xkeyboard-config-2.47-1.fc45.noarch",
     "repo": "fedora.rawhide.repository",
     "pkgid": "9b77fc88772ece09fa563806abe700c0a2c7fcf3296fe6354a499a542b24309c",
+    "source": "repo"
+  },
+  {
+    "nevra": "xxhash-libs-0.8.3-4.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "1c8e57f259df3851e26d1802ab1715a2704c271578927053e8f34907d398868d",
     "source": "repo"
   },
   {

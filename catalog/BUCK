@@ -3,84 +3,27 @@
 # Repoint the `catalog` cell to replace these declarations. Repository snapshots are generated
 # as `<name>.json`; engine transaction files must start as `{}`. Refresh after adding either.
 load("@tine//engine:rules.bzl", "engine")
-load("@tine//package:buildroot.bzl", "buildroot")
-load("@tine//package:manager.bzl", "package_manager")
-load("@tine//package:release.bzl", "os_release")
-load("@tine//package:repository.bzl", "repository_universe")
-load("@tine//package_system/rpm:rules.bzl", "rpm_remote_repository")
+load("@tine//package_system/rpm:catalog.bzl", "centos_stream_release", "fedora_release")
 
-_RPM = "@tine//package_system/rpm:package_system"
-
-# Frozen GA tree; live updates can drop packages referenced by old pins.
-rpm_remote_repository(
-    name = "fedora.44.repository",
-    baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/",
-)
-
-# Rolling tree whose pinned URLs require frequent refreshes.
-rpm_remote_repository(
-    name = "fedora.rawhide.repository",
-    baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/",
-)
-
-# CentOS Stream pins also drift on refresh.
-rpm_remote_repository(
-    name = "centos.10-stream.baseos.repository",
-    baseurl = "https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/",
-)
-
-rpm_remote_repository(
-    name = "centos.10-stream.appstream.repository",
-    baseurl = "https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/",
-)
-
-rpm_remote_repository(
-    name = "centos.10-stream.crb.repository",
-    baseurl = "https://mirror.stream.centos.org/10-stream/CRB/x86_64/os/",
-)
-
-repository_universe(
-    name = "fedora.44.repositories",
-    package_system = _RPM,
-    required_repositories = [":fedora.44.repository"],
-)
-
-repository_universe(
-    name = "fedora.rawhide.repositories",
-    package_system = _RPM,
-    required_repositories = [":fedora.rawhide.repository"],
-)
-
-repository_universe(
-    name = "centos.10-stream.repositories",
-    package_system = _RPM,
-    required_repositories = [":centos.10-stream.baseos.repository"],
-    optional_repository_groups = {
-        "appstream": [":centos.10-stream.appstream.repository"],
-        "crb": [":centos.10-stream.crb.repository"],
-    },
-    default_repository_groups = ["appstream"],
-)
-
-os_release(
-    name = "fedora.44.release",
-    family = "fedora",
+fedora_release(
+    name = "fedora.44",
     version = "44",
-    repository_universe = ":fedora.44.repositories",
+    engine = ":fedora.rawhide.engine",
+    visibility = ["PUBLIC"],
 )
 
-os_release(
-    name = "fedora.rawhide.release",
-    family = "fedora",
+fedora_release(
+    name = "fedora.rawhide",
     version = "rawhide",
-    repository_universe = ":fedora.rawhide.repositories",
+    engine = ":fedora.rawhide.engine",
+    visibility = ["PUBLIC"],
 )
 
-os_release(
-    name = "centos.10-stream.release",
-    family = "centos",
+centos_stream_release(
+    name = "centos.10-stream",
     version = "10-stream",
-    repository_universe = ":centos.10-stream.repositories",
+    engine = ":fedora.rawhide.engine",
+    visibility = ["PUBLIC"],
 )
 
 # Shared RPM engine plus the image assembly and VM tools. These tools stay out of images.
@@ -98,6 +41,8 @@ engine(
         "systemd-ukify",
         "python3-pefile",
         "e2fsprogs",
+        "erofs-utils",
+        "veritysetup",
         "dosfstools",
         "mtools",
         "systemd-container",
@@ -106,73 +51,5 @@ engine(
         "openssh",
     ],
     release = ":fedora.rawhide.release",
-    visibility = ["PUBLIC"],
-)
-
-package_manager(
-    name = "fedora.44.package-manager",
-    release = ":fedora.44.release",
-    engine = ":fedora.rawhide.engine",
-    visibility = ["PUBLIC"],
-)
-
-# Every package manager uses the shared Rawhide engine while solving its own release repositories.
-package_manager(
-    name = "fedora.rawhide.package-manager",
-    release = ":fedora.rawhide.release",
-    engine = ":fedora.rawhide.engine",
-    visibility = ["PUBLIC"],
-)
-
-package_manager(
-    name = "centos.10-stream.package-manager",
-    release = ":centos.10-stream.release",
-    engine = ":fedora.rawhide.engine",
-    enable_repository_groups = ["crb"],
-    visibility = ["PUBLIC"],
-)
-
-buildroot(
-    name = "fedora.44.buildroot",
-    package_manager = ":fedora.44.package-manager",
-    packages = ["@buildsys-build"],
-    visibility = ["PUBLIC"],
-)
-
-buildroot(
-    name = "fedora.rawhide.buildroot",
-    package_manager = ":fedora.rawhide.package-manager",
-    packages = ["@buildsys-build"],
-    visibility = ["PUBLIC"],
-)
-
-# CentOS has no @buildsys-build group; this matches mock's chroot_setup_cmd.
-buildroot(
-    name = "centos.10-stream.buildroot",
-    package_manager = ":centos.10-stream.package-manager",
-    packages = [
-        "bash",
-        "bzip2",
-        "centos-stream-release",
-        "coreutils",
-        "cpio",
-        "diffutils",
-        "findutils",
-        "gawk",
-        "glibc-minimal-langpack",
-        "grep",
-        "gzip",
-        "info",
-        "patch",
-        "redhat-rpm-config",
-        "rpm-build",
-        "sed",
-        "shadow-utils",
-        "tar",
-        "unzip",
-        "util-linux",
-        "which",
-        "xz",
-    ],
     visibility = ["PUBLIC"],
 )

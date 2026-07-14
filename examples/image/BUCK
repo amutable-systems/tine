@@ -4,12 +4,19 @@ load("@tine//image:compose.bzl", "bootable_disk_image", "rootfs_archive")
 load("@tine//image:layer.bzl", "image", "image_layer", "install", "mkdir", "remove", "run")
 load("@tine//image:vm.bzl", "image_vm")
 load("@tine//image_format:archive.bzl", "image_archive")
+load("@tine//image_format:disk.bzl", "DEFAULT_USR_VERITY_PARTITIONS")
+load("@tine//package:manager.bzl", "package_manager")
+
+# Consumer-owned solve context; project repositories can be added here.
+package_manager(
+    name = "image.package-manager",
+    base = "catalog//:fedora.rawhide.package-manager",
+)
 
 # Minimal install + ordered-ops demo. `:demo` is the tar; `:demo.layer` is the logical image.
 rootfs_archive(
     name = "demo",
-    package_manager = "catalog//:fedora.rawhide.package-manager",
-    engine = "catalog//:fedora.rawhide.engine",
+    package_manager = ":image.package-manager",
     ops = [
         run(["/usr/bin/mkdir", "-p", "/buildroot/etc/tine"], chroot = False),
         install(["bash", "coreutils"]),
@@ -21,8 +28,7 @@ rootfs_archive(
 # Base-only image exercising a single-component delta stack.
 rootfs_archive(
     name = "base",
-    package_manager = "catalog//:fedora.rawhide.package-manager",
-    engine = "catalog//:fedora.rawhide.engine",
+    package_manager = ":image.package-manager",
     ops = [install(["bash"])],
     format = "tar",
 )
@@ -30,12 +36,11 @@ rootfs_archive(
 # Chained layers: the child adds one file and whiteouts another.
 image(
     name = "chained.image",
-    engine = "catalog//:fedora.rawhide.engine",
+    package_manager = ":image.package-manager",
 )
 
 image_layer(
     name = "chained-base",
-    package_manager = "catalog//:fedora.rawhide.package-manager",
     parent = ":chained.image",
     ops = [
         install(["bash", "coreutils"]),
@@ -62,12 +67,11 @@ image_archive(
 # Package installation and mutations sharing one physical delta.
 image(
     name = "layered-install.image",
-    engine = "catalog//:fedora.rawhide.engine",
+    package_manager = ":image.package-manager",
 )
 
 image_layer(
     name = "layered-install-base",
-    package_manager = "catalog//:fedora.rawhide.package-manager",
     parent = ":layered-install.image",
     ops = [
         install(["bash"]),
@@ -77,7 +81,6 @@ image_layer(
 
 image_layer(
     name = "layered-install.layer",
-    package_manager = "catalog//:fedora.rawhide.package-manager",
     parent = ":layered-install-base",
     ops = [
         install(["coreutils"]),
@@ -94,12 +97,11 @@ image_archive(
 # Round-trip an escaped name and an escaped whiteout through stored deltas.
 image(
     name = "escaped.image",
-    engine = "catalog//:fedora.rawhide.engine",
+    package_manager = ":image.package-manager",
 )
 
 image_layer(
     name = "escaped-base",
-    package_manager = "catalog//:fedora.rawhide.package-manager",
     parent = ":escaped.image",
     ops = [
         install(["bash", "coreutils"]),
@@ -123,8 +125,8 @@ image_archive(
 # Bootable GPT image; `buck run :boot-demo-vm` starts it with the engine's vmspawn stack.
 bootable_disk_image(
     name = "boot-demo",
-    package_manager = "catalog//:fedora.rawhide.package-manager",
-    engine = "catalog//:fedora.rawhide.engine",
+    package_manager = ":image.package-manager",
+    definitions = DEFAULT_USR_VERITY_PARTITIONS,
     ops = [
         install([
             "kernel-core",
@@ -153,12 +155,11 @@ image_vm(
 # Replacing a populated directory exercises the opaque-dir marker.
 image(
     name = "opaque.image",
-    engine = "catalog//:fedora.rawhide.engine",
+    package_manager = ":image.package-manager",
 )
 
 image_layer(
     name = "opaque-base",
-    package_manager = "catalog//:fedora.rawhide.package-manager",
     parent = ":opaque.image",
     ops = [
         install(["bash", "coreutils"]),

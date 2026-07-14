@@ -36,6 +36,11 @@ PackageRepositoryInfo = provider(
     },
 )
 
+LocalPackageRepositoryInfo = provider(
+    doc = "A repository whose packages are declared Buck artifacts.",
+    fields = {"package_dirs": provider_field(list[Artifact])},
+)
+
 RepositoryUniverseInfo = provider(
     doc = "A homogeneous repository universe and its default selection policy.",
     fields = {
@@ -194,7 +199,7 @@ def _select_package_artifacts_impl(
         actions: AnalysisActions,
         tx: ArtifactValue,
         output: OutputArtifact,
-        extra_packages: list[Artifact],
+        local_packages: dict[str, list[Artifact]],
         pools: dict[str, ResolvedDynamicValue],
         representation: str) -> list[Provider]:
     # Select already-owned artifacts; the transaction never creates new downloads.
@@ -238,6 +243,10 @@ def _select_package_artifacts_impl(
             if representation != "installable":
                 fail("local packages do not expose the {!r} representation".format(representation))
 
+            package_dirs = local_packages.get(rid)
+            if package_dirs == None:
+                fail("local transaction entry names non-local repository '{}': {}".format(rid, entry))
+
             # Local hrefs identify an input directory and filename.
             location = entry.get("location")
             if type(location) != type(""):
@@ -251,11 +260,11 @@ def _select_package_artifacts_impl(
             ):
                 fail("local transaction entry has invalid location: {}".format(entry))
             idx = int(parts[0])
-            if idx >= len(extra_packages):
+            if idx >= len(package_dirs):
                 fail("local transaction entry refers to missing package directory: {}".format(entry))
             output_name = _closure_name(parts[1], pkgid, ".rpm")
             if output_name not in artifacts:
-                artifacts[output_name] = extra_packages[idx].project(parts[1])
+                artifacts[output_name] = package_dirs[idx].project(parts[1])
             continue
 
         if rid not in by_repo or pkgid not in by_repo[rid]:
@@ -285,7 +294,7 @@ _select_package_artifacts_action = dynamic_actions(
     attrs = {
         "tx": dynattrs.artifact_value(),
         "output": dynattrs.output(),
-        "extra_packages": dynattrs.value(list[Artifact]),
+        "local_packages": dynattrs.value(dict[str, list[Artifact]]),
         "pools": dynattrs.dict(str, dynattrs.dynamic_value()),
         "representation": dynattrs.value(str),
     },
@@ -305,10 +314,17 @@ def select_package_artifacts(
         for repository in repositories
         if repository.get(PackagePoolInfo) != None
     }
+    local_packages = {
+        repository[PackageRepositoryInfo].id: repository[LocalPackageRepositoryInfo].package_dirs
+        for repository in repositories
+        if repository.get(LocalPackageRepositoryInfo) != None
+    }
+    if extra_packages:
+        local_packages["extra"] = extra_packages
     ctx.actions.dynamic_output_new(_select_package_artifacts_action(
         tx = tx,
         output = output.as_output(),
-        extra_packages = extra_packages,
+        local_packages = local_packages,
         pools = pools,
         representation = representation,
     ))

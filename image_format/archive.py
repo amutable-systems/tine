@@ -13,12 +13,10 @@ import tarfile
 from collections.abc import Callable
 from pathlib import Path
 
-import cpio
 import finalize
-import rootfs
 
-# Formats that cannot defer image-shipped tmpfiles configuration to first boot.
-FIRST_BOOTLESS = frozenset({"tar", "directory"})
+import cpio
+import rootfs
 
 
 def _xattrs(path: Path) -> dict[str, str]:
@@ -95,14 +93,14 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
+    out = Path(args.out).resolve()
     with rootfs.rootfs("/buildroot", lowers=args.lower) as tree:
         finalize.apply_tmpfiles(
             tree,
             args.tmpfiles,
-            include_image_config=args.format in FIRST_BOOTLESS,
             program="archive",
         )
-        _archive(tree, Path(args.out).resolve(), args.format, epoch)
+        _archive(tree, out, args.format, epoch)
     print(f"archive: wrote {args.format} (epoch={epoch}) -> {args.out}", file=sys.stderr)
 
 

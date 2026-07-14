@@ -18,8 +18,8 @@ python_bootstrap_binary(
 )
 
 python_bootstrap_binary(
-    name = "boot",
-    main = "boot.py",
+    name = "boot-artifacts",
+    main = "boot_artifacts.py",
     deps = ["//rootfs:rootfs"],
     visibility = ["PUBLIC"],
 )

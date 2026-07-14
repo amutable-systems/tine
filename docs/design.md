@@ -41,15 +41,19 @@ tine//catalog/            default repositories, locks, releases, package manager
 tine//tools/              pinned development and catalog-refresh commands
 ```
 
-The `catalog` cell is consumer-overridable. Repository URLs, OS releases, engine package lists, package
-managers, and buildroots are data owned by the active catalog rather than hard-coded in the reusable rules.
-The `buildroots` cell maps importer-generated names such as `buildroots//fedora:rawhide` to catalog targets.
+The `catalog` cell is consumer-overridable. The active catalog owns its release selection, mirrors, engine
+choice, repository additions, and policy overrides. Reusable RPM-family macros provide Tine-maintained
+repository layouts and package policy, while the low-level rules remain available for unfamiliar or heavily
+customized distributions. The `buildroots` cell maps importer-generated names such as
+`buildroots//fedora:rawhide` to catalog targets.
 
 Catalog targets use `<family>.<release>[.<component>].<role>` names. A rolling channel such as Rawhide
 occupies the release segment. Singular `.repository` targets own remotes, plural `.repositories` targets
 define universes, and release, engine, package-manager, and buildroot targets use their corresponding
-suffixes. Declaration macros require the suffix appropriate to their role. An engine's identity describes
-its provenance rather than every release that may consume it.
+suffixes. Low-level declaration macros require the suffix appropriate to their role. The family catalog
+macros instead take a `<family>.<release>` prefix and declare the complete repository, universe, release,
+package-manager, and buildroot bundle. An engine's identity describes its provenance rather than every
+release that may consume it.
 
 The package source tree at `distribution/` is a separate Git repository. It is intentionally not part of
 the reusable `tine` cell: package policy and imported source data change independently of build machinery.
@@ -79,25 +83,32 @@ The providers have deliberately narrow roles:
   install, `createrepo`, plan, and build. RPM is the only implementation today.
 - `PackageRepositoryInfo` represents one repository and binds it to a package system. A repository is not
   inherently owned by an OS release.
+- `LocalPackageRepositoryInfo` identifies a repository assembled from package artifacts in the build graph,
+  allowing selection to return those artifacts after solving against generated repodata.
 - `RepositoryUniverseInfo` defines one homogeneous solve universe: required repositories, named optional
   groups, and groups enabled by default. Selection preserves declaration order, de-duplicates identical
   targets, and rejects conflicting repository IDs.
-- `OsReleaseInfo` associates OS identity with one repository universe and supplies the base of an engine.
-- `PackageManagerInfo` selects the exact repositories used for a solve, applies priority overrides, chooses
-  an engine, and owns reusable solver caches.
-- `BuildrootInfo` materializes the shared base root installed by a package manager.
+- `OsReleaseInfo` associates OS identity and named native package sets with one repository universe, and
+  supplies the base of an engine.
+- `PackageManagerInfo` is an immutable solve environment: it selects exact repositories, applies priority
+  overrides, chooses an engine, carries its release's package sets, and owns reusable solver caches. A
+  derived manager inherits this state and can add repositories without repeating release policy.
+- `BuildrootInfo` materializes the shared base root from explicit packages or a release package set.
 - `EngineInfo` contains a runnable root filesystem, its base release, and the sandbox used to enter it. Its
   base establishes provenance; the engine may serve compatible package managers for other releases.
 
 This split is visible in the default catalog. Fedora 44, Rawhide, and CentOS Stream 10 are separate OS
 releases. Their package managers solve against their own repositories while sharing the Rawhide engine.
 CentOS models BaseOS as required, AppStream as a default repository group, and CRB as an optional group
-enabled by the current package manager.
+enabled by the current package manager. `fedora_release()` and `centos_stream_release()` declare these
+standard target bundles and package sets while accepting overrides for mirrors, repositories, priorities,
+and package policy. Their buildroots resolve the release's `buildroot` package set rather than duplicating
+native package names in the buildroot declaration.
 
-An image bootstrap target fixes one engine for the lifetime of the logical image. Layers name a package
-manager only when they install native packages, and that manager must use the same engine. Mutation,
-packing, UKI, disk, and VM rules inherit the engine through their image input. A package target names a
-buildroot because its shared base root, not OS identity alone, is its relevant input.
+An image bootstrap target normally fixes one package manager for the lifetime of the logical image and
+derives its engine from that manager. Every layer and terminal output inherits both. Engine-only images are
+also supported, but cannot install native packages. A package target names a buildroot because its shared
+base root, not OS identity alone, is its relevant input.
 
 ### Catalog pinning and refresh
 
@@ -206,12 +217,12 @@ pinned userspace. `image_vm` is the only current consumer; build actions never u
 
 Native package installation has three phases shared by buildroots and images:
 
-1. **Plan.** Run `PackageSystemInfo.plan` against the package manager's exact repositories, priorities, and
-   solver cache. Weak dependencies are disabled. Existing lower layers are mounted read-only so installed
-   packages can satisfy an incremental request.
+1. **Plan.** Run `PackageSystemInfo.plan` against the effective repository selection, priorities, and solver
+   cache. Weak dependencies are disabled. Existing lower layers are mounted read-only so installed packages
+   can satisfy an incremental request.
 2. **Select.** Use the resulting transaction to select raw RPMs from repository pools. If local package
-   outputs are present, an anonymous target runs `createrepo`, adds that repository at a higher priority,
-   and lets the same libdnf5 solve choose between local and upstream packages.
+   outputs are present while building packages, an anonymous target runs `createrepo`, adds that repository
+   at a higher priority, and lets the same libdnf5 solve choose between local and upstream packages.
 3. **Install.** Run `PackageSystemInfo.install` over the exact RPM directory. `install_packages()` owns a
    fresh root or incremental buildroot delta. An image layer instead invokes the same installer against its
    already-mounted root so package and filesystem operations have one output owner.
@@ -279,32 +290,73 @@ zero rather than reconstructed. SELinux labels are not currently produced.
 
 ### Image construction
 
-The `image` rule bootstraps an empty logical image and fixes its engine. `ImageInfo` carries that engine, an
-ordered stack of filesystem deltas, and deferred tmpfiles snippets. Every derived image and terminal output
-inherits the engine, so one composition cannot silently switch tooling environments between stages.
+The `image` rule bootstraps an empty logical image and normally fixes its package manager. `ImageInfo`
+carries that manager, its engine, an ordered stack of filesystem deltas, and deferred tmpfiles snippets.
+Every derived image inherits this configuration, so one composition cannot silently switch package sources
+or tooling environments between stages. An engine may be supplied directly for an image that never
+installs native packages.
 
 `image_layer` applies one ordered operation sequence in one action and persists exactly one overlay upper.
-It may contain one `install` operation at any position; the selected package-system installer operates on
-the already-mounted root, while `run`, `mkdir`, `symlink`, and `remove` mutate the same root. `run` executes
-the image's own tools in a chroot by default; `chroot = False` instead executes engine tooling with the image
-available at `/buildroot`. Package installation always runs outside the chroot. Installing packages requires
-a package manager backed by the image's engine; analysis rejects a mismatched manager.
+It may contain one `install` or `install_package_set` operation at any position; the selected package-system
+installer operates on the already-mounted root, while `run`, `copy`, `mkdir`, `symlink`, and `remove` mutate
+the same root. A package-set operation resolves its symbolic name through the parent image's package manager
+during analysis, then becomes an ordinary install operation. `copy` introduces a declared Buck artifact at
+an absolute image path, preserving its position relative to the other operations. `run` executes the image's
+own tools in a chroot by default; `chroot = False` instead executes engine tooling with the image available
+at `/buildroot`. Its `env` argument overlays variables on the engine or image environment for that command.
+Package installation and copying always run outside the chroot. Operation lists are recursively flattened,
+allowing reusable helpers to return ordered groups of operations.
+
+Every `image_layer` exposes a `directory` subtarget which lazily materializes the complete logical image at
+that point. The layer's default output remains its persisted delta, and downstream image rules continue to
+consume `ImageInfo` rather than the directory artifact.
 
 Package installation and image tooling remain separate concerns:
 
-- `package_manager` determines what native packages can be resolved;
-- the bootstrap `engine` supplies every layer driver and terminal image tool;
-- `extra_packages` allows a direct layer rule to prefer local RPM output directories.
+- the bootstrap `package_manager` determines what native packages can be resolved;
+- that manager's `engine` supplies every layer driver and terminal image tool;
+- `local_repository` publishes package output directories with deterministic repodata;
+- a derived package manager adds such repositories to a base manager's configured selection.
+
+For example, a project can expose locally built packages without adding them to its OS release:
+
+```python
+local_repository(
+    name = "project.repository",
+    package_manager = "catalog//:fedora.rawhide.package-manager",
+    packages = ["//packages:project"],
+)
+
+package_manager(
+    name = "project.package-manager",
+    base = "catalog//:fedora.rawhide.package-manager",
+    additional_repositories = [":project.repository"],
+)
+
+image(
+    name = "project.image",
+    package_manager = ":project.package-manager",
+)
+
+image_layer(
+    name = "project.layer",
+    parent = ":project.image",
+    ops = [install(["project"])],
+)
+```
 
 Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
 needed:
 
-- `image_archive` writes deterministic tar or uncompressed newc cpio archives;
-- `image_directory` materializes a Buck directory artifact;
-- `uki` builds a standalone unified kernel image from a logical image and one or more initrds;
-- `boot_layer` installs standalone boot artifacts and optionally systemd-boot as another persisted delta;
-- `image_disk` renders an ordered list of Starlark partition objects and uses offline `systemd-repart` to
-  create the GPT image; its default layout contains an ESP and discoverable root partition;
+- `image_archive` writes deterministic tar or uncompressed newc cpio archives and provides
+  `CpioArchiveInfo` for the latter;
+- `image_directory` materializes a Buck directory artifact and provides `DirectoryImageInfo`;
+- `uki` builds versioned unified kernel images for every installed kernel using one or more
+  `CpioArchiveInfo` dependencies;
+- `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a GPT
+  disk with `DiskImageInfo`, independent partition artifacts with `split = True`, or both;
+- `bootable` selects a kernel and matching initrd from a logical image and provides `BootableImageInfo`;
+- `image_result` aggregates independent facets of the same logical image without creating another artifact;
 - `image_vm` runs the raw image ephemerally with the engine's `systemd-vmspawn`, QEMU, and OVMF stack.
 
 `rootfs_archive()` is the convenience composition for building a single layer from operations and emitting
@@ -312,32 +364,99 @@ an archive. `image_archive` remains the terminal rule for archiving an existing 
 
 Terminal rules leave the rpmdb and other package state intact. Image cleanup is an explicit, configurable
 layer so output formats do not silently alter image contents. Terminal rules apply deferred tmpfiles lines
-with `systemd-tmpfiles --root`; a missing tool is an error whenever finalization is needed. These lines can
-create paths and restore modes or xattrs, but ownership is deliberately unsupported: all archive entries use
-uid/gid zero, matching the single-user namespace used for assembly.
+with `systemd-tmpfiles --root`; a missing tool is an error whenever finalization is needed. The directives
+run against a disposable overlay upper and can create paths or restore modes and xattrs. Image-shipped
+tmpfiles configuration is not applied implicitly; enabling it will be an explicit output option once its
+single-UID/GID behavior is defined. Ownership and named ACL entries are deliberately unsupported: all
+archive entries use uid/gid zero.
 
 Tar uses deterministic PAX archives and stores Linux xattrs using `SCHILY.xattr.*` headers. The newc cpio
 format has no general xattr representation. Tar/cpio entries are ordered and mtimes are clamped to the fixed
 assembly epoch. The cpio reader/writer aligns regular-file payloads and uses `copy_file_range` when possible
 so large archives can share extents on reflink-capable filesystems.
 
+`repart` deliberately distinguishes `definitions` from `partitions`. Definitions describe new partitions
+to populate directly from `ImageInfo`: repart mounts the delta stack with a disposable overlay upper instead
+of first copying a directory artifact. Partition inputs are `RepartInfo` outputs from an earlier split call;
+their blocks are copied into the new disk with their resolved type and UUID preserved. Calls emit a disk by
+default. `split = True` additionally exposes each newly defined partition with normalized metadata alongside
+its block artifact; `disk = False` makes such a call partition-only. No partial disk is passed between
+actions. `DirectoryImageInfo` is an independent terminal view and is never an input to repart.
+
+Partition layouts are always explicit inputs; neither `repart` nor `bootable_disk_image` chooses one
+implicitly. `DEFAULT_ROOT_PARTITIONS`, `DEFAULT_USR_VERITY_PARTITIONS`, and
+`DEFAULT_SIGNED_USR_VERITY_PARTITIONS` provide reusable conventional layouts without hiding the choice at
+the call site.
+
+Verity data, hash, and optional signature partitions are produced together in the split action. The root or
+usr hash is an artifact because its value is known only after execution; a separate provider lets `uki`
+consume it without learning about the partition layout. One split call may produce at most one such hash.
+This artifact boundary also ensures the final disk contains exactly the partition bytes whose hash was
+embedded in the UKI. The hash is also available as the split target's `roothash` subtarget. Signature
+partitions require an explicitly declared key and certificate.
+
 `bootable_disk_image()` composes:
 
 ```text
 base initrd package image (cpio)
               ├──────┐
-root filesystem layer ──> standalone UKI ──> boot-artifact/systemd-boot layer ──> raw GPT disk
+root filesystem layer ──> split /usr + verity ──> hash ──> versioned UKIs
+                                │                            │
+                                └──────────────┬─────────────┘
+                                               v
+                                      ESP layer
+                                      │          │          │
+                                      │          │          └─> directory facet
+                                      │          └─> bootable facet
+                                      └─> split ESP + system partitions ─> disk facet
 ```
 
-The base initrd is a separate package image with `/init` pointing to systemd and an
-`/etc/initrd-release` marker. `uki.py` discovers or selects the installed kernel, appends a kernel-modules
-cpio, and runs `ukify`. The generic boot layer can place UKIs, device trees, bootloader entries, and future
-boot artifacts before installing the selected bootloader. The default disk derives a stable UUID seed from
-its target identity and partition definitions; callers can override it explicitly. VM runners are declared
-separately from disk composition. Runtime policy is passed to `image_vm` rather than baked into the image.
+By default, the base initrd is a separate package image with `/init` pointing to systemd and
+`/etc/initrd-release` pointing to `/etc/os-release`. Callers can instead supply any `CpioArchiveInfo` target;
+`bootable_disk_image` then skips the default initrd image entirely. Otherwise the default layer installs the
+release's `initrd` package set, so family catalog policy supplies concrete native package names. `uki.py`
+discovers every installed kernel, appends its kernel-modules cpio, and runs `ukify`. UKIs use the configured
+entry prefix and kernel release as their filenames. The ESP layer copies the UKI directory into `EFI/Linux`
+and includes the operations returned by `install_systemd_boot()`. Those create the ESP path, run the engine's
+`bootctl` with its paths in the command environment, and remove the random seed. The final repart action
+creates and exports the ESP while copying the previously split system partitions into the same disk. The
+default system partition is a compressed EROFS `/usr` protected by dm-verity; the generated `usrhash=` is
+embedded in every UKI. The same copy operation can place device trees, bootloader entries, and future
+standalone artifacts.
+
+Kernel command lines remain lists of arguments through the Starlark API and driver invocation. The UKI
+driver appends any generated verity hash and joins the arguments only when writing ukify's command-line file.
+
+Bootability and output format are independent capabilities. A final target may return any combination of
+`BootableImageInfo`, `DiskImageInfo`, and `DirectoryImageInfo`, while continuing to return the underlying
+`ImageInfo`. Each facet records its source dependency, and `image_result` rejects facets derived from
+different logical images. One facet supplies the target's default output; nested subtargets namespace all
+other views:
+
+```text
+//examples/image:boot-demo[bootable][uki]
+//examples/image:boot-demo[bootable][kernel]
+//examples/image:boot-demo[bootable][initrd]
+//examples/image:boot-demo[disk][roothash]
+//examples/image:boot-demo[disk][partitions][usr]
+//examples/image:boot-demo[disk][partitions][esp]
+//examples/image:boot-demo[directory]
+```
+
+The bootable facet extracts semantic artifacts lazily from the completed logical image rather than
+forwarding whichever intermediate target created them. A shared selection manifest chooses the newest
+valid UKI by its embedded kernel release and extracts its `.linux` and `.initrd` sections. Without a UKI, it
+chooses the newest standalone kernel. In either case, bootability requires an initrd matching that exact
+release. A UKI remains an optional extraction: requesting it fails if the selected image has only standalone
+artifacts. Requesting a bootable or directory facet does not assemble the disk, and repart never
+materializes the directory facet.
+
+Repart derives stable UUID seeds from target identity and logical configuration; callers can override them
+explicitly. VM runners are declared separately from disk composition. Runtime policy is passed to `image_vm`
+rather than baked into the image.
 Its `autologin` option provisions a locked root password and runtime `login.noauth`; arbitrary non-secret
-system credentials configure settings such as first-boot locale and timezone. The smoke image uses
-`console=hvc0 rw selinux=0`; SELinux is disabled because the build does not yet produce filesystem labels.
+system credentials configure settings such as first-boot locale and timezone. The smoke image uses a tmpfs
+root with `mount.usr=dissect`; SELinux is disabled because the build does not yet produce filesystem labels.
 
 The image build tools live in the engine and are not installed into the image merely to build it. Chrooted
 `run` operations intentionally use the image's own binaries; non-chrooted runs explicitly use engine tools
@@ -402,7 +521,8 @@ The current vocabulary follows the actual responsibilities:
 - the package system defines operations;
 - the repository universe defines membership and normal enablement policy;
 - the OS release defines identity, selects a repository universe, and may provide an engine's base;
-- the package manager defines one exact solve universe and engine;
+- the package manager defines one exact solve universe and engine; derived managers compose additional
+  repositories without changing their inherited release or engine;
 - the buildroot materializes the shared base packages.
 
 This is also why a release is not called a distribution target: Fedora 44 and CentOS Stream 10 are release
@@ -420,9 +540,9 @@ content type.
 
 An engine is a tools root with a concrete OS userspace, so its base release records where its packages and
 identity came from. That does not make it part of a package manager's target OS identity: the Rawhide engine
-can still operate on Fedora 44 and CentOS Stream. Keeping the engine dependency explicit at an image's
-bootstrap makes reuse visible and content-keyed, avoids duplicating compatible tooling roots, and lets
-images choose richer tools without shipping those tools.
+can still operate on Fedora 44 and CentOS Stream. An image normally obtains this explicit engine dependency
+through its package manager, making reuse visible and content-keyed while avoiding duplicated compatible
+tooling roots. Engine-only images remain available when no native package resolution is needed.
 
 ### Use one sandbox boundary and let drivers mount target roots
 
@@ -467,14 +587,17 @@ Representative smoke builds are:
 tine/tools/buck build root//distribution/packages/fedora/rawhide:zlib-ng
 tine/tools/buck build root//examples/image:demo
 tine/tools/buck build root//examples/image:layered-install
+tine/tools/buck build 'root//examples/image:layered-install.layer[directory]'
 tine/tools/buck build root//examples/image:boot-demo
+tine/tools/buck build 'root//examples/image:boot-demo[bootable][uki]'
+tine/tools/buck build 'root//examples/image:boot-demo[disk][partitions][usr]'
 ```
 
 The first validates package import, package-manager selection, buildroot assembly, and RPM collection.
 Packages with `buildroot_deps` additionally exercise local-package preference. The image targets validate
-package installation and commands sharing one delta, incremental layering, archive packing, standalone UKI
-creation, boot-layer assembly, and disk composition. Running `boot-demo-vm` validates the interactive VM
-runner; ephemeral mode preserves the Buck disk artifact.
+package installation and commands sharing one delta, incremental layering, archive packing, versioned UKI
+creation, semantic boot-artifact extraction, ESP-layer assembly, and disk composition. Running
+`boot-demo-vm` validates the interactive VM runner; ephemeral mode preserves the Buck disk artifact.
 
 ## Current limitations
 
@@ -496,7 +619,10 @@ These are properties of the implementation today, not merely ideas for future op
   not survive as Buck directory metadata; deferred tmpfiles can restore xattrs at terminal assembly, and tar
   preserves them in PAX headers, but newc cpio cannot represent general xattrs.
 - Directory image output cannot represent backslashes in names; archive outputs should be used instead.
-- Bootable images currently disable SELinux and do not use dm-verity or Secure Boot signing.
+- The default `/usr`-only disk has a volatile root. Package and authored state outside `/usr` is not yet
+  translated into factory defaults or another persistent partition.
+- Bootable images currently disable SELinux. Verity signing accepts declared development key material, but
+  production signing boundaries and Secure Boot signing are not implemented.
 - Remote execution, Barrage integration, release publishing, and systematic reproducibility audits are not
   wired into CI.
 
@@ -548,9 +674,9 @@ Near-term image gaps are:
 
 - offline SELinux labeling instead of `selinux=0`;
 - deterministic ext4/FAT byte-level validation and any required normalization;
-- dm-verity and measured/Secure Boot integration;
+- measured boot, production verity signing, and Secure Boot integration;
 - OCI, sysext/confext, ESP, and other terminal formats as real consumers require them;
-- a richer but still ordered operation vocabulary for copying general artifacts and setting metadata;
+- richer ordered operations for setting file metadata directly;
 - deciding whether package installation and image tooling eventually need distinct compatible engines.
 
 The layer model should remain ordered operations captured as deltas. A provides/requires feature solver is

@@ -205,6 +205,10 @@ def rootfs(
             resolved = [Path(lo).resolve() for lo in lowers]
             scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="rootfs.")))
             components = _reconstruct(resolved, scratch)
+            if not components:
+                empty = scratch / "empty"
+                empty.mkdir()
+                components.append(empty)
             if upperdir is not None:
                 if workdir is None:
                     raise ValueError("rootfs(upperdir=...) needs a matching workdir=")

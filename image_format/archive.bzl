@@ -1,29 +1,43 @@
 """Archive and materialized-directory image outputs."""
 
-load("//engine:rules.bzl", "EngineInfo", "chroot_run")
 load("//image:layer.bzl", "ImageInfo")
+load(":actions.bzl", "archive_action")
 
 _EXT = {"tar": "tar", "cpio": "cpio"}
 
-def _archive_action(ctx: AnalysisContext, format: str, out: OutputArtifact) -> None:
-    image = ctx.attrs.image[ImageInfo]
-    cmd = cmd_args(
-        chroot_run(engine = image.engine[EngineInfo], exe = ctx.attrs._driver),
-        "--out",
-        out,
-        "--format",
-        format,
-    )
-    for lower in image.layers:
-        cmd.add("--lower", lower)
-    for snippet in image.tmpfiles:
-        cmd.add("--tmpfiles", snippet)
-    ctx.actions.run(cmd, category = "image_" + format)
+DirectoryImageInfo = provider(
+    doc = "A materialized directory view of a logical image.",
+    fields = {
+        "engine": provider_field(Dependency),
+        "rootfs": provider_field(Artifact),
+        "source": provider_field(Dependency),
+    },
+)
+
+CpioArchiveInfo = provider(
+    doc = "An uncompressed newc CPIO archive.",
+    fields = {
+        "archive": provider_field(Artifact),
+        "source": provider_field(Dependency),
+    },
+)
 
 def _image_archive_impl(ctx: AnalysisContext) -> list[Provider]:
+    image = ctx.attrs.image[ImageInfo]
     out = ctx.actions.declare_output("image." + _EXT[ctx.attrs.format])
-    _archive_action(ctx, ctx.attrs.format, out.as_output())
-    return [DefaultInfo(default_output = out)]
+    archive_action(
+        ctx,
+        image.engine,
+        image.layers,
+        image.tmpfiles,
+        ctx.attrs._driver,
+        ctx.attrs.format,
+        out.as_output(),
+    )
+    providers = [DefaultInfo(default_output = out)]
+    if ctx.attrs.format == "cpio":
+        providers.append(CpioArchiveInfo(archive = out, source = ctx.attrs.image))
+    return providers
 
 image_archive = rule(
     impl = _image_archive_impl,
@@ -35,9 +49,21 @@ image_archive = rule(
 )
 
 def _image_directory_impl(ctx: AnalysisContext) -> list[Provider]:
+    image = ctx.attrs.image[ImageInfo]
     out = ctx.actions.declare_output("image.rootfs", dir = True)
-    _archive_action(ctx, "directory", out.as_output())
-    return [DefaultInfo(default_output = out)]
+    archive_action(
+        ctx,
+        image.engine,
+        image.layers,
+        image.tmpfiles,
+        ctx.attrs._driver,
+        "directory",
+        out.as_output(),
+    )
+    return [
+        DefaultInfo(default_output = out),
+        DirectoryImageInfo(engine = image.engine, rootfs = out, source = ctx.attrs.image),
+    ]
 
 image_directory = rule(
     impl = _image_directory_impl,

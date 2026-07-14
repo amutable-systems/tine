@@ -1,31 +1,37 @@
 """Convenience macros for common image compositions."""
 
-load("//image_format:archive.bzl", "image_archive")
+load("//image_format:archive.bzl", "image_archive", "image_directory")
 load(
     "//image_format:disk.bzl",
     "Partition",  # @unused Used as a type.
-    "image_disk",
+    "repart",
 )
-load(":boot.bzl", "boot_layer")
-load(":layer.bzl", "image", "image_layer", "install", "run", "symlink")
-load(":uki.bzl", "uki")
+load(":boot.bzl", "bootable", "install_systemd_boot", "uki")
+load(
+    ":layer.bzl",
+    "LayerOperationTree",  # @unused Used as a type.
+    "copy",
+    "image",
+    "image_layer",
+    "install_package_set",
+    "symlink",
+)
+load(":result.bzl", "image_result")
 
 def rootfs_archive(
         name: str,
         package_manager: str,
-        engine: str,
-        ops: list[str],
+        ops: list[LayerOperationTree],
         tmpfiles: list[str] = [],
         format: str = "tar",
         visibility: list[str] | None = None) -> None:
     """Build a root filesystem from ordered operations and archive it."""
     image(
         name = name + ".image",
-        engine = engine,
+        package_manager = package_manager,
     )
     image_layer(
         name = name + ".layer",
-        package_manager = package_manager,
         parent = ":" + name + ".image",
         ops = ops,
         tmpfiles = tmpfiles,
@@ -38,70 +44,108 @@ def rootfs_archive(
     )
 
 # buildifier: disable=function-docstring-args
-def bootable_disk_image(
-        name: str,
-        package_manager: str,
-        engine: str,
-        ops: list[str],
-        tmpfiles: list[str] = [],
-        initrd_ops: list[str] | None = None,
-        cmdline: str = "console=hvc0 rw selinux=0",
-        entry: str = "linux",
-        boot_files: dict[str, str] = {},
-        arch: str = "x86_64",
-        kernel_version: str | None = None,
-        partitions: list[Partition] | None = None,
-        disk_seed: str | None = None,
-        visibility: list[str] | None = None) -> None:
-    """Build a UKI-based, systemd-boot GPT disk image."""
-    image(
-        name = name + ".image",
-        engine = engine,
-    )
-    if initrd_ops == None:
-        initrd_ops = [
-            install(["systemd", "systemd-udev", "kmod", "bash"]),
-            symlink("/usr/lib/systemd/systemd", "/init"),
-            run(["/usr/bin/bash", "-c", ": > /etc/initrd-release"]),
-        ]
+def _default_initrd(name: str, image: str) -> str:
     image_layer(
         name = name + ".initrd.layer",
-        package_manager = package_manager,
-        parent = ":" + name + ".image",
-        ops = initrd_ops,
+        parent = image,
+        ops = [
+            install_package_set("initrd"),
+            symlink("/usr/lib/systemd/systemd", "/init"),
+            symlink("/etc/os-release", "/etc/initrd-release"),
+        ],
     )
     image_archive(
         name = name + ".initrd",
         image = ":" + name + ".initrd.layer",
         format = "cpio",
     )
+    return ":" + name + ".initrd"
+
+# buildifier: disable=function-docstring-args
+def bootable_disk_image(
+        name: str,
+        package_manager: str,
+        ops: list[LayerOperationTree],
+        definitions: list[Partition],
+        tmpfiles: list[str] = [],
+        initrd: str | None = None,
+        cmdline: list[str] = ["root=tmpfs", "mount.usr=dissect", "rw"],
+        entry: str = "linux",
+        arch: str = "x86_64",
+        disk_seed: str | None = None,
+        verity_private_key: str | None = None,
+        verity_certificate: str | None = None,
+        visibility: list[str] | None = None) -> None:
+    """Build a UKI-based, systemd-boot GPT disk image."""
+    image(
+        name = name + ".image",
+        package_manager = package_manager,
+    )
+    if initrd == None:
+        initrd = _default_initrd(name, ":" + name + ".image")
     image_layer(
         name = name + ".layer",
-        package_manager = package_manager,
         parent = ":" + name + ".image",
         ops = ops,
         tmpfiles = tmpfiles,
     )
+    system_definitions = [definition for definition in definitions if definition.type != "esp"]
+    boot_definitions = [definition for definition in definitions if definition.type == "esp"]
+    if not system_definitions or not boot_definitions:
+        fail("bootable_disk_image: definitions must include system and ESP partitions")
+    repart(
+        name = name + ".partitions",
+        image = ":" + name + ".layer",
+        definitions = system_definitions,
+        disk = False,
+        split = True,
+        seed = disk_seed,
+        private_key = verity_private_key,
+        certificate = verity_certificate,
+    )
+    verity = [definition for definition in system_definitions if definition.verity == "data"]
     uki(
         name = name + ".uki",
         image = ":" + name + ".layer",
-        initrds = [":" + name + ".initrd"],
+        initrds = [initrd],
         cmdline = cmdline,
         arch = arch,
-        kernel_version = kernel_version,
+        entry = entry,
+        root_hash = ":" + name + ".partitions" if verity else None,
     )
-    files = dict(boot_files)
-    files["/boot/EFI/Linux/" + entry + ".efi"] = ":" + name + ".uki"
-    boot_layer(
-        name = name + ".boot",
+    image_layer(
+        name = name + ".esp.layer",
         parent = ":" + name + ".layer",
-        files = files,
-        bootloader = "systemd-boot",
+        ops = [
+            copy(
+                source = ":" + name + ".uki",
+                destination = "/boot/EFI/Linux",
+            ),
+            install_systemd_boot(),
+        ],
     )
-    image_disk(
-        name = name,
-        image = ":" + name + ".boot",
-        partitions = partitions,
+    repart(
+        name = name + ".disk",
+        image = ":" + name + ".esp.layer",
+        definitions = boot_definitions,
+        partitions = [":" + name + ".partitions"],
+        split = True,
         seed = disk_seed,
+    )
+    bootable(
+        name = name + ".bootable",
+        image = ":" + name + ".esp.layer",
+    )
+    image_directory(
+        name = name + ".directory",
+        image = ":" + name + ".esp.layer",
+    )
+    image_result(
+        name = name,
+        image = ":" + name + ".esp.layer",
+        bootable = ":" + name + ".bootable",
+        directory = ":" + name + ".directory",
+        disk = ":" + name + ".disk",
+        default_facet = "disk",
         visibility = visibility,
     )
