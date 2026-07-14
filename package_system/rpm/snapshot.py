@@ -26,8 +26,9 @@ _REPOMD_NS = "http://linux.duke.edu/metadata/repo"
 _PRIMARY_NS = "http://linux.duke.edu/metadata/common"
 _XML_NS = "http://www.w3.org/XML/1998/namespace"
 # Keep only streams needed for dependencies, path providers, and package groups.
-_BUILD_STREAMS = ("primary", "filelists")
+_REQUIRED_STREAMS = ("primary", "filelists")
 _OPTIONAL_STREAMS = ("group",)
+_KEPT_STREAMS = frozenset(_REQUIRED_STREAMS + _OPTIONAL_STREAMS)
 
 
 class PackageEntry(TypedDict):
@@ -62,28 +63,41 @@ def _relative_href(rid: str, what: str, href: str | None) -> str:
     if not href:
         raise SystemExit(f"{rid}: {what} has an empty location")
     parsed = urlsplit(href)
+
+    # Decode to a fixed point so nested escapes cannot conceal traversal or separators.
     decoded = href
     while True:
         expanded = unquote(decoded)
         if expanded == decoded:
             break
         decoded = expanded
+
     parts = decoded.split("/")
-    if (
-        parsed.scheme
-        or parsed.netloc
-        or parsed.query
-        or parsed.fragment
-        or decoded.startswith("/")
+    external = bool(parsed.scheme or parsed.netloc or parsed.query or parsed.fragment)
+    invalid_path = (
+        decoded.startswith("/")
         or decoded.endswith("/")
+        # Reject encoded slashes that would change the path after URL handling.
         or decoded.count("/") != href.count("/")
         or any(part in ("", ".", "..") for part in parts)
         or "\\" in decoded
-        or any(ord(character) > 127 for character in href)
-        or any(ord(character) < 32 or ord(character) == 127 for character in decoded)
-    ):
+    )
+    non_ascii = any(ord(character) > 127 for character in href)
+    control_character = any(ord(character) < 32 or ord(character) == 127 for character in decoded)
+    if external or invalid_path or non_ascii or control_character:
         raise SystemExit(f"{rid}: {what} has unsupported location {href!r}")
     return href
+
+
+def _location_href(rid: str, what: str, location: ET.Element | None) -> str:
+    """Read a location that is relative to the repository root."""
+    href = location.get("href") if location is not None else None
+    location_base = (
+        None if location is None else (location.get("base") or location.get(f"{{{_XML_NS}}}base"))
+    )
+    if location_base is not None:
+        raise SystemExit(f"{rid}: {what} has unsupported location {href!r}")
+    return _relative_href(rid, what, href)
 
 
 def _sha256(rid: str, what: str, value: str | None) -> str:
@@ -107,19 +121,19 @@ def _metadata_int(rid: str, what: str, value: str | None, *, minimum: int) -> in
 
 def _parse_primary(rid: str, source: BinaryReader) -> dict[str, PackageEntry]:
     """Stream a primary XML file into the snapshot's compact pkgid-keyed package map."""
+    events = ET.iterparse(source, events=("start", "end"))
+    _, root = next(events)
+    if root.tag != f"{{{_PRIMARY_NS}}}metadata":
+        raise SystemExit(f"{rid}: primary metadata has unexpected root {root.tag!r}")
+    declared = root.get("packages")
+    if declared is None:
+        raise SystemExit(f"{rid}: primary metadata root lacks its package count")
+    expected = _metadata_int(rid, "primary metadata package count", declared, minimum=0)
+
     packages: dict[str, PackageEntry] = {}
-    expected = None
     count = 0
     package_tag = f"{{{_PRIMARY_NS}}}package"
-    for event, element in ET.iterparse(source, events=("start", "end")):
-        if expected is None and event == "start":
-            if element.tag != f"{{{_PRIMARY_NS}}}metadata":
-                raise SystemExit(f"{rid}: primary metadata has unexpected root {element.tag!r}")
-            declared = element.get("packages")
-            if declared is None:
-                raise SystemExit(f"{rid}: primary metadata root lacks its package count")
-            expected = _metadata_int(rid, "primary metadata package count", declared, minimum=0)
-            continue
+    for event, element in events:
         if event != "end" or element.tag != package_tag:
             continue
 
@@ -133,13 +147,7 @@ def _parse_primary(rid: str, source: BinaryReader) -> dict[str, PackageEntry]:
             raise SystemExit(f"{rid}: primary package {count} does not have a sha256 pkgid")
         pkgid = _sha256(rid, f"primary package {count} pkgid", checksum.text)
 
-        href = location.get("href") if location is not None else None
-        location_base = (
-            None if location is None else (location.get("base") or location.get(f"{{{_XML_NS}}}base"))
-        )
-        if location_base is not None:
-            raise SystemExit(f"{rid}: primary package {pkgid} has unsupported location {href!r}")
-        href = _relative_href(rid, f"primary package {pkgid}", href)
+        href = _location_href(rid, f"primary package {pkgid}", location)
 
         package_size = size.get("package") if size is not None else None
         download_size = _metadata_int(rid, f"primary package {pkgid}", package_size, minimum=1)
@@ -147,17 +155,18 @@ def _parse_primary(rid: str, source: BinaryReader) -> dict[str, PackageEntry]:
         if previous := packages.get(pkgid):
             if previous["size"] != entry["size"]:
                 raise SystemExit(f"{rid}: duplicate pkgid {pkgid} has conflicting sizes")
+            # Mirrors sometimes expose identical content at more than one path.
             previous["location"] = min(str(previous["location"]), href)
         else:
             packages[pkgid] = entry
         element.clear()
 
-    if expected is None or count != expected:
+    if count != expected:
         raise SystemExit(f"{rid}: primary metadata declared {expected} packages but contained {count}")
     return packages
 
 
-def _snapshot_packages(rid: str, stream: RepositoryStream) -> dict[str, PackageEntry]:
+def _load_package_index(rid: str, stream: RepositoryStream) -> dict[str, PackageEntry]:
     """Download, verify, decompress, and parse the pinned primary stream."""
     digest = hashlib.sha256()
     expected_size = int(stream["size"])
@@ -166,6 +175,7 @@ def _snapshot_packages(rid: str, stream: RepositoryStream) -> dict[str, PackageE
         with urllib.request.urlopen(str(stream["url"])) as response:
             while chunk := response.read(1024 * 1024):
                 total += len(chunk)
+                # Stop before writing unbounded data from a stale or malicious endpoint.
                 if total > expected_size:
                     raise SystemExit(
                         f"{rid}: primary stream size {total} does not match repomd size {expected_size}"
@@ -182,6 +192,7 @@ def _snapshot_packages(rid: str, stream: RepositoryStream) -> dict[str, PackageE
         compressed.seek(0)
         magic = compressed.read(6)
         compressed.seek(0)
+        # Metadata names are not authoritative; select the decoder from file contents.
         with ExitStack() as stack:
             if magic.startswith(b"\x28\xb5\x2f\xfd"):
                 source = stack.enter_context(compression.zstd.ZstdFile(compressed, mode="rb"))
@@ -198,6 +209,36 @@ def _snapshot_packages(rid: str, stream: RepositoryStream) -> dict[str, PackageE
             return _parse_primary(rid, source)
 
 
+def _repository_stream(
+    rid: str,
+    baseurl: str,
+    stream_type: str,
+    data: ET.Element,
+) -> RepositoryStream:
+    """Decode and validate one retained repomd data record."""
+    location = data.find(f"{{{_REPOMD_NS}}}location")
+    checksum = data.find(f"{{{_REPOMD_NS}}}checksum[@type='sha256']")
+    size = data.find(f"{{{_REPOMD_NS}}}size")
+    if (
+        location is None
+        or location.get("href") is None
+        or checksum is None
+        or checksum.text is None
+        or size is None
+        or size.text is None
+    ):
+        raise SystemExit(f"{rid}: {stream_type} record lacks a location, sha256 checksum, or size")
+
+    href = _location_href(rid, f"{stream_type} stream", location)
+    return RepositoryStream(
+        out=PurePosixPath(href).name,
+        url=baseurl + href,
+        sha256=_sha256(rid, f"{stream_type} stream", checksum.text),
+        # Recording the compressed size avoids an unpinned HEAD request later.
+        size=_metadata_int(rid, f"{stream_type} stream", size.text, minimum=1),
+    )
+
+
 def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
     """Pin one repo's build-time repodata; see the module docstring for the shape."""
     base = baseurl.rstrip("/") + "/"
@@ -207,54 +248,39 @@ def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
     ET.register_namespace("", _REPOMD_NS)  # Preserve the default namespace.
     root = ET.fromstring(repomd)
 
-    kept = []
-    streams = []
-    outputs = set()
-    primary = None
+    kept: set[str] = set()
+    streams: list[RepositoryStream] = []
+    outputs: set[str] = set()
+    primary: RepositoryStream | None = None
+    # The filtered repomd becomes the exact local repository view consumed by libdnf5.
     for data in list(root.findall(f"{{{_REPOMD_NS}}}data")):
         stream_type = data.get("type")
-        if stream_type not in _BUILD_STREAMS + _OPTIONAL_STREAMS:
+        if stream_type not in _KEPT_STREAMS:
             root.remove(data)
             continue
         if stream_type in kept:
             raise SystemExit(f"{rid}: repomd.xml contains duplicate {stream_type!r} streams")
-        kept.append(stream_type)
+        kept.add(stream_type)
 
-        loc = data.find(f"{{{_REPOMD_NS}}}location")
-        chk = data.find(f"{{{_REPOMD_NS}}}checksum[@type='sha256']")
-        size = data.find(f"{{{_REPOMD_NS}}}size")  # Avoid a later HEAD request.
-        href = loc.get("href") if loc is not None else None
-        if href is None or chk is None or chk.text is None or size is None or size.text is None:
-            raise SystemExit(f"{rid}: {data.get('type')} record lacks a location, sha256 checksum, or size")
-        location_base = None if loc is None else (loc.get("base") or loc.get(f"{{{_XML_NS}}}base"))
-        if location_base is not None:
-            raise SystemExit(f"{rid}: {stream_type} stream has unsupported location {href!r}")
-        href = _relative_href(rid, f"{stream_type} stream", href)
-        output = PurePosixPath(href).name
-        if output in outputs:
-            raise SystemExit(f"{rid}: repomd.xml streams share output basename {output!r}")
-        outputs.add(output)
-        stream = RepositoryStream(
-            out=output,
-            url=base + href,
-            sha256=_sha256(rid, f"{stream_type} stream", chk.text),
-            size=_metadata_int(rid, f"{stream_type} stream", size.text, minimum=1),
-        )
+        stream = _repository_stream(rid, base, stream_type, data)
+        if stream["out"] in outputs:
+            raise SystemExit(f"{rid}: repomd.xml streams share output basename {stream['out']!r}")
+        outputs.add(stream["out"])
         streams.append(stream)
-        if data.get("type") == "primary":
+        if stream_type == "primary":
             primary = stream
 
-    if missing := [t for t in _BUILD_STREAMS if t not in kept]:
+    if missing := [stream for stream in _REQUIRED_STREAMS if stream not in kept]:
         raise SystemExit(f"{rid}: repomd.xml missing {missing}")
     if primary is None:
         raise SystemExit(f"{rid}: repomd.xml has no primary stream")
 
     filtered = ET.tostring(root, encoding="unicode", xml_declaration=True)
-    packages = _snapshot_packages(rid, primary)
+    packages = _load_package_index(rid, primary)
     return {"packages": packages, "repomd": filtered, "streams": streams}
 
 
-def _write_snapshot(path: Path, fragment: RepositorySnapshot) -> None:
+def _write_snapshot(path: Path, snapshot: RepositorySnapshot) -> None:
     """Atomically replace a snapshot with deterministic, reviewable UTF-8 JSON."""
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
@@ -272,7 +298,7 @@ def _write_snapshot(path: Path, fragment: RepositorySnapshot) -> None:
             temporary = Path(output.name)
             # One package per line keeps this large generated file reviewable.
             output.write('{\n  "packages": {\n')
-            packages = sorted(fragment["packages"].items())
+            packages = sorted(snapshot["packages"].items())
             for index, (pkgid, package) in enumerate(packages):
                 comma = "," if index + 1 < len(packages) else ""
                 output.write(
@@ -284,9 +310,9 @@ def _write_snapshot(path: Path, fragment: RepositorySnapshot) -> None:
                     + "\n"
                 )
             output.write('  },\n  "repomd": ')
-            json.dump(fragment["repomd"], output)
+            json.dump(snapshot["repomd"], output)
             output.write(',\n  "streams": ')
-            streams = json.dumps(fragment["streams"], indent=2, sort_keys=True)
+            streams = json.dumps(snapshot["streams"], indent=2, sort_keys=True)
             output.write(streams.replace("\n", "\n  "))
             output.write("\n}\n")
         temporary.chmod(mode)
@@ -297,25 +323,25 @@ def _write_snapshot(path: Path, fragment: RepositorySnapshot) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="snapshot")
-    p.add_argument(
+    parser = argparse.ArgumentParser(prog="snapshot")
+    parser.add_argument(
         "--manifest",
         required=True,
         help="the repository's manifest ({id, baseurl} JSON, from its [manifest] sub-target)",
     )
-    p.add_argument(
+    parser.add_argument(
         "--out",
         required=True,
         help="snapshot path to write ({packages, repomd, streams} JSON)",
     )
-    args = p.parse_args(argv)
+    args = parser.parse_args(argv)
 
-    entry: RepositoryManifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
-    print(f"{entry['id']}: snapshotting repodata…", file=sys.stderr)
-    fragment = snapshot_repodata(entry["id"], entry["baseurl"])
+    manifest: RepositoryManifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    print(f"{manifest['id']}: snapshotting repodata…", file=sys.stderr)
+    snapshot = snapshot_repodata(manifest["id"], manifest["baseurl"])
     out = Path(args.out)
-    _write_snapshot(out, fragment)
-    print(f"wrote {out} ({len(fragment['packages'])} packages)", file=sys.stderr)
+    _write_snapshot(out, snapshot)
+    print(f"wrote {out} ({len(snapshot['packages'])} packages)", file=sys.stderr)
 
 
 if __name__ == "__main__":
