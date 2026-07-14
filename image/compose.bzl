@@ -1,7 +1,11 @@
 """Convenience macros for common image compositions."""
 
 load("//image_format:archive.bzl", "image_archive")
-load("//image_format:disk.bzl", "image_disk")
+load(
+    "//image_format:disk.bzl",
+    "Partition",  # @unused Used as a type.
+    "image_disk",
+)
 load(":boot.bzl", "boot_layer")
 load(":layer.bzl", "image", "image_layer", "install", "run", "symlink")
 load(":uki.bzl", "uki")
@@ -46,7 +50,7 @@ def bootable_disk_image(
         boot_files: dict[str, str] = {},
         arch: str = "x86_64",
         kernel_version: str | None = None,
-        disk_definitions: dict[str, str] = {},
+        partitions: list[Partition] | None = None,
         disk_seed: str | None = None,
         visibility: list[str] | None = None) -> None:
     """Build a UKI-based, systemd-boot GPT disk image."""
@@ -97,7 +101,7 @@ def bootable_disk_image(
     image_disk(
         name = name,
         image = ":" + name + ".boot",
-        definitions = disk_definitions,
+        partitions = partitions,
         seed = disk_seed,
         visibility = visibility,
     )

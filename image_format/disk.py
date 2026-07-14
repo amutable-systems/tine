@@ -1,9 +1,5 @@
 #!/usr/bin/python3
-"""Merge a boot-ready logical image into an offline systemd-repart GPT image.
-
-Tmpfiles changes land in an ephemeral upper. The default definitions create an ESP and
-Discoverable Partitions root filesystem.
-"""
+"""Merge a boot-ready logical image into an offline systemd-repart GPT image."""
 
 import argparse
 import hashlib
@@ -15,26 +11,8 @@ import uuid
 from pathlib import Path
 
 import finalize
+
 import rootfs
-
-# Mkosi's defaults, with room for uncompressed initrds.
-ESP_CONF = """\
-[Partition]
-Type=esp
-Format=vfat
-CopyFiles=/boot:/
-CopyFiles=/efi:/
-SizeMinBytes=512M
-SizeMaxBytes=512M
-"""
-
-ROOT_CONF = """\
-[Partition]
-Type=root
-Format=ext4
-CopyFiles=/
-Minimize=guess
-"""
 
 _SEED_NAMESPACE = uuid.UUID("5af2de99-4f9f-4e0b-a04b-bde36b068c4f")
 
@@ -60,10 +38,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--definition",
         action="append",
-        default=[],
-        nargs=2,
-        metavar=("NAME", "PATH"),
-        help="named repart.d conf replacing the builtin ESP+root pair",
+        required=True,
+        metavar="PATH",
+        help="rendered repart.d definition in partition order",
     )
     args = p.parse_args(argv)
     out = Path(args.out).resolve()
@@ -74,14 +51,8 @@ def main(argv: list[str] | None = None) -> None:
     ):
         definitions = Path(scratch) / "repart.d"
         definitions.mkdir()
-        if args.definition:
-            for name, src in args.definition:
-                if Path(name).name != name:
-                    raise SystemExit(f"disk: definition name must be a basename: {name!r}")
-                shutil.copy(src, definitions / name)
-        else:
-            (definitions / "00-esp.conf").write_text(ESP_CONF)
-            (definitions / "10-root.conf").write_text(ROOT_CONF)
+        for index, src in enumerate(args.definition):
+            shutil.copyfile(src, definitions / f"{index:04}.conf")
 
         finalize.apply_tmpfiles(
             tree,

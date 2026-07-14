@@ -303,8 +303,8 @@ needed:
 - `image_directory` materializes a Buck directory artifact;
 - `uki` builds a standalone unified kernel image from a logical image and one or more initrds;
 - `boot_layer` installs standalone boot artifacts and optionally systemd-boot as another persisted delta;
-- `image_disk` uses offline `systemd-repart` to create a GPT image with an ESP and discoverable root
-  partition by default;
+- `image_disk` renders an ordered list of Starlark partition objects and uses offline `systemd-repart` to
+  create the GPT image; its default layout contains an ESP and discoverable root partition;
 - `image_vm` runs the raw image ephemerally with the engine's `systemd-vmspawn`, QEMU, and OVMF stack.
 
 `rootfs_archive()` is the convenience composition for building a single layer from operations and emitting
