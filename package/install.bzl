@@ -2,7 +2,7 @@
 
 load("//engine:rules.bzl", "chroot_run")
 load(":manager.bzl", "PackageManagerInfo")
-load(":repository.bzl", "PackageRepositoryInfo", "download_closure")
+load(":repository.bzl", "PackageRepositoryInfo", "select_package_artifacts")
 load(":system.bzl", "PackageSystemInfo")
 
 _EXTRA_REPO_PRIORITY = 50
@@ -83,7 +83,7 @@ def _install_actions(
         plan.add("--install", cap)
     ctx.actions.run(plan, category = "plan")
 
-    closure = download_closure(ctx, tx, repositories = repositories, extra_packages = extra_packages)
+    closure = select_package_artifacts(ctx, tx, repositories = repositories, extra_packages = extra_packages)
     out = ctx.actions.declare_output("install.delta" if stack else "root", dir = True)
     cmd = cmd_args(
         chroot_run(engine = package_manager.engine, exe = system.install),

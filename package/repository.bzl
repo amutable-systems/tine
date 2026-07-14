@@ -190,10 +190,10 @@ def _closure_name(canonical_name: str, pkgid: str, suffix: str) -> str:
         fail("package representation suffix is too long: {!r}".format(suffix))
     return canonical_name[:prefix_length] + tail
 
-def _download_closure(
+def _select_package_artifacts_impl(
         actions: AnalysisActions,
         tx: ArtifactValue,
-        closure: OutputArtifact,
+        output: OutputArtifact,
         extra_packages: list[Artifact],
         pools: dict[str, ResolvedDynamicValue],
         representation: str) -> list[Provider]:
@@ -206,7 +206,7 @@ def _download_closure(
         rid: pool.providers[PackagePoolValueInfo].packages
         for rid, pool in pools.items()
     }
-    rpms = {}
+    artifacts = {}
     for entry in entries:
         if type(entry) != type({}):
             fail("transaction entry is not an object: {}".format(entry))
@@ -254,8 +254,8 @@ def _download_closure(
             if idx >= len(extra_packages):
                 fail("local transaction entry refers to missing package directory: {}".format(entry))
             output_name = _closure_name(parts[1], pkgid, ".rpm")
-            if output_name not in rpms:
-                rpms[output_name] = extra_packages[idx].project(parts[1])
+            if output_name not in artifacts:
+                artifacts[output_name] = extra_packages[idx].project(parts[1])
             continue
 
         if rid not in by_repo or pkgid not in by_repo[rid]:
@@ -274,41 +274,42 @@ def _download_closure(
             artifact = derived.artifact
             extension = derived.suffix
         output_name = _closure_name(package.name, pkgid, extension)
-        if output_name not in rpms:
-            rpms[output_name] = artifact
+        if output_name not in artifacts:
+            artifacts[output_name] = artifact
 
-    actions.symlinked_dir(closure, rpms)
+    actions.symlinked_dir(output, artifacts)
     return []
 
-_download = dynamic_actions(
-    impl = _download_closure,
+_select_package_artifacts_action = dynamic_actions(
+    impl = _select_package_artifacts_impl,
     attrs = {
         "tx": dynattrs.artifact_value(),
-        "closure": dynattrs.output(),
+        "output": dynattrs.output(),
         "extra_packages": dynattrs.value(list[Artifact]),
         "pools": dynattrs.dict(str, dynattrs.dynamic_value()),
         "representation": dynattrs.value(str),
     },
 )
 
-def download_closure(
+def select_package_artifacts(
         ctx: AnalysisContext,
         tx: Artifact,
         repositories: list[Dependency],
         extra_packages: list[Artifact] = [],
         name: str = "install.closure",
         representation: str = "installable") -> Artifact:
-    closure = ctx.actions.declare_output(name, dir = True)
+    """Select one representation of each transaction package into a directory."""
+    output = ctx.actions.declare_output(name, dir = True)
     pools = {
         repository[PackageRepositoryInfo].id: repository[PackagePoolInfo].value
         for repository in repositories
         if repository.get(PackagePoolInfo) != None
     }
-    ctx.actions.dynamic_output_new(_download(
+    ctx.actions.dynamic_output_new(_select_package_artifacts_action(
         tx = tx,
-        closure = closure.as_output(),
+        output = output.as_output(),
         extra_packages = extra_packages,
         pools = pools,
         representation = representation,
     ))
-    return closure
+    return output

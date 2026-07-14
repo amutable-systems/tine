@@ -1,6 +1,6 @@
 """Build reusable execution environments and run commands inside them."""
 
-load("//package:repository.bzl", "PackageRepositoryInfo", "RepositoryUniverseInfo", "download_closure", "select_repositories")
+load("//package:repository.bzl", "PackageRepositoryInfo", "RepositoryUniverseInfo", "select_package_artifacts", "select_repositories")
 load("//package:system.bzl", "PackageSystemInfo")
 
 ASSEMBLY_SDE = 1739577600
@@ -53,8 +53,8 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     )
 
     # Select installable and payload representations from the locked seed transaction.
-    packages = download_closure(ctx, ctx.attrs.lock, repositories = repositories)
-    payloads = download_closure(
+    packages = select_package_artifacts(ctx, ctx.attrs.lock, repositories = repositories)
+    payloads = select_package_artifacts(
         ctx,
         ctx.attrs.lock,
         name = "extract.closure",

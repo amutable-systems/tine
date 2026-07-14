@@ -136,10 +136,10 @@ The raw RPM and derived payload are alternative representations of the same `pac
 Downloads and decompression are registered once under repository ownership, rather than under every engine,
 buildroot, or image closure.
 
-`download_closure()` is therefore a selector despite its historical name. It reads a resolved transaction,
-looks up each `(repository, pkgid)` in the authoritative pool, and creates a symlinked directory containing
-the requested representation. It never creates a second download. Buck materializes only artifacts selected
-by a consuming transaction, while every consumer shares their owning actions.
+`select_package_artifacts()` reads a resolved transaction, looks up each `(repository, pkgid)` in the
+authoritative pool, and creates a symlinked directory containing the requested representation. It never
+creates a second download. Buck materializes only artifacts selected by a consuming transaction, while every
+consumer shares their owning actions.
 
 Local RPMs produced by this repository use transaction entries with `source = "local"` and a location into
 an input RPM directory. They are projected directly from the producing target rather than copied into a
