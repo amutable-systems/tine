@@ -46,7 +46,7 @@ def _declare_rpm_package(
         buildroot: str,
         meta: SrcpkgMetadata,
         buildroot_deps: list[str],
-        rpm_macros: dict[str, str] = {}) -> None:
+        rpmbuild_options: list[str] = []) -> None:
     spec = "{}/{}.spec".format(package, package)
     srcs = []
     for source in meta.sources:
@@ -73,7 +73,7 @@ def _declare_rpm_package(
         subpackages = sorted(meta.binaries[_ARCH]),
         build_requires = _build_requires(meta),
         buildroot_deps = buildroot_deps,
-        macros = rpm_macros,
+        rpmbuild_options = rpmbuild_options,
     )
 
 # buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package + its source http_files)
@@ -83,14 +83,14 @@ def rpm_package_json(
         buildroot: str,
         meta: PackageMetadata,
         buildroot_deps: list[str] = [],
-        rpm_macros: dict[str, str] = {}) -> None:
+        rpmbuild_options: list[str] = []) -> None:
     """Validate generated metadata and project it onto `rpm_package`."""
     _declare_rpm_package(
         package = package,
         buildroot = buildroot,
         meta = _parse_metadata(meta),
         buildroot_deps = buildroot_deps,
-        rpm_macros = rpm_macros,
+        rpmbuild_options = rpmbuild_options,
     )
 
 def _cap(dep: str) -> str:
@@ -220,7 +220,7 @@ def rpm_branch(
         buildroot: str,
         packages: dict[str, PackageMetadata],
         buildroot_only_packages: list[str] = [],
-        rpm_macros: dict[str, dict[str, str]] = {}) -> None:
+        rpmbuild_options: dict[str, list[str]] = {}) -> None:
     """Declare a branch and its self-hosting buildroot edges."""
     metadata = {name: _parse_metadata(meta) for name, meta in packages.items()}
     locks = _buildroot_locks(metadata, buildroot_only_packages)
@@ -230,5 +230,5 @@ def rpm_branch(
             buildroot = buildroot,
             meta = metadata[name],
             buildroot_deps = [":" + dep for dep in locks[name]],
-            rpm_macros = rpm_macros.get(name, {}),
+            rpmbuild_options = rpmbuild_options.get(name, []),
         )

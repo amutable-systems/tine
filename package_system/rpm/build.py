@@ -41,11 +41,12 @@ def main(argv: list[str] | None = None) -> int:
         help="declared binary subpackage -> per-subpackage output rpm path",
     )
     p.add_argument(
-        "--macro",
+        "--rpmbuild-option",
         action="append",
         default=[],
-        metavar="NAME=VALUE",
-        help="extra rpm macro definition, passed to rpmbuild as --define",
+        dest="rpmbuild_options",
+        metavar="OPTION",
+        help="extra rpmbuild CLI option (--with=..., --without=..., --define=...)",
     )
     args = p.parse_args(argv)
 
@@ -85,11 +86,16 @@ def main(argv: list[str] | None = None) -> int:
             # rpm otherwise ignores SOURCE_DATE_EPOCH for the BUILDTIME header.
             "--define", "use_source_date_epoch_as_buildtime 1",
         ]  # fmt: skip
-        # --macro NAME=VALUE becomes --define "NAME VALUE"
-        for m in args.macro:
-            defines += ["--define", m.replace("=", " ", 1)]
         rc = subprocess.run(
-            ["/usr/bin/rpmbuild", *defines, "-ba", "--nocheck", "--noclean", f"/build/SPECS/{spec.name}"],
+            [
+                "/usr/bin/rpmbuild",
+                *defines,
+                *args.rpmbuild_options,
+                "-ba",
+                "--nocheck",
+                "--noclean",
+                f"/build/SPECS/{spec.name}",
+            ],
             env=env,
         ).returncode
     if rc != 0:
