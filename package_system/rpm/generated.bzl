@@ -46,7 +46,7 @@ def _declare_rpm_package(
         buildroot: str,
         meta: SrcpkgMetadata,
         buildroot_deps: list[str],
-        rpm_macros: dict[str, dict[str, str]] = {}) -> None:
+        rpm_macros: dict[str, str] = {}) -> None:
     spec = "{}/{}.spec".format(package, package)
     srcs = []
     for source in meta.sources:
@@ -83,13 +83,14 @@ def rpm_package_json(
         buildroot: str,
         meta: PackageMetadata,
         buildroot_deps: list[str] = [],
-        rpm_macros: dict[str, dict[str, str]] = {}) -> None:
+        rpm_macros: dict[str, str] = {}) -> None:
     """Validate generated metadata and project it onto `rpm_package`."""
     _declare_rpm_package(
         package = package,
         buildroot = buildroot,
         meta = _parse_metadata(meta),
         buildroot_deps = buildroot_deps,
+        rpm_macros = rpm_macros,
     )
 
 def _cap(dep: str) -> str:
