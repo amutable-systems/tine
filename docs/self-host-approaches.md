@@ -107,11 +107,11 @@ existing extra-packages overlay and repo-priority machinery. Round 2 is the publ
   itself, glibc via the glibc32 kept edge) rebuilds every SCC final *now*, in-graph; there is no
   batching. Mitigated only by byte-identical early cutoff (a rebuild that doesn't change
   bytes stops the fan-out).
-- **Double build cost of the core**: every SCC member builds twice; gcc alone is ~10 h per pass on
-  a laptop (~20 h for both stages), and a core toolchain change pays both stages of the whole
-  downstream cone. Mitigation: We can optimize the gcc build in multiple ways (drop
-  `profiledbootstrap` and LTO, drop unused languages like Ada, Algol, Cobol, Go), and all other
-  packages together (including the kernel) build in 2 hours.
+- **Double build cost of the core**: every SCC member builds twice; gcc alone is 1 h per
+  pass on a laptop, 2 h for both stages. This is trimmed down with `build_gcc_basic`
+  (unmodified Fedora package takes 10 hours to build). A core toolchain change pays both
+  stages of the whole downstream cone. All other packages together (including the kernel)
+  build in 2 hours.
 - Fixed convergence depth: N=2 by decision ("round 2 = done"); a round-3 reproducibility compare
   is an extra deliberate build, not a free byproduct of operations (contrast B's
   publish-over-publish diffs).
