@@ -20,7 +20,7 @@ http_tool(
             "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260623/cpython-3.14.6+20260623-x86_64-unknown-linux-gnu-install_only.tar.gz",
         },
     },
-    visibility = ["PUBLIC"],
+    visibility = ["toolchains//:python_bootstrap"],
 )
 
 # Raw static binary, so no archive path is needed.

@@ -15,47 +15,40 @@ _RPM = "@tine//package_system/rpm:package_system"
 rpm_remote_repository(
     name = "fedora.44.repository",
     baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/",
-    visibility = ["PUBLIC"],
 )
 
 # Rolling tree whose pinned URLs require frequent refreshes.
 rpm_remote_repository(
     name = "fedora.rawhide.repository",
     baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/",
-    visibility = ["PUBLIC"],
 )
 
 # CentOS Stream pins also drift on refresh.
 rpm_remote_repository(
     name = "centos.10-stream.baseos.repository",
     baseurl = "https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/",
-    visibility = ["PUBLIC"],
 )
 
 rpm_remote_repository(
     name = "centos.10-stream.appstream.repository",
     baseurl = "https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/",
-    visibility = ["PUBLIC"],
 )
 
 rpm_remote_repository(
     name = "centos.10-stream.crb.repository",
     baseurl = "https://mirror.stream.centos.org/10-stream/CRB/x86_64/os/",
-    visibility = ["PUBLIC"],
 )
 
 repository_universe(
     name = "fedora.44.repositories",
     package_system = _RPM,
     required_repositories = [":fedora.44.repository"],
-    visibility = ["PUBLIC"],
 )
 
 repository_universe(
     name = "fedora.rawhide.repositories",
     package_system = _RPM,
     required_repositories = [":fedora.rawhide.repository"],
-    visibility = ["PUBLIC"],
 )
 
 repository_universe(
@@ -67,7 +60,6 @@ repository_universe(
         "crb": [":centos.10-stream.crb.repository"],
     },
     default_repository_groups = ["appstream"],
-    visibility = ["PUBLIC"],
 )
 
 os_release(
@@ -75,7 +67,6 @@ os_release(
     family = "fedora",
     version = "44",
     repository_universe = ":fedora.44.repositories",
-    visibility = ["PUBLIC"],
 )
 
 os_release(
@@ -83,7 +74,6 @@ os_release(
     family = "fedora",
     version = "rawhide",
     repository_universe = ":fedora.rawhide.repositories",
-    visibility = ["PUBLIC"],
 )
 
 os_release(
@@ -91,7 +81,6 @@ os_release(
     family = "centos",
     version = "10-stream",
     repository_universe = ":centos.10-stream.repositories",
-    visibility = ["PUBLIC"],
 )
 
 # Shared RPM engine plus the image assembly and VM tools. These tools stay out of images.

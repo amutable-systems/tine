@@ -10,14 +10,13 @@ python_bootstrap_binary(
     name = "extract",
     main = "extract.py",
     deps = ["//archive:cpio", "//rootfs:rootfs", ":rpmfile"],
-    visibility = ["PUBLIC"],
 )
 
 python_bootstrap_binary(
     name = "decompress",
     main = "decompress.py",
     deps = [":rpmfile"],
-    visibility = ["PUBLIC"],
+    visibility = ["catalog//..."],
 )
 
 python_bootstrap_library(name = "util", srcs = ["util.py"])
@@ -30,7 +29,6 @@ python_bootstrap_binary(name = "build", main = "build.py", deps = [":util", "//r
 python_bootstrap_binary(
     name = "snapshot",
     main = "snapshot.py",
-    visibility = ["PUBLIC"],
 )
 
 package_system(
@@ -42,5 +40,5 @@ package_system(
     createrepo = ":createrepo",
     plan = ":plan",
     build = ":build",
-    visibility = ["PUBLIC"],
+    visibility = ["catalog//..."],
 )

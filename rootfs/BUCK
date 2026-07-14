@@ -4,5 +4,5 @@ python_bootstrap_library(
     name = "rootfs",
     srcs = ["rootfs.py"],
     deps = ["//vendor:mkosi"],
-    visibility = ["PUBLIC"],
+    visibility = ["tine//..."],
 )
