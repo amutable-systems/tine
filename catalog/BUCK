@@ -2,11 +2,12 @@
 
 # Repoint the `catalog` cell to replace these declarations. Repository snapshots are generated
 # as `<name>.json`; engine transaction files must start as `{}`. Refresh after adding either.
+load("@tine//engine:rules.bzl", "engine")
 load("@tine//package:buildroot.bzl", "buildroot")
 load("@tine//package:manager.bzl", "package_manager")
 load("@tine//package:release.bzl", "os_release")
 load("@tine//package:repository.bzl", "repository_universe")
-load("@tine//package_system/rpm:rules.bzl", "rpm_engine", "rpm_remote_repository")
+load("@tine//package_system/rpm:rules.bzl", "rpm_remote_repository")
 
 _RPM = "@tine//package_system/rpm:package_system"
 
@@ -94,7 +95,7 @@ os_release(
 )
 
 # Shared RPM engine plus the image assembly and VM tools. These tools stay out of images.
-rpm_engine(
+engine(
     name = "fedora.44.engine",
     packages = [
         "rpm",
@@ -115,7 +116,7 @@ rpm_engine(
         "edk2-ovmf",
         "openssh",
     ],
-    repository_universe = ":fedora.44.repositories",
+    release = ":fedora.44.release",
     visibility = ["PUBLIC"],
 )
 

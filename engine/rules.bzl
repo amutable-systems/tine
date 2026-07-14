@@ -1,14 +1,16 @@
 """Build reusable execution environments and run commands inside them."""
 
-load("//package:repository.bzl", "PackageRepositoryInfo", "RepositoryUniverseInfo", "select_package_artifacts", "select_repositories")
+load("//package:release.bzl", "OsReleaseInfo")
+load("//package:repository.bzl", "PackageRepositoryInfo", "select_package_artifacts", "select_repositories")
 load("//package:system.bzl", "PackageSystemInfo")
 
 ASSEMBLY_SDE = 1739577600
 
 EngineInfo = provider(
-    # Carry the sandbox through dependencies because anon rules cannot declare exec_dep.
-    doc = "The reusable execution environment: a root plus the sandbox that enters it.",
+    # Carry the configured sandbox through providers so anonymous targets can reuse it.
+    doc = "A reusable execution environment built from one base OS release.",
     fields = {
+        "release": provider_field(Dependency),
         "root": provider_field(Artifact),  # the engine root chroot
         "sandbox": provider_field(Dependency),
     },
@@ -42,12 +44,10 @@ def chroot_run(
     return RunInfo(args = run)
 
 def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
-    system = ctx.attrs.package_system[PackageSystemInfo]
-    universe = ctx.attrs.repository_universe[RepositoryUniverseInfo]
-    if universe.package_system.label != ctx.attrs.package_system.label:
-        fail("engine repository universe uses a different package system")
+    release = ctx.attrs.release[OsReleaseInfo]
+    system = release.package_system[PackageSystemInfo]
     repositories = select_repositories(
-        ctx.attrs.repository_universe,
+        release.repository_universe,
         ctx.attrs.enable_repository_groups,
         ctx.attrs.disable_repository_groups,
     )
@@ -74,7 +74,11 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     ctx.actions.run(
         cmd_args(
             chroot_run(
-                engine = EngineInfo(root = chroot1, sandbox = ctx.attrs._sandbox),
+                engine = EngineInfo(
+                    release = ctx.attrs.release,
+                    root = chroot1,
+                    sandbox = ctx.attrs._sandbox,
+                ),
                 exe = system.install,
             ),
             "--packages-dir",
@@ -86,7 +90,11 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
         category = "engine",
     )
 
-    info = EngineInfo(root = chroot2, sandbox = ctx.attrs._sandbox)
+    info = EngineInfo(
+        release = ctx.attrs.release,
+        root = chroot2,
+        sandbox = ctx.attrs._sandbox,
+    )
 
     # Refresh resolves the engine lock against the freshly pinned repositories.
     resolve = cmd_args(chroot_run(engine = info, exe = system.plan), "solve", "--arch", ctx.attrs.arch)
@@ -105,23 +113,16 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
         chroot_run(info),
     ]
 
-engine = rule(
+_engine = rule(
     impl = _engine_impl,
     attrs = {
         "packages": attrs.list(
             attrs.string(),
             doc = "top-level engine package names (authored; the lock pins the closure)",
         ),
-        "repository_universe": attrs.dep(
-            providers = [RepositoryUniverseInfo],
-            doc = "repository universe used to resolve the engine",
-        ),
+        "release": attrs.dep(providers = [OsReleaseInfo], doc = "base OS release for the engine root"),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
-        "package_system": attrs.dep(
-            providers = [PackageSystemInfo],
-            doc = "the native package-system drivers used to bootstrap the engine",
-        ),
         "lock": attrs.source(
             doc = "the @generated engine transaction (source/repo/pkgid/nevra); seed with `{}`",
         ),
@@ -130,3 +131,20 @@ engine = rule(
         "_sandbox": attrs.exec_dep(default = "tine//engine:sandbox", providers = [RunInfo]),
     },
 )
+
+def engine(
+        name: str,
+        packages: list[str],
+        release: str,
+        lock: str | None = None,
+        **kwargs) -> None:
+    """Declare an engine rooted in one base OS release."""
+    if not name.endswith(".engine"):
+        fail("engine name must end with '.engine': {}".format(name))
+    _engine(
+        name = name,
+        packages = packages,
+        release = release,
+        lock = lock or (name + ".json"),
+        **kwargs
+    )

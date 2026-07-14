@@ -64,14 +64,13 @@ PackageSystemInfo (RPM drivers)
         ├── PackageRepositoryInfo ──┐
         │                           ├── RepositoryUniverseInfo
         │                           │          │
-        │                           │          ├── OsReleaseInfo
-        │                           │          │       │
-        │                           └──────────┴── PackageManagerInfo ── image installation
-        │                                                  │
-        │                                                  └── BuildrootInfo ── rpm_package
-        │
-        └── engine lock ── EngineInfo ─────────────────────────────── rpm_package
-                                   └───────────────────────────────── image tooling
+        └───────────────────────────┴── OsReleaseInfo
+                                               ├── engine lock ── EngineInfo ──┬── rpm_package
+                                               │                              ├── image tooling
+                                               │                              │
+                                               └──────────────────────────────┴── PackageManagerInfo
+                                                                            ├── image installation
+                                                                            └── BuildrootInfo ── rpm_package
 ```
 
 The providers have deliberately narrow roles:
@@ -83,12 +82,12 @@ The providers have deliberately narrow roles:
 - `RepositoryUniverseInfo` defines one homogeneous solve universe: required repositories, named optional
   groups, and groups enabled by default. Selection preserves declaration order, de-duplicates identical
   targets, and rejects conflicting repository IDs.
-- `OsReleaseInfo` associates OS identity with one repository universe.
+- `OsReleaseInfo` associates OS identity with one repository universe and supplies the base of an engine.
 - `PackageManagerInfo` selects the exact repositories used for a solve, applies priority overrides, chooses
   an engine, and owns reusable solver caches.
 - `BuildrootInfo` materializes the shared base root installed by a package manager.
-- `EngineInfo` contains a runnable root filesystem and the sandbox used to enter it. It is independent of
-  OS identity and may serve multiple compatible package managers.
+- `EngineInfo` contains a runnable root filesystem, its base release, and the sandbox used to enter it. Its
+  base establishes provenance; the engine may serve compatible package managers for other releases.
 
 This split is visible in the default catalog. Fedora 44, Rawhide, and CentOS Stream 10 are separate OS
 releases. Rawhide and CentOS use their own repositories while sharing the Fedora 44 engine. CentOS models
@@ -154,8 +153,9 @@ Why repository ownership matters:
 
 ### Engine bootstrap
 
-An engine is a pinned execution environment, not an OS release. It supplies rpm, Python, libdnf5,
-`createrepo_c`, core utilities, sandbox dependencies, and currently the image-building/VM tools.
+An engine is a pinned execution environment built from one base OS release. It supplies rpm, Python,
+libdnf5, `createrepo_c`, core utilities, sandbox dependencies, and currently the image-building/VM tools.
+The base release identifies where this userspace came from, not the only release it may operate on.
 
 Bootstrapping breaks the dependency on host RPM tooling in two stages:
 
@@ -365,14 +365,14 @@ package. Closures select artifacts; they do not fetch or transform them.
 ### Separate package system, OS release, package manager, and buildroot
 
 The former distribution object bundled repository membership, engine tooling, and buildroot policy. That
-made optional repositories awkward, implied that an engine belonged to one distribution, and provided no
-clean place for request-specific local repositories.
+made optional repositories awkward, implied that an engine had to match every target release it operated
+on, and provided no clean place for request-specific local repositories.
 
 The current vocabulary follows the actual responsibilities:
 
 - the package system defines operations;
 - the repository universe defines membership and normal enablement policy;
-- the OS release defines identity and selects a repository universe;
+- the OS release defines identity, selects a repository universe, and may provide an engine's base;
 - the package manager defines one exact solve universe and engine;
 - the buildroot materializes the shared base packages.
 
@@ -387,11 +387,13 @@ eventually coexist with RPM in an image, but compatibility rules are deliberatel
 system exists. `PackageSystemInfo` is for native binary package ecosystems, not every possible image
 content type.
 
-### Keep engines independent from releases
+### Separate an engine's base release from its target releases
 
-An engine is a tools root. Treating it as part of OS identity would require CentOS to provide libdnf5 or
-would duplicate compatible tooling roots. Explicit engine dependencies make reuse visible and content-keyed,
-and let images choose richer tooling without shipping those tools.
+An engine is a tools root with a concrete OS userspace, so its base release records where its packages and
+identity came from. That does not make it part of a package manager's target OS identity: the Fedora 44
+engine can still operate on Rawhide and CentOS Stream. Keeping the engine dependency explicit makes reuse
+visible and content-keyed, avoids duplicating compatible tooling roots, and lets images choose richer tools
+without shipping those tools.
 
 ### Use one sandbox boundary and let drivers mount target roots
 

@@ -1,6 +1,6 @@
-"""RPM repositories, engines, and package-build rules."""
+"""RPM repositories and package-build rules."""
 
-load("//engine:rules.bzl", "chroot_run", engine_rule = "engine")  # aliased: `engine` is an arg below
+load("//engine:rules.bzl", "chroot_run")
 load("//package:buildroot.bzl", "BuildrootInfo")
 load("//package:install.bzl", "install_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
@@ -139,24 +139,6 @@ def rpm_remote_repository(
         baseurl = baseurl,
         package_system = _RPM_PACKAGE_SYSTEM,
         snapshot = snapshots[0] if snapshots else None,
-        **kwargs
-    )
-
-def rpm_engine(
-        name: str,
-        packages: list[str],
-        repository_universe: str,
-        lock: str | None = None,
-        **kwargs) -> None:
-    """An engine preconfigured for rpm (see the module docstring)."""
-    if not name.endswith(".engine"):
-        fail("rpm_engine name must end with '.engine': {}".format(name))
-    engine_rule(
-        name = name,
-        packages = packages,
-        repository_universe = repository_universe,
-        lock = lock or (name + ".json"),
-        package_system = _RPM_PACKAGE_SYSTEM,
         **kwargs
     )
 
