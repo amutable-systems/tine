@@ -9,7 +9,7 @@ PackageManagerInfo = provider(
     doc = "The engine and repository selection used for native package operations.",
     fields = {
         "release": provider_field(Dependency),
-        "engine": provider_field(EngineInfo),
+        "engine": provider_field(Dependency),
         "package_system": provider_field(Dependency),
         "repositories": provider_field(list[Dependency]),
         "priorities": provider_field(dict[str, int]),
@@ -62,7 +62,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
         DefaultInfo(),
         PackageManagerInfo(
             release = ctx.attrs.release,
-            engine = engine,
+            engine = ctx.attrs.engine,
             package_system = package_system,
             repositories = repositories,
             priorities = priorities,

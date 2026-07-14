@@ -1,0 +1,182 @@
+"""Image construction smoke targets."""
+
+load("@tine//image:compose.bzl", "bootable_disk_image", "rootfs_archive")
+load("@tine//image:layer.bzl", "image", "image_layer", "install", "mkdir", "remove", "run")
+load("@tine//image:vm.bzl", "image_vm")
+load("@tine//image_format:archive.bzl", "image_archive")
+
+# Minimal install + ordered-ops demo. `:demo` is the tar; `:demo.layer` is the logical image.
+rootfs_archive(
+    name = "demo",
+    package_manager = "catalog//:fedora.rawhide.package-manager",
+    engine = "catalog//:fedora.rawhide.engine",
+    ops = [
+        run(["/usr/bin/mkdir", "-p", "/buildroot/etc/tine"], chroot = False),
+        install(["bash", "coreutils"]),
+        run(["/usr/bin/bash", "-c", "echo built-by-tine > /etc/tine/marker"]),
+    ],
+    format = "tar",
+)
+
+# Base-only image exercising a single-component delta stack.
+rootfs_archive(
+    name = "base",
+    package_manager = "catalog//:fedora.rawhide.package-manager",
+    engine = "catalog//:fedora.rawhide.engine",
+    ops = [install(["bash"])],
+    format = "tar",
+)
+
+# Chained layers: the child adds one file and whiteouts another.
+image(
+    name = "chained.image",
+    engine = "catalog//:fedora.rawhide.engine",
+)
+
+image_layer(
+    name = "chained-base",
+    package_manager = "catalog//:fedora.rawhide.package-manager",
+    parent = ":chained.image",
+    ops = [
+        install(["bash", "coreutils"]),
+        mkdir("/etc/tine"),
+        run(["/usr/bin/bash", "-c", "echo base > /etc/tine/from-base-kept; echo base > /etc/tine/from-base-gone"]),
+    ],
+)
+
+image_layer(
+    name = "chained-child.layer",
+    parent = ":chained-base",
+    ops = [
+        run(["/usr/bin/bash", "-c", "echo child > /etc/tine/from-child"]),
+        remove("/etc/tine/from-base-gone"),
+    ],
+)
+
+image_archive(
+    name = "chained",
+    image = ":chained-child.layer",
+    format = "tar",
+)
+
+# Package installation and mutations sharing one physical delta.
+image(
+    name = "layered-install.image",
+    engine = "catalog//:fedora.rawhide.engine",
+)
+
+image_layer(
+    name = "layered-install-base",
+    package_manager = "catalog//:fedora.rawhide.package-manager",
+    parent = ":layered-install.image",
+    ops = [
+        install(["bash"]),
+        run(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"]),
+    ],
+)
+
+image_layer(
+    name = "layered-install.layer",
+    package_manager = "catalog//:fedora.rawhide.package-manager",
+    parent = ":layered-install-base",
+    ops = [
+        install(["coreutils"]),
+        run(["/usr/bin/bash", "-c", "ls /usr/bin/ls > /etc/from-child-install"]),
+    ],
+)
+
+image_archive(
+    name = "layered-install",
+    image = ":layered-install.layer",
+    format = "tar",
+)
+
+# Round-trip an escaped name and an escaped whiteout through stored deltas.
+image(
+    name = "escaped.image",
+    engine = "catalog//:fedora.rawhide.engine",
+)
+
+image_layer(
+    name = "escaped-base",
+    package_manager = "catalog//:fedora.rawhide.package-manager",
+    parent = ":escaped.image",
+    ops = [
+        install(["bash", "coreutils"]),
+        mkdir("/etc/tine"),
+        run(["/usr/bin/bash", "-c", "echo kept > '/etc/tine/esc\\x2dkept'; echo gone > '/etc/tine/esc\\x2dgone'"]),
+    ],
+)
+
+image_layer(
+    name = "escaped-child.layer",
+    parent = ":escaped-base",
+    ops = [remove("/etc/tine/esc\\x2dgone")],
+)
+
+image_archive(
+    name = "escaped",
+    image = ":escaped-child.layer",
+    format = "tar",
+)
+
+# Bootable GPT image; `buck run :boot-demo-vm` starts it with the engine's vmspawn stack.
+bootable_disk_image(
+    name = "boot-demo",
+    package_manager = "catalog//:fedora.rawhide.package-manager",
+    engine = "catalog//:fedora.rawhide.engine",
+    ops = [
+        install([
+            "kernel-core",
+            "systemd",
+            "systemd-udev",
+            "systemd-boot-unsigned",
+            "fedora-release",
+            "bash",
+            "coreutils",
+            "util-linux",
+            "dbus-broker",
+        ]),
+    ],
+)
+
+image_vm(
+    name = "boot-demo-vm",
+    autologin = "root",
+    credentials = {
+        "firstboot.locale": "C.UTF-8",
+        "firstboot.timezone": "UTC",
+    },
+    image = ":boot-demo",
+)
+
+# Replacing a populated directory exercises the opaque-dir marker.
+image(
+    name = "opaque.image",
+    engine = "catalog//:fedora.rawhide.engine",
+)
+
+image_layer(
+    name = "opaque-base",
+    package_manager = "catalog//:fedora.rawhide.package-manager",
+    parent = ":opaque.image",
+    ops = [
+        install(["bash", "coreutils"]),
+        run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"]),
+    ],
+)
+
+image_layer(
+    name = "opaque-child.layer",
+    parent = ":opaque-base",
+    ops = [
+        remove("/etc/tine/sub"),
+        run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo new > /etc/tine/sub/fresh"]),
+    ],
+)
+
+image_archive(
+    name = "opaque",
+    image = ":opaque-child.layer",
+    format = "tar",
+)

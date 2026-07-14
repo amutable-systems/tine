@@ -35,8 +35,8 @@ tine//package/            package-system-neutral providers and installation flow
 tine//package_system/rpm/ RPM repository, resolver, installer, extractor, and builder
 tine//engine/             engine bootstrap and sandbox command construction
 tine//rootfs/             bind/overlay mounting and stored-delta translation
-tine//image/              layer, UKI, and image composition rules
-tine//image_format/       tar/cpio/directory and disk output drivers
+tine//image/              layers, boot artifacts, composition macros, and VM runners
+tine//image_format/       archive, directory, and raw-disk output rules and drivers
 tine//catalog/            default repositories, locks, releases, package managers, and buildroots
 tine//tools/              pinned development and catalog-refresh commands
 ```
@@ -90,13 +90,14 @@ The providers have deliberately narrow roles:
   base establishes provenance; the engine may serve compatible package managers for other releases.
 
 This split is visible in the default catalog. Fedora 44, Rawhide, and CentOS Stream 10 are separate OS
-releases. Rawhide and CentOS use their own repositories while sharing the Fedora 44 engine. CentOS models
-BaseOS as required, AppStream as a default repository group, and CRB as an optional group enabled by the
-current package manager.
+releases. Their package managers solve against their own repositories while sharing the Rawhide engine.
+CentOS models BaseOS as required, AppStream as a default repository group, and CRB as an optional group
+enabled by the current package manager.
 
-An image names a package manager only when it installs native packages. It names an engine separately for
-mutation, packing, UKI, disk, and VM tools. A package target names a buildroot because its shared base root,
-not OS identity alone, is its relevant input.
+An image bootstrap target fixes one engine for the lifetime of the logical image. Layers name a package
+manager only when they install native packages, and that manager must use the same engine. Mutation,
+packing, UKI, disk, and VM rules inherit the engine through their image input. A package target names a
+buildroot because its shared base root, not OS identity alone, is its relevant input.
 
 ### Catalog pinning and refresh
 
@@ -186,8 +187,8 @@ host environment, disables network by default, and uses mkosi-sandbox's unprivil
 The sandbox only creates the execution environment. Drivers own their target-root layout through
 `rootfs.rootfs()`:
 
-- a fresh install binds an output directory at `/buildroot`;
-- an incremental install or image operation mounts an ordered lower stack plus a persisted upper;
+- a fresh install or image layer binds an output directory at `/buildroot`;
+- an incremental install or image layer mounts an ordered lower stack plus a persisted upper;
 - an RPM build mounts its buildroot stack with an ephemeral upper and binds action scratch at `/build`;
 - pack/disk operations merge a stack with an ephemeral upper so cleanup does not modify stored layers.
 
@@ -197,12 +198,13 @@ harder.
 
 `chroot_run(relaxed = True)` is reserved for interactive leaves. The engine still supplies userspace, but
 devices, `/run`, environment, current directory, and network come from the host, and the command remains the
-invoking user. `image_vm` is its only current consumer; build actions never use relaxed mode.
+invoking user. The engine's `nss-systemd` reads native identities from the host's UserDB services under
+`/run`. This avoids importing host NSS modules or shadow databases, which may be incompatible with the
+pinned userspace. `image_vm` is the only current consumer; build actions never use relaxed mode.
 
 ### Native package installation
 
-`install_packages()` is the shared native-package installation primitive used by RPM builds and images. It
-has three actions:
+Native package installation has three phases shared by buildroots and images:
 
 1. **Plan.** Run `PackageSystemInfo.plan` against the package manager's exact repositories, priorities, and
    solver cache. Weak dependencies are disabled. Existing lower layers are mounted read-only so installed
@@ -210,16 +212,19 @@ has three actions:
 2. **Select.** Use the resulting transaction to select raw RPMs from repository pools. If local package
    outputs are present, an anonymous target runs `createrepo`, adds that repository at a higher priority,
    and lets the same libdnf5 solve choose between local and upstream packages.
-3. **Install.** Run `PackageSystemInfo.install` over the exact RPM directory. A fresh request produces a
-   complete root; an incremental request persists only the overlay upper as a delta.
+3. **Install.** Run `PackageSystemInfo.install` over the exact RPM directory. `install_packages()` owns a
+   fresh root or incremental buildroot delta. An image layer instead invokes the same installer against its
+   already-mounted root so package and filesystem operations have one output owner.
 
-Fresh base installs are anonymous targets keyed by package manager, sorted install specs, and local package
-inputs. Buck therefore shares the base buildroot analysis/action graph across packages that use the same
-build profile. Package-specific BuildRequires layers remain inline and are installed over the shared base.
+Fresh buildroot installs are anonymous targets keyed by package manager, sorted install specs, and local
+package inputs. Buck therefore shares the base buildroot analysis/action graph across packages that use the
+same build profile. Package-specific BuildRequires layers remain inline and are installed over the shared
+base.
 
 After installation, `install.py` checkpoints and vacuums the SQLite rpmdb, removes WAL/SHM/lock files, and
-scrubs libdnf5/ldconfig bookkeeping that would otherwise make identical roots differ. It also captures names
-and overlay metadata into Buck-storable form.
+scrubs libdnf5/ldconfig bookkeeping that would otherwise make identical roots differ. The action that owns
+the root then captures names and overlay metadata into Buck-storable form. A fresh root receives mkosi's
+`uninitialized` machine-id marker; incremental installs preserve any existing machine ID.
 
 ### RPM import and build flow
 
@@ -268,51 +273,75 @@ overlayfs whiteouts/xattrs and thaw escaped names. Stored layers remain ordinary
 therefore move through its CAS.
 
 Directory modes are made traversable so Buck can materialize/delete them, and Buck's artifact model does
-not preserve general ownership, capabilities, xattrs, or every mode bit. Image metadata that matters at
-delivery time is expressed through authored tmpfiles snippets and applied while packing. SELinux labels are
-not currently produced.
+not preserve general ownership, capabilities, xattrs, or every mode bit. Authored tmpfiles snippets can
+recreate paths, modes, and xattrs during terminal assembly. Ownership is deliberately normalized to uid/gid
+zero rather than reconstructed. SELinux labels are not currently produced.
 
 ### Image construction
 
-`LayerInfo` carries an ordered stack of filesystem deltas plus deferred tmpfiles snippets. `image_layer`
-first performs package installation when requested, then applies ordered JSON operations (`run`, `mkdir`,
-`symlink`, and `remove`) in a new overlay upper. A `run` operation chroots into the merged image and executes
-the image's own tools.
+The `image` rule bootstraps an empty logical image and fixes its engine. `ImageInfo` carries that engine, an
+ordered stack of filesystem deltas, and deferred tmpfiles snippets. Every derived image and terminal output
+inherits the engine, so one composition cannot silently switch tooling environments between stages.
 
-Package installation and image tooling are explicit, separate inputs:
+`image_layer` applies one ordered operation sequence in one action and persists exactly one overlay upper.
+It may contain one `install` operation at any position; the selected package-system installer operates on
+the already-mounted root, while `run`, `mkdir`, `symlink`, and `remove` mutate the same root. `run` executes
+the image's own tools in a chroot by default; `chroot = False` instead executes engine tooling with the image
+available at `/buildroot`. Package installation always runs outside the chroot. Installing packages requires
+a package manager backed by the image's engine; analysis rejects a mismatched manager.
+
+Package installation and image tooling remain separate concerns:
 
 - `package_manager` determines what native packages can be resolved;
-- `engine` supplies the layer driver and terminal image tools;
+- the bootstrap `engine` supplies every layer driver and terminal image tool;
 - `extra_packages` allows a direct layer rule to prefer local RPM output directories.
 
-Terminal outputs merge the stack only when needed:
+Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
+needed:
 
-- `image_pack` writes deterministic tar or uncompressed newc cpio archives, or a directory artifact;
-- `uki_layer` adds a unified kernel image and systemd-boot files as another persisted delta;
+- `image_archive` writes deterministic tar or uncompressed newc cpio archives;
+- `image_directory` materializes a Buck directory artifact;
+- `uki` builds a standalone unified kernel image from a logical image and one or more initrds;
+- `boot_layer` installs standalone boot artifacts and optionally systemd-boot as another persisted delta;
 - `image_disk` uses offline `systemd-repart` to create a GPT image with an ESP and discoverable root
   partition by default;
-- `image_vm` runs the raw image with the engine's `systemd-vmspawn`, QEMU, and OVMF stack.
+- `image_vm` runs the raw image ephemerally with the engine's `systemd-vmspawn`, QEMU, and OVMF stack.
 
-Packing removes the rpmdb in an ephemeral upper and applies deferred tmpfiles metadata. Tar/cpio entries are
-ordered, ownership is normalized, and mtimes are clamped to the newest installed package build time (or a
-fixed fallback for package-less images). The cpio reader/writer aligns regular-file payloads and uses
-`copy_file_range` when possible so large archives can share extents on reflink-capable filesystems.
+`rootfs_archive()` is the convenience composition for building a single layer from operations and emitting
+an archive. `image_archive` remains the terminal rule for archiving an existing logical image.
 
-`bootable_image()` composes:
+Terminal rules leave the rpmdb and other package state intact. Image cleanup is an explicit, configurable
+layer so output formats do not silently alter image contents. Terminal rules apply deferred tmpfiles lines
+with `systemd-tmpfiles --root`; a missing tool is an error whenever finalization is needed. These lines can
+create paths and restore modes or xattrs, but ownership is deliberately unsupported: all archive entries use
+uid/gid zero, matching the single-user namespace used for assembly.
+
+Tar uses deterministic PAX archives and stores Linux xattrs using `SCHILY.xattr.*` headers. The newc cpio
+format has no general xattr representation. Tar/cpio entries are ordered and mtimes are clamped to the fixed
+assembly epoch. The cpio reader/writer aligns regular-file payloads and uses `copy_file_range` when possible
+so large archives can share extents on reflink-capable filesystems.
+
+`bootable_disk_image()` composes:
 
 ```text
 base initrd package image (cpio)
-              │
-root filesystem layer ──> UKI/systemd-boot layer ──> systemd-repart disk ──> vmspawn runner
+              ├──────┐
+root filesystem layer ──> standalone UKI ──> boot-artifact/systemd-boot layer ──> raw GPT disk
 ```
 
 The base initrd is a separate package image with `/init` pointing to systemd and an
-`/etc/initrd-release` marker. `uki.py` discovers the installed kernel, appends a kernel-modules cpio, runs
-`ukify`, and installs systemd-boot. The default disk uses a fixed partition UUID seed. The smoke image uses
+`/etc/initrd-release` marker. `uki.py` discovers or selects the installed kernel, appends a kernel-modules
+cpio, and runs `ukify`. The generic boot layer can place UKIs, device trees, bootloader entries, and future
+boot artifacts before installing the selected bootloader. The default disk derives a stable UUID seed from
+its target identity and partition definitions; callers can override it explicitly. VM runners are declared
+separately from disk composition. Runtime policy is passed to `image_vm` rather than baked into the image.
+Its `autologin` option provisions a locked root password and runtime `login.noauth`; arbitrary non-secret
+system credentials configure settings such as first-boot locale and timezone. The smoke image uses
 `console=hvc0 rw selinux=0`; SELinux is disabled because the build does not yet produce filesystem labels.
 
-The image build tools live in the engine and are not installed into the image merely to build it. Image
-mutation commands are the exception: they intentionally use the image's own binaries inside the image root.
+The image build tools live in the engine and are not installed into the image merely to build it. Chrooted
+`run` operations intentionally use the image's own binaries; non-chrooted runs explicitly use engine tools
+against `/buildroot`.
 
 ### Reproducibility and caching
 
@@ -325,7 +354,7 @@ Reproducibility is both a release property and a caching requirement. Current me
 - a fixed `_buildhost` and frozen rpmautospec macros;
 - parked/vacuumed rpmdbs and scrubbed package-manager caches;
 - sorted transaction JSON, archive entries, source staging, and output collection;
-- fixed image partition UUID seeding and normalized archive metadata;
+- target/configuration-derived partition UUID seeding and normalized archive metadata;
 - content-based paths for repository-owned RPM and payload artifacts.
 
 These measures make action-cache reuse meaningful and prepare the graph for remote execution. The repository
@@ -390,10 +419,10 @@ content type.
 ### Separate an engine's base release from its target releases
 
 An engine is a tools root with a concrete OS userspace, so its base release records where its packages and
-identity came from. That does not make it part of a package manager's target OS identity: the Fedora 44
-engine can still operate on Rawhide and CentOS Stream. Keeping the engine dependency explicit makes reuse
-visible and content-keyed, avoids duplicating compatible tooling roots, and lets images choose richer tools
-without shipping those tools.
+identity came from. That does not make it part of a package manager's target OS identity: the Rawhide engine
+can still operate on Fedora 44 and CentOS Stream. Keeping the engine dependency explicit at an image's
+bootstrap makes reuse visible and content-keyed, avoids duplicating compatible tooling roots, and lets
+images choose richer tools without shipping those tools.
 
 ### Use one sandbox boundary and let drivers mount target roots
 
@@ -437,14 +466,15 @@ Representative smoke builds are:
 ```text
 tine/tools/buck build root//distribution/packages/fedora/rawhide:zlib-ng
 tine/tools/buck build root//examples/image:demo
+tine/tools/buck build root//examples/image:layered-install
 tine/tools/buck build root//examples/image:boot-demo
 ```
 
 The first validates package import, package-manager selection, buildroot assembly, and RPM collection.
 Packages with `buildroot_deps` additionally exercise local-package preference. The image targets validate
-package installation, delta layering, archive packing, and UKI/disk composition. Running `boot-demo-vm`
-validates the interactive VM runner and writes to its disk artifact in place; build or copy a fresh image
-when a pristine disk matters.
+package installation and commands sharing one delta, incremental layering, archive packing, standalone UKI
+creation, boot-layer assembly, and disk composition. Running `boot-demo-vm` validates the interactive VM
+runner; ephemeral mode preserves the Buck disk artifact.
 
 ## Current limitations
 
@@ -462,7 +492,9 @@ These are properties of the implementation today, not merely ideas for future op
 - Upstream package signatures are not verified. SHA-256 pinning gives integrity after refresh, not
   authenticity at refresh time.
 - The bootstrap extractor supports the pinned RPM v4/newc payload form, not RPM v6 metadata.
-- General ownership, capabilities, xattrs, and SELinux labels do not survive as Buck directory metadata.
+- Archive ownership is intentionally normalized to uid/gid zero. Capabilities, xattrs, and SELinux labels do
+  not survive as Buck directory metadata; deferred tmpfiles can restore xattrs at terminal assembly, and tar
+  preserves them in PAX headers, but newc cpio cannot represent general xattrs.
 - Directory image output cannot represent backslashes in names; archive outputs should be used instead.
 - Bootable images currently disable SELinux and do not use dm-verity or Secure Boot signing.
 - Remote execution, Barrage integration, release publishing, and systematic reproducibility audits are not
@@ -518,11 +550,11 @@ Near-term image gaps are:
 - deterministic ext4/FAT byte-level validation and any required normalization;
 - dm-verity and measured/Secure Boot integration;
 - OCI, sysext/confext, ESP, and other terminal formats as real consumers require them;
-- a richer but still ordered operation vocabulary for copying artifacts and setting metadata;
-- deciding whether image tooling should move from the shared package engine into a dedicated image engine.
+- a richer but still ordered operation vocabulary for copying general artifacts and setting metadata;
+- deciding whether package installation and image tooling eventually need distinct compatible engines.
 
-The layer model should remain ordered actions over deltas. A provides/requires feature solver is unnecessary
-unless real composition requirements appear.
+The layer model should remain ordered operations captured as deltas. A provides/requires feature solver is
+unnecessary unless real composition requirements appear.
 
 ### Scale, configuration, and testing
 
@@ -548,7 +580,7 @@ Useful implementation entry points:
 - `tine/package_system/rpm/rules.bzl` and
   `tine/package_system/rpm/{snapshot,plan,install,createrepo,build,extract,decompress}.py`
 - `tine/engine/{rules.bzl,sandbox.py}` and `tine/rootfs/rootfs.py`
-- `tine/image/rules.bzl`, `tine/image/uki.py`, and `tine/image_format/{pack,disk}.py`
+- `tine/image/{layer,uki,boot,compose,vm}.bzl` and `tine/image_format/{archive,disk}.bzl`
 - `tine/tools/catalog.py` and `tine/catalog/BUCK`
 - `distribution/apt` and `tine/package_system/rpm/generated.bzl`
 

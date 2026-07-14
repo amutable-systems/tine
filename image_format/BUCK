@@ -1,0 +1,27 @@
+"""Terminal image-output format drivers."""
+
+python_bootstrap_library(
+    name = "finalize",
+    srcs = ["finalize.py"],
+)
+
+python_bootstrap_binary(
+    name = "archive",
+    main = "archive.py",
+    deps = [
+        "//archive:cpio",
+        "//rootfs:rootfs",
+        ":finalize",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+python_bootstrap_binary(
+    name = "disk",
+    main = "disk.py",
+    deps = [
+        "//rootfs:rootfs",
+        ":finalize",
+    ],
+    visibility = ["PUBLIC"],
+)

@@ -179,6 +179,13 @@ def _apivfs(stack: ExitStack, target: Path) -> None:
 
 
 @contextmanager
+def chroot(target: str | Path) -> Iterator[Path]:
+    """Temporarily enter an already-mounted target root."""
+    with _chroot(str(target)):
+        yield Path("/")
+
+
+@contextmanager
 def rootfs(
     target: str | Path,
     *,

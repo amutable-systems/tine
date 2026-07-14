@@ -1,4 +1,8 @@
-"""Read and write uncompressed newc archives with reflink-friendly file alignment."""
+"""Read and write root-owned uncompressed newc archives with aligned file payloads.
+
+Newc has no general extended-attribute representation; callers needing xattrs must use a
+different terminal format.
+"""
 
 import ctypes
 import errno

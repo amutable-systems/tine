@@ -1,6 +1,6 @@
 """Resolve and install native packages into filesystem roots."""
 
-load("//engine:rules.bzl", "chroot_run")
+load("//engine:rules.bzl", "EngineInfo", "chroot_run")
 load(":manager.bzl", "PackageManagerInfo")
 load(":repository.bzl", "PackageRepositoryInfo", "select_package_artifacts")
 load(":system.bzl", "PackageSystemInfo")
@@ -17,7 +17,7 @@ def _extra_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     system = package_manager.package_system[PackageSystemInfo]
     repo = ctx.actions.declare_output("repo", dir = True)
     createrepo = cmd_args(
-        chroot_run(engine = package_manager.engine, exe = system.createrepo),
+        chroot_run(engine = package_manager.engine[EngineInfo], exe = system.createrepo),
         "--out",
         repo.as_output(),
     )
@@ -42,12 +42,13 @@ _RootInfo = provider(
     fields = {"root": provider_field(Artifact)},
 )
 
-def _install_actions(
+def resolve_packages(
         ctx: AnalysisContext,
         package_manager_dep: Dependency,
         install: list[str],
         stack: list[Artifact],
         extra_packages: list[Artifact]) -> Artifact:
+    """Plan an install and select its exact package artifacts."""
     package_manager = package_manager_dep[PackageManagerInfo]
     repositories = package_manager.repositories
     system = package_manager.package_system[PackageSystemInfo]
@@ -63,7 +64,7 @@ def _install_actions(
 
     tx = ctx.actions.declare_output("transaction.json")
     plan = cmd_args(
-        chroot_run(engine = package_manager.engine, exe = system.plan),
+        chroot_run(engine = package_manager.engine[EngineInfo], exe = system.plan),
         "solve",
         "--out",
         tx.as_output(),
@@ -83,10 +84,20 @@ def _install_actions(
         plan.add("--install", cap)
     ctx.actions.run(plan, category = "plan")
 
-    closure = select_package_artifacts(ctx, tx, repositories = repositories, extra_packages = extra_packages)
+    return select_package_artifacts(ctx, tx, repositories = repositories, extra_packages = extra_packages)
+
+def _install_actions(
+        ctx: AnalysisContext,
+        package_manager_dep: Dependency,
+        install: list[str],
+        stack: list[Artifact],
+        extra_packages: list[Artifact]) -> Artifact:
+    package_manager = package_manager_dep[PackageManagerInfo]
+    system = package_manager.package_system[PackageSystemInfo]
+    closure = resolve_packages(ctx, package_manager_dep, install, stack, extra_packages)
     out = ctx.actions.declare_output("install.delta" if stack else "root", dir = True)
     cmd = cmd_args(
-        chroot_run(engine = package_manager.engine, exe = system.install),
+        chroot_run(engine = package_manager.engine[EngineInfo], exe = system.install),
         "--packages-dir",
         closure,
         "--target",
@@ -96,7 +107,7 @@ def _install_actions(
         cmd.add("--work", ctx.actions.declare_output("install.work", dir = True).as_output())
     for lower in stack:
         cmd.add("--lower", lower)
-    ctx.actions.run(cmd, category = "assemble")
+    ctx.actions.run(cmd, category = "install")
     return out
 
 def _install_packages_impl(ctx: AnalysisContext) -> list[Provider]:

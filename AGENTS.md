@@ -11,9 +11,9 @@
 ## Layout
 
 The `tine` cell contains reusable machinery organized by subsystem. Starlark rules and their
-drivers live together in `engine`, `package`, `package_system`, `rootfs`, and `archive`. Vendored
-code lives in `vendor`. The default catalog remains in `catalog`; consumers may repoint that cell.
-Package sources and targets live in the root repository under `distribution`.
+drivers live together in `engine`, `package`, `package_system`, `image`, `image_format`, `rootfs`,
+and `archive`. Vendored code lives in `vendor`. The default catalog remains in `catalog`; consumers
+may repoint that cell. Package sources and targets live in the root repository under `distribution`.
 
 ## Commands
 

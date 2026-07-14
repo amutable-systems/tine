@@ -1,16 +1,8 @@
-"""sandbox — the exec-environment primitive every build action goes through.
+"""Run commands with pinned userspace through the vendored mkosi sandbox.
 
-A thin CLI over the vendored mkosi-sandbox (mkosi/sandbox.py). It assembles the namespace
-the way mkosi's sandbox_cmd does: start from an empty root and bind the `--tools` tree's
-top-level entries onto `/` read-only (so the binary and its runtime come from a pinned
-chroot, never the host), add /proc + /dev + tmpfs /run,/tmp,/var/tmp, and become-root in the
-user namespace. It sets up *only* the exec environment — a driver that needs a target root to
-install into or run against sets that up itself (see rootfs.py, which drives mkosi's
-FSOperation primitives from inside this namespace).
-
-It's a leaf: `main()` parses argv, assembles the mkosi-sandbox argv, replaces the host
-environment with a clean base (so it can't leak into the build), and execs. Callers that need
-to nest a sandbox (build_rpm's rpmbuild) fork it off as a subprocess rather than importing it.
+The default mode provides a clean, isolated build environment. `--relaxed` retains the
+pinned userspace but exposes host devices, services, environment, cwd, and network.
+Target-root setup belongs to rootfs.py rather than this launcher.
 """
 
 import argparse
@@ -20,15 +12,16 @@ from typing import NoReturn
 
 import mkosi.sandbox
 
-# Top-level entries the sandbox provides itself (kernel APIs + ephemerals), so
-# we never bind them from the tools tree.
+# Kernel APIs and ephemeral trees supplied by the sandbox.
 _PROVIDED = frozenset({"proc", "sys", "dev", "run", "tmp", "boot"})
 
-# The clean base environment the sandboxed command runs with. mkosi-sandbox execs
-# via os.execvp, which inherits the *current* environment — so without this the
-# host env (TMPDIR, PATH, HOME, XDG, SSH, …) would leak in. We wipe it and set only
-# deterministic values (fixed PATH, UTC, C.UTF-8) so builds don't vary with the
-# host; callers add specifics via --setenv. TMPDIR points at the tmpfs at /tmp.
+# Relaxed mode takes userspace from tools and everything else from the host.
+_TOOLS_DIRS = ("usr", "opt")
+_TOOLS_LINKS = ("bin", "sbin", "lib", "lib32", "lib64")
+_HOST_SKIP = frozenset({"proc", "nix", "etc", *_TOOLS_DIRS, *_TOOLS_LINKS})
+_HOST_ETC = ("machine-id",)
+
+# Deterministic environment replacing mkosi-sandbox's inherited host environment.
 _BASE_ENV = {
     "PATH": "/usr/bin:/usr/sbin:/bin:/sbin",
     "HOME": "/root",
@@ -53,6 +46,31 @@ def _kv(pairs: list[str], sep: str) -> list[tuple[str, str]]:
     return out
 
 
+def _relaxed(out: list[str], tools: Path) -> None:
+    """Mount pinned userspace over a host-integrated root."""
+    for name in _TOOLS_DIRS:
+        if (tools / name).is_dir():
+            out += ["--ro-bind", str(tools / name), "/" + name]
+    for name in _TOOLS_LINKS:
+        entry = tools / name
+        if entry.is_symlink():
+            out += ["--symlink", str(entry.readlink()), "/" + name]
+        elif entry.is_dir():
+            out += ["--ro-bind", str(entry), "/" + name]
+    for entry in sorted(Path("/").iterdir()):
+        if entry.name in _HOST_SKIP:
+            continue
+        if entry.is_symlink():
+            out += ["--symlink", str(entry.readlink()), str(entry)]
+        else:
+            out += ["--bind", str(entry), str(entry)]
+    if (tools / "etc").is_dir():
+        out += ["--ro-bind", str(tools / "etc"), "/etc"]
+    for f in _HOST_ETC:
+        if Path("/etc", f).exists() and (tools / "etc" / f).exists():
+            out += ["--ro-bind", f"/etc/{f}", f"/etc/{f}"]
+
+
 def main(argv: list[str] | None = None) -> NoReturn:
     p = argparse.ArgumentParser(prog="sandbox")
     p.add_argument("--tools", required=True, help="ro exec-env chroot bound onto / (the pinned tools tree)")
@@ -64,44 +82,48 @@ def main(argv: list[str] | None = None) -> NoReturn:
     p.add_argument("--chdir", default=None)
     p.add_argument("--bind-cwd", dest="bind_cwd", action="store_true", help="bind+chdir the project root")
     p.add_argument("--network", action="store_true", help="grant network (default: unshared)")
+    p.add_argument(
+        "--relaxed",
+        action="store_true",
+        help="host-integrated mode: tools supply the userspace, the host supplies the rest "
+        "(devices, /run, network, env, cwd) — for interactive leaves (vmspawn), never builds",
+    )
     p.add_argument("cmd", nargs="*", help="the command to run (after `--`)")
     args = p.parse_args(argv)
     if not args.cmd:
         raise SystemExit("no command given (expected `-- cmd ...`)")
+    if args.relaxed and args.bind_cwd:
+        raise SystemExit("--bind-cwd is for hermetic builds; --relaxed sees the host cwd already")
 
-    # Assemble the mkosi-sandbox argv (everything after `mkosi.sandbox`).
     out: list[str] = []
 
-    # In bind_cwd mode the project tree is bound rw under its real path; don't
-    # ro-bind the tools tree's top-level dir it lives under (e.g. an empty /home),
-    # or that ro mount would block creating the project path beneath it.
+    # Leave the cwd's top-level directory writable for the project bind.
     cwd = os.getcwd() if args.bind_cwd else None
     cwd_parts = Path(cwd).parts if cwd else ()
     cwd_top = cwd_parts[1] if len(cwd_parts) > 1 else None
 
-    # The exec environment bound onto /: the read-only --tools tree. Bind each top-level
-    # entry onto /, replicating usr-merge symlinks (bin/lib/lib64/sbin -> usr/*) rather than
-    # binding through them.
-    for entry in sorted(Path(args.tools).resolve().iterdir()):
-        if entry.name in _PROVIDED:
-            continue
-        if entry.name == cwd_top:
-            # The project tree is bound rw beneath /{cwd_top}; we can't also
-            # ro-bind the tools' /{cwd_top} (the rw mount can't be created under a
-            # ro parent). Safe only if there's nothing there to hide — otherwise
-            # the repo must move off a tools-tree path (e.g. clone under /home).
-            if entry.is_dir() and any(entry.iterdir()):
-                raise SystemExit(
-                    f"project root /{cwd_top}/… collides with non-empty tools dir "
-                    f"/{cwd_top}; check out the repo under a path whose first "
-                    f"component isn't a tools-tree entry (e.g. /home, /tmp, /srv)"
-                )
-            continue
-        dest = "/" + entry.name
-        if entry.is_symlink():
-            out += ["--symlink", str(entry.readlink()), dest]
-        elif entry.is_dir():
-            out += ["--ro-bind", str(entry), dest]
+    # Recreate usr-merge symlinks instead of binding through them.
+    tools = Path(args.tools).resolve()
+    if args.relaxed:
+        _relaxed(out, tools)
+    else:
+        for entry in sorted(tools.iterdir()):
+            if entry.name in _PROVIDED:
+                continue
+            if entry.name == cwd_top:
+                # A non-empty tools directory cannot be hidden by the writable project bind.
+                if entry.is_dir() and any(entry.iterdir()):
+                    raise SystemExit(
+                        f"project root /{cwd_top}/… collides with non-empty tools dir "
+                        f"/{cwd_top}; check out the repo under a path whose first "
+                        f"component isn't a tools-tree entry (e.g. /home, /tmp, /srv)"
+                    )
+                continue
+            dest = "/" + entry.name
+            if entry.is_symlink():
+                out += ["--symlink", str(entry.readlink()), dest]
+            elif entry.is_dir():
+                out += ["--ro-bind", str(entry), dest]
 
     for name, dest in _kv(args.scratch, ":"):
         out += ["--dir", dest] if name == "_" else ["--tmpfs", dest]
@@ -115,46 +137,41 @@ def main(argv: list[str] | None = None) -> NoReturn:
         out += ["--bind", cwd, cwd]
         chdir = chdir or cwd
 
-    # Kernel API filesystems + writable ephemerals every rpm scriptlet expects.
-    # /var/tmp must be writable (over the ro /var bind) for rpm's scriptlet staging
-    # (rpm-tmp.*, %sysusers); mkosi binds a writable /var/tmp likewise.
-    out += ["--bind", "/proc", "/proc", "--dev", "/dev"]
-    out += ["--tmpfs", "/run", "--tmpfs", "/tmp", "--tmpfs", "/var/tmp"]
+    # RPM scriptlets require writable API and temporary filesystems.
+    out += ["--bind", "/proc", "/proc"]
+    if not args.relaxed:
+        out += ["--dev", "/dev"]
+        out += ["--tmpfs", "/run", "--tmpfs", "/tmp", "--tmpfs", "/var/tmp"]
 
-    # Reproducibility + isolation, centralized so no action can forget them.
     if args.source_date_epoch is not None:
         out += ["--setenv", "SOURCE_DATE_EPOCH", str(args.source_date_epoch)]
     for k, v in _kv(args.setenv, "="):
         out += ["--setenv", k, v]
-    if args.network:
-        # A networked tool (e.g. the lock generator) needs DNS. Keep the engine root's
-        # /etc (its *Fedora* CA trust — the host's may live at other paths) and overlay
-        # only the host's resolver. /etc/resolv.conf is a symlink (typically into
-        # /run/systemd/resolve), so bind it *nofollow* — as the symlink itself — and
-        # bind /run so the target resolves. The engine root ships a resolv.conf symlink
-        # as the mountpoint (its /etc is ro). Builds stay hermetic (network unshared).
+    if args.relaxed:
+        # Resolve through the host /run while keeping the tools tree's /etc.
+        if Path("/etc/resolv.conf").exists():
+            out += ["--ro-bind-nofollow", "/etc/resolv.conf", "/etc/resolv.conf"]
+        chdir = chdir or os.getcwd()
+    elif args.network:
+        # Preserve engine CA trust but use the host resolver and its /run target.
         out += ["--ro-bind-nofollow", "/etc/resolv.conf", "/etc/resolv.conf", "--ro-bind", "/run", "/run"]
     else:
         out += ["--unshare-net"]
     if chdir:
         out += ["--chdir", chdir]
 
-    # fakeroot-equivalent: let rpmbuild/dnf run unprivileged.
-    out += ["--suppress-chown", "--suppress-sync", "--become-root"]
+    # Builds need fakeroot semantics; relaxed tools must remain the invoking user.
+    if not args.relaxed:
+        out += ["--suppress-chown", "--suppress-sync", "--become-root"]
     out += ["--", *args.cmd]
 
-    # Replace the inherited host environment with our clean base: mkosi-sandbox's
-    # os.execvp passes the current os.environ to the command (only --setenv layers on
-    # top), so this is what stops the host env leaking in. One exception rides through
-    # in bind-cwd mode: buck's per-action scratch dir, which lives under buck-out inside
-    # the cwd bind — real disk (the sandbox's /tmp and /var/tmp are tmpfs), wiped by
-    # `buck clean`, never a declared output. Drivers stage large scratch trees there
-    # (rpmbuild's %_topdir).
-    scratch = os.environ.get("BUCK_SCRATCH_PATH") if args.bind_cwd else None
-    os.environ.clear()
-    os.environ.update(_BASE_ENV)
-    if scratch:
-        os.environ["BUCK_SCRATCH_PATH"] = scratch
+    # Keep only Buck's on-disk scratch path when replacing the host environment.
+    if not args.relaxed:
+        scratch = os.environ.get("BUCK_SCRATCH_PATH") if args.bind_cwd else None
+        os.environ.clear()
+        os.environ.update(_BASE_ENV)
+        if scratch:
+            os.environ["BUCK_SCRATCH_PATH"] = scratch
     mkosi.sandbox.main(out)  # calls enter() then os.execvp; never returns
     raise SystemExit(127)  # unreachable; for the type checker
 

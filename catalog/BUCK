@@ -85,7 +85,7 @@ os_release(
 
 # Shared RPM engine plus the image assembly and VM tools. These tools stay out of images.
 engine(
-    name = "fedora.44.engine",
+    name = "fedora.rawhide.engine",
     packages = [
         "rpm",
         "python3",
@@ -105,29 +105,29 @@ engine(
         "edk2-ovmf",
         "openssh",
     ],
-    release = ":fedora.44.release",
+    release = ":fedora.rawhide.release",
     visibility = ["PUBLIC"],
 )
 
 package_manager(
     name = "fedora.44.package-manager",
     release = ":fedora.44.release",
-    engine = ":fedora.44.engine",
+    engine = ":fedora.rawhide.engine",
     visibility = ["PUBLIC"],
 )
 
-# Rawhide and CentOS packages use their own repositories with the shared Fedora engine.
+# Every package manager uses the shared Rawhide engine while solving its own release repositories.
 package_manager(
     name = "fedora.rawhide.package-manager",
     release = ":fedora.rawhide.release",
-    engine = ":fedora.44.engine",
+    engine = ":fedora.rawhide.engine",
     visibility = ["PUBLIC"],
 )
 
 package_manager(
     name = "centos.10-stream.package-manager",
     release = ":centos.10-stream.release",
-    engine = ":fedora.44.engine",
+    engine = ":fedora.rawhide.engine",
     enable_repository_groups = ["crb"],
     visibility = ["PUBLIC"],
 )

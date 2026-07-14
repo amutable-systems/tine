@@ -101,7 +101,7 @@ command_alias(
         "--ty",
         "$(location :ty)",
         "--engine",
-        "$(location catalog//:fedora.44.engine)",
+        "$(location catalog//:fedora.rawhide.engine)",
     ],
     exe = ":dev",
 )

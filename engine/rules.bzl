@@ -85,7 +85,7 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
             packages,
             "--target",
             chroot2.as_output(),
-            "--resolv-symlink",
+            "--engine-config",
         ),
         category = "engine",
     )
