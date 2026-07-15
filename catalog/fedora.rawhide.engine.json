@@ -222,27 +222,27 @@
     "source": "repo"
   },
   {
-    "nevra": "glibc-2.43.9000-22.fc45.x86_64",
+    "nevra": "glibc-2.43.9000-23.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
-    "pkgid": "d7795a816b0dc4c1ec0f0d5b45477ca83b1677bd1dd94e608f8c3b75f21e7b1f",
+    "pkgid": "a5eb17755cf88fe3ca6c129868680b661eb49c27f10f26020219422d9e0d69de",
     "source": "repo"
   },
   {
-    "nevra": "glibc-common-2.43.9000-22.fc45.x86_64",
+    "nevra": "glibc-common-2.43.9000-23.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
-    "pkgid": "5fab716206e1858f48839207c07bad86b166c5614afb88c50a79ce8aa3dff184",
+    "pkgid": "3564b5d37dd3ab6202ce3a926e11fe55652be328af9f2bcbe3d0ed598b9bb9a0",
     "source": "repo"
   },
   {
-    "nevra": "glibc-gconv-extra-2.43.9000-22.fc45.x86_64",
+    "nevra": "glibc-gconv-extra-2.43.9000-23.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
-    "pkgid": "eab0d99cb7d5953b2196d54a68cb601f34a577e2d8a2b602dabdfb4a0267a77b",
+    "pkgid": "aa9baba3bc82ee9a75738d80b1e20811d7f1e845104ebe48531618d88ae56fa4",
     "source": "repo"
   },
   {
-    "nevra": "glibc-minimal-langpack-2.43.9000-22.fc45.x86_64",
+    "nevra": "glibc-minimal-langpack-2.43.9000-23.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
-    "pkgid": "57b69cfcf576526b1903c4c788f5129cb1dfcd501084a86b476c6a76075814f1",
+    "pkgid": "43f55e99eaaa9094efae9ebdfdc1d59e83d6c6f42baa853ed329121c067fcff9",
     "source": "repo"
   },
   {
