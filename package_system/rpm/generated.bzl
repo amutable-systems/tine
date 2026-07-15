@@ -225,6 +225,25 @@ def _buildroot_locks(
             fail("buildroot-only packages reintroduce a BuildRequires cycle through '{}'".format(name))
     return locks
 
+def _buildrequires_graph_impl(ctx: AnalysisContext) -> list[Provider]:
+    out = ctx.actions.write_json(
+        "buildrequires-graph.json",
+        {"edges": ctx.attrs.edges, "sccs": ctx.attrs.sccs},
+        pretty = True,
+    )
+    return [DefaultInfo(default_output = out)]
+
+# The branch's raw BuildRequires graph as JSON, for `buck run tine//tools:scc` (cycle analysis).
+_buildrequires_graph = rule(
+    impl = _buildrequires_graph_impl,
+    attrs = {
+        # requirer -> provider -> the BuildRequires capabilities justifying the edge
+        "edges": attrs.dict(attrs.string(), attrs.dict(attrs.string(), attrs.list(attrs.string()))),
+        # package -> strongly-connected-component id (a shared id marks a cycle)
+        "sccs": attrs.dict(attrs.string(), attrs.int()),
+    },
+)
+
 # buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package_json per branch package)
 def rpm_branch(
         buildroot: str,
@@ -236,6 +255,13 @@ def rpm_branch(
     provides = _provides(metadata)
     edge_caps = _buildrequires_edges(metadata, provides)
     locks = _buildroot_locks(edge_caps, provides, buildroot_only_packages)
+
+    # An underscore never starts a valid rpm name, so this cannot clash with a package target.
+    _buildrequires_graph(
+        name = "_buildrequires_graph",
+        edges = edge_caps,
+        sccs = _sccs({name: sorted(deps) for name, deps in edge_caps.items()}),
+    )
     for name in sorted(metadata):
         _declare_rpm_package(
             package = name,

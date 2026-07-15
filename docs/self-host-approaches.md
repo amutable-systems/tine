@@ -1,9 +1,9 @@
 # Approaches to self-hosting the BuildRequires mega-SCC
 
-The ~69-package BuildRequires cycle (gcc ↔ glibc ↔ systemd ↔ kernel ↔ …, see the appendix below)
-cannot self-host under the current lock: its intra-cycle edges are dropped to the seed, so the core
-always builds against upstream rawhide binaries. Three candidate approaches. They sit on one axis:
-**where does "the previous round" live?**
+The ~69-package BuildRequires cycle (gcc ↔ glibc ↔ systemd ↔ kernel ↔ …, inspect it with the `scc`
+tool below) cannot self-host under the current lock: its intra-cycle edges are dropped to the seed,
+so the core always builds against upstream rawhide binaries. Three candidate approaches. They sit
+on one axis: **where does "the previous round" live?**
 
 - **A** (overlay forever): nowhere — the previous round is permanently *Fedora's*.
 - **B** (compose seed): outside the graph, in published state, iterated by publish cycles.
@@ -170,87 +170,26 @@ wanted to change nothing, and cold-rebuildability breaks. That is purely an avai
 and mirroring/archiving the snapshotted RPM pool fixes it under A, B, and C alike: rawhide is then
 touched only at deliberate import/refresh time. The cost is mostly storage infrastructure.
 
-# Appendix: Current fedora/rawhide mega-SCC
+# Inspecting the cycle: the `scc` tool
 
-Computed from the branch srcpkg.json metadata (75 source packages) with the same edge derivation as
-rpmjson.bzl's `_buildroot_locks` (provides = binary names ∪ Provides ∪ Files; X → P iff X's
-BuildRequires intersect P's provides; rich deps tokenized). One nontrivial SCC.
+`rpm_branch` materializes each branch's raw BR graph as a `:_buildrequires_graph` target:
+requirer → provider edges, annotated with the capabilities that justify each edge, plus the
+strongly connected components. The `scc` dev command formats it:
 
-- acl
-- attr
-- audit
-- bzip2
-- ca-certificates
-- cryptsetup
-- curl
-- dbus
-- dosfstools
-- e2fsprogs
-- elfutils
-- expat
-- gcc
-- glibc
-- gmp
-- gnupg2
-- gnutls
-- json-c
-- kernel
-- keyutils
-- kmod
-- krb5
-- libarchive
-- libassuan
-- libbpf
-- libcap
-- libcap-ng
-- libeconf
-- libevent
-- libffi
-- libgcrypt
-- libgpg-error
-- libidn2
-- libkcapi
-- libksba
-- libnsl2
-- libseccomp
-- libselinux
-- libsepol
-- libtasn1
-- libtirpc
-- libtool
-- libunistring
-- libusb1
-- libverto
-- libxcrypt
-- libxml2
-- lvm2
-- lz4
-- ncurses
-- nettle
-- nghttp2
-- npth
-- openldap
-- openssh
-- openssl
-- p11-kit
-- pam
-- pcre2
-- readline
-- setup
-- sqlite
-- systemd
-- tpm2-tss
-- tzdata
-- util-linux
-- xz
-- zlib-ng
-- zstd
+```sh
+buck run tine//tools:scc -- root//distribution/packages/fedora/rawhide
+```
 
-For comparison, these six are part of the imports and on the current AOS image, but *not* in the SCC:
+prints the cycle summary (sizes, the packages outside any cycle) and each cycle's membership
+table, sorted by ascending count of cycle-internal BR providers: the top rows are the periphery,
+the bottom rows (gcc, systemd, gnupg2, kernel, …) the hubs. Options:
 
-- crypto-policies
-- dbus-broker
-- filesystem
-- libsemanage
-- shadow-utils
-- wireguard-tools
+- `--why PKG` lists one member's cycle edges in both directions, with the capabilities behind
+  each edge — the basis for judging whether an edge is a genuine build dependency or mere tool
+  use. For example, all 26 in-edges of gnupg2 carry the bare `gnupg2` capability: that is
+  `%{gpgverify}` source-signature checking, not linkage.
+- `--dot FILE` writes the cycle subgraph as graphviz (render with `dot -Tsvg`); at ~380 edges the
+  full cycle is a hairball, so the tables are usually the more useful view.
+
+As of 2026-07-15, the fedora/rawhide branch has one 69-member SCC among its 75 packages, and only 6
+packages are outside it.

@@ -87,6 +87,57 @@ def _fmt(args: argparse.Namespace) -> None:
     _run([args.buildifier, *_starlark_srcs(args.buck)])
 
 
+def _write_dot(path: Path, intra: dict[str, list[str]], rev: dict[str, list[str]]) -> None:
+    """The cycle subgraph as graphviz; node labels carry out/in degree within the cycle."""
+    lines = ["digraph scc {", "  rankdir=LR;", "  node [shape=box, fontsize=10];"]
+    lines += [f'  "{n}" [label="{n}\\n->{len(intra[n])} <-{len(rev[n])}"];' for n in sorted(intra)]
+    lines += [f'  "{n}" -> "{p}";' for n in sorted(intra) for p in intra[n]]
+    path.write_text("\n".join(lines) + "\n}\n")
+
+
+def _scc(args: argparse.Namespace) -> None:
+    # Graph derivation and cycle detection live in buck (rpm_branch); this only formats its output.
+    data = json.loads(_buck_out(args.buck, "build", f"{args.branch}:_buildrequires_graph", "--out", "-"))
+    edge_caps: dict[str, dict[str, list[str]]] = data["edges"]
+    components: dict[int, set[str]] = {}
+    for name, cid in data["sccs"].items():
+        components.setdefault(cid, set()).add(name)
+    cycles = sorted((c for c in components.values() if len(c) > 1), key=len, reverse=True)
+
+    print(f"{len(edge_caps)} packages; cycle sizes: {[len(c) for c in cycles] or 'none, all acyclic'}")
+    acyclic = sorted(n for c in components.values() if len(c) == 1 for n in c)
+    print(f"outside any cycle: {', '.join(acyclic)}\n")
+    if not cycles:
+        return
+
+    incycle = {n: c for c in cycles for n in c}  # cycle member -> its cycle
+    intra = {n: sorted(p for p in edge_caps[n] if incycle.get(p) is incycle[n]) for n in incycle}
+    rev: dict[str, list[str]] = {n: [] for n in incycle}
+    for n in sorted(intra):
+        for p in intra[n]:
+            rev[p].append(n)
+
+    if args.why:
+        assert args.why in incycle, f"{args.why} is not a member of any cycle"
+        _bold(f"{args.why}: cycle edges and their reasons")
+        for p in intra[args.why]:
+            print(f"  {args.why} -> {p}: {', '.join(edge_caps[args.why][p])}")
+        for n in rev[args.why]:
+            print(f"  {n} -> {args.why}: {', '.join(edge_caps[n][args.why])}")
+        return
+
+    for cycle in cycles:
+        _bold(f"the {len(cycle)}-member cycle, ascending peer-provider count")
+        print(f"{'package':24} {'out':>3} {'in':>3}  cycle-internal BR providers")
+        for n in sorted(cycle, key=lambda n: (len(intra[n]), n)):
+            print(f"{n:24} {len(intra[n]):3} {len(rev[n]):3}  {', '.join(intra[n])}")
+        print()
+
+    if args.dot:
+        _write_dot(args.dot, intra, rev)
+        print(f"\nwrote {args.dot}")
+
+
 def main(argv: list[str] | None = None) -> None:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
@@ -105,6 +156,12 @@ def main(argv: list[str] | None = None) -> None:
     for tool in ("buildifier", "ruff"):
         fmt.add_argument(f"--{tool}", required=True)
     fmt.set_defaults(func=_fmt)
+
+    scc = sub.add_parser("scc", parents=[common], help="analyze a branch's BuildRequires cycles")
+    scc.add_argument("branch", help="branch label, e.g. root//distribution/packages/fedora/rawhide")
+    scc.add_argument("--why", metavar="PKG", help="show one cycle member's edges and their reasons")
+    scc.add_argument("--dot", type=Path, help="write the cycle subgraph as graphviz")
+    scc.set_defaults(func=_scc)
 
     args = p.parse_args(argv)
     args.func(args)

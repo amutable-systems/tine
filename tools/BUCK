@@ -106,6 +106,17 @@ command_alias(
     exe = ":dev",
 )
 
+# BuildRequires cycle analysis of a branch (pass its label, e.g. root//distribution/...:rawhide's dir).
+command_alias(
+    name = "scc",
+    args = [
+        "scc",
+        "--buck",
+        "$(source buck)",
+    ],
+    exe = ":dev",
+)
+
 command_alias(
     name = "fmt",
     args = [

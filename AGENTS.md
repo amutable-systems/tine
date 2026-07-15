@@ -25,6 +25,8 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
 - **Auto-format + auto-fix:** `buck run tine//tools:fmt`
 - **Refresh the catalog lock:** `buck run tine//tools:refresh-catalog`;
   `buck run tine//tools:verify-catalog` asserts the committed lock matches.
+- **BuildRequires cycle analysis:** `buck run tine//tools:scc -- <branch label>`; background in
+  [self-host-approaches.md](docs/self-host-approaches.md).
 - **Inspect a failed action's stderr:** `tools/buck log what-ran --failed --show-std-err` prints the
   full stderr of the actions that failed in the last build — buck truncates it in the build output,
   but this recovers it in full (no need to re-run or redirect anything).
