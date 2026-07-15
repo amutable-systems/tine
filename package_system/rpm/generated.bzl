@@ -183,15 +183,19 @@ def _provides(packages: dict[str, SrcpkgMetadata]) -> dict[str, dict[str, bool]]
 
 def _buildrequires_edges(
         packages: dict[str, SrcpkgMetadata],
-        provides: dict[str, dict[str, bool]]) -> dict[str, dict[str, list[str]]]:
-    """The package-to-self-hosted-provider graph, with the capabilities justifying each edge."""
+        provides: dict[str, dict[str, bool]],
+        seed_only_packages: list[str]) -> dict[str, dict[str, list[str]]]:
+    """The package-to-self-hosted-provider graph, with the capabilities justifying each edge.
+
+    A seed-only source package (tool use rather than linkage; see docs/self-host-approaches.md)
+    contributes no edges as a provider: BuildRequires on it always resolve from the seed."""
     edges = {}
     for name in sorted(packages):
         deps = {}
         for br in _build_requires(packages[name]):
             for cap in _br_caps(br):
                 for p in provides.get(cap, {}):
-                    if p != name:
+                    if p != name and p not in seed_only_packages:
                         deps.setdefault(p, {})[cap] = True
         edges[name] = {p: sorted(deps[p]) for p in sorted(deps)}
     return edges
@@ -249,11 +253,19 @@ def rpm_branch(
         buildroot: str,
         packages: dict[str, PackageMetadata],
         buildroot_only_packages: list[str] = [],
+        seed_only_packages: list[str] = [],
         rpmbuild_options: dict[str, list[str]] = {}) -> None:
     """Declare a branch and its self-hosting buildroot edges."""
     metadata = {name: _parse_metadata(meta) for name, meta in packages.items()}
+    for pin in seed_only_packages:
+        if pin not in metadata:
+            fail("seed-only package '{}' is not among the branch packages".format(pin))
     provides = _provides(metadata)
-    edge_caps = _buildrequires_edges(metadata, provides)
+    for cap in buildroot_only_packages:
+        for p in provides.get(cap, {}):
+            if p in seed_only_packages:
+                fail("buildroot-only package '{}' is provided by seed-only package '{}'".format(cap, p))
+    edge_caps = _buildrequires_edges(metadata, provides, seed_only_packages)
     locks = _buildroot_locks(edge_caps, provides, buildroot_only_packages)
 
     # An underscore never starts a valid rpm name, so this cannot clash with a package target.
