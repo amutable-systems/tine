@@ -2,19 +2,58 @@
 
 load("//engine:rules.bzl", "EngineInfo", "chroot_run")
 load(":release.bzl", "OsReleaseInfo")
-load(":repository.bzl", "PackageRepositoryInfo", "merge_repositories", "select_repositories")
+load(":repository.bzl", "ConfiguredPackageRepositoryInfo", "LocalPackageRepositoryInfo", "PackageRepositoryInfo", "merge_repositories", "select_repositories", "write_repository_manifest")
 load(":system.bzl", "PackageSystemInfo")
+
+_LOCAL_REPOSITORY_PRIORITY = 50
+_REMOTE_REPOSITORY_PRIORITY = 99
+
+def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
+    system = ctx.attrs.package_system[PackageSystemInfo]
+    repo = ctx.actions.declare_output("repo", dir = True)
+    createrepo = cmd_args(
+        chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = system.createrepo),
+        "--out",
+        repo.as_output(),
+    )
+    for package_dir in ctx.attrs.package_dirs:
+        createrepo.add("--packages-dir", package_dir)
+    ctx.actions.run(createrepo, category = "createrepo")
+    return [DefaultInfo(default_output = repo)]
+
+_materialize_local_repository = anon_rule(
+    impl = _materialize_local_repository_impl,
+    attrs = {
+        "engine": attrs.dep(providers = [EngineInfo]),
+        "package_system": attrs.dep(providers = [PackageSystemInfo]),
+        "package_dirs": attrs.list(attrs.source()),
+    },
+    artifact_promise_mappings = {
+        "repo": lambda p: p[DefaultInfo].default_outputs[0],
+    },
+)
+
+def materialize_local_repository(
+        ctx: AnalysisContext,
+        engine: Dependency,
+        package_system: Dependency,
+        package_dirs: list[Artifact]) -> Artifact:
+    """Materialize local package directories in their consumer's execution context."""
+    return ctx.actions.anon_target(_materialize_local_repository, {
+        "name": "//local-repository:materialize",
+        "engine": engine,
+        "package_system": package_system,
+        "package_dirs": package_dirs,
+    }).artifact("repo")
 
 PackageManagerInfo = provider(
     doc = "The engine and repository selection used for native package operations.",
     fields = {
-        "release": provider_field(Dependency),
         "engine": provider_field(Dependency),
         "package_sets": provider_field(dict[str, list[str]]),
         "package_system": provider_field(Dependency),
-        "repositories": provider_field(list[Dependency]),
-        "priorities": provider_field(dict[str, int]),
-        "solver_caches": provider_field(dict[str, Artifact]),
+        "repositories": provider_field(list[ConfiguredPackageRepositoryInfo]),
+        "solver_caches": provider_field(list[Artifact]),
     },
 )
 
@@ -25,19 +64,21 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
         if ctx.attrs.enable_repository_groups or ctx.attrs.disable_repository_groups:
             fail("derived package_manager cannot change repository groups")
         base = ctx.attrs.base[PackageManagerInfo]
-        release = base.release
         engine_dep = base.engine
         package_system = base.package_system
         package_sets = base.package_sets
-        repositories = base.repositories
-        priorities = dict(base.priorities)
-        caches = dict(base.solver_caches)
+        configured_by_id = {configured.id: configured for configured in base.repositories}
+        repositories = []
+        for configured in base.repositories:
+            if configured.dependency == None:
+                fail("package_manager base contains inline repository '{}'".format(configured.id))
+            repositories.append(configured.dependency)
+        solver_caches = list(base.solver_caches)
     else:
         if ctx.attrs.release == None or ctx.attrs.engine == None:
             fail("package_manager requires release and engine when base is not set")
-        release = ctx.attrs.release
         engine_dep = ctx.attrs.engine
-        release_info = release[OsReleaseInfo]
+        release_info = ctx.attrs.release[OsReleaseInfo]
         package_system = release_info.package_system
         package_sets = release_info.package_sets
         repositories = select_repositories(
@@ -45,52 +86,85 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
             ctx.attrs.enable_repository_groups,
             ctx.attrs.disable_repository_groups,
         )
-        priorities = {}
-        caches = {}
+        configured_by_id = {}
+        solver_caches = []
 
     repositories = merge_repositories(package_system, repositories + ctx.attrs.additional_repositories)
-    by_id = {repository[PackageRepositoryInfo].id: repository for repository in repositories}
+    by_id = {repository.label.name: repository for repository in repositories}
 
-    for repository in repositories:
-        repo = repository[PackageRepositoryInfo]
-        if repo.id not in priorities:
-            priorities[repo.id] = repo.priority
-    for rid, priority in ctx.attrs.repository_priorities.items():
+    for rid in ctx.attrs.repository_priorities:
         if rid not in by_id:
             fail("priority override names unknown repository '{}'".format(rid))
-        priorities[rid] = priority
 
     engine = engine_dep[EngineInfo]
     system = package_system[PackageSystemInfo]
+    configured_repositories = []
     for repository in repositories:
         repo = repository[PackageRepositoryInfo]
-        if repo.id in caches:
-            continue
-        cache = ctx.actions.declare_output("solver-cache-{}".format(repo.id), dir = True)
-        ctx.actions.run(
-            cmd_args(
-                chroot_run(engine = engine, exe = system.plan),
-                "make-cache",
-                "--repo",
-                cmd_args(repo.dir, format = repo.id + "={}"),
-                "--out",
-                cache.as_output(),
-            ),
-            category = "solver_cache",
-            identifier = repo.id,
+        rid = repository.label.name
+        configured = configured_by_id.get(rid)
+        local = repository.get(LocalPackageRepositoryInfo)
+        if configured != None:
+            directory = configured.directory
+            default_priority = configured.priority
+            baseurl = configured.baseurl
+        else:
+            default_priority = _LOCAL_REPOSITORY_PRIORITY if local != None else _REMOTE_REPOSITORY_PRIORITY
+            if local != None:
+                directory = materialize_local_repository(
+                    ctx,
+                    engine_dep,
+                    package_system,
+                    local.package_dirs,
+                )
+                baseurl = None
+            elif repo.dir != None:
+                directory = repo.dir
+                baseurl = repo.baseurl
+                if baseurl == None:
+                    fail("remote repository '{}' has no base URL".format(rid))
+            else:
+                fail("package_manager: repository '{}' has no directory".format(rid))
+        priority = ctx.attrs.repository_priorities.get(rid, default_priority)
+        configured = ConfiguredPackageRepositoryInfo(
+            id = rid,
+            dependency = repository,
+            directory = directory,
+            priority = priority,
+            baseurl = baseurl,
         )
-        caches[repo.id] = cache
+        if rid not in configured_by_id:
+            cache = ctx.actions.declare_output("solver-cache-{}".format(rid), dir = True)
+            manifest = write_repository_manifest(
+                ctx,
+                "solver-cache-{}-repositories.json".format(rid),
+                [configured],
+            )
+            ctx.actions.run(
+                cmd_args(
+                    chroot_run(engine = engine, exe = system.plan),
+                    "make-cache",
+                    "--arch",
+                    engine.arch,
+                    "--repositories",
+                    manifest,
+                    "--out",
+                    cache.as_output(),
+                ),
+                category = "solver_cache",
+                identifier = rid,
+            )
+            solver_caches.append(cache)
+        configured_repositories.append(configured)
 
     return [
         DefaultInfo(),
         PackageManagerInfo(
-            release = release,
             engine = engine_dep,
             package_sets = package_sets,
             package_system = package_system,
-            repositories = repositories,
-            priorities = priorities,
-            solver_caches = caches,
+            repositories = configured_repositories,
+            solver_caches = solver_caches,
         ),
     ]
 

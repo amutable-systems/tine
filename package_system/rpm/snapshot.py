@@ -322,22 +322,6 @@ def _write_snapshot(path: Path, snapshot: RepositorySnapshot) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def _carry_forward(previous: Path, snapshot: RepositorySnapshot) -> RepositorySnapshot:
-    """Merge the packages already pinned at `previous` into a fresh snapshot.
-
-    Engine locks resolve inside an engine built from the previously committed pins. Carrying those
-    packages forward keeps that engine buildable while its lock re-resolves against the new repodata.
-    """
-    if not previous.exists():
-        # A new repository has nothing pinned yet; its first refresh starts from the fresh snapshot.
-        return snapshot
-    data = json.loads(previous.read_text(encoding="utf-8"))
-    assert isinstance(data, dict), f"{previous} is not a snapshot object"
-    packages: dict[str, PackageEntry] = dict(data["packages"])
-    packages.update(snapshot["packages"])  # fresh metadata is authoritative on conflicts
-    return RepositorySnapshot(packages=packages, repomd=snapshot["repomd"], streams=snapshot["streams"])
-
-
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="snapshot")
     parser.add_argument(
@@ -350,10 +334,6 @@ def main(argv: list[str] | None = None) -> None:
         required=True,
         help="snapshot path to write ({packages, repomd, streams} JSON)",
     )
-    parser.add_argument(
-        "--transitional",
-        help="also write the snapshot here, carrying forward this path's previously pinned packages",
-    )
     args = parser.parse_args(argv)
 
     manifest: RepositoryManifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
@@ -362,12 +342,6 @@ def main(argv: list[str] | None = None) -> None:
     out = Path(args.out)
     _write_snapshot(out, snapshot)
     print(f"wrote {out} ({len(snapshot['packages'])} packages)", file=sys.stderr)
-    if args.transitional:
-        transitional = Path(args.transitional)
-        merged = _carry_forward(transitional, snapshot)
-        _write_snapshot(transitional, merged)
-        extra = len(merged["packages"]) - len(snapshot["packages"])
-        print(f"wrote {transitional} ({extra} packages carried forward)", file=sys.stderr)
 
 
 if __name__ == "__main__":

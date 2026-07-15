@@ -8,10 +8,12 @@ input location. `make-cache` amortizes metadata parsing across solve actions.
 
 import argparse
 import json
+import stat
 import sys
+import tempfile
 from contextlib import ExitStack
 from pathlib import Path
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, NamedTuple, NotRequired, TypedDict
 
 import libdnf5
 import libdnf5.comps
@@ -23,16 +25,73 @@ import rootfs
 MULTILIB_ARCHES = ("i686", "i386", "i586")
 
 
+class Repository(NamedTuple):
+    id: str
+    path: Path
+    priority: int
+    baseurl: str | None
+
+
 class TransactionPackage(TypedDict):
     nevra: str
     repo: str
     pkgid: str
     source: Literal["local", "repo"]
     location: NotRequired[str]
+    size: NotRequired[int]
+    url: NotRequired[str]
+
+
+def load_repositories(path: Path) -> list[Repository]:
+    """Load repository tuples written by Buck's `write_json()`."""
+    data: object = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise SystemExit(f"{path}: repository manifest must be a list")
+    repositories = []
+    for index, value in enumerate(data):
+        if not isinstance(value, list) or len(value) != 4:
+            raise SystemExit(f"{path}: repository {index} must be [id, path, priority, baseurl]")
+        rid, directory, priority, baseurl = value
+        if (
+            not isinstance(rid, str)
+            or not rid
+            or not isinstance(directory, str)
+            or not directory
+            or type(priority) is not int
+            or not isinstance(baseurl, str | None)
+        ):
+            raise SystemExit(f"{path}: repository {index} has invalid fields")
+        repositories.append(Repository(rid, Path(directory).resolve(), priority, baseurl))
+    return repositories
+
+
+def write_transaction(path: Path, transaction: list[TransactionPackage]) -> None:
+    """Atomically replace an engine lock with deterministic UTF-8 JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=path.name + ".",
+            suffix=".tmp",
+            delete=False,
+            newline="\n",
+        ) as output:
+            temporary = Path(output.name)
+            json.dump(transaction, output, indent=2)
+            output.write("\n")
+        temporary.chmod(mode)
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def load_base(
-    repos: list[tuple[str, Path, int]],
+    repos: list[Repository],
     cachedir: Path,
     installroot: Path | None,
     arch: str,
@@ -65,12 +124,12 @@ def load_base(
     base.setup()
 
     sack = base.get_repo_sack()
-    for rid, path, priority in repos:
-        rc = sack.create_repo(rid).get_config()
-        rc.baseurl = f"file://{path}"  # pinned repodata read locally
+    for repo in repos:
+        rc = sack.create_repo(repo.id).get_config()
+        rc.baseurl = f"file://{repo.path}"  # pinned repodata read locally
         rc.get_pkg_gpgcheck_option().set(False)
         # Lower priorities win even when another repository has a newer NEVRA.
-        rc.get_priority_option().set(priority)
+        rc.get_priority_option().set(repo.priority)
     if installroot is not None:
         # Load the rpmdb so installed packages satisfy dependencies.
         sack.load_repos()
@@ -80,15 +139,15 @@ def load_base(
 
 
 def plan(
-    repos: list[tuple[str, Path, int]],
+    repos: list[Repository],
     install: list[str],
     cachedir: Path,
     installroot: Path | None,
     arch: str,
     seeds: list[Path],
-    local_repos: set[str],
 ) -> list[TransactionPackage]:
     base = load_base(repos, cachedir, installroot, arch, seeds)
+    repositories = {repo.id: repo for repo in repos}
 
     goal = libdnf5.base.Goal(base)
     # add_install supports groups; use only their mandatory members.
@@ -119,6 +178,7 @@ def plan(
         if chk.get_type_str() != "sha256":
             raise SystemExit(f"expected sha256 repodata checksum for {pkg.get_nevra()}")
         rid = pkg.get_repo_id()
+        repo = repositories[rid]
         pkgid = chk.get_checksum().lower()
         if len(pkgid) != 64 or any(character not in "0123456789abcdef" for character in pkgid):
             raise SystemExit(f"invalid sha256 pkgid for {pkg.get_nevra()}: {pkgid!r}")
@@ -126,13 +186,26 @@ def plan(
             nevra=pkg.get_nevra(),
             repo=rid,
             pkgid=pkgid,
-            source="local" if rid in local_repos else "repo",
+            source="local" if repo.baseurl is None else "repo",
         )
-        if rid in local_repos:
+        if repo.baseurl is None:
             entry["location"] = pkg.get_location()
+        else:
+            location = pkg.get_location()
+            size = pkg.get_download_size()
+            if size <= 0:
+                raise SystemExit(f"invalid download size for {pkg.get_nevra()}: {size}")
+            entry["size"] = size
+            entry["url"] = repo.baseurl.rstrip("/") + "/" + location.lstrip("/")
         resolved.append(entry)
     resolved.sort(
-        key=lambda entry: (entry["repo"], entry["nevra"], entry["pkgid"], entry.get("location", ""))
+        key=lambda entry: (
+            entry["repo"],
+            entry["nevra"],
+            entry["pkgid"],
+            entry.get("location", ""),
+            entry.get("url", ""),
+        )
     )
     print(f"plan: resolved {len(resolved)} packages", file=sys.stderr)
     return resolved
@@ -141,12 +214,9 @@ def plan(
 def main(argv: list[str] | None = None) -> None:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
-        "--repo",
-        action="append",
-        default=[],
+        "--repositories",
         required=True,
-        metavar="ID=DIR",
-        help="a repo as id=dir (a pinned repodata tree); repeatable",
+        help="JSON repository tuples: [id, pinned metadata directory, priority, remote base URL or null]",
     )
     common.add_argument("--arch", default="x86_64", help="the resolution arch")
 
@@ -154,20 +224,6 @@ def main(argv: list[str] | None = None) -> None:
     sub = p.add_subparsers(dest="command", required=True)
 
     solve = sub.add_parser("solve", parents=[common], help="resolve the closure, writing the transaction")
-    solve.add_argument(
-        "--local-repo",
-        action="append",
-        default=[],
-        metavar="ID",
-        help="a --repo whose packages are local build artifacts; repeatable",
-    )
-    solve.add_argument(
-        "--priority",
-        action="append",
-        default=[],
-        metavar="ID=N",
-        help="a repo's dnf priority as id=number (lower wins; default 99); repeatable",
-    )
     solve.add_argument(
         "--install", action="append", default=[], required=True, help="package/cap to install"
     )
@@ -187,40 +243,22 @@ def main(argv: list[str] | None = None) -> None:
     solve.add_argument(
         "--out",
         required=True,
-        help="output transaction JSON (remote: source/repo/pkgid/nevra; local adds location)",
+        help="output transaction JSON (remote adds url/size; local adds location)",
     )
 
     cache = sub.add_parser("make-cache", parents=[common], help="just load the repos (no solve)")
     cache.add_argument("--out", required=True, help="output cache dir, reusable via `solve --cache`")
 
     args = p.parse_args(argv)
-
-    def parse_kv(specs: list[str], what: str) -> dict[str, str]:
-        out = {}
-        for spec in specs:
-            k, sep, v = spec.partition("=")
-            if not sep or not k:
-                raise SystemExit(f"{what} expects id=value, got {spec!r}")
-            out[k] = v
-        return out
-
-    dirs = parse_kv(args.repo, "--repo")
+    repos = load_repositories(Path(args.repositories))
 
     if args.command == "make-cache":
         out = Path(args.out).resolve()
         out.mkdir(parents=True, exist_ok=True)
-        # Priority does not affect cached metadata.
-        load_base([(rid, Path(d).resolve(), 99) for rid, d in dirs.items()], out, None, args.arch)
-        print(f"plan: cached {len(dirs)} repo(s)", file=sys.stderr)
+        load_base(repos, out, None, args.arch)
+        print(f"plan: cached {len(repos)} repo(s)", file=sys.stderr)
         return
 
-    priorities = parse_kv(args.priority, "--priority")
-    if unknown := priorities.keys() - dirs.keys():
-        raise SystemExit(f"--priority for unknown repo ids {sorted(unknown)}")
-    local_repos = set(args.local_repo)
-    if unknown := local_repos - dirs.keys():
-        raise SystemExit(f"--local-repo names unknown repo ids {sorted(unknown)}")
-    repos = [(rid, Path(d).resolve(), int(priorities.get(rid, "99"))) for rid, d in dirs.items()]
     seeds = [Path(c).resolve() for c in args.cache]
 
     with ExitStack() as stack:
@@ -228,9 +266,15 @@ def main(argv: list[str] | None = None) -> None:
         if args.lower:
             # An ephemeral upper keeps the lower stack unchanged.
             installroot = stack.enter_context(rootfs.rootfs("/installroot", lowers=args.lower))
-        tx = plan(repos, args.install, Path(args.cachedir), installroot, args.arch, seeds, local_repos)
-    # Engine locks must be byte-identical across locales and platforms.
-    Path(args.out).write_text(json.dumps(tx, indent=2) + "\n", encoding="utf-8", newline="\n")
+        tx = plan(
+            repos,
+            args.install,
+            Path(args.cachedir),
+            installroot,
+            args.arch,
+            seeds,
+        )
+    write_transaction(Path(args.out), tx)
 
 
 if __name__ == "__main__":

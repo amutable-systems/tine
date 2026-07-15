@@ -1,16 +1,24 @@
 """Build reusable execution environments and run commands inside them."""
 
 load("//package:release.bzl", "OsReleaseInfo")
-load("//package:repository.bzl", "PackageRepositoryInfo", "select_package_artifacts", "select_repositories")
+load(
+    "//package:repository.bzl",
+    "ConfiguredPackageRepositoryInfo",
+    "PackageRepositoryInfo",
+    "select_package_artifacts",
+    "select_repositories",
+    "write_repository_manifest",
+)
 load("//package:system.bzl", "PackageSystemInfo")
 
 ASSEMBLY_SDE = 1739577600
+_REPOSITORY_PRIORITY = 99
 
 EngineInfo = provider(
     # Carry the configured sandbox through providers so anonymous targets can reuse it.
     doc = "A reusable execution environment built from one base OS release.",
     fields = {
-        "release": provider_field(Dependency),
+        "arch": provider_field(str),
         "root": provider_field(Artifact),  # the engine root chroot
         "sandbox": provider_field(Dependency),
     },
@@ -51,12 +59,17 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.attrs.enable_repository_groups,
         ctx.attrs.disable_repository_groups,
     )
+    lock = ctx.attrs.lock
+    if lock == None:
+        if ctx.attrs.resolver_engine == None:
+            fail("engine: a missing lock requires resolver_engine; run refresh-catalog")
+        lock = ctx.actions.write("initial-lock.json", "{}")
 
     # Select installable and payload representations from the locked seed transaction.
-    packages = select_package_artifacts(ctx, ctx.attrs.lock, repositories = repositories)
+    packages = select_package_artifacts(ctx, lock, repositories = repositories)
     payloads = select_package_artifacts(
         ctx,
-        ctx.attrs.lock,
+        lock,
         name = "extract.closure",
         repositories = repositories,
         representation = "payload",
@@ -75,7 +88,7 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
         cmd_args(
             chroot_run(
                 engine = EngineInfo(
-                    release = ctx.attrs.release,
+                    arch = ctx.attrs.arch,
                     root = chroot1,
                     sandbox = ctx.attrs._sandbox,
                 ),
@@ -91,16 +104,34 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     )
 
     info = EngineInfo(
-        release = ctx.attrs.release,
+        arch = ctx.attrs.arch,
         root = chroot2,
         sandbox = ctx.attrs._sandbox,
     )
 
-    # Refresh resolves the engine lock against the freshly pinned repositories.
-    resolve = cmd_args(chroot_run(engine = info, exe = system.plan), "solve", "--arch", ctx.attrs.arch)
+    # The target release defines the solve; a predecessor only supplies its execution environment.
+    resolver = info
+    if ctx.attrs.resolver_engine != None:
+        resolver = ctx.attrs.resolver_engine[EngineInfo]
+    resolve = cmd_args(chroot_run(engine = resolver, exe = system.plan), "solve", "--arch", ctx.attrs.arch)
+    plan_repositories = []
     for repository in repositories:
         repo = repository[PackageRepositoryInfo]
-        resolve.add("--repo", cmd_args(repo.dir, format = repo.id + "={}"))
+        if repo.dir == None:
+            fail("engine: repository '{}' has no bootstrap directory".format(repository.label.name))
+        if repo.baseurl == None:
+            fail("engine: repository '{}' has no bootstrap base URL".format(repository.label.name))
+        plan_repositories.append(ConfiguredPackageRepositoryInfo(
+            id = repository.label.name,
+            dependency = repository,
+            directory = repo.dir,
+            priority = _REPOSITORY_PRIORITY,
+            baseurl = repo.baseurl,
+        ))
+    resolve.add(
+        "--repositories",
+        write_repository_manifest(ctx, "repositories.json", plan_repositories),
+    )
     for package in ctx.attrs.packages:
         resolve.add("--install", package)
     sub_targets = {
@@ -121,10 +152,17 @@ _engine = rule(
             doc = "top-level engine package names (authored; the lock pins the closure)",
         ),
         "release": attrs.dep(providers = [OsReleaseInfo], doc = "base OS release for the engine root"),
+        "resolver_engine": attrs.option(
+            attrs.dep(providers = [EngineInfo]),
+            default = None,
+            doc = "predecessor engine used to resolve this engine's transaction",
+        ),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
-        "lock": attrs.source(
-            doc = "the @generated engine transaction (source/repo/pkgid/nevra); seed with `{}`",
+        "lock": attrs.option(
+            attrs.source(),
+            default = None,
+            doc = "the @generated engine transaction, including remote package transport pins",
         ),
         "arch": attrs.string(default = "x86_64", doc = "the resolution arch"),
         # EngineInfo carries this into the rest of the graph.
@@ -136,15 +174,17 @@ def engine(
         name: str,
         packages: list[str],
         release: str,
-        lock: str | None = None,
         **kwargs) -> None:
     """Declare an engine rooted in one base OS release."""
     if not name.endswith(".engine"):
         fail("engine name must end with '.engine': {}".format(name))
+    locks = glob(["snapshot/engine/" + name[:-len(".engine")] + ".json"])
+    if len(locks) > 1:
+        fail("engine {} has multiple locks: {}".format(name, locks))
     _engine(
         name = name,
         packages = packages,
         release = release,
-        lock = lock or (name + ".json"),
+        lock = locks[0] if locks else None,
         **kwargs
     )

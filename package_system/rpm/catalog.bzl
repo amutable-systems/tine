@@ -82,8 +82,6 @@ def fedora_release(
     )
     os_release(
         name = name + ".release",
-        family = "fedora",
-        version = version,
         repository_universe = ":" + name + ".repositories",
         package_sets = _merge_package_sets(_FEDORA_PACKAGE_SETS, package_set_overrides),
         visibility = visibility,
@@ -146,8 +144,6 @@ def centos_stream_release(
     )
     os_release(
         name = name + ".release",
-        family = "centos",
-        version = version,
         repository_universe = ":" + name + ".repositories",
         package_sets = _merge_package_sets(_CENTOS_STREAM_PACKAGE_SETS, package_set_overrides),
         visibility = visibility,

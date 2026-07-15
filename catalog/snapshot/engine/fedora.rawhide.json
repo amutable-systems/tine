@@ -1,0 +1,1490 @@
+[
+  {
+    "nevra": "alternatives-1.33-5.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "71c260a4c6ad57c4fd4876ccc68cfddf88f1a0107efe725e2aa14361f5fd0db4",
+    "source": "repo",
+    "size": 41829,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/a/alternatives-1.33-5.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "audit-libs-4.1.4-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "771e64cc4474ea9a55480c7ef615d81a8e43b76223454886bd422c0d22dac977",
+    "source": "repo",
+    "size": 144648,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/a/audit-libs-4.1.4-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "bash-5.3.15-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "2ac120c7ceaca43694b3d895319ea8898e62c151b7f097b89710b1937cb677f8",
+    "source": "repo",
+    "size": 1983458,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/b/bash-5.3.15-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "bzip2-libs-1.0.8-23.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "0b10d0359999012722f4339e87d59e07336cb5115df1559d6cae4d660690be0d",
+    "source": "repo",
+    "size": 44832,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/b/bzip2-libs-1.0.8-23.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "ca-certificates-2025.2.80_v9.0.304-8.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "e28e834668a105a6bfdda9e147f442a0896aa17aef898e46a14b57d66c79fb4e",
+    "source": "repo",
+    "size": 992422,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/c/ca-certificates-2025.2.80_v9.0.304-8.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "capstone-5.0.6-5.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "d27680f1b229cc7e5f3eeb19e6ace6a67d5e556a00b0efc5acaa10e1d944bbf9",
+    "source": "repo",
+    "size": 1050843,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/c/capstone-5.0.6-5.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "coreutils-9.11-4.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "a04ee6329f25a1d0eac3d3e023ac8492773b864be0c005a03edc3dd25cf26af3",
+    "source": "repo",
+    "size": 1257721,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/c/coreutils-9.11-4.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "coreutils-common-9.11-4.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "4a9d84d0e32c9c31bf70c3e87a3f1ac4743bd00ae43eab930415c4a28049c6b6",
+    "source": "repo",
+    "size": 2271790,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/c/coreutils-common-9.11-4.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "createrepo_c-libs-1.2.1-8.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "76c0ca9f73a5019acfcd53ba9f314e77edadac454ca851161a12488c2109c41e",
+    "source": "repo",
+    "size": 111038,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/c/createrepo_c-libs-1.2.1-8.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "crypto-policies-20260713-1.gitc42da77.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "5f0785993525c15388d99bf3f3796c200333aff779b994c7b19d99ffcf39d8f0",
+    "source": "repo",
+    "size": 99649,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/c/crypto-policies-20260713-1.gitc42da77.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "cryptsetup-libs-2.8.7~rc2-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "e6d82488d5544c3d52a01e488420c38f0898beb6fc96eb746bcd8a138c954630",
+    "source": "repo",
+    "size": 605110,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/c/cryptsetup-libs-2.8.7~rc2-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "curl-8.21.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "c2de98b573b4685401062ff368c47f7531f4ad2e709aa2d2c13d1badc9c5163e",
+    "source": "repo",
+    "size": 250385,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/c/curl-8.21.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "cyrus-sasl-lib-2.1.28-36.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "e129a3e0f8b8873cdb562d09f4cb14b3c0b527a2f5a6f9518429c1ec4495b856",
+    "source": "repo",
+    "size": 837697,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/c/cyrus-sasl-lib-2.1.28-36.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "daxctl-libs-85-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "414bd106fad2b7854c73eb4cbeec1ba36a735b94ef31606bb59bfa96d69478da",
+    "source": "repo",
+    "size": 43374,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/d/daxctl-libs-85-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "device-mapper-1.02.215-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "43c0a95e56c3fe4a2106bf49a8f38ee8015f63d413d0f1f3ba74e452948fdb97",
+    "source": "repo",
+    "size": 152187,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/d/device-mapper-1.02.215-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "device-mapper-libs-1.02.215-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "3b8e1daf2362beb9d6c0b4ec166a5f69b4ccebec29d7beaeabb4702077c53a4c",
+    "source": "repo",
+    "size": 202929,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/d/device-mapper-libs-1.02.215-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "dosfstools-4.2-18.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "441775480374ead22854707eda259fa52564ea5940ee43b15084afeb1ec1255e",
+    "source": "repo",
+    "size": 107546,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/d/dosfstools-4.2-18.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "e2fsprogs-1.47.4-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "f0b61cfc947a53242d292871fef2a4c63edec41f634c50a7a26c9b263d0d6f14",
+    "source": "repo",
+    "size": 1135266,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/e/e2fsprogs-1.47.4-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "e2fsprogs-libs-1.47.4-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "3de3cf8f2cca5a62c1f8038bdf9604741ff6bfde9ab6dccb913106af3da149c2",
+    "source": "repo",
+    "size": 245252,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/e/e2fsprogs-libs-1.47.4-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "edk2-ovmf-20260508-9.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "90eb7f8ceb7e0ddcfd39e0bf2a42792ca14b7e1afa3c1585b89540e0874bb5f3",
+    "source": "repo",
+    "size": 18881865,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/e/edk2-ovmf-20260508-9.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "elfutils-libelf-0.195-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "f545f0b629ab0b53b89db605eda4f5cbbadb1d129be3dbfb94c53ae1ee13b275",
+    "source": "repo",
+    "size": 215340,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/e/elfutils-libelf-0.195-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "elfutils-libs-0.195-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "cabbbdf179a9dba1023889746fa79b0a420104a1e1bbeadabe0b288f1b065990",
+    "source": "repo",
+    "size": 289501,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/e/elfutils-libs-0.195-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "erofs-utils-1.9.2-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "ab9b69c2208a7f81a18b241379246deda119d28dcde96d6d899f9a4ceaf219e9",
+    "source": "repo",
+    "size": 254567,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/e/erofs-utils-1.9.2-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "expat-2.8.1-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "269e4cc05b67d3116fbe325012bd0b09f89ae78504fea1b09e40a75292100000",
+    "source": "repo",
+    "size": 132972,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/e/expat-2.8.1-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "fedora-gpg-keys-45-0.1.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "cd9b20700f4452fdf299be13de4c85bc5e62245fc64cd3c7d33dc96063d39b69",
+    "source": "repo",
+    "size": 144708,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/f/fedora-gpg-keys-45-0.1.noarch.rpm"
+  },
+  {
+    "nevra": "fedora-release-45-0.8.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "dc8fc1f327e06e10572649a9618a0ee555ab768c3c3693ec15807140dd2215bb",
+    "source": "repo",
+    "size": 12961,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/f/fedora-release-45-0.8.noarch.rpm"
+  },
+  {
+    "nevra": "fedora-release-common-45-0.8.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "3be763805a1ef3eab0e538d8228a273fef10b6a2d5c8f278af009657f8cbab65",
+    "source": "repo",
+    "size": 19052,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/f/fedora-release-common-45-0.8.noarch.rpm"
+  },
+  {
+    "nevra": "fedora-release-identity-basic-45-0.8.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "188e2a77a4595f0ab14e647a9073a6dad3a001fb6ccdf52194c1e058e915cbe6",
+    "source": "repo",
+    "size": 13747,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/f/fedora-release-identity-basic-45-0.8.noarch.rpm"
+  },
+  {
+    "nevra": "fedora-repos-45-0.1.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "ea06bb39145a6b4f41cc1f15cf02479421366a918a53a63aa609fd3b3ecca58b",
+    "source": "repo",
+    "size": 9446,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/f/fedora-repos-45-0.1.noarch.rpm"
+  },
+  {
+    "nevra": "fedora-repos-rawhide-45-0.1.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "b13aa6620fac096a823fc11a4f724af96f6fc7745bff24bd0fe8a97dd219cd3f",
+    "source": "repo",
+    "size": 9005,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/f/fedora-repos-rawhide-45-0.1.noarch.rpm"
+  },
+  {
+    "nevra": "filesystem-3.18-58.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "8805771e1f448a9dd113defb2e018915a899bea61f9c3ec2611ffa1e4668c2ad",
+    "source": "repo",
+    "size": 1904564,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/f/filesystem-3.18-58.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "findutils-1:4.11.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "929e124675dc57b1e69ede82bdadd1c9c040e6a746ccc3348f5722288f74cfee",
+    "source": "repo",
+    "size": 583638,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/f/findutils-4.11.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "fips-provider-1.5.2-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "015d3d30b33027f788776d61b8e8199e071129145e8348fdca642aece2e1acc2",
+    "source": "repo",
+    "size": 1700849,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/f/fips-provider-1.5.2-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "fmt-12.1.0-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "e08eb326d51e77c543a010367409c46f66e28371f742d57a30a994ebae3f4fa5",
+    "source": "repo",
+    "size": 113956,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/f/fmt-12.1.0-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "fuse3-libs-3.18.2-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "f4864cf90f97b7028a3071b07cccbf850e51a8454fbbd5cd89cd2992c0d59d6a",
+    "source": "repo",
+    "size": 104764,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/f/fuse3-libs-3.18.2-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "gdbm-libs-1:1.23-11.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "693b1ce44a0203dc788a7b53646a5e00c05aabe6122f148f070fd6d9ec4abae7",
+    "source": "repo",
+    "size": 60220,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/g/gdbm-libs-1.23-11.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "glib2-2.89.1-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "95929789ead64ad85dbcc5b1e5488ec2622111b83d3342a78982b3065db3fdc2",
+    "source": "repo",
+    "size": 3326412,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/g/glib2-2.89.1-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "glibc-2.43.9000-23.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "a5eb17755cf88fe3ca6c129868680b661eb49c27f10f26020219422d9e0d69de",
+    "source": "repo",
+    "size": 2568791,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/g/glibc-2.43.9000-23.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "glibc-common-2.43.9000-23.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "3564b5d37dd3ab6202ce3a926e11fe55652be328af9f2bcbe3d0ed598b9bb9a0",
+    "source": "repo",
+    "size": 417949,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/g/glibc-common-2.43.9000-23.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "glibc-gconv-extra-2.43.9000-23.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "aa9baba3bc82ee9a75738d80b1e20811d7f1e845104ebe48531618d88ae56fa4",
+    "source": "repo",
+    "size": 1773987,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/g/glibc-gconv-extra-2.43.9000-23.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "glibc-minimal-langpack-2.43.9000-23.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "43f55e99eaaa9094efae9ebdfdc1d59e83d6c6f42baa853ed329121c067fcff9",
+    "source": "repo",
+    "size": 118437,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/g/glibc-minimal-langpack-2.43.9000-23.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "gmp-1:6.3.0-5.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "4489ca17536072d7ec52a1b4e2b30caf56b5ba3cdc85fde6d8c8a86515f7de84",
+    "source": "repo",
+    "size": 330200,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/g/gmp-6.3.0-5.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "gnulib-l10n-20241231-3.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "b5ee139a62fad74df8eca8e21380268baf1c6f65dc79b0499abae92537a141ee",
+    "source": "repo",
+    "size": 153993,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/g/gnulib-l10n-20241231-3.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "gnutls-3.8.13-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "6118eb4d54ec0fd4f908ef20a263c32f267e7639ba443ce75453d61598774c79",
+    "source": "repo",
+    "size": 1496048,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/g/gnutls-3.8.13-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "grep-3.12-3.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "7a989b8e97d4ee4ae7fe817df900af8954936045d103b83a75bf2ef4bc8d01dd",
+    "source": "repo",
+    "size": 308791,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/g/grep-3.12-3.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "igvm-libs-0.4.0-10.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "8ffb384646f14aea041adaadb9ef079c5716dd8074ad76ec2ffb0042b41d486f",
+    "source": "repo",
+    "size": 235278,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/i/igvm-libs-0.4.0-10.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "intel-qpl-1.9.0-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "a476d1415aba2e3307c4f0b5140d3f85a33bd219ed50a23e7ad0799cb44dca58",
+    "source": "repo",
+    "size": 256455,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/i/intel-qpl-1.9.0-3.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "ipxe-roms-qemu-1:2.0.0^20260614git13a83f4-3.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "184933a1a07fb8c66853cf51d5adb84de07440279f8e215aa3e1f59f86320b4e",
+    "source": "repo",
+    "size": 1918987,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/i/ipxe-roms-qemu-2.0.0^20260614git13a83f4-3.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "json-c-0.18-8.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "350c97de981f7d4f46f0603d2b3a474fcac4c738ae11162275919fa78c940acf",
+    "source": "repo",
+    "size": 47441,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/j/json-c-0.18-8.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "kbd-2.10.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "0b10f1d16b8ac74d62bea60e55b58ec78d24ab2acb8805b8555911a8f2e75875",
+    "source": "repo",
+    "size": 451861,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/k/kbd-2.10.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "kbd-legacy-2.10.0-1.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "35412020a977217f8dec8ff5659b346fb2e7c2c982c12a4f4c35d429a0e206fc",
+    "source": "repo",
+    "size": 621048,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/k/kbd-legacy-2.10.0-1.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "kbd-misc-2.10.0-1.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "73f559197c0e746471d39ee7ba748b95063807b2e30282d508c9f2dc91ef25b8",
+    "source": "repo",
+    "size": 1774282,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/k/kbd-misc-2.10.0-1.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "keyutils-libs-1.6.3-7.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "655b5a0763383209396820eedcec7ac7a2c0b22d8350d56c8f765564ff90230b",
+    "source": "repo",
+    "size": 32285,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/k/keyutils-libs-1.6.3-7.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "kmod-34.2-5.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "d61f407799d5d0db1f9c66b1d384ec5144b8e1c5f6b2bdd9e1cf2eb5a20226a3",
+    "source": "repo",
+    "size": 140376,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/k/kmod-34.2-5.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "kmod-libs-34.2-5.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "c0350ec69feee844e3070f8cc320247f72c6e6bd6fb367d55edeca6575f0b508",
+    "source": "repo",
+    "size": 71644,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/k/kmod-libs-34.2-5.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "krb5-libs-1.22.2-8.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "ff7a505509505e836d7f4085fbc2cdb7ab1b9051053c3a66c14b2551e6f25a79",
+    "source": "repo",
+    "size": 822869,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/k/krb5-libs-1.22.2-8.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libacl-2.4.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "5e053a05929fda12d7f2269a81b07a1737276aaf8b4ded1e8c20ef7c1bc36fc5",
+    "source": "repo",
+    "size": 28013,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libacl-2.4.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libaio-0.3.111-23.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "cf4738a04c750ad0117f500793488480344d0fe65cc4d48db981dcf6c6341de9",
+    "source": "repo",
+    "size": 24063,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libaio-0.3.111-23.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "libarchive-3.8.8-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "3b22f6b2e40b7fdf84ca30ddcef1098f83334a8a843235b4d150eecad97ca6e0",
+    "source": "repo",
+    "size": 455712,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libarchive-3.8.8-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libattr-2.6.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "3c32bbb83a79909535c4553ce84f51fb84c7e87e44bebab351cbad3355bb47cb",
+    "source": "repo",
+    "size": 18352,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libattr-2.6.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libblkid-2.42.2-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "241adb70d3303cb9c33597a567d19c8c21a7fb8d3b30bccc4fc3d01484b549ef",
+    "source": "repo",
+    "size": 136732,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libblkid-2.42.2-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libbpf-2:1.7.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "26ef5953f25bf6a5026405fdd5a6c5db1a0c0efe9abf4463cfa3905eb901be07",
+    "source": "repo",
+    "size": 210890,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libbpf-1.7.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libbrotli-1.2.0-4.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "3d5e468620126fdf150213a163932c8c7b3ac6dda617eb0113c687216b0f580e",
+    "source": "repo",
+    "size": 355401,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libbrotli-1.2.0-4.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libcap-2.78-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "b1675ea2c9971b1a201dfa0c1ac5a7950488450846c76af82d2c323104f51075",
+    "source": "repo",
+    "size": 91587,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libcap-2.78-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libcap-ng-0.9.3-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "02ca2a086a8021c0566f7209baec3460dc4f8d9d71ada5ca1cb6c3e989648d24",
+    "source": "repo",
+    "size": 35077,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libcap-ng-0.9.3-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libcbor-0.14.0-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "cf69ab182957fd30ef7742bf021a23ac064d18869ce2ec138ddeebf1cb590482",
+    "source": "repo",
+    "size": 37504,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libcbor-0.14.0-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libcom_err-1.47.4-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "6c0aec0d2dc88b3f7b2b849d93126d899cf227deee3bb424a4086e90ed50c93d",
+    "source": "repo",
+    "size": 27285,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libcom_err-1.47.4-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libcurl-8.21.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "dbfd90f9c038e25c250152ff1708a1f07978fa1eaff3f7a0e29aee767be61105",
+    "source": "repo",
+    "size": 493070,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libcurl-8.21.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libdeflate-1.25-4.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "3a4960e8fc92de7d0595be2bd992bc0f9c1cf6be5c8f6b0e8829ce1aa91b448c",
+    "source": "repo",
+    "size": 70107,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libdeflate-1.25-4.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libdnf5-5.4.2.1-6.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "60a8f8626e5f5856d11f1f54d379ddefb8131d1d20fc4f9fab2e1bf4aa61fccf",
+    "source": "repo",
+    "size": 1393615,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libdnf5-5.4.2.1-6.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libeconf-0.7.9-3.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "0a1501ee3829e97048534d9a9fc8d4b63de1a47210c80cd30d28bf6c4383c2ee",
+    "source": "repo",
+    "size": 37085,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libeconf-0.7.9-3.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "libevent-2.1.12-18.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "415464dd08aa2c64c2d5d3587afb259fe8938c807b7bc6d0a125504f9271a59c",
+    "source": "repo",
+    "size": 293506,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libevent-2.1.12-18.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libfdisk-2.42.2-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "12c814628aef86764241125ed05c9c49d2675dd3b14461e6fe0f7e48dff76b3a",
+    "source": "repo",
+    "size": 173408,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libfdisk-2.42.2-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libfdt-1.8.1-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "eea94bac5c80316055ca047452ab1ae6f48f42e4a713800dbbcbf4282759af60",
+    "source": "repo",
+    "size": 37101,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libfdt-1.8.1-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libffi-3.5.2-2.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "e4299376d5a5acabc864527b7900295b752c1f98f2315b60bc1ee99a40df8320",
+    "source": "repo",
+    "size": 43388,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libffi-3.5.2-2.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "libfido2-1.17.0-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "2b586621ef59b9e40a934e44ec9d6bf75cda067e29d59d906747b801f5bc6edd",
+    "source": "repo",
+    "size": 109414,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libfido2-1.17.0-3.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libgcc-16.1.1-4.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "25dea894df9f8cc4d9e903b7b8f630ccbb1b57124db323574b9878545ac1670a",
+    "source": "repo",
+    "size": 136388,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libgcc-16.1.1-4.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libibverbs-63.0-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "81458fa543c13339f7bed7cfad12589f0344e23878af433a61e2e79d10d94db3",
+    "source": "repo",
+    "size": 508158,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libibverbs-63.0-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libidn2-2.3.8-3.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "bc2c9e95c55715aa9c004fd2d34ddee5d6561f70a0a2a21f80d68c521ef10479",
+    "source": "repo",
+    "size": 179759,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libidn2-2.3.8-3.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "libjpeg-turbo-3.1.4.1-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "ab7aa47e282d70d13deb6d5387a28b8e6d6d3cf79c13ab17ff51d656ec25b883",
+    "source": "repo",
+    "size": 250127,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libjpeg-turbo-3.1.4.1-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libmodulemd-2.15.3-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "15adcdf9139559cdf96168353a4c65f02de8e0363b14110e3ebe3812ed573ee8",
+    "source": "repo",
+    "size": 229659,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libmodulemd-2.15.3-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libmount-2.42.2-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "7949ba0c713ed00d698c6f2ad0c9bd2afcfdddcb8ae8bdda95d1a04c14fbad82",
+    "source": "repo",
+    "size": 181015,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libmount-2.42.2-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libnghttp2-1.69.0-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "df2934f2d0af5d9fe914ecce7b6de17346aa019b13541da7e01fd63a43213c1d",
+    "source": "repo",
+    "size": 78836,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libnghttp2-1.69.0-3.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libnghttp3-1.17.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "98d3a53357cb9d54eec66f2ff151037f5adc71f5ec3d4dcd15a1546ae68d0881",
+    "source": "repo",
+    "size": 76416,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libnghttp3-1.17.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libnl3-3.12.0-3.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "892c6f9584158d6b11483b015af31a0f0e80c84da05319f56347d93805a3176a",
+    "source": "repo",
+    "size": 386399,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libnl3-3.12.0-3.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "libpkgconf-2.5.1-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "c64011c01eaa7d88cc46f44a76993e38dfab714ffb4425aab11fd1221868d60a",
+    "source": "repo",
+    "size": 43700,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libpkgconf-2.5.1-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libpng-2:1.6.58-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "4cfc61d8a42c54362fafadcee06cd0d133ccea3b4387c5c9d1be36214529fce4",
+    "source": "repo",
+    "size": 132105,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libpng-1.6.58-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libpsl-0.23.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "9d3c13293e2942785440c3bf9beacb29a4ce4965ac100a5136e2cedf661b0c04",
+    "source": "repo",
+    "size": 69061,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libpsl-0.23.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "librdmacm-63.0-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "46b34fb667a1c5df70bdd8b7f5c58a536ae4fece49266d3315b2d267d8d4930b",
+    "source": "repo",
+    "size": 80541,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/librdmacm-63.0-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "librepo-1.20.0-7.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "3eab465134c26e775687a8914d5f649b4647f12e60de04a0d0e709d3da1e70b8",
+    "source": "repo",
+    "size": 105582,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/librepo-1.20.0-7.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libseccomp-2.6.0-3.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "a54245f69d3aac95d57d9f5794c7354a775c205e6222ffa3932e2e7dd4d6b24e",
+    "source": "repo",
+    "size": 78968,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libseccomp-2.6.0-3.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "libselinux-3.11-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "8559906b7ca9f9e272e3635c216e8fab6c1fcc8be432e57f83ccb8e574fe3a52",
+    "source": "repo",
+    "size": 106231,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libselinux-3.11-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libsemanage-3.11-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "280f23ebb3ba34f84d0bb9cfef42ad2b4fb21f69e76400ce73655b2105f3b9f8",
+    "source": "repo",
+    "size": 130262,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libsemanage-3.11-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libsepol-3.11-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "81301844723377083ee90db9f1321414b7fb038ff248132a0e7a733499c4ad80",
+    "source": "repo",
+    "size": 373903,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libsepol-3.11-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libslirp-4.9.3-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "d31ae4127df14aeea037f700b59332fff94fc9037e5d49794809afc3a30e986e",
+    "source": "repo",
+    "size": 83248,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libslirp-4.9.3-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libsmartcols-2.42.2-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "c76fce749bc85c91ab46fc9861e81d70c80c109979b83e1206b8e68860463b33",
+    "source": "repo",
+    "size": 90403,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libsmartcols-2.42.2-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libsolv-0.7.39-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "997665f4d33416bb9d455e841e40c470b74bdb93e7b7ef50cc4296137c84bea4",
+    "source": "repo",
+    "size": 460704,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libsolv-0.7.39-3.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libss-1.47.4-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "8a9596066b9d1252d2f5d548ed686e59744077bf4718d82274b1a572fd9a4a94",
+    "source": "repo",
+    "size": 33158,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libss-1.47.4-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libssh-0.12.0-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "741b936883d6848c5d7f76089356836046be01bdf2440d6689136627cb1fcb3c",
+    "source": "repo",
+    "size": 299222,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libssh-0.12.0-3.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libssh-config-0.12.0-3.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "0a560b990d8596be621d0aefbdd0cff75a4d87d5601fa5086aac4c8636f07b9d",
+    "source": "repo",
+    "size": 8862,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libssh-config-0.12.0-3.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "libstdc++-16.1.1-4.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "5957bcabbf5e6f5f336f75823653f62784ef26a892517de9560f0a21c6969f25",
+    "source": "repo",
+    "size": 1046462,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libstdc++-16.1.1-4.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libtasn1-4.21.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "5f9c1ae5369abea42caf619435757dd82b8e26ae23d33be9a9856056d0d12ad6",
+    "source": "repo",
+    "size": 77823,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libtasn1-4.21.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libtool-ltdl-2.5.4-10.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "a83e9c726eb978bf03b552dd8142a1117cc74180f527a6ede3d132196aa32282",
+    "source": "repo",
+    "size": 37921,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libtool-ltdl-2.5.4-10.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "libunistring-1.1-11.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "6a82e5597815dc93a66b55066717e70839680dc8f96efb4dfa18a82cfa9dc2dc",
+    "source": "repo",
+    "size": 560970,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libunistring-1.1-11.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "liburing-2.13-2.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "886d7cf9c84e175ebbcab2d451937952d1a945a7a64ae5afbb206bd81fbd0d52",
+    "source": "repo",
+    "size": 45644,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/liburing-2.13-2.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "libusb1-1.0.30-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "87b303afddfef980ca07a47bb359b889a07c2869829bc15042dc61f46e5f4044",
+    "source": "repo",
+    "size": 85685,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libusb1-1.0.30-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libuuid-2.42.2-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "88a9a65adcb5b7add4d08e4b743f241674f98f6ec4468249c71964faa7904437",
+    "source": "repo",
+    "size": 28004,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libuuid-2.42.2-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libverto-0.3.2-12.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "7fe6369e8185535bd944326521c590ff3a3b3a839ad4b9509ca0a36ef182720d",
+    "source": "repo",
+    "size": 21633,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libverto-0.3.2-12.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "libxcrypt-4.5.2-3.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "732e9e5e517be66002fbc63a79f66fbfc3204f0f457c3a4fcc893b11e875b98e",
+    "source": "repo",
+    "size": 134355,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libxcrypt-4.5.2-3.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "libxdp-1.6.3-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "dd20f90e90934a2c545ddbc6cf41516a31d33acf8a8eba9f2ba5a2638befc6d0",
+    "source": "repo",
+    "size": 73204,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libxdp-1.6.3-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libxkbcommon-1.13.1-2.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "945dcfab465641464126cc7d38c854d8fa81c72258f7d4f749c3f2f69e3c3b83",
+    "source": "repo",
+    "size": 190238,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libxkbcommon-1.13.1-2.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "libxml2-2.13.9-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "e57dce5a47df70ac865cd186b72882d258dcee9d320782dbacb2e1f340c532b1",
+    "source": "repo",
+    "size": 731904,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libxml2-2.13.9-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "libyaml-0.2.5-18.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "31d546870b9377737762d32b93ab8fa6544bb1f72f2671aa9420ac224c11e46b",
+    "source": "repo",
+    "size": 64563,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libyaml-0.2.5-18.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "libzstd-1.5.7-5.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "9363c124ba04a3a5c1c725096ddb51ba8d96b6958ae5cdf22352e8e5b4cd2570",
+    "source": "repo",
+    "size": 372900,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libzstd-1.5.7-5.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "lua-libs-5.5.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "d188da25634771ced72f2e8dac596500037c5cfc23afedbd7cefa0c419c0b85b",
+    "source": "repo",
+    "size": 147074,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/lua-libs-5.5.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "lz4-libs-1.10.0-4.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "fc073b046007481b6249a0c29899c3ae4c5070e4dab507239d53b438510e0875",
+    "source": "repo",
+    "size": 79562,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/lz4-libs-1.10.0-4.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "lzo-2.10-16.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "d40cc69f35c3b406de4f90194cce2d02c1fc9449b606eb5979c8543a05e0185c",
+    "source": "repo",
+    "size": 71373,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/lzo-2.10-16.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "mpdecimal-4.0.1-3.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "f92a34bbe20c0d308a3263fc67a8df2f9c01b14710bc4182b8eed3b6eac346d4",
+    "source": "repo",
+    "size": 101509,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/m/mpdecimal-4.0.1-3.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "mtools-4.0.49-3.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "86514071be8a68c9204f5a96225986297edaf0298b49631daf68c45c70bd0a62",
+    "source": "repo",
+    "size": 230351,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/m/mtools-4.0.49-3.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "ncurses-base-6.6-2.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "a7709ea342cf7d34103f511e582cf15efa85aeaa4ba4bc04d115f15f9053687e",
+    "source": "repo",
+    "size": 90224,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/n/ncurses-base-6.6-2.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "ncurses-libs-6.6-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "895a7a44ea814a1f100608c3897508ca163d58608d0d787c3a7ad30dcad8bf5a",
+    "source": "repo",
+    "size": 351421,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/n/ncurses-libs-6.6-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "nettle-3.10.1-3.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "28cd838d99d9182f1957f1082e32be248abdf90d9c5d37577bead6026608f8bc",
+    "source": "repo",
+    "size": 438310,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/n/nettle-3.10.1-3.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "ngtcp2-1.22.1-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "08f5cb7278b6b550cae864277c791dfc725e759698331ed5df13aed801f11f5f",
+    "source": "repo",
+    "size": 161310,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/n/ngtcp2-1.22.1-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "ngtcp2-crypto-ossl-1.22.1-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "4a7eef65ea81ceeca26f414ba36a07a2ba09a47ca7156863381efa74a86a592c",
+    "source": "repo",
+    "size": 28357,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/n/ngtcp2-crypto-ossl-1.22.1-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "numactl-libs-2.0.19-4.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "ea4e64bf81802a3fb2b5122f3d458daacd1705ddbfa32d64ddaba5cad90b769f",
+    "source": "repo",
+    "size": 32936,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/n/numactl-libs-2.0.19-4.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "openldap-2.6.13-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "b9240e22bf428d795a36f33de7a48ebfa959bc58dd11bdaeb3d63031ba70088e",
+    "source": "repo",
+    "size": 279009,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/o/openldap-2.6.13-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "openssh-10.4p1-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "936fcd5a0611348e2dbbfbf06e633912d395857964d803620fcef1ca3c3bfea3",
+    "source": "repo",
+    "size": 380524,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/o/openssh-10.4p1-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "openssl-libs-1:4.0.1-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "a1c734c72e13de8b19aff3bb06ba7cdfbfa0b7f9da7834ff8175beafd1e70976",
+    "source": "repo",
+    "size": 2449129,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/o/openssl-libs-4.0.1-3.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "p11-kit-0.26.4-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "cbdc3c0a144846033402abab6bdeb65b6cea0ed36d4a7fa57d66efb662806c93",
+    "source": "repo",
+    "size": 573283,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/p11-kit-0.26.4-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "p11-kit-trust-0.26.4-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "d57bfb095acc3522e8baa10af1126a2dca63f853eec1a067505be73e79b51772",
+    "source": "repo",
+    "size": 149836,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/p11-kit-trust-0.26.4-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "pam-libs-1.7.2-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "c0859a1602d03b5f84cd0c5a10e47e12b068687cfa79b5b7887dcf2ca6a01b61",
+    "source": "repo",
+    "size": 59774,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/pam-libs-1.7.2-3.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "pcre2-10.47-1.fc44.1.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "483800b6a5f4494ebc4c1d1b4b4021200a191177f6f89376b7bca30039b8c52a",
+    "source": "repo",
+    "size": 284397,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/pcre2-10.47-1.fc44.1.x86_64.rpm"
+  },
+  {
+    "nevra": "pcre2-syntax-10.47-1.fc44.1.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "5b30ed2890512873ad8e740200b17e2cfc25e4d42c9548f187cd9d242a7f2441",
+    "source": "repo",
+    "size": 168666,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/pcre2-syntax-10.47-1.fc44.1.noarch.rpm"
+  },
+  {
+    "nevra": "pixman-0.46.2-3.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "0d4fe0515ef9b2c6e2775705f25ba1a012163f0f5024197a23b9fbf20a65b6b3",
+    "source": "repo",
+    "size": 304584,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/pixman-0.46.2-3.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "pkgconf-2.5.1-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "eb48623a552b74f23ccefeb7e8d09709494c12558f0b0a4b98cbe5d3d2fc9738",
+    "source": "repo",
+    "size": 49852,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/pkgconf-2.5.1-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "pkgconf-m4-2.5.1-1.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "bf9254ea3440b5b3a7fd48eb087aa3f26d61241fc358356ddf78714b11502519",
+    "source": "repo",
+    "size": 14083,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/pkgconf-m4-2.5.1-1.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "pkgconf-pkg-config-2.5.1-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "d47133f28108076dec307557a35bd5892537d3da0d24aa60af41d045758766ef",
+    "source": "repo",
+    "size": 9695,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/pkgconf-pkg-config-2.5.1-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "popt-1.19-10.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "e391e8d68222b5b72cebc7f2177aa12e068ec8b475a6e847d1d5f4fde021f1bd",
+    "source": "repo",
+    "size": 68545,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/popt-1.19-10.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "publicsuffix-list-dafsa-20260624-1.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "51673b1ffa092f1408041dcfe9124ff5aa82761d05288d312f9a638b923e6f28",
+    "source": "repo",
+    "size": 62348,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/publicsuffix-list-dafsa-20260624-1.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "python-pip-wheel-26.1.2-1.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "ceb1047649ed26c3b0767662ec62e1be3c67c4b962e87e2f971acb25321c4a48",
+    "source": "repo",
+    "size": 1231762,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/python-pip-wheel-26.1.2-1.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "python3-3.15.0~b3-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "b5f0af86dcc3c57345974f6cbee47b7ebadfc1d739a7fbcbb41e252860a0498b",
+    "source": "repo",
+    "size": 27360,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/python3-3.15.0~b3-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "python3-cffi-2.0.0-5.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "33039bef379603468ed69e8ec52321fe722795aa75a8bcf6d84faca8ff86c9c2",
+    "source": "repo",
+    "size": 331748,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/python3-cffi-2.0.0-5.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "python3-createrepo_c-1.2.1-8.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "e21fce6fe6e783697789b8b6817f1e11d97c1e4a2fbc1db880079b86a57a142c",
+    "source": "repo",
+    "size": 70463,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/python3-createrepo_c-1.2.1-8.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "python3-cryptography-49.0.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "fdedb29b153a2f727051153e612ad647eb9fcc91b77cb6749bab0c90cb2ffc7d",
+    "source": "repo",
+    "size": 1845360,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/python3-cryptography-49.0.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "python3-libdnf5-5.4.2.1-6.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "4c031f0aa673b8273d2b5c2bebfe515fe88d36b5d84a23b21f6aa7ffec8e9129",
+    "source": "repo",
+    "size": 1857327,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/python3-libdnf5-5.4.2.1-6.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "python3-libs-3.15.0~b3-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "32f22562fc89d46ce3f6f5e5d262d0784140bd1f84ce2711436356dcbfe1be92",
+    "source": "repo",
+    "size": 11739381,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/python3-libs-3.15.0~b3-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "python3-pefile-2024.8.26-8.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "15d8de90869fdf006e6ff18a756893f9045dcc3ff8443db81ff3ae8600be4ffc",
+    "source": "repo",
+    "size": 181487,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/python3-pefile-2024.8.26-8.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "python3-pycparser-3.00-3.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "cffdb58608bc0bf349b5752059f1fc654683d9ced5cfb45bc22844b5c19345c5",
+    "source": "repo",
+    "size": 146544,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/python3-pycparser-3.00-3.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "python3-zstandard-0.25.0-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "78c2a5c0fffb6ae762de23877f6d41cb751aaa94b19630c52a296e19f4fc59fa",
+    "source": "repo",
+    "size": 720427,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/p/python3-zstandard-0.25.0-3.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "qatlib-26.02.0-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "61c29ade1d1cb27c1e6320f7b94c8b770beeda335710807810e6e573d2f2a1e4",
+    "source": "repo",
+    "size": 266424,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/q/qatlib-26.02.0-3.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "qatzip-libs-1.3.2-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "4c320a98a8cbe7c7b00375ca791cd8fd29fc44c0315df8933d00f1ad99b1e5e1",
+    "source": "repo",
+    "size": 68198,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/q/qatzip-libs-1.3.2-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "qemu-common-2:11.0.0-11.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "f92869bee75b9799b7fe9f88715b5e85560f181f833eb31ee162c3e993e9a68f",
+    "source": "repo",
+    "size": 600047,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/q/qemu-common-11.0.0-11.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "qemu-system-x86-core-2:11.0.0-11.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "46fb676e098aca5acc8a85cdb7b4d5d567750f3f778c55555e2ab3ed8d23473e",
+    "source": "repo",
+    "size": 9475521,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/q/qemu-system-x86-core-11.0.0-11.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "rdma-core-common-63.0-2.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "faaf571ef8de34734b4421aa897ac16686252a1b29523dda2b205a19d55825ec",
+    "source": "repo",
+    "size": 17626,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/r/rdma-core-common-63.0-2.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "readline-8.3-4.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "fb8f01f1c9dfa521125d034c9d666fe5c73a769189151106be8e90e13f7e5962",
+    "source": "repo",
+    "size": 235274,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/r/readline-8.3-4.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "redhat-systemd-presets-102-2.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "f34dc54d546dc559a5b867fa68b1cbb3b337e36d23fa9268acfb1d08a3460e10",
+    "source": "repo",
+    "size": 8607,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/r/redhat-systemd-presets-102-2.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "redhat-systemd-presets-common-102-2.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "bd01df0e9f964aefd5345ae9260bd2f18639bbc9c9388ee297f8af0b713cfdaf",
+    "source": "repo",
+    "size": 13411,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/r/redhat-systemd-presets-common-102-2.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "rpm-6.0.91-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "e61424459ebec49b789ce59d93b7dc06a03baec5fbd46356794198d8bfa58102",
+    "source": "repo",
+    "size": 585244,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/r/rpm-6.0.91-3.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "rpm-libs-6.0.91-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "21af075b37447014cdb7244038df07bc18556b8f7aefeaa6ff3ae5065d849777",
+    "source": "repo",
+    "size": 489122,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/r/rpm-libs-6.0.91-3.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "rpm-sequoia-1.10.2-4.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "28cbf3b1cdbb1849bd48cf54125cf333c0d9b513b0591ea84c18b9759c1c8a2c",
+    "source": "repo",
+    "size": 960199,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/r/rpm-sequoia-1.10.2-4.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "seabios-bin-1.17.0-10.fc44.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "d9c603d08efe2eb69413752fd23afe5dbba6d4e680cfeacc2c5175841107d7d1",
+    "source": "repo",
+    "size": 194142,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/seabios-bin-1.17.0-10.fc44.noarch.rpm"
+  },
+  {
+    "nevra": "seavgabios-bin-1.17.0-10.fc44.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "ebdbb57101bef10d382160893acc5cc494a346e28b309075465924e82b0f3ad9",
+    "source": "repo",
+    "size": 52887,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/seavgabios-bin-1.17.0-10.fc44.noarch.rpm"
+  },
+  {
+    "nevra": "sed-4.10-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "90086a003ea5c257b83493bbf0b3e4fde69840ba0622092328ffe3446e5ddac7",
+    "source": "repo",
+    "size": 367742,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/sed-4.10-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "setup-2.15.1-1.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "9f95d9c8bf4b3dc502c2534336403ea95381e65e4e62dd0575b54f6b0050f8c7",
+    "source": "repo",
+    "size": 161260,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/setup-2.15.1-1.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "shadow-utils-2:4.19.3-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "7c2efa70da4db8eda948cea456209fa883cba40cc5507283c7d3b0581c5a6a03",
+    "source": "repo",
+    "size": 1486932,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/shadow-utils-4.19.3-3.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "snappy-1.2.2-4.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "dc519b2a990dbbf22a6513fd6fa948852756ad4edc026c59b5c22ecaa1419988",
+    "source": "repo",
+    "size": 44279,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/snappy-1.2.2-4.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "sqlite-libs-3.53.3-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "0d22b25967a33c5a40ae49081f5cc24f01f7dd6cf0b61bc6e1175408003fee22",
+    "source": "repo",
+    "size": 831430,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/sqlite-libs-3.53.3-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "systemd-261.1-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "38621ceebc3946e8e97b47969c7aae64c286d3edd0d7b7451ed15e2ffa27d7e9",
+    "source": "repo",
+    "size": 4872274,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/systemd-261.1-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "systemd-boot-unsigned-261.1-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "778fe91162fcd1b9e14113f26fe0630ef089e7553788a2a959ab481f3aaa81c5",
+    "source": "repo",
+    "size": 137150,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/systemd-boot-unsigned-261.1-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "systemd-container-261.1-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "37fe5531e789227a55d87b70a40f2e94a9140c1d488c6c1f60c227c2859fe0bd",
+    "source": "repo",
+    "size": 1067386,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/systemd-container-261.1-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "systemd-libs-261.1-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "106a882da70ca8901b90447d43669b5c08f470064f942c9e6939095d5470a167",
+    "source": "repo",
+    "size": 966174,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/systemd-libs-261.1-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "systemd-shared-261.1-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "41404199562cc4d43e35701d57b0c1fdc70428a24411ddf2fd5e985ec8686041",
+    "source": "repo",
+    "size": 2286907,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/systemd-shared-261.1-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "systemd-sysusers-261.1-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "b7980a918a57ad9c73460fa7ba1ad4e54fb82589da963203fd08a6e5fa67eb65",
+    "source": "repo",
+    "size": 53761,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/systemd-sysusers-261.1-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "systemd-udev-261.1-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "9be04e2da3bd93840cc030f8cbb5ffcf9f8161b59215b5716bd851cf17b5f152",
+    "source": "repo",
+    "size": 2987594,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/systemd-udev-261.1-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "systemd-ukify-261.1-2.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "ac062eb638f7908aae42881cb2fe44f4d1b85f65494c273a0ccebe5a3f1b8a35",
+    "source": "repo",
+    "size": 66540,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/s/systemd-ukify-261.1-2.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "tpm2-tss-4.2.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "bad368457509a87169d18b60d90931fb64789d7933b340bfca89e0c7ee185e07",
+    "source": "repo",
+    "size": 467780,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/t/tpm2-tss-4.2.0-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "tzdata-2026b-1.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "9c2db83f2e6449a56ef4bd157b6a31e84d9c1290e2c2e9f3bcda7a095320b6a6",
+    "source": "repo",
+    "size": 730598,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/t/tzdata-2026b-1.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "util-linux-core-2.42.2-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "40812f5f0c9ee11d36909c32655af10e790648e27d51eeaef639c443141f7019",
+    "source": "repo",
+    "size": 594522,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/u/util-linux-core-2.42.2-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "veritysetup-2.8.7~rc2-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "344e493216afaf2b31a2f55a3f45ee0d148229cef361906f9d03fba6624567d4",
+    "source": "repo",
+    "size": 36964,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/v/veritysetup-2.8.7~rc2-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "xen-libs-4.21.1-8.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "3e68db43bdbebed4200700d3a2072fdd3a4a8793c037cd4224523df85072bb06",
+    "source": "repo",
+    "size": 689621,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/x/xen-libs-4.21.1-8.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "xen-licenses-4.21.1-8.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "af63cd37ce71e62bc2fa86dcd2d964cc8ba2826067db40ad8494b824d204ab7b",
+    "source": "repo",
+    "size": 45015,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/x/xen-licenses-4.21.1-8.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "xkeyboard-config-2.47-1.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "9b77fc88772ece09fa563806abe700c0a2c7fcf3296fe6354a499a542b24309c",
+    "source": "repo",
+    "size": 1024646,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/x/xkeyboard-config-2.47-1.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "xxhash-libs-0.8.3-4.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "1c8e57f259df3851e26d1802ab1715a2704c271578927053e8f34907d398868d",
+    "source": "repo",
+    "size": 42212,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/x/xxhash-libs-0.8.3-4.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "xz-libs-1:5.8.3-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "e89be849c642a1fcaa6d3f3a3415898c94bbfa3992d510c02e66d5bf35c530f7",
+    "source": "repo",
+    "size": 119151,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/x/xz-libs-5.8.3-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "zchunk-libs-1.5.3-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "c21175b05ff4124d86e6ec74796488af61fd268cc3aeea73a4f69824e53d3f9d",
+    "source": "repo",
+    "size": 55949,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/z/zchunk-libs-1.5.3-2.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "zlib-ng-compat-2.3.3-5.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "29dcd90df1d469da5378d589a77355ff689f5a1474cfa7893fa0b06d1aa57f79",
+    "source": "repo",
+    "size": 93385,
+    "url": "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/z/zlib-ng-compat-2.3.3-5.fc45.x86_64.rpm"
+  }
+]

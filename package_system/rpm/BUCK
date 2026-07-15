@@ -33,7 +33,6 @@ python_bootstrap_binary(
 
 package_system(
     name = "package_system",
-    id = "rpm",
     extract = ":extract",
     snapshot = ":snapshot",
     install = ":install",

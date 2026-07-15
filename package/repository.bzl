@@ -2,16 +2,15 @@
 
 load(":system.bzl", "PackageSystemInfo")
 
-package_representation = record(
+PackageRepresentationInfo = record(
     artifact = Artifact,
     suffix = str,
 )
 
-package_artifact = record(
+PackageArtifactInfo = record(
     artifact = Artifact,
-    metadata = typing.Any,
     name = str,
-    representations = dict[str, package_representation],
+    representations = dict[str, PackageRepresentationInfo],
 )
 
 PackagePoolInfo = provider(
@@ -21,25 +20,86 @@ PackagePoolInfo = provider(
 
 PackagePoolValueInfo = provider(
     doc = "A resolved authoritative package pool keyed by stable package id.",
-    # The same rich records also back format-specific providers without copying the map.
-    fields = {"packages": provider_field(dict[str, package_artifact])},
+    fields = {"packages": provider_field(dict[str, PackageArtifactInfo])},
 )
 
 PackageRepositoryInfo = provider(
     doc = "A repository belonging to one native package system.",
     fields = {
-        "id": provider_field(str),
-        "dir": provider_field(Artifact),
+        "baseurl": provider_field(str | None, default = None),
+        # Local declarations are materialized by a consuming package manager.
+        "dir": provider_field(Artifact | None, default = None),
         "package_system": provider_field(Dependency),
-        # DNF uses lower numbers first; 99 is its default.
-        "priority": provider_field(int, default = 99),
+    },
+)
+
+ConfiguredPackageRepositoryInfo = record(
+    id = str,
+    dependency = field(Dependency | None, default = None),
+    directory = Artifact,
+    priority = int,
+    baseurl = field(str | None, default = None),
+)
+
+LocalPackageInfo = provider(
+    doc = "Built native packages and their native package system.",
+    fields = {
+        "package_system": provider_field(Dependency),
+        "packages": provider_field(Artifact),
     },
 )
 
 LocalPackageRepositoryInfo = provider(
-    doc = "A repository whose packages are declared Buck artifacts.",
+    doc = "A repository declaration backed by locally built package artifacts.",
     fields = {"package_dirs": provider_field(list[Artifact])},
 )
+
+def _local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
+    packages = ctx.attrs.packages
+    if not packages:
+        fail("local_repository: packages must not be empty")
+    context = packages[0][LocalPackageInfo]
+    package_dirs = []
+    for package in packages:
+        info = package[LocalPackageInfo]
+        if info.package_system.label != context.package_system.label:
+            fail(
+                "local_repository: package {} uses package system {}, expected {}".format(
+                    package.label,
+                    info.package_system.label,
+                    context.package_system.label,
+                ),
+            )
+        package_dirs.append(info.packages)
+
+    return [
+        DefaultInfo(),
+        PackageRepositoryInfo(
+            package_system = context.package_system,
+        ),
+        LocalPackageRepositoryInfo(
+            package_dirs = package_dirs,
+        ),
+    ]
+
+_local_repository = rule(
+    impl = _local_repository_impl,
+    attrs = {
+        "packages": attrs.list(
+            attrs.dep(providers = [LocalPackageInfo]),
+            doc = "built native packages to publish",
+        ),
+    },
+)
+
+def local_repository(name: str, **kwargs) -> None:
+    """Declare locally built packages as a repository for install operations."""
+    if not name.endswith(".repository"):
+        fail("local_repository name must end with '.repository': {}".format(name))
+    _local_repository(
+        name = name,
+        **kwargs
+    )
 
 RepositoryUniverseInfo = provider(
     doc = "A homogeneous repository universe and its default selection policy.",
@@ -57,20 +117,21 @@ def _add_repository(
         repositories: list[Dependency],
         by_id: dict[str, Dependency]) -> None:
     repo = repository[PackageRepositoryInfo]
+    rid = repository.label.name
     if repo.package_system.label != package_system.label:
         fail(
             "repository '{}' uses package system {}, expected {}".format(
-                repo.id,
+                rid,
                 repo.package_system.label,
                 package_system.label,
             ),
         )
-    previous = by_id.get(repo.id)
+    previous = by_id.get(rid)
     if previous != None:
         if previous.label != repository.label:
-            fail("repository id '{}' is provided by both {} and {}".format(repo.id, previous.label, repository.label))
+            fail("repository id '{}' is provided by both {} and {}".format(rid, previous.label, repository.label))
         return
-    by_id[repo.id] = repository
+    by_id[rid] = repository
     repositories.append(repository)
 
 def merge_repositories(
@@ -107,6 +168,23 @@ def select_repositories(
     for name in group_names:
         candidates.extend(info.optional_repository_groups[name])
     return merge_repositories(info.package_system, candidates)
+
+def write_repository_manifest(
+        ctx: AnalysisContext,
+        name: str,
+        repositories: list[ConfiguredPackageRepositoryInfo]):
+    """Serialize configured repositories while retaining their artifact inputs."""
+
+    # Dependency is analysis-only and cannot be serialized, so strip it through the planner tuple.
+    return ctx.actions.write_json(
+        name,
+        [
+            (repository.id, repository.directory, repository.priority, repository.baseurl)
+            for repository in repositories
+        ],
+        with_inputs = True,
+        has_content_based_path = False,
+    )
 
 def _repository_universe_impl(ctx: AnalysisContext) -> list[Provider]:
     candidates = list(ctx.attrs.required_repositories)
@@ -166,10 +244,9 @@ def remote_repository_base(ctx: AnalysisContext, repo_dir: Artifact) -> list[Pro
     return [
         DefaultInfo(default_output = repo_dir, sub_targets = sub_targets),
         PackageRepositoryInfo(
-            id = rid,
+            baseurl = ctx.attrs.baseurl,
             dir = repo_dir,
             package_system = ctx.attrs.package_system,
-            priority = ctx.attrs.priority,
         ),
     ]
 
@@ -222,7 +299,7 @@ def _select_package_artifacts_impl(
         missing = [key for key in required if key not in entry]
         if missing:
             fail("transaction entry lacks {}: {}".format(missing, entry))
-        allowed = required + (("location",) if source == "local" else ())
+        allowed = required + (("location",) if source == "local" else ("size", "url"))
         unknown = [key for key in entry.keys() if key not in allowed]
         if unknown:
             fail("transaction entry has unknown fields {}: {}".format(unknown, entry))
@@ -267,6 +344,13 @@ def _select_package_artifacts_impl(
                 artifacts[output_name] = package_dirs[idx].project(parts[1])
             continue
 
+        url = entry.get("url")
+        size = entry.get("size")
+        if type(url) != type("") or not url:
+            fail("remote transaction entry has invalid url: {}".format(entry))
+        if type(size) != type(0) or size <= 0:
+            fail("remote transaction entry has invalid size: {}".format(entry))
+
         if rid not in by_repo or pkgid not in by_repo[rid]:
             fail(
                 ("{} ({}/{}) is absent from the pinned repository package pool; " +
@@ -310,12 +394,12 @@ def select_package_artifacts(
     """Select one representation of each transaction package into a directory."""
     output = ctx.actions.declare_output(name, dir = True)
     pools = {
-        repository[PackageRepositoryInfo].id: repository[PackagePoolInfo].value
+        repository.label.name: repository[PackagePoolInfo].value
         for repository in repositories
         if repository.get(PackagePoolInfo) != None
     }
     local_packages = {
-        repository[PackageRepositoryInfo].id: repository[LocalPackageRepositoryInfo].package_dirs
+        repository.label.name: repository[LocalPackageRepositoryInfo].package_dirs
         for repository in repositories
         if repository.get(LocalPackageRepositoryInfo) != None
     }

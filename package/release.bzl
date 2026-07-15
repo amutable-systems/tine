@@ -5,8 +5,6 @@ load(":repository.bzl", "RepositoryUniverseInfo")
 OsReleaseInfo = provider(
     doc = "An OS release associated with one native repository universe.",
     fields = {
-        "family": provider_field(str),
-        "version": provider_field(str),
         "package_sets": provider_field(dict[str, list[str]]),
         "package_system": provider_field(Dependency),
         "repository_universe": provider_field(Dependency),
@@ -24,8 +22,6 @@ def _os_release_impl(ctx: AnalysisContext) -> list[Provider]:
     return [
         DefaultInfo(),
         OsReleaseInfo(
-            family = ctx.attrs.family,
-            version = ctx.attrs.version,
             package_sets = package_sets,
             package_system = universe.package_system,
             repository_universe = ctx.attrs.repository_universe,
@@ -35,8 +31,6 @@ def _os_release_impl(ctx: AnalysisContext) -> list[Provider]:
 _os_release = rule(
     impl = _os_release_impl,
     attrs = {
-        "family": attrs.string(doc = "distribution family, such as fedora or centos"),
-        "version": attrs.string(doc = "release, suite, or rolling-channel name"),
         "package_sets": attrs.dict(
             attrs.string(),
             attrs.list(attrs.string()),

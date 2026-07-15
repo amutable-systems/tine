@@ -81,21 +81,28 @@ The providers have deliberately narrow roles:
 
 - `PackageSystemInfo` bundles the drivers for one native binary-package ecosystem: snapshot, extract,
   install, `createrepo`, plan, and build. RPM is the only implementation today.
-- `PackageRepositoryInfo` represents one repository and binds it to a package system. A repository is not
-  inherently owned by an OS release.
-- `LocalPackageRepositoryInfo` identifies a repository assembled from package artifacts in the build graph,
-  allowing selection to return those artifacts after solving against generated repodata.
+- `PackageRepositoryInfo` represents one repository and binds it to a package system. Its target name is
+  the repository ID; remote declarations also expose their pinned directory and base URL. Priority is
+  configuration policy, not an intrinsic repository property. A repository is not inherently owned by an
+  OS release.
+- `LocalPackageRepositoryInfo` identifies a repository assembled from package artifacts in the build graph.
+  It carries package directories, not the engine that produced them; a consuming package manager generates
+  repodata with its own engine.
 - `RepositoryUniverseInfo` defines one homogeneous solve universe: required repositories, named optional
   groups, and groups enabled by default. Selection preserves declaration order, de-duplicates identical
   targets, and rejects conflicting repository IDs.
-- `OsReleaseInfo` associates OS identity and named native package sets with one repository universe, and
-  supplies the base of an engine.
-- `PackageManagerInfo` is an immutable solve environment: it selects exact repositories, applies priority
-  overrides, chooses an engine, carries its release's package sets, and owns reusable solver caches. A
-  derived manager inherits this state and can add repositories without repeating release policy.
+- `OsReleaseInfo` associates named native package sets with one repository universe and supplies the base
+  of an engine. Its target label carries the release identity.
+- `PackageManagerInfo` is an immutable solve environment. Each ordered `ConfiguredPackageRepositoryInfo`
+  record carries the repository ID, materialized directory, effective priority, base URL, and optional
+  declaration dependency. The dependency is analysis-only and is absent for an inline repository made from
+  package-build inputs. The manager also carries reusable solver caches, chooses an engine, and carries its
+  release's package sets. A derived manager inherits this state and can add repositories without repeating
+  or rematerializing inherited release policy.
 - `BuildrootInfo` materializes the shared base root from explicit packages or a release package set.
-- `EngineInfo` contains a runnable root filesystem, its base release, and the sandbox used to enter it. Its
-  base establishes provenance; the engine may serve compatible package managers for other releases.
+- `EngineInfo` contains a runnable root filesystem, its resolution architecture, and the sandbox used to
+  enter it. Its target label establishes provenance; the engine may serve compatible package managers for
+  other releases.
 
 This split is visible in the default catalog. Fedora 44, Rawhide, and CentOS Stream 10 are separate OS
 releases. Their package managers solve against their own repositories while sharing the Rawhide engine.
@@ -115,43 +122,64 @@ base root, not OS identity alone, is its relevant input.
 Normal builds do not resolve against live network repositories. The catalog contains two generated forms
 of committed lock data:
 
-- `<repository>.json` pins filtered `repomd.xml`, the primary/filelists/group streams needed by libdnf5,
-  and the complete primary-metadata package inventory keyed by SHA-256 `pkgid`;
-- `<engine>.json` pins the engine transaction as a list of `{source, repo, pkgid, nevra}` records.
+- `snapshot/repo/<name>.json` pins filtered `repomd.xml`, the primary/filelists/group streams needed by
+  libdnf5, and the complete primary-metadata package inventory keyed by SHA-256 `pkgid`;
+- `snapshot/engine/<name>.json` pins the engine transaction. Remote records contain
+  `{source, repo, pkgid, nevra, url, size}`: `pkgid` verifies the bytes, while `url` and `size` record the
+  last known transport after rolling repository metadata stops advertising that package. The target's
+  `.repository` or `.engine` suffix is not repeated in the snapshot filename.
 
-`tine/tools/buck run tine//tools:refresh-catalog` refreshes them in three phases:
+`tine/tools/buck run tine//tools:refresh-catalog` refreshes them in two phases:
 
 1. Run every remote repository's `[snapshot]` sub-target on the host. `snapshot.py` downloads and verifies
-   repodata, drops unused streams, validates package locations, and writes deterministic JSON. The pure
-   snapshot is staged aside; the catalog receives a transitional snapshot that additionally carries the
-   previously pinned packages forward.
-2. Run every engine's `[resolve]` sub-target inside the current engine. `plan.py` resolves the authored
-   top-level engine package list against the freshly pinned repository trees and writes the new transaction.
-   The engine itself is built from its committed lock, whose packages may no longer exist upstream (rolling
-   releases garbage-collect superseded builds); the carried-forward pins keep that build satisfiable.
-3. Replace the transitional snapshots with the staged pure ones. Every intermediate state keeps all
-   committed engine locks buildable, so an interrupted refresh can simply be re-run.
+   repodata, drops unused streams, validates package locations, and atomically writes deterministic, pure
+   snapshot JSON. It does not carry packages forward from an earlier snapshot.
+2. Run the selected engines' `[resolve]` sub-targets against the freshly pinned repository trees and
+   atomically replace their transactions. The target engine's release, repository selection, package list,
+   and architecture define the solve.
+
+The catalog tool discovers the active `catalog` cell with Buck and always reads and writes snapshots in
+that cell's directory. `--engine` limits which engine transactions are resolved; repository snapshots are
+always refreshed together.
+
+A committed engine lock itself retains any package transport needed to build that engine. The repository
+package pool combines those retained transports with its current snapshot, so every intermediate refresh
+state remains buildable and an interrupted refresh can simply be re-run. Transitional repository snapshots
+are unnecessary.
+
+Transport retention does not turn a rolling mirror into an archive. A URL may eventually disappear; a
+clean-cache rebuild then needs a durable archive/content store, while an already fetched artifact can still
+come from Buck's content-addressed cache. The lock preserves the identity, expected size, and last route so
+that availability can be supplied independently without changing the solve.
 
 `verify-catalog` performs the same generation and fails when committed JSON differs. Repository snapshots
 are ordinary Buck source inputs, so changes invalidate only consumers of the changed data.
 
-`rpm_remote_repository()` derives its optional snapshot from `<target-name>.json`. This lets a new
-repository target analyze before its first refresh; consuming its empty package pool fails with an explicit
-instruction to refresh the catalog. A new engine lock is seeded as JSON data and must contain a usable
-bootstrap transaction before that engine can resolve itself.
+`rpm_remote_repository()` derives its optional snapshot by stripping `.repository` from the target name and
+looking under `snapshot/repo/`. This lets a new repository target analyze before its first refresh;
+consuming its empty package pool fails with an explicit instruction to refresh the catalog. An established
+engine that resolves itself needs a usable committed bootstrap transaction. A new engine may instead seed
+an internal empty lock by setting `resolver_engine` to a working predecessor. The predecessor supplies only
+the execution environment for `plan.py`; the new engine's release, repositories, packages, and architecture
+still define the resulting transaction. Refreshing the catalog creates the derived lock path.
+
+The refresh convention keeps repository and engine declarations plus their generated JSON in the active
+catalog's root Buck package, with generated data grouped under `snapshot/{repo,engine}/`. This makes
+target-name-derived paths and the package-local `snapshot/engine/*.json` retention inputs agree.
 
 ### Authoritative repository package pools
 
-Each remote repository target owns its package artifacts. Its dynamic value expands the committed snapshot
-into:
+Each `rpm_remote_repository()` target owns separate dynamic values for its pinned repodata and package pool.
+The pool expands the union of the current snapshot inventory and remote transports retained by committed
+engine locks into:
 
-- reconstructed pinned repodata;
 - one digest-checked raw RPM artifact per `pkgid`;
 - one decompressed cpio payload representation per RPM.
 
-The raw RPM and derived payload are alternative representations of the same `package_artifact` record.
-Downloads and decompression are registered once under repository ownership, rather than under every engine,
-buildroot, or image closure.
+The raw RPM and derived payload are alternative representations of the same `PackageArtifactInfo` record. The
+repository target is their canonical action owner, so engines, buildroots, and images share its downloads
+and decompression actions. A package removed from the latest snapshot remains in the pool while a committed
+engine lock references its pinned URL and size.
 
 `select_package_artifacts()` reads a resolved transaction, looks up each `(repository, pkgid)` in the
 authoritative pool, and creates a symlinked directory containing the requested representation. It never
@@ -174,6 +202,12 @@ Why repository ownership matters:
 An engine is a pinned execution environment built from one base OS release. It supplies rpm, Python,
 libdnf5, `createrepo_c`, core utilities, sandbox dependencies, and currently the image-building/VM tools.
 The base release identifies where this userspace came from, not the only release it may operate on.
+
+An engine normally uses its own completed root to run its `[resolve]` command. During a bootstrap or tooling
+transition, `resolver_engine` can point at a predecessor root instead. This edge is deliberately one-way:
+it changes where resolution executes, not the repositories, requested packages, architecture, or root built
+for the new engine. Engine resolution does not consume package-manager priority policy; its repositories use
+the native default priority until bootstrap needs an explicit policy of its own.
 
 Bootstrapping breaks the dependency on host RPM tooling in two stages:
 
@@ -223,15 +257,27 @@ pinned userspace. `image_vm` is the only current consumer; build actions never u
 
 Native package installation has three phases shared by buildroots and images:
 
-1. **Plan.** Run `PackageSystemInfo.plan` against the effective repository selection, priorities, and solver
-   cache. Weak dependencies are disabled. Existing lower layers are mounted read-only so installed packages
-   can satisfy an incremental request.
-2. **Select.** Use the resulting transaction to select raw RPMs from repository pools. If local package
-   outputs are present while building packages, an anonymous target runs `createrepo`, adds that repository
-   at a higher priority, and lets the same libdnf5 solve choose between local and upstream packages.
+1. **Plan.** Run `PackageSystemInfo.plan` against each configured repository's materialized directory,
+   effective priority, and solver cache. Weak dependencies are disabled. Existing lower layers are mounted
+   read-only so installed packages can satisfy an incremental request.
+2. **Select.** Use the resulting transaction to select raw RPMs from repository pools. A local repository is
+   materialized by an anonymous `createrepo` target using the consuming package manager's engine. The same
+   path handles package-build inputs and lets the libdnf5 solve choose between local and upstream packages.
 3. **Install.** Run `PackageSystemInfo.install` over the exact RPM directory. `install_packages()` owns a
    fresh root or incremental buildroot delta. An image layer instead invokes the same installer against its
    already-mounted root so package and filesystem operations have one output owner.
+
+The package manager assigns default priorities when it configures repositories: local repositories use 50
+and remote repositories use 99, with target-specific overrides applied by `package_manager()`. Planner
+actions receive an artifact-aware JSON manifest containing `[id, directory, priority, baseurl]` tuples.
+`write_repository_manifest()` projects those tuples from `ConfiguredPackageRepositoryInfo`; the record's
+`dependency` is deliberately stripped because Buck dependencies are analysis-only and not JSON-serializable.
+`plan.py` parses each tuple into its `Repository` named tuple. The directory selects pinned local repodata,
+while the base URL records the transport for remote packages selected into a transaction.
+
+Package-specific `buildroot_deps` use the same representation. Their ordered RPM directories are
+materialized as an anonymous repository with ID `extra`, local priority, no base URL, and no declaration
+dependency. Transaction selection maps its local locations directly back to the producing package outputs.
 
 Fresh buildroot installs are anonymous targets keyed by package manager, sorted install specs, and local
 package inputs. Buck therefore shares the base buildroot analysis/action graph across packages that use the
@@ -268,12 +314,18 @@ An `rpm_package` action:
 2. resolves and installs its BuildRequires delta, preferring RPMs from `buildroot_deps` over upstream;
 3. overlays the base and delta, stages its spec/sources in Buck action scratch, and runs `rpmbuild -ba`;
 4. freezes `%autorelease`, `_buildhost`, the dist tag, and the per-package source date epoch;
-5. collects binary RPMs and the source RPM into one output directory;
+5. collects binary RPMs and the source RPM into one output directory, carrying its package-system identity
+   in `LocalPackageInfo`;
 6. exposes each declared binary subpackage as a Buck sub-target and checks that declared outputs exist.
 
 The build currently uses `--nocheck`. Automatically generated debuginfo/debugsource RPMs are retained in the
 directory output but are tolerated rather than exposed as declared sub-targets. Successful build scratch is
 discarded; failed scratch remains available for diagnosis.
+
+`LocalPackageInfo` intentionally does not carry the producer's engine. `local_repository` checks that its
+packages use one native package system and remains an engine-independent declaration. The consuming package
+manager materializes deterministic repodata with its own engine; anonymous materializations with the same
+engine, package system, and ordered package directories share one action.
 
 ### Filesystem layer representation
 
@@ -321,7 +373,8 @@ Package installation and image tooling remain separate concerns:
 
 - the bootstrap `package_manager` determines what native packages can be resolved;
 - that manager's `engine` supplies every layer driver and terminal image tool;
-- `local_repository` publishes package output directories with deterministic repodata;
+- `local_repository` declares compatible package outputs and infers their package system from
+  `LocalPackageInfo`; a consuming package manager materializes deterministic repodata with its own engine;
 - a derived package manager adds such repositories to a base manager's configured selection.
 
 For example, a project can expose locally built packages without adding them to its OS release:
@@ -329,7 +382,6 @@ For example, a project can expose locally built packages without adding them to 
 ```python
 local_repository(
     name = "project.repository",
-    package_manager = "catalog//:fedora.rawhide.package-manager",
     packages = ["//packages:project"],
 )
 
@@ -473,7 +525,7 @@ against `/buildroot`.
 Reproducibility is both a release property and a caching requirement. Current mechanisms include:
 
 - repository metadata, package bytes, and source archives pinned by SHA-256;
-- committed engine transactions containing repository/package identities;
+- committed engine transactions containing repository/package identities and retained transports;
 - a fixed assembly `SOURCE_DATE_EPOCH` for roots that should be shared across consumers;
 - per-package source date epochs for RPM output timestamps and build headers;
 - a fixed `_buildhost` and frozen rpmautospec macros;
@@ -508,13 +560,15 @@ dependency discovery/import must produce committed or analysis-time lock data be
 Repository snapshots and engine transactions are generated data, but committing them makes normal
 resolution independent of live repository state and reviewable. Buck may still fetch content-pinned
 artifacts. A refresh is an explicit update operation rather than an invisible part of every build. This is
-analogous to a language dependency lockfile, only it also pins repository metadata.
+analogous to a language dependency lockfile, only it also pins repository metadata and retains the transport
+for packages needed to rebuild an engine after a rolling repository advances.
 
 ### Let repositories own upstream packages
 
 Putting downloads in each closure duplicated ownership and left derived operations without a stable home.
-The authoritative pool instead makes the repository snapshot the single definition of every upstream
-package. Closures select artifacts; they do not fetch or transform them.
+The authoritative named pool instead gives every upstream package one action owner per repository. The
+current snapshot defines available packages, while committed engine locks retain older packages required to
+bootstrap their resolver. Closures select artifacts; they do not fetch or transform them.
 
 ### Separate package system, OS release, package manager, and buildroot
 
@@ -528,7 +582,7 @@ The current vocabulary follows the actual responsibilities:
 - the repository universe defines membership and normal enablement policy;
 - the OS release defines identity, selects a repository universe, and may provide an engine's base;
 - the package manager defines one exact solve universe and engine; derived managers compose additional
-  repositories without changing their inherited release or engine;
+  repositories and priority overrides without changing their inherited release or engine;
 - the buildroot materializes the shared base packages.
 
 This is also why a release is not called a distribution target: Fedora 44 and CentOS Stream 10 are release

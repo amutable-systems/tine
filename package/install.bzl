@@ -1,41 +1,16 @@
 """Resolve and install native packages into filesystem roots."""
 
 load("//engine:rules.bzl", "EngineInfo", "chroot_run")
-load(":manager.bzl", "PackageManagerInfo")
-load(":repository.bzl", "LocalPackageRepositoryInfo", "PackageRepositoryInfo", "select_package_artifacts")
+load(":manager.bzl", "PackageManagerInfo", "materialize_local_repository")
+load(
+    ":repository.bzl",
+    "ConfiguredPackageRepositoryInfo",
+    "select_package_artifacts",
+    "write_repository_manifest",
+)
 load(":system.bzl", "PackageSystemInfo")
 
 _EXTRA_REPO_PRIORITY = 50
-
-_ExtraRepoInfo = provider(
-    doc = "The extra-packages repository tree carried out of an anonymous target.",
-    fields = {"repo": provider_field(Artifact)},
-)
-
-def _extra_repository_impl(ctx: AnalysisContext) -> list[Provider]:
-    package_manager = ctx.attrs.package_manager[PackageManagerInfo]
-    system = package_manager.package_system[PackageSystemInfo]
-    repo = ctx.actions.declare_output("repo", dir = True)
-    createrepo = cmd_args(
-        chroot_run(engine = package_manager.engine[EngineInfo], exe = system.createrepo),
-        "--out",
-        repo.as_output(),
-    )
-    for package_dir in ctx.attrs.packages:
-        createrepo.add("--packages-dir", package_dir)
-    ctx.actions.run(createrepo, category = "createrepo")
-    return [DefaultInfo(default_output = repo), _ExtraRepoInfo(repo = repo)]
-
-_extra_repository = anon_rule(
-    impl = _extra_repository_impl,
-    attrs = {
-        "package_manager": attrs.dep(providers = [PackageManagerInfo]),
-        "packages": attrs.list(attrs.source()),
-    },
-    artifact_promise_mappings = {
-        "repo": lambda p: p[_ExtraRepoInfo].repo,
-    },
-)
 
 _RootInfo = provider(
     doc = "The installed root tree carried out of an anonymous target.",
@@ -50,39 +25,47 @@ def resolve_packages(
         extra_packages: list[Artifact] = []) -> Artifact:
     """Plan an install and select its exact package artifacts."""
     package_manager = package_manager_dep[PackageManagerInfo]
-    repositories = package_manager.repositories
+    configured_repositories = package_manager.repositories
+    repositories = []
+    for configured in configured_repositories:
+        if configured.dependency == None:
+            fail("package manager contains inline repository '{}'".format(configured.id))
+        repositories.append(configured.dependency)
+    engine = package_manager.engine[EngineInfo]
     system = package_manager.package_system[PackageSystemInfo]
 
     extra_repo = None
     if extra_packages:
-        extra_repo = ctx.actions.anon_target(_extra_repository, {
-            "name": "//extra-repository:{}".format(package_manager_dep.label.name),
-            "package_manager": package_manager_dep,
-            "packages": extra_packages,
-        }).artifact("repo")
-        extra_repo = ctx.actions.assert_short_path(extra_repo, short_path = "repo")
+        extra_repo = materialize_local_repository(
+            ctx,
+            package_manager.engine,
+            package_manager.package_system,
+            extra_packages,
+        )
 
     tx = ctx.actions.declare_output("transaction.json")
     plan = cmd_args(
-        chroot_run(engine = package_manager.engine[EngineInfo], exe = system.plan),
+        chroot_run(engine = engine, exe = system.plan),
         "solve",
+        "--arch",
+        engine.arch,
         "--out",
         tx.as_output(),
     )
+    plan_repositories = []
     if extra_repo != None:
-        plan.add("--repo", cmd_args(extra_repo, format = "extra={}"))
-        plan.add("--local-repo", "extra")
-        plan.add("--priority", "extra={}".format(_EXTRA_REPO_PRIORITY))
-    for repository in repositories:
-        repo = repository[PackageRepositoryInfo]
-        plan.add("--repo", cmd_args(repo.dir, format = repo.id + "={}"))
-        priority = package_manager.priorities.get(repo.id, repo.priority)
-        plan.add("--priority", "{}={}".format(repo.id, priority))
-        if repository.get(LocalPackageRepositoryInfo) != None:
-            plan.add("--local-repo", repo.id)
-        cache = package_manager.solver_caches.get(repo.id)
-        if cache != None:
-            plan.add("--cache", cache)
+        plan_repositories.append(ConfiguredPackageRepositoryInfo(
+            id = "extra",
+            directory = extra_repo,
+            priority = _EXTRA_REPO_PRIORITY,
+        ))
+    plan_repositories.extend(configured_repositories)
+    for cache in package_manager.solver_caches:
+        plan.add("--cache", cache)
+    plan.add(
+        "--repositories",
+        write_repository_manifest(ctx, "repositories.json", plan_repositories),
+    )
     for lower in stack:
         plan.add("--lower", lower)
     for cap in install:

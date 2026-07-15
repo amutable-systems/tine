@@ -1,9 +1,7 @@
-"""Refresh catalog snapshots, then resolve engine transactions against those pins.
+"""Refresh pure catalog snapshots, then resolve engine transactions against those pins.
 
-Engine locks resolve inside an engine built from the committed pins, so the refresh must not
-invalidate those pins mid-flight: snapshots first land in the catalog as transitional pins that
-carry the previously pinned packages forward, and the pure snapshots replace them only after
-every engine lock has been re-resolved against the fresh repodata.
+Remote engine-lock entries retain their package transports, so a repository's package pool keeps
+the committed engine available after its repodata advances.
 
 The host orchestrator discovers refresh subtargets and appends only output paths.
 Nested Buck reuses the invoking daemon through the inherited isolation directory.
@@ -11,10 +9,8 @@ Nested Buck reuses the invoking daemon through the inherited isolation directory
 
 import argparse
 import contextlib
-import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 
@@ -23,12 +19,27 @@ def _buck_out(buck: str, *args: str) -> str:
 
 
 def _refresh_targets(buck: str, kind: str) -> list[str]:
-    """The refresh bindings of rule `kind` in the active catalog cell."""
-    return sorted(_buck_out(buck, "uquery", f"kind('{kind}', catalog//...)").split())
+    """The refresh bindings of rule `kind` in the active catalog package."""
+    return sorted(_buck_out(buck, "uquery", f"kind('^{kind}$', catalog//:)").split())
 
 
-def _name_of(target: str, suffix: str = "") -> str:
-    return target.rsplit(":", 1)[1].removesuffix(suffix)
+def _name_of(target: str) -> str:
+    return target.rsplit(":", 1)[1]
+
+
+def _snapshot_path(catalog_dir: Path, target: str, kind: str, suffix: str) -> Path:
+    name = _name_of(target)
+    if not name.endswith(suffix):
+        raise SystemExit(f"catalog: {target} does not end with {suffix!r}")
+    return catalog_dir / "snapshot" / kind / f"{name.removesuffix(suffix)}.json"
+
+
+def _engine_snapshot_path(catalog_dir: Path, target: str) -> Path:
+    return _snapshot_path(catalog_dir, target, "engine", ".engine")
+
+
+def _repository_snapshot_path(catalog_dir: Path, target: str) -> Path:
+    return _snapshot_path(catalog_dir, target, "repo", ".repository")
 
 
 def _run(buck: str, target: str, args: list[str]) -> None:
@@ -36,25 +47,58 @@ def _run(buck: str, target: str, args: list[str]) -> None:
     subprocess.run([buck, "-v", "0", "run", target, "--console", "none", "--", *args], check=True)
 
 
-def _snapshot(buck: str, target: str, catalog_dir: Path, staging_dir: Path) -> tuple[Path, Path]:
-    """Stage a repository's pure snapshot, leaving a transitional one in the catalog."""
+def _snapshot(buck: str, target: str, catalog_dir: Path) -> None:
+    """Atomically replace a repository snapshot with its current pure metadata."""
     repository = _name_of(target)
     print(f"==> snapshotting {repository} (via {target}[snapshot])", file=sys.stderr)
-    staged = staging_dir / f"{repository}.json"
-    committed = catalog_dir / f"{repository}.json"
-    _run(buck, f"{target}[snapshot]", ["--out", str(staged), "--transitional", str(committed)])
-    return staged, committed
+    committed = _repository_snapshot_path(catalog_dir, target)
+    committed.parent.mkdir(parents=True, exist_ok=True)
+    _run(buck, f"{target}[snapshot]", ["--out", str(committed)])
 
 
 def _resolve(buck: str, target: str, catalog_dir: Path) -> None:
     engine = _name_of(target)
-    print(f"==> resolving {engine} in itself (via {target}[resolve])", file=sys.stderr)
-    _run(buck, f"{target}[resolve]", ["--out", str(catalog_dir / f"{engine}.json")])
+    print(f"==> resolving {engine} (via {target}[resolve])", file=sys.stderr)
+    committed = _engine_snapshot_path(catalog_dir, target)
+    committed.parent.mkdir(parents=True, exist_ok=True)
+    _run(buck, f"{target}[resolve]", ["--out", str(committed)])
+
+
+def _select_engines(all_resolves: list[str], selected_engines: list[str] | None) -> list[str]:
+    if selected_engines is None:
+        return all_resolves
+    duplicates = sorted({name for name in selected_engines if selected_engines.count(name) > 1})
+    if duplicates:
+        raise SystemExit(f"catalog: engine names selected more than once: {duplicates}")
+    by_name = {_name_of(target): target for target in all_resolves}
+    unknown = sorted(set(selected_engines) - by_name.keys())
+    if unknown:
+        raise SystemExit(f"catalog: unknown engine names: {unknown}")
+    selected = set(selected_engines)
+    return [target for target in all_resolves if _name_of(target) in selected]
+
+
+def _refresh(
+    buck: str,
+    catalog_dir: Path,
+    selected_engines: list[str] | None,
+) -> tuple[list[str], list[str]]:
+    """Snapshot repositories and resolve selected engines."""
+    all_resolves = _refresh_targets(buck, "engine")
+    resolves = _select_engines(all_resolves, selected_engines)
+
+    snapshots = _refresh_targets(buck, "_remote_repository")
+    for target in snapshots:
+        _snapshot(buck, target, catalog_dir)
+
+    for target in resolves:
+        _resolve(buck, target, catalog_dir)
+
+    return snapshots, resolves
 
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="catalog")
-    p.add_argument("--catalog-dir", help="catalog dir to (re)generate (default: catalog//)")
     p.add_argument(
         "--buck", default="buck", help="buck binary to nest (aliases pass the pinned one; default: PATH)"
     )
@@ -69,40 +113,43 @@ def main(argv: list[str] | None = None) -> None:
         help="assert the committed catalog matches what the pinned resolvers produce (CI)",
     )
     args = p.parse_args(argv)
-    # Default to the active catalog; anchor overrides before changing cwd.
-    if args.catalog_dir:
-        catalog_dir = Path(args.catalog_dir).absolute()
-    else:
-        catalog_dir = Path(_buck_out(args.buck, "audit", "cell", "catalog", "--paths-only"))
-    catalog_dir.mkdir(parents=True, exist_ok=True)
+    catalog_dir = Path(_buck_out(args.buck, "audit", "cell", "catalog", "--paths-only"))
 
     # Run nested commands from the project root so wrappers resolve consistently.
-    with (
-        contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")),
-        tempfile.TemporaryDirectory(prefix="catalog-refresh.") as staging,
-    ):
-        snapshots = _refresh_targets(args.buck, "remote_repository")
-        staged = [_snapshot(args.buck, target, catalog_dir, Path(staging)) for target in snapshots]
-
-        resolves = _refresh_targets(args.buck, "engine")
-        if args.engine:
-            resolves = [t for t in resolves if _name_of(t) in set(args.engine)]
-        for target in resolves:
-            _resolve(args.buck, target, catalog_dir)
-
-        # Locks now match the fresh repodata; retire the transitional carried-forward pins.
-        for pure, committed in staged:
-            shutil.move(pure, committed)
+    with contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")):
+        snapshots, resolves = _refresh(
+            args.buck,
+            catalog_dir,
+            args.engine,
+        )
 
     if not snapshots and not resolves:
         raise SystemExit("catalog: no repository/engine refresh targets found in catalog//...")
 
     if args.verify:
         print("==> verifying the committed catalog matches", file=sys.stderr)
-        # git prints the offending diff; just propagate the failure without a traceback.
-        proc = subprocess.run(["git", "-C", str(catalog_dir), "diff", "--exit-code", "--", "*.json"])
-        if proc.returncode != 0:
-            raise SystemExit(proc.returncode)
+        status = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(catalog_dir),
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "--",
+                ":(glob)snapshot/**/*.json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        if status:
+            print(status, end="", file=sys.stderr)
+            subprocess.run(
+                ["git", "-C", str(catalog_dir), "diff", "--", ":(glob)snapshot/**/*.json"],
+                check=True,
+            )
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":
