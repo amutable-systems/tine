@@ -187,7 +187,8 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     for s, out in sub_outputs.items():
         build.add("--subpackage", cmd_args(out.as_output(), format = s + "={}"))
     for opt in ctx.attrs.rpmbuild_options:
-        build.add("--rpmbuild-option", opt)
+        # argparse rejects an option value that itself starts with '-', so don't use space separator
+        build.add("--rpmbuild-option=" + opt)
     ctx.actions.run(build, category = "rpmbuild")
 
     sub_targets = {s: [DefaultInfo(default_output = out)] for s, out in sub_outputs.items()}
