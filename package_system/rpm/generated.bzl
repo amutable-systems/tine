@@ -170,42 +170,52 @@ def _sccs(edges: dict[str, list[str]]) -> dict[str, int]:
                     low[parent] = min(low[parent], low[v])
     return comp
 
-def _buildroot_locks(
-        packages: dict[str, SrcpkgMetadata],
-        buildroot_only_packages: list[str]) -> dict[str, list[str]]:
-    """Build an acyclic package-to-self-hosted-provider map.
-
-    Cyclic edges fall back to upstream unless a buildroot-only package requires them.
-    The retained graph must still be acyclic."""
-    provides = {}  # capability -> {package: True}
+def _provides(packages: dict[str, SrcpkgMetadata]) -> dict[str, dict[str, bool]]:
+    """Map each provided capability (subpackage names, Provides, Files) to its providers."""
+    provides = {}
     for name in sorted(packages):
         for arch_bins in packages[name].binaries.values():
             for binname in arch_bins:
                 bm = arch_bins[binname]
                 for cap in [binname] + bm["Provides"] + bm["Files"]:
                     provides.setdefault(_cap(cap), {})[name] = True
-    for cap in buildroot_only_packages:
-        if cap not in provides:
-            fail("buildroot-only package '{}' has no provider among the branch packages".format(cap))
+    return provides
+
+def _buildrequires_edges(
+        packages: dict[str, SrcpkgMetadata],
+        provides: dict[str, dict[str, bool]]) -> dict[str, dict[str, list[str]]]:
+    """The package-to-self-hosted-provider graph, with the capabilities justifying each edge."""
     edges = {}
-    kept = {}  # package -> {provider: True} edges exempt from cycle dropping
     for name in sorted(packages):
         deps = {}
-        keep = {}
         for br in _build_requires(packages[name]):
             for cap in _br_caps(br):
                 for p in provides.get(cap, {}):
                     if p != name:
-                        deps[p] = True
-                        if cap in buildroot_only_packages:
-                            keep[p] = True
-        edges[name] = sorted(deps)
-        kept[name] = keep
-    comp = _sccs(edges)
-    locks = {
-        name: [p for p in edges[name] if comp[p] != comp[name] or kept[name].get(p, False)]
-        for name in edges
-    }
+                        deps.setdefault(p, {})[cap] = True
+        edges[name] = {p: sorted(deps[p]) for p in sorted(deps)}
+    return edges
+
+def _buildroot_locks(
+        edge_caps: dict[str, dict[str, list[str]]],
+        provides: dict[str, dict[str, bool]],
+        buildroot_only_packages: list[str]) -> dict[str, list[str]]:
+    """Build an acyclic package-to-self-hosted-provider map.
+
+    Cyclic edges fall back to upstream unless a buildroot-only package requires them.
+    The retained graph must still be acyclic."""
+    for cap in buildroot_only_packages:
+        if cap not in provides:
+            fail("buildroot-only package '{}' has no provider among the branch packages".format(cap))
+    comp = _sccs({name: sorted(deps) for name, deps in edge_caps.items()})
+    locks = {}
+    for name in edge_caps:
+        keep = []
+        for p in edge_caps[name]:
+            kept = [cap for cap in edge_caps[name][p] if cap in buildroot_only_packages]
+            if comp[p] != comp[name] or kept:
+                keep.append(p)
+        locks[name] = keep
     lockcomp = _sccs(locks)
     members = {}  # SCC id -> member count; any id shared by two nodes is a cycle
     for name in locks:
@@ -223,7 +233,9 @@ def rpm_branch(
         rpmbuild_options: dict[str, list[str]] = {}) -> None:
     """Declare a branch and its self-hosting buildroot edges."""
     metadata = {name: _parse_metadata(meta) for name, meta in packages.items()}
-    locks = _buildroot_locks(metadata, buildroot_only_packages)
+    provides = _provides(metadata)
+    edge_caps = _buildrequires_edges(metadata, provides)
+    locks = _buildroot_locks(edge_caps, provides, buildroot_only_packages)
     for name in sorted(metadata):
         _declare_rpm_package(
             package = name,
