@@ -170,6 +170,93 @@ wanted to change nothing, and cold-rebuildability breaks. That is purely an avai
 and mirroring/archiving the snapshotted RPM pool fixes it under A, B, and C alike: rawhide is then
 touched only at deliberate import/refresh time. The cost is mostly storage infrastructure.
 
+# Shrinking the cycle: seed-pinned source packages
+
+Orthogonal to A/B/C, the cycle itself is partly curable. Some BRs are *tool use* (a compiler, a
+signature verifier, test data) rather than linkage that ties the built rpms to libraries we ship;
+for those, the seed packages serve as well as our own builds.
+
+A branch can declare such providers as **seed-only** (`seed_only_packages` in the branch properties,
+the symmetric dual of `buildroot_only_packages`). The pin names a *source* package and covers
+everything its binary packages provide: `gcc` covers gcc-c++ and libstdc++-devel, `kernel` covers
+kernel-devel. A BR on any of it never becomes a self-host lock edge, but by policy will always be
+resolved from the seed.
+
+Today this costs nothing: the affected edges are intra-SCC and therefore *already* fall back to the
+seed. The pin merely turns the accident into a decision. That decomposes the SCC, which is a strict
+win: every package that leaves the cycle gets real self-host lock edges for all its *other*
+dependencies (instead of wholesale seed fallback), and under C it leaves the double-build set.
+
+Current candidates, found with the `scc` tool below:
+
+- **`gcc`** — the cycle's biggest hub (65 in-edges) and its most expensive member, yet it is in
+  the package set for one reason only: its runtime libraries (libgcc, libstdc++) ship on the
+  image. We never intend to modify the compiler itself: it is trusted build environment, like
+  make or perl (see the buildroot-closure limit above). Pinning it releases gcc plus the periphery
+  whose only cycle edge was "compiled by gcc" (dosfstools, keyutils, libeconf, libffi, libseccomp,
+  libtool, libunistring, lz4, tzdata, zlib-ng): 69 → 58. See the ramifications below.
+- **`gnupg2`** — all 26 in-edges of gnupg2 carry just its name: `%{gpgverify}` source-signature
+  verification in `%prep`, no linkage into any output. Pinning it releases the whole gpg stack
+  (gnupg2, libassuan, libgcrypt, libgpg-error, libksba, npth): alone 69 → 63.
+- **`kernel`** — the kernel sits in the cycle only through two back-edges, systemd → kernel and
+  libcap-ng → kernel, both just `kernel-devel` headers. Pinning releases the second-most
+  expensive member from any future two-stage set. This one is only relevant for approach C; see
+  the ramifications below.
+- **`tzdata`** — gcc's testsuite data, already released from the cycle by the gcc pin; pinning it
+  as well just keeps timezone updates from triggering compiler rebuilds.
+
+The pins combined: **69 → 38**. This has limits: it only cuts tool edges. The remaining core (glibc,
+systemd, util-linux, pam, audit, krb5, openldap, curl, openssl, …) is held together by genuine
+`-devel` link dependencies (e.g. krb5's five in-edges are all `krb5-devel`/GSSAPI) and stays a cycle
+for A/B/C to handle. But these are exactly the packages whose self-hosted edges we actually want.
+
+## Ramifications of pinning `gcc`
+
+Everything we ship is then compiled by the *seed's* gcc but runs against *our* libgcc/libstdc++.
+That is coherent exactly under the stated policy (our gcc import is Fedora's compiler, never
+modified), with one skew rule to respect: binaries built by the seed's gcc N may need
+libstdc++/libgcc_s symbols ≥ N at runtime, so our gcc import must not trail the seed snapshot's
+gcc version. Both seed and package updates are automated, so in practice this is a non-issue.
+
+What it buys, besides the cycle reduction:
+
+- **The gcc cascade dies.** Nothing build-depends on our gcc anymore, so a gcc respin cascades
+  into image assembly only. C's worst case ("any toolchain change rebuilds the world, twice")
+  disappears, and under B a gcc fix no longer queues a world rebuild for the next publish.
+- **Under C, gcc leaves the double-build set** — the most expensive stage1 member.
+- Our gcc build itself becomes a normal acyclic consumer: it locks onto our elfutils, glibc, gmp,
+  xz, zlib-ng, and zstd instead of dropping everything to the seed — better provenance for the
+  libgcc we actually ship. (Flip side: changes to those six now trigger a compiler rebuild, where
+  today only glibc does.)
+
+The price is philosophical: "built by tools we built" is retired *for the compiler itself*, by
+explicit policy, under B and C too. Provenance re-scopes to "built from sources we control, by a
+toolchain we trust" — consistent with the buildroot-closure limit above, which already trusts
+Fedora's make, perl, and python.
+
+## Ramifications of pinning `kernel`
+
+The pin means systemd and libcap-ng always compile against the *seed's* kernel headers, even once we
+ship our own kernel. What that costs and what it would take to build against *our* headers (e.g.
+once we carry divergent uapi that a consumer like systemd or util-linux needs) differs per approach:
+
+- **Under A** (today), the pin is behavior-neutral: unpinned, the edge is intra-SCC and falls back
+  to the seed anyway. But lifting it can never help either — the fallback re-creates the seed
+  headers regardless, so building against our own kernel headers is simply not expressible under A.
+  This is the kernel-flavored instance of A's build-against/run-against drift; escaping it means
+  adopting B or C, not lifting the pin.
+- **Under B**, still neutral, and it degrades gracefully: pinned or not, `kernel-devel` resolves
+  from the seed, which now contains *our previous round's* kernel headers via repo priority.
+  "Never ours" softens to "one round stale ours" — precisely koji's behavior; divergent uapi
+  becomes usable one publish later.
+- **Under C**, the pin gains real force, as a purity/cost knob: keeping it holds the kernel out of
+  the SCC and hence out of the double-build set, at the price of final systemd building against
+  seed headers (the same class of accepted gap as the providers-only overlay); lifting it buys
+  same-round own headers at the cost of a kernel.stage1 double build.
+
+gnupg2 and tzdata stay benign under every approach (data plus a verification tool, no linkage);
+under C a pinned gnupg2 is equivalent to verifying sources with a stage-1-grade tool.
+
 # Inspecting the cycle: the `scc` tool
 
 `rpm_branch` materializes each branch's raw BR graph as a `:_buildrequires_graph` target:
