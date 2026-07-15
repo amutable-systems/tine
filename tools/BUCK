@@ -131,6 +131,18 @@ command_alias(
     exe = ":dev",
 )
 
+command_alias(
+    name = "ty-engine",
+    args = [
+        "ty",
+        "--engine",
+        "$(location catalog//:fedora.rawhide.engine)",
+        "--ty",
+        "$(location :ty)",
+    ],
+    exe = ":dev",
+)
+
 # The catalog tool resolves the active catalog and project root itself.
 command_alias(
     name = "refresh-catalog",

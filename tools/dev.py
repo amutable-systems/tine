@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -138,6 +139,20 @@ def _scc(args: argparse.Namespace) -> None:
         print(f"\nwrote {args.dot}")
 
 
+def _ty(args: argparse.Namespace) -> None:
+    engine = Path(args.engine).resolve()
+    site_packages = sorted((engine / "usr/lib").glob("python*/site-packages"))
+    if len(site_packages) != 1:
+        raise SystemExit(f"ty: expected one site-packages directory in {engine}, found {len(site_packages)}")
+    env = os.environ.copy()
+    pythonpath = [str(site_packages[0])]
+    if inherited := env.get("PYTHONPATH"):
+        pythonpath.append(inherited)
+    env["PYTHONPATH"] = os.pathsep.join(pythonpath)
+    executable = Path(args.ty).resolve()
+    os.execve(executable, [str(executable), *args.arguments], env)
+
+
 def main(argv: list[str] | None = None) -> None:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
@@ -162,6 +177,12 @@ def main(argv: list[str] | None = None) -> None:
     scc.add_argument("--why", metavar="PKG", help="show one cycle member's edges and their reasons")
     scc.add_argument("--dot", type=Path, help="write the cycle subgraph as graphviz")
     scc.set_defaults(func=_scc)
+
+    ty = sub.add_parser("ty", help="run pinned ty against the engine's Python environment")
+    ty.add_argument("--engine", required=True)
+    ty.add_argument("--ty", required=True)
+    ty.add_argument("arguments", nargs=argparse.REMAINDER)
+    ty.set_defaults(func=_ty)
 
     args = p.parse_args(argv)
     args.func(args)
