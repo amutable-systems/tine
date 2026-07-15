@@ -1,6 +1,7 @@
 """Configured native package managers."""
 
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
+load(":local_packages.bzl", "LocalPackageUniverseInfo")
 load(":release.bzl", "OsReleaseInfo")
 load(
     ":repository.bzl",
@@ -62,6 +63,7 @@ PackageManagerInfo = provider(
         "package_system": provider_field(Dependency),
         "repositories": provider_field(list[ConfiguredPackageRepositoryInfo]),
         "solver_caches": provider_field(list[Artifact]),
+        "local_packages": provider_field(Dependency | None, default = None),
     },
 )
 
@@ -82,6 +84,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
                 fail("package_manager base contains inline repository '{}'".format(configured.id))
             repositories.append(configured.dependency)
         solver_caches = list(base.solver_caches)
+        local_packages = ctx.attrs.local_packages if ctx.attrs.local_packages != None else base.local_packages
     else:
         if ctx.attrs.release == None or ctx.attrs.engine == None:
             fail("package_manager requires release and engine when base is not set")
@@ -96,9 +99,14 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
         )
         configured_by_id = {}
         solver_caches = []
+        local_packages = ctx.attrs.local_packages
 
     repositories = merge_repositories(package_system, repositories + ctx.attrs.additional_repositories)
     by_id = {repository.label.name: repository for repository in repositories}
+
+    # 'extra' is synthesized per install for buildroot_deps and local-package selection.
+    if "extra" in by_id:
+        fail("package_manager: repository id 'extra' is reserved for extra-package selection")
 
     for rid in ctx.attrs.repository_priorities:
         if rid not in by_id:
@@ -158,6 +166,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
             package_system = package_system,
             repositories = configured_repositories,
             solver_caches = solver_caches,
+            local_packages = local_packages,
         ),
     ]
 
@@ -174,6 +183,11 @@ _package_manager = rule(
             default = [],
         ),
         "repository_priorities": attrs.dict(attrs.string(), attrs.int(), default = {}),
+        "local_packages": attrs.option(
+            attrs.dep(providers = [LocalPackageUniverseInfo]),
+            default = None,
+            doc = "locally built packages preferred over repository packages during installs",
+        ),
     },
 )
 

@@ -31,6 +31,7 @@ The root project consumes reusable machinery from the `tine` cell:
 ```text
 //packages/               independently versioned package specs, sources, and generated BUCK files
 //examples/image/         image smoke targets
+//examples/image-local-packages/  bootable image from self-built packages
 tine//package/            package-system-neutral providers and installation flow
 tine//package_system/rpm/ RPM repository, resolver, installer, extractor, and builder
 tine//engine/             engine bootstrap and sandbox command construction
@@ -100,6 +101,8 @@ The providers have deliberately narrow roles:
   package-build inputs. The manager also carries reusable solver caches, chooses an engine, and carries its
   release's package sets. A derived manager inherits this state and can add repositories without repeating
   or rematerializing inherited release policy.
+- `LocalPackageUniverseInfo` describes a universe of locally built packages together with the imported
+  runtime Requires/Provides metadata needed to select an install request's closure among them.
 - `BuildrootInfo` materializes the shared base root from explicit packages or a release package set.
 - `EngineInfo` contains a runnable root filesystem, its resolution architecture, and the sandbox used to
   enter it. Its target label establishes provenance; the engine may serve compatible package managers for
@@ -287,6 +290,11 @@ Native package installation has three phases shared by buildroots and images:
 2. **Select.** Use the resulting transaction to select raw RPMs from repository pools. A local repository is
    materialized by an anonymous `createrepo` target using the consuming package manager's engine. The same
    path handles package-build inputs and lets the libdnf5 solve choose between local and upstream packages.
+   Extra packages arrive on two mutually exclusive paths: a package build passes its explicit
+   `buildroot_deps` outputs, while a package manager with attached `local_packages` computes the request's
+   runtime closure at analysis time from imported metadata and offers exactly the locally built packages
+   in it. Buildroots reject managers with local packages, because buildroot contents must come from the
+   explicit, cycle-checked self-hosting locks.
 3. **Install.** Run `PackageSystemInfo.install` over the exact RPM directory. `install_packages()` owns a
    fresh root or incremental buildroot delta. An image layer instead invokes the same installer against its
    already-mounted root so package and filesystem operations have one output owner.
@@ -326,7 +334,9 @@ For each branch, `rpm_branch()` currently:
 - maps BuildRequires capabilities to source-package targets;
 - computes strongly connected components and drops ordinary intra-cycle edges to upstream packages;
 - retains explicitly configured buildroot-only edges and rejects cycles they reintroduce;
-- creates one `rpm_package` target per source package.
+- creates one `rpm_package` target per source package;
+- publishes the branch's binary-package runtime metadata as a `:_local_packages` target for
+  manager-attached local package selection.
 
 This is a static, import-time self-hosting approximation. It is useful today but is not the planned final
 dependency lock: rich dependency parsing is intentionally limited, the architecture is fixed to `x86_64`,
@@ -399,7 +409,8 @@ Package installation and image tooling remain separate concerns:
 - that manager's `engine` supplies every layer driver and terminal image tool;
 - `local_repository` declares compatible package outputs and infers their package system from
   `LocalPackageInfo`; a consuming package manager materializes deterministic repodata with its own engine;
-- a derived package manager adds such repositories to a base manager's configured selection.
+- a derived package manager adds such repositories to a base manager's configured selection;
+- a manager's `local_packages` instead selects locally built packages per install by runtime closure.
 
 For example, a project can expose locally built packages without adding them to its OS release:
 
@@ -426,6 +437,24 @@ image_layer(
     ops = [install(["project"])],
 )
 ```
+
+A package manager may instead attach a branch's generated local-packages universe:
+
+```python
+package_manager(
+    name = "image.package-manager",
+    base = "tine//catalog:fedora.rawhide.package-manager",
+    local_packages = "//packages/fedora/rawhide:_local_packages",
+)
+```
+
+Each install operation then computes the runtime closure of its requested packages at analysis time over
+the imported Requires/Provides metadata, builds exactly the locally built packages in that closure, and
+offers them to the solver ahead of the upstream repositories. Requested capabilities without a local
+provider continue to resolve upstream, so partially imported branches simply mix. `ImageInfo` accumulates
+its layers' install specs and seeds every later closure with them, keeping lower-layer packages locally
+backed in later solves. Unlike a static `local_repository`, only the packages an install actually pulls
+in are built; the universe target itself never forces a package build.
 
 Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
 needed:
@@ -655,6 +684,17 @@ One `rpmbuild -ba` naturally emits all binary subpackages and the source RPM. Ru
 work and inconsistent sibling outputs. Buck sub-targets give downstream packages addressable binary outputs
 without pretending each subpackage is a separate build action.
 
+### Keep static local repositories and closure-selected local packages separate
+
+`local_repository` and a manager's `local_packages` both prefer locally built packages over upstream and
+share the per-install `extra` materialization path, but they are deliberately not unified. A
+`local_repository` publishes an explicit, hand-listed set and forces those packages to build; it suits a
+project exposing a few of its own packages. `LocalPackageUniverseInfo` instead describes a whole imported
+branch and builds only the packages an install's runtime closure actually pulls in, so attaching the
+universe never forces the branch to build. Collapsing them would either force building an entire branch or
+push closure computation into every static repository, so both remain until the planned per-package
+source/prebuilt provider model (see Roadmap) subsumes them.
+
 ## Operating the current system
 
 The Buck bootstrap needs `jq` and, on first use, `curl`, `sha256sum`, and `zstd`. It verifies and caches the
@@ -680,6 +720,7 @@ tine/tools/buck build '//examples/image:layered-install.layer[directory]'
 tine/tools/buck build //examples/image:boot-demo
 tine/tools/buck build '//examples/image:boot-demo[bootable][uki]'
 tine/tools/buck build '//examples/image:boot-demo[disk][partitions][usr]'
+tine/tools/buck build //examples/image-local-packages:image
 ```
 
 The first validates package import, package-manager selection, buildroot assembly, and RPM collection.
@@ -697,8 +738,10 @@ These are properties of the implementation today, not merely ideas for future op
   does not run RPM's dynamic BuildRequires protocol.
 - Build cycles fall back to upstream RPMs for ordinary intra-SCC edges, so the package set is not a fully
   self-hosted fixed point.
-- There is no generic `PackageInfo`/runtime-closure provider selecting between upstream and source-built
-  packages for arbitrary image closures.
+- Image installs select source-built packages through the imported-metadata runtime closure of
+  `local_packages`. The walk follows local-to-local edges only, so a local package reachable only through
+  an upstream intermediate silently resolves upstream, and there is still no per-package source/prebuilt
+  choice under one shared version pin.
 - RPM builds use `--nocheck`; package test policy is not implemented.
 - Debuginfo/debugsource outputs are not first-class declared sub-targets.
 - Upstream package signatures are not verified. SHA-256 pinning gives integrity after refresh, not

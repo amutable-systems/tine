@@ -1,10 +1,12 @@
 """Resolve and install native packages into filesystem roots."""
 
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
+load(":local_packages.bzl", "LocalPackageUniverseInfo", "select_local_packages")
 load(":manager.bzl", "PackageManagerInfo", "materialize_local_repository")
 load(
     ":repository.bzl",
     "ConfiguredPackageRepositoryInfo",
+    "LocalPackageInfo",
     "select_package_artifacts",
 )
 load(":solver.bzl", "solve_command")
@@ -22,8 +24,12 @@ def resolve_packages(
         package_manager_dep: Dependency,
         install: list[str],
         stack: list[Artifact],
-        extra_packages: list[Artifact] = []) -> Artifact:
-    """Plan an install and select its exact package artifacts."""
+        extra_packages: list[Artifact] = [],
+        local_seed: list[str] | None = None) -> Artifact:
+    """Plan an install and select its exact package artifacts.
+
+    A manager with local packages offers the seed's runtime closure of locally built packages to
+    the solver; `local_seed` widens that seed beyond this request, e.g. to a whole layer stack."""
     package_manager = package_manager_dep[PackageManagerInfo]
     configured_repositories = package_manager.repositories
     repositories = []
@@ -33,6 +39,15 @@ def resolve_packages(
         repositories.append(configured.dependency)
     engine = package_manager.engine[EngineInfo]
     system = package_manager.package_system[PackageSystemInfo]
+
+    if package_manager.local_packages != None:
+        if extra_packages:
+            fail("resolve_packages: explicit extra packages cannot combine with manager local packages")
+        selected = select_local_packages(
+            package_manager.local_packages[LocalPackageUniverseInfo],
+            local_seed if local_seed != None else install,
+        )
+        extra_packages = [dep[LocalPackageInfo].packages for dep in selected]
 
     extra_repo = None
     if extra_packages:

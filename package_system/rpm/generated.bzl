@@ -1,6 +1,7 @@
 """Build RPM targets from generated package metadata and self-hosting edges."""
 
 load("@prelude//:native.bzl", "native")
+load("//package:local_packages.bzl", "local_packages")
 load(":rules.bzl", "rpm_package")
 
 # Keep these records aligned with the importer's generated schema.
@@ -170,16 +171,51 @@ def _sccs(edges: dict[str, list[str]]) -> dict[str, int]:
                     low[parent] = min(low[parent], low[v])
     return comp
 
-def _provides(packages: dict[str, SrcpkgMetadata]) -> dict[str, dict[str, bool]]:
-    """Map each provided capability (subpackage names, Provides, Files) to its providers."""
+def _binary_source(packages: dict[str, SrcpkgMetadata]) -> dict[str, str]:
+    """Map each binary package to its source package."""
+    sources = {}
+    for name in sorted(packages):
+        for arch_bins in packages[name].binaries.values():
+            for binname in arch_bins:
+                if sources.get(binname, name) != name:
+                    fail("binary package '{}' is built by both '{}' and '{}'".format(
+                        binname,
+                        sources[binname],
+                        name,
+                    ))
+                sources[binname] = name
+    return sources
+
+def _binary_provides(packages: dict[str, SrcpkgMetadata]) -> dict[str, dict[str, bool]]:
+    """Map each provided capability (binary names, Provides, Files) to its providing binaries."""
     provides = {}
     for name in sorted(packages):
         for arch_bins in packages[name].binaries.values():
             for binname in arch_bins:
                 bm = arch_bins[binname]
                 for cap in [binname] + bm["Provides"] + bm["Files"]:
-                    provides.setdefault(_cap(cap), {})[name] = True
+                    provides.setdefault(_cap(cap), {})[binname] = True
     return provides
+
+def _requires_edges(
+        packages: dict[str, SrcpkgMetadata],
+        binary_provides: dict[str, dict[str, bool]]) -> dict[str, list[str]]:
+    """Map each binary package to the local binaries providing any of its runtime Requires.
+
+    Weak dependencies are excluded to match solve policy. Rich dependencies contribute all their
+    capability operands, over-approximating conditional requirements."""
+    edges = {}
+    for name in sorted(packages):
+        for arch_bins in packages[name].binaries.values():
+            for binname in arch_bins:
+                deps = {}
+                for req in arch_bins[binname]["Requires"]:
+                    for cap in _br_caps(req):
+                        for provider_bin in binary_provides.get(cap, {}):
+                            if provider_bin != binname:
+                                deps[provider_bin] = True
+                edges[binname] = sorted(deps)
+    return edges
 
 def _buildrequires_edges(
         packages: dict[str, SrcpkgMetadata],
@@ -255,12 +291,16 @@ def rpm_branch(
         buildroot_only_packages: list[str] = [],
         seed_only_packages: list[str] = [],
         rpmbuild_options: dict[str, list[str]] = {}) -> None:
-    """Declare a branch and its self-hosting buildroot edges."""
+    """Declare a branch, its self-hosting buildroot edges, and its local-packages universe."""
     metadata = {name: _parse_metadata(meta) for name, meta in packages.items()}
     for pin in seed_only_packages:
         if pin not in metadata:
             fail("seed-only package '{}' is not among the branch packages".format(pin))
-    provides = _provides(metadata)
+    binary_source = _binary_source(metadata)
+    binary_provides = _binary_provides(metadata)
+    provides = {}
+    for cap, binaries in binary_provides.items():
+        provides[cap] = {binary_source[binary]: True for binary in binaries}
     for cap in buildroot_only_packages:
         for p in provides.get(cap, {}):
             if p in seed_only_packages:
@@ -273,6 +313,23 @@ def rpm_branch(
         name = "_buildrequires_graph",
         edges = edge_caps,
         sccs = _sccs({name: sorted(deps) for name, deps in edge_caps.items()}),
+    )
+
+    # Runtime metadata for installs: a package manager attaches this target, and each install's
+    # analysis-time closure decides which locally built packages are offered to the solver.
+    # Install specs match binary names and plain Provides; parenthesized and path capabilities
+    # only justify edges, keeping the seed index small.
+    local_packages(
+        name = "_local_packages",
+        binary_source = binary_source,
+        packages = [":" + name for name in sorted(metadata)],
+        provides = {
+            cap: sorted(binaries)
+            for cap, binaries in binary_provides.items()
+            if "(" not in cap and "/" not in cap
+        },
+        requires_edges = _requires_edges(metadata, binary_provides),
+        visibility = ["PUBLIC"],
     )
     for name in sorted(metadata):
         _declare_rpm_package(

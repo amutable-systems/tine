@@ -13,6 +13,9 @@ BuildrootInfo = provider(
 
 def _buildroot_impl(ctx: AnalysisContext) -> list[Provider]:
     manager = ctx.attrs.package_manager[PackageManagerInfo]
+    if manager.local_packages != None:
+        fail("buildroot: a package manager with local packages is not supported; buildroot " +
+             "contents must come from explicit, cycle-checked package buildroot deps")
     packages = ctx.attrs.packages
     if ctx.attrs.package_set != None:
         if packages:

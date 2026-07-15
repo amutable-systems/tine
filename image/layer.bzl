@@ -14,6 +14,9 @@ ImageInfo = provider(
         "layers": provider_field(list[Artifact]),
         # Ownership is deliberately not represented: image outputs use uid/gid 0.
         "tmpfiles": provider_field(list[str]),
+        # Accumulated install specs; they seed the local-packages closure of every derived layer
+        # so lower-layer packages keep their local backing in later solves.
+        "install_specs": provider_field(list[str], default = []),
     },
 )
 
@@ -38,7 +41,13 @@ def _image_impl(ctx: AnalysisContext) -> list[Provider]:
         fail("image requires package_manager or engine")
     return [
         DefaultInfo(),
-        ImageInfo(engine = engine, package_manager = package_manager, layers = [], tmpfiles = []),
+        ImageInfo(
+            engine = engine,
+            package_manager = package_manager,
+            layers = [],
+            tmpfiles = [],
+            install_specs = [],
+        ),
     ]
 
 _image = rule(
@@ -162,6 +171,7 @@ def _image_layer_impl(ctx: AnalysisContext) -> list[Provider]:
                 package_manager = parent.package_manager,
                 layers = parent.layers,
                 tmpfiles = tmpfiles,
+                install_specs = parent.install_specs,
             ),
         ]
 
@@ -176,6 +186,7 @@ def _image_layer_impl(ctx: AnalysisContext) -> list[Provider]:
             parent.package_manager,
             install_specs,
             parent.layers,
+            local_seed = parent.install_specs + install_specs,
         )
         installer = package_manager.package_system[PackageSystemInfo].install
 
@@ -217,6 +228,7 @@ def _image_layer_impl(ctx: AnalysisContext) -> list[Provider]:
             package_manager = parent.package_manager,
             layers = layers,
             tmpfiles = tmpfiles,
+            install_specs = parent.install_specs + (install_specs if install_specs != None else []),
         ),
     ]
 
