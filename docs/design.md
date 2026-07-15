@@ -119,12 +119,18 @@ of committed lock data:
   and the complete primary-metadata package inventory keyed by SHA-256 `pkgid`;
 - `<engine>.json` pins the engine transaction as a list of `{source, repo, pkgid, nevra}` records.
 
-`tine/tools/buck run tine//tools:refresh-catalog` refreshes them in two phases:
+`tine/tools/buck run tine//tools:refresh-catalog` refreshes them in three phases:
 
 1. Run every remote repository's `[snapshot]` sub-target on the host. `snapshot.py` downloads and verifies
-   repodata, drops unused streams, validates package locations, and writes deterministic JSON.
+   repodata, drops unused streams, validates package locations, and writes deterministic JSON. The pure
+   snapshot is staged aside; the catalog receives a transitional snapshot that additionally carries the
+   previously pinned packages forward.
 2. Run every engine's `[resolve]` sub-target inside the current engine. `plan.py` resolves the authored
    top-level engine package list against the freshly pinned repository trees and writes the new transaction.
+   The engine itself is built from its committed lock, whose packages may no longer exist upstream (rolling
+   releases garbage-collect superseded builds); the carried-forward pins keep that build satisfiable.
+3. Replace the transitional snapshots with the staged pure ones. Every intermediate state keeps all
+   committed engine locks buildable, so an interrupted refresh can simply be re-run.
 
 `verify-catalog` performs the same generation and fails when committed JSON differs. Repository snapshots
 are ordinary Buck source inputs, so changes invalidate only consumers of the changed data.

@@ -1,13 +1,20 @@
 """Refresh catalog snapshots, then resolve engine transactions against those pins.
 
-The host orchestrator discovers refresh subtargets and appends only their output path.
+Engine locks resolve inside an engine built from the committed pins, so the refresh must not
+invalidate those pins mid-flight: snapshots first land in the catalog as transitional pins that
+carry the previously pinned packages forward, and the pure snapshots replace them only after
+every engine lock has been re-resolved against the fresh repodata.
+
+The host orchestrator discovers refresh subtargets and appends only output paths.
 Nested Buck reuses the invoking daemon through the inherited isolation directory.
 """
 
 import argparse
 import contextlib
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -29,10 +36,14 @@ def _run(buck: str, target: str, args: list[str]) -> None:
     subprocess.run([buck, "-v", "0", "run", target, "--console", "none", "--", *args], check=True)
 
 
-def _snapshot(buck: str, target: str, catalog_dir: Path) -> None:
+def _snapshot(buck: str, target: str, catalog_dir: Path, staging_dir: Path) -> tuple[Path, Path]:
+    """Stage a repository's pure snapshot, leaving a transitional one in the catalog."""
     repository = _name_of(target)
     print(f"==> snapshotting {repository} (via {target}[snapshot])", file=sys.stderr)
-    _run(buck, f"{target}[snapshot]", ["--out", str(catalog_dir / f"{repository}.json")])
+    staged = staging_dir / f"{repository}.json"
+    committed = catalog_dir / f"{repository}.json"
+    _run(buck, f"{target}[snapshot]", ["--out", str(staged), "--transitional", str(committed)])
+    return staged, committed
 
 
 def _resolve(buck: str, target: str, catalog_dir: Path) -> None:
@@ -66,16 +77,22 @@ def main(argv: list[str] | None = None) -> None:
     catalog_dir.mkdir(parents=True, exist_ok=True)
 
     # Run nested commands from the project root so wrappers resolve consistently.
-    with contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")):
+    with (
+        contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")),
+        tempfile.TemporaryDirectory(prefix="catalog-refresh.") as staging,
+    ):
         snapshots = _refresh_targets(args.buck, "remote_repository")
-        for target in snapshots:
-            _snapshot(args.buck, target, catalog_dir)
+        staged = [_snapshot(args.buck, target, catalog_dir, Path(staging)) for target in snapshots]
 
         resolves = _refresh_targets(args.buck, "engine")
         if args.engine:
             resolves = [t for t in resolves if _name_of(t) in set(args.engine)]
         for target in resolves:
             _resolve(args.buck, target, catalog_dir)
+
+        # Locks now match the fresh repodata; retire the transitional carried-forward pins.
+        for pure, committed in staged:
+            shutil.move(pure, committed)
 
     if not snapshots and not resolves:
         raise SystemExit("catalog: no repository/engine refresh targets found in catalog//...")
