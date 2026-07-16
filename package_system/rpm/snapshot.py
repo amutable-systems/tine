@@ -16,8 +16,11 @@ import stat
 import string
 import sys
 import tempfile
+import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
 from typing import Protocol, TypedDict
@@ -62,6 +65,26 @@ class BinaryReader(Protocol):
 def _urlopen(url: str) -> http.client.HTTPResponse:
     # CDN bot filters (e.g. Cloudflare's) reject Python's default Python-urllib agent.
     return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "tine-snapshot"}))
+
+
+_TRANSIENT_HTTP_STATUS = frozenset((408, 429, 500, 502, 503, 504))
+_FETCH_ATTEMPTS = 4
+
+
+def _with_retries[T](what: str, operation: Callable[[], T]) -> T:
+    """Run one network operation, retrying transient connection failures and HTTP errors."""
+    for attempt in range(1, _FETCH_ATTEMPTS + 1):
+        try:
+            return operation()
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as error:
+            permanent = (
+                isinstance(error, urllib.error.HTTPError) and error.code not in _TRANSIENT_HTTP_STATUS
+            )
+            if permanent or attempt == _FETCH_ATTEMPTS:
+                raise
+            print(f"{what}: {error}; retrying…", file=sys.stderr)
+            time.sleep(2**attempt)
+    raise AssertionError("unreachable")
 
 
 def _relative_href(rid: str, what: str, href: str | None) -> str:
@@ -174,26 +197,33 @@ def _parse_primary(rid: str, source: BinaryReader) -> dict[str, PackageEntry]:
 
 def _load_package_index(rid: str, stream: RepositoryStream) -> dict[str, PackageEntry]:
     """Download, verify, decompress, and parse the pinned primary stream."""
-    digest = hashlib.sha256()
     expected_size = int(stream["size"])
-    total = 0
     with tempfile.TemporaryFile("w+b") as compressed:
-        with _urlopen(str(stream["url"])) as response:
-            while chunk := response.read(1024 * 1024):
-                total += len(chunk)
-                # Stop before writing unbounded data from a stale or malicious endpoint.
-                if total > expected_size:
-                    raise SystemExit(
-                        f"{rid}: primary stream size {total} does not match repomd size {expected_size}"
-                    )
-                digest.update(chunk)
-                compressed.write(chunk)
-        if total != expected_size:
-            raise SystemExit(
-                f"{rid}: primary stream size {total} does not match repomd size {expected_size}"
-            )
-        if digest.hexdigest() != stream["sha256"]:
-            raise SystemExit(f"{rid}: primary stream checksum does not match repomd")
+
+        def download() -> None:
+            # A retried attempt restarts the stream from scratch.
+            compressed.seek(0)
+            compressed.truncate()
+            digest = hashlib.sha256()
+            total = 0
+            with _urlopen(str(stream["url"])) as response:
+                while chunk := response.read(1024 * 1024):
+                    total += len(chunk)
+                    # Stop before writing unbounded data from a stale or malicious endpoint.
+                    if total > expected_size:
+                        raise SystemExit(
+                            f"{rid}: primary stream size {total} does not match repomd size {expected_size}"
+                        )
+                    digest.update(chunk)
+                    compressed.write(chunk)
+            if total != expected_size:
+                raise SystemExit(
+                    f"{rid}: primary stream size {total} does not match repomd size {expected_size}"
+                )
+            if digest.hexdigest() != stream["sha256"]:
+                raise SystemExit(f"{rid}: primary stream checksum does not match repomd")
+
+        _with_retries(f"{rid}: {stream['out']}", download)
 
         compressed.seek(0)
         magic = compressed.read(6)
@@ -248,8 +278,12 @@ def _repository_stream(
 def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
     """Pin one repo's build-time repodata; see the module docstring for the shape."""
     base = baseurl.rstrip("/") + "/"
-    with _urlopen(base + "repodata/repomd.xml") as f:
-        repomd = f.read()
+
+    def download_repomd() -> bytes:
+        with _urlopen(base + "repodata/repomd.xml") as f:
+            return f.read()
+
+    repomd = _with_retries(f"{rid}: repomd.xml", download_repomd)
 
     ET.register_namespace("", _REPOMD_NS)  # Preserve the default namespace.
     root = ET.fromstring(repomd)
