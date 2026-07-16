@@ -84,7 +84,7 @@ def _refresh(
     selected_engines: list[str] | None,
 ) -> tuple[list[str], list[str]]:
     """Snapshot repositories and resolve selected engines."""
-    all_resolves = _refresh_targets(buck, "engine")
+    all_resolves = _refresh_targets(buck, "_engine")
     resolves = _select_engines(all_resolves, selected_engines)
 
     snapshots = _refresh_targets(buck, "_remote_repository")
