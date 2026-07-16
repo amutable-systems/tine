@@ -636,6 +636,9 @@ without pretending each subpackage is a separate build action.
 
 ## Operating the current system
 
+The Buck bootstrap needs `curl`, `sha256sum`, and `zstd` on first use. It verifies and caches the pinned
+Buck binary under `${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2`; cached invocations work offline.
+
 The wrapper commands work from anywhere in the root project:
 
 ```text

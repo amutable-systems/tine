@@ -1,8 +1,8 @@
-"""Pinned tool binaries + the dev commands (buck-fetched http_tools; DotSlash bootstrap)."""
+"""Pinned tool binaries and development commands fetched by Buck."""
 
 load(":defs.bzl", "http_tool")
 
-# Buck bootstraps through DotSlash; Buck then fetches and verifies the remaining tools.
+# The shell bootstrap fetches Buck; Buck then fetches and verifies the remaining tools.
 
 # Relocatable bootstrap Python; 3.14 provides stdlib zstd for RPM payloads.
 http_tool(

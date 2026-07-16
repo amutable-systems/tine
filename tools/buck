@@ -1,50 +1,75 @@
-#!/usr/bin/env dotslash
+#!/bin/sh
+set -eu
 
-// Pinned buck2 binary (DotSlash descriptor): a daandemeyer/buck2 fork
-// release carrying our pending fixes on top of upstream (see this commit's
-// message). Regenerate the platform entries with
-// `dotslash -- create-url-entry <url>`.
-//
-// Release: 2026-07-06-22.30.19 (daandemeyer/buck2).
+# Pinned daandemeyer/buck2 release carrying tine's pending Buck fixes.
+release=2026-07-06-22.30.19
+base_url=https://github.com/daandemeyer/buck2/releases/download/$release
 
-{
-  "name": "buck2",
-  "platforms": {
-    "linux-aarch64": {
-      "size": 37023711,
-      "hash": "blake3",
-      "digest": "dcd951d3966bda570404bf9ec2ac44cde3c43f046e90e324008dc6ef7190ba7b",
-      "format": "zst",
-      "path": "buck2-aarch64-unknown-linux-musl",
-      "providers": [
-        {
-          "url": "https://github.com/daandemeyer/buck2/releases/download/2026-07-06-22.30.19/buck2-aarch64-unknown-linux-musl.zst"
-        }
-      ]
-    },
-    "linux-riscv64": {
-      "size": 39173893,
-      "hash": "blake3",
-      "digest": "6bbc956d1ef783944f5d1ab399256c946ffc59aaf1bf71e1cd833c57a0376803",
-      "format": "zst",
-      "path": "buck2-riscv64gc-unknown-linux-gnu",
-      "providers": [
-        {
-          "url": "https://github.com/daandemeyer/buck2/releases/download/2026-07-06-22.30.19/buck2-riscv64gc-unknown-linux-gnu.zst"
-        }
-      ]
-    },
-    "linux-x86_64": {
-      "size": 38708753,
-      "hash": "blake3",
-      "digest": "730ad3f6975dce58dbd9b14fa968d164e2a7eca782bbd433f1145bf66d7a56f5",
-      "format": "zst",
-      "path": "buck2-x86_64-unknown-linux-musl",
-      "providers": [
-        {
-          "url": "https://github.com/daandemeyer/buck2/releases/download/2026-07-06-22.30.19/buck2-x86_64-unknown-linux-musl.zst"
-        }
-      ]
+case "$(uname -s)-$(uname -m)" in
+    Linux-aarch64 | Linux-arm64)
+        artifact=buck2-aarch64-unknown-linux-musl.zst
+        sha256=ea6a71c6505310eafd4d7825ea4c5dfd2f09d9549a6e813cac3900214c961b8c
+        ;;
+    Linux-riscv64)
+        artifact=buck2-riscv64gc-unknown-linux-gnu.zst
+        sha256=9a25a054b665cd981948bfc9196fc47cbaf39998d01a51656bd5d0cb808bcf4d
+        ;;
+    Linux-x86_64 | Linux-amd64)
+        artifact=buck2-x86_64-unknown-linux-musl.zst
+        sha256=dd5423ba3086b44da85a16473c1658017b9f428172c151039c98fbcdc66a0453
+        ;;
+    *)
+        printf 'buck bootstrap: unsupported platform: %s\n' "$(uname -s)-$(uname -m)" >&2
+        exit 1
+        ;;
+esac
+
+cache_home=${XDG_CACHE_HOME:-${HOME:?HOME must be set when XDG_CACHE_HOME is not set}/.cache}
+cache_dir=$cache_home/tine/buck2/$sha256
+buck=$cache_dir/buck2
+
+if [ ! -x "$buck" ]; then
+    for tool in curl sha256sum zstd; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            printf 'buck bootstrap: required tool not found: %s\n' "$tool" >&2
+            exit 1
+        fi
+    done
+
+    mkdir -p "$cache_dir"
+    archive=$(mktemp "$cache_dir/.buck2.zst.XXXXXX")
+    binary=$(mktemp "$cache_dir/.buck2.XXXXXX")
+
+    cleanup() {
+        rm -f "$archive" "$binary"
     }
-  }
-}
+    trap cleanup EXIT HUP INT TERM
+
+    printf 'Downloading Buck2 %s for %s...\n' "$release" "$(uname -m)" >&2
+    curl \
+        --fail \
+        --location \
+        --output "$archive" \
+        --proto '=https' \
+        --retry 3 \
+        --show-error \
+        --silent \
+        --tlsv1.2 \
+        "$base_url/$artifact"
+
+    actual=$(sha256sum "$archive")
+    actual=${actual%% *}
+    if [ "$actual" != "$sha256" ]; then
+        printf 'buck bootstrap: SHA-256 mismatch for %s\n' "$artifact" >&2
+        exit 1
+    fi
+
+    zstd --decompress --force --quiet "$archive" -o "$binary"
+    chmod 755 "$binary"
+    mv -f "$binary" "$buck"
+
+    trap - EXIT HUP INT TERM
+    rm -f "$archive"
+fi
+
+exec "$buck" "$@"
