@@ -9,6 +9,7 @@ import bz2
 import compression.zstd
 import gzip
 import hashlib
+import http.client
 import json
 import lzma
 import stat
@@ -56,6 +57,11 @@ class RepositoryManifest(TypedDict):
 
 class BinaryReader(Protocol):
     def read(self, size: int = -1, /) -> bytes: ...
+
+
+def _urlopen(url: str) -> http.client.HTTPResponse:
+    # CDN bot filters (e.g. Cloudflare's) reject Python's default Python-urllib agent.
+    return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "tine-snapshot"}))
 
 
 def _relative_href(rid: str, what: str, href: str | None) -> str:
@@ -172,7 +178,7 @@ def _load_package_index(rid: str, stream: RepositoryStream) -> dict[str, Package
     expected_size = int(stream["size"])
     total = 0
     with tempfile.TemporaryFile("w+b") as compressed:
-        with urllib.request.urlopen(str(stream["url"])) as response:
+        with _urlopen(str(stream["url"])) as response:
             while chunk := response.read(1024 * 1024):
                 total += len(chunk)
                 # Stop before writing unbounded data from a stale or malicious endpoint.
@@ -242,7 +248,7 @@ def _repository_stream(
 def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
     """Pin one repo's build-time repodata; see the module docstring for the shape."""
     base = baseurl.rstrip("/") + "/"
-    with urllib.request.urlopen(base + "repodata/repomd.xml") as f:
+    with _urlopen(base + "repodata/repomd.xml") as f:
         repomd = f.read()
 
     ET.register_namespace("", _REPOMD_NS)  # Preserve the default namespace.
