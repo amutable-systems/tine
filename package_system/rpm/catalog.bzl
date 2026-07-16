@@ -59,13 +59,25 @@ def fedora_release(
         version: str,
         engine: str,
         baseurl: str | None = None,
+        rpmrepo_mirror: str | None = None,
+        rpmrepo_snapshot: str | None = None,
         package_set_overrides: dict[str, list[str]] = {},
         additional_repositories: list[str] = [],
         repository_priorities: dict[str, int] = {},
         visibility: list[str] | None = None) -> None:
     """Declare the conventional Fedora release target bundle."""
     _check_name(name, "fedora", version)
-    if baseurl == None:
+    if (rpmrepo_mirror == None) != (rpmrepo_snapshot == None):
+        fail("fedora_release requires rpmrepo_mirror and rpmrepo_snapshot together: {}".format(name))
+    if rpmrepo_mirror != None and baseurl != None:
+        fail("fedora_release takes rpmrepo_mirror/rpmrepo_snapshot or baseurl, not both: {}".format(name))
+    repository_metadata = {}
+    if rpmrepo_mirror != None:
+        baseurl = rpmrepo_mirror.rstrip("/") + "/" + rpmrepo_snapshot
+
+        # refresh-catalog reads the pin back through this metadata to advance the snapshot.
+        repository_metadata = {"rpmrepo.mirror": rpmrepo_mirror, "rpmrepo.snapshot": rpmrepo_snapshot}
+    elif baseurl == None:
         if version == "rawhide":
             baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/"
         else:
@@ -74,6 +86,7 @@ def fedora_release(
     rpm_remote_repository(
         name = name + ".repository",
         baseurl = baseurl,
+        metadata = repository_metadata,
     )
     repository_universe(
         name = name + ".repositories",

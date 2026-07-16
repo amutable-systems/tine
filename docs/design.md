@@ -129,8 +129,12 @@ of committed lock data:
   last known transport after rolling repository metadata stops advertising that package. The target's
   `.repository` or `.engine` suffix is not repeated in the snapshot filename.
 
-`tine/tools/buck run tine//tools:refresh-catalog` refreshes them in two phases:
+`tine/tools/buck run tine//tools:refresh-catalog` refreshes them in three phases:
 
+0. Advance every repository pinned to an rpmrepo mirror (declared through the release macro's
+   `rpmrepo_mirror`/`rpmrepo_snapshot` and carried on the target as `rpmrepo.*` metadata) to the
+   newest snapshot its gateway enumerates, by rewriting the declared `rpmrepo_snapshot` in place.
+   `verify-catalog` skips this phase and checks the committed pins.
 1. Run every remote repository's `[snapshot]` sub-target on the host. `snapshot.py` downloads and verifies
    repodata, drops unused streams, validates package locations, and atomically writes deterministic, pure
    snapshot JSON. It does not carry packages forward from an earlier snapshot.

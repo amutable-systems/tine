@@ -13,13 +13,14 @@ fedora_release(
     visibility = ["PUBLIC"],
 )
 
-# Pinned rpmrepo compose snapshot: packages never vanish underneath committed pins. Advancing
-# rawhide means pointing this at a newer snapshot and refreshing the catalog.
+# Pinned rpmrepo compose snapshot: packages never vanish underneath committed pins.
+# refresh-catalog enumerates the mirror and advances the snapshot pin to the newest compose.
 fedora_release(
     name = "fedora.rawhide",
     version = "rawhide",
     engine = ":fedora.rawhide.engine",
-    baseurl = "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260715/",
+    rpmrepo_mirror = "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45",
+    rpmrepo_snapshot = "f45-x86_64-rawhide-20260715",
     visibility = ["PUBLIC"],
 )
 
