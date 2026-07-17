@@ -20,18 +20,38 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+DEFAULT_CATALOG = "tine//catalog"
+
 
 def _buck_out(buck: str, *args: str) -> str:
     return subprocess.run([buck, *args], check=True, capture_output=True, text=True).stdout.strip()
 
 
-def _refresh_targets(buck: str, kind: str) -> list[str]:
-    """The refresh bindings of rule `kind` in the active catalog package."""
-    return sorted(_buck_out(buck, "uquery", f"kind('^{kind}$', catalog//:)").split())
+def _catalog_pattern(catalog: str) -> str:
+    package = catalog.removesuffix(":")
+    if "//" not in package or ":" in package or "..." in package:
+        raise SystemExit(f"catalog: expected a package label, got {catalog!r}")
+    return f"{package}:"
+
+
+def _refresh_targets(buck: str, catalog: str, kind: str) -> list[str]:
+    """The refresh bindings of rule `kind` in the selected catalog package."""
+    return sorted(_buck_out(buck, "uquery", f"kind('^{kind}$', {catalog})").split())
 
 
 def _name_of(target: str) -> str:
     return target.rsplit(":", 1)[1]
+
+
+def _catalog_directory(buck: str, targets: list[str]) -> Path:
+    packages = {target.rsplit(":", 1)[0] for target in targets}
+    if len(packages) != 1:
+        raise SystemExit(f"catalog: expected targets in one package, found {sorted(packages)}")
+    cell, separator, package = packages.pop().partition("//")
+    if not separator or not cell:
+        raise SystemExit("catalog: Buck returned a target without a canonical cell")
+    cell_root = Path(_buck_out(buck, "audit", "cell", cell, "--paths-only"))
+    return cell_root / package
 
 
 def _snapshot_path(catalog_dir: Path, target: str, kind: str, suffix: str) -> Path:
@@ -54,14 +74,14 @@ def _run(buck: str, target: str, args: list[str]) -> None:
     subprocess.run([buck, "-v", "0", "run", target, "--console", "none", "--", *args], check=True)
 
 
-def _rpmrepo_repositories(buck: str) -> dict[str, tuple[str, str]]:
+def _rpmrepo_repositories(buck: str, catalog: str) -> dict[str, tuple[str, str]]:
     """Map repository targets carrying an rpmrepo pin in their metadata to (mirror, snapshot)."""
     out = _buck_out(
         buck,
         "uquery",
         "--json",
         "--output-attribute=^metadata$",
-        "kind('^_remote_repository$', catalog//:)",
+        f"kind('^_remote_repository$', {catalog})",
     )
     repositories = {}
     for target, attributes in json.loads(out).items():
@@ -108,15 +128,14 @@ def _newest_snapshot(repository: str, mirror: str, series: str) -> str:
     return max(matches)
 
 
-def _advance_snapshots(buck: str, catalog_dir: Path) -> None:
+def _advance_snapshots(buck: str, catalog: str, catalog_dir: Path) -> None:
     """Advance rpmrepo-mirrored repositories to the newest snapshot their gateway enumerates."""
-    for target, (mirror, current) in sorted(_rpmrepo_repositories(buck).items()):
+    declaration = catalog_dir / "BUCK"
+    for target, (mirror, current) in sorted(_rpmrepo_repositories(buck, catalog).items()):
         repository = _name_of(target)
         wanted = _newest_snapshot(repository, mirror, _series(current))
         if wanted == current:
             continue
-        package = target.split("//", 1)[1].rsplit(":", 1)[0]
-        declaration = catalog_dir / package / "BUCK" if package else catalog_dir / "BUCK"
         pin = f'rpmrepo_snapshot = "{current}"'
         content = declaration.read_text(encoding="utf-8")
         if content.count(pin) != 1:
@@ -158,25 +177,38 @@ def _select_engines(all_resolves: list[str], selected_engines: list[str] | None)
 
 def _refresh(
     buck: str,
-    catalog_dir: Path,
+    catalog: str,
     selected_engines: list[str] | None,
-) -> tuple[list[str], list[str]]:
+    advance_snapshots: bool,
+) -> Path:
     """Snapshot repositories and resolve selected engines."""
-    all_resolves = _refresh_targets(buck, "_engine")
+    all_resolves = _refresh_targets(buck, catalog, "_engine")
     resolves = _select_engines(all_resolves, selected_engines)
 
-    snapshots = _refresh_targets(buck, "_remote_repository")
+    snapshots = _refresh_targets(buck, catalog, "_remote_repository")
+    targets = all_resolves + snapshots
+    if not targets:
+        raise SystemExit(f"catalog: no repository/engine refresh targets found in {catalog}")
+    catalog_dir = _catalog_directory(buck, targets)
+    if advance_snapshots:
+        _advance_snapshots(buck, catalog, catalog_dir)
     for target in snapshots:
         _snapshot(buck, target, catalog_dir)
 
     for target in resolves:
         _resolve(buck, target, catalog_dir)
 
-    return snapshots, resolves
+    return catalog_dir
 
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="catalog")
+    p.add_argument(
+        "catalog",
+        nargs="?",
+        default=DEFAULT_CATALOG,
+        help=f"catalog package to refresh (default: {DEFAULT_CATALOG})",
+    )
     p.add_argument(
         "--buck", default="buck", help="buck binary to nest (aliases pass the pinned one; default: PATH)"
     )
@@ -191,22 +223,16 @@ def main(argv: list[str] | None = None) -> None:
         help="assert the committed catalog matches what the pinned resolvers produce (CI)",
     )
     args = p.parse_args(argv)
-    catalog_dir = Path(_buck_out(args.buck, "audit", "cell", "catalog", "--paths-only"))
+    catalog = _catalog_pattern(args.catalog)
 
     # Run nested commands from the project root so wrappers resolve consistently.
     with contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")):
-        # Verify checks the committed pins as-is; refresh first advances rpmrepo pins.
-        if not args.verify:
-            _advance_snapshots(args.buck, catalog_dir)
-
-        snapshots, resolves = _refresh(
+        catalog_dir = _refresh(
             args.buck,
-            catalog_dir,
+            catalog,
             args.engine,
+            advance_snapshots=not args.verify,
         )
-
-    if not snapshots and not resolves:
-        raise SystemExit("catalog: no repository/engine refresh targets found in catalog//...")
 
     if args.verify:
         print("==> verifying the committed catalog matches", file=sys.stderr)
