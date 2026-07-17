@@ -1,0 +1,18 @@
+{
+  "repository": "daandemeyer/buck2",
+  "release": "2026-07-17-20.23.37",
+  "platforms": {
+    "Linux-aarch64": {
+      "artifact": "buck2-aarch64-unknown-linux-musl.zst",
+      "sha256": "48f51c95daffd7fa005d8d48e2fb7be63db91784c22eca7fb339ec66f20fd838"
+    },
+    "Linux-riscv64": {
+      "artifact": "buck2-riscv64gc-unknown-linux-gnu.zst",
+      "sha256": "6e1163a2f9acfd74d5c8bee9a7c7a7e585910cc655f6ac878dee27001a7556f7"
+    },
+    "Linux-x86_64": {
+      "artifact": "buck2-x86_64-unknown-linux-musl.zst",
+      "sha256": "a7c1a32febe49818002a44867602ee524af6021e8b4dd47ac9ee5da379b1d83a"
+    }
+  }
+}

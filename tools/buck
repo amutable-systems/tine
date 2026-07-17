@@ -1,29 +1,52 @@
 #!/bin/sh
 set -eu
 
-# Pinned daandemeyer/buck2 release carrying tine's pending Buck fixes.
-release=2026-07-06-22.30.19
-base_url=https://github.com/daandemeyer/buck2/releases/download/$release
+fail() {
+    printf 'buck bootstrap: %s\n' "$1" >&2
+    exit 1
+}
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+data=$script_dir/buck.json
+
+if ! command -v jq >/dev/null 2>&1; then
+    fail "required tool not found: jq"
+fi
 
 case "$(uname -s)-$(uname -m)" in
     Linux-aarch64 | Linux-arm64)
-        artifact=buck2-aarch64-unknown-linux-musl.zst
-        sha256=ea6a71c6505310eafd4d7825ea4c5dfd2f09d9549a6e813cac3900214c961b8c
+        platform=Linux-aarch64
         ;;
     Linux-riscv64)
-        artifact=buck2-riscv64gc-unknown-linux-gnu.zst
-        sha256=9a25a054b665cd981948bfc9196fc47cbaf39998d01a51656bd5d0cb808bcf4d
+        platform=Linux-riscv64
         ;;
     Linux-x86_64 | Linux-amd64)
-        artifact=buck2-x86_64-unknown-linux-musl.zst
-        sha256=dd5423ba3086b44da85a16473c1658017b9f428172c151039c98fbcdc66a0453
+        platform=Linux-x86_64
         ;;
     *)
-        printf 'buck bootstrap: unsupported platform: %s\n' "$(uname -s)-$(uname -m)" >&2
-        exit 1
+        fail "unsupported platform: $(uname -s)-$(uname -m)"
         ;;
 esac
 
+repository=$(jq -er '.repository | strings | select(length > 0)' "$data")
+release=$(jq -er '.release | strings | select(length > 0)' "$data")
+artifact=$(
+    jq -er --arg platform "$platform" \
+        '.platforms[$platform].artifact | strings | select(length > 0)' "$data"
+)
+sha256=$(
+    jq -er --arg platform "$platform" \
+        '.platforms[$platform].sha256 | strings | select(length > 0)' "$data"
+)
+
+case "$sha256" in
+    *[!0-9a-f]* | '') fail "invalid SHA-256 for $platform in $data" ;;
+esac
+if [ "${#sha256}" -ne 64 ]; then
+    fail "invalid SHA-256 for $platform in $data"
+fi
+
+base_url=https://github.com/$repository/releases/download/$release
 cache_home=${XDG_CACHE_HOME:-${HOME:?HOME must be set when XDG_CACHE_HOME is not set}/.cache}
 cache_dir=$cache_home/tine/buck2/$sha256
 buck=$cache_dir/buck2

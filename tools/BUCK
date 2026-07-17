@@ -86,6 +86,18 @@ python_bootstrap_binary(
     main = "catalog.py",
 )
 
+python_bootstrap_binary(
+    name = "bump-driver",
+    main = "bump.py",
+    deps = ["//:util"],
+)
+
+command_alias(
+    name = "bump",
+    args = ["--data", "$(source buck.json)"],
+    exe = ":bump-driver",
+)
+
 # Source checks; ty resolves imports against the engine root.
 # FIXME: type check python in every engine? Some python dependencies will only be
 # available in certain engines.

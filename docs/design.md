@@ -656,8 +656,9 @@ without pretending each subpackage is a separate build action.
 
 ## Operating the current system
 
-The Buck bootstrap needs `curl`, `sha256sum`, and `zstd` on first use. It verifies and caches the pinned
-Buck binary under `${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2`; cached invocations work offline.
+The Buck bootstrap needs `jq` and, on first use, `curl`, `sha256sum`, and `zstd`. It verifies and caches the
+pinned Buck binary under `${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2`; cached invocations work offline.
+Update the pinned fork release with `tine/tools/buck run tine//tools:bump -- --buck2`.
 
 The wrapper commands work from anywhere in the root project:
 
