@@ -13,8 +13,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-import rootfs
 import util
+
+import rootfs
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -8,9 +8,7 @@ input location. `make-cache` amortizes metadata parsing across solve actions.
 
 import argparse
 import json
-import stat
 import sys
-import tempfile
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Literal, NamedTuple, NotRequired, TypedDict
@@ -18,6 +16,7 @@ from typing import Literal, NamedTuple, NotRequired, TypedDict
 import libdnf5
 import libdnf5.comps
 import libdnf5.conf
+from util import atomic_text_writer
 
 import rootfs
 
@@ -67,27 +66,9 @@ def load_repositories(path: Path) -> list[Repository]:
 
 def write_transaction(path: Path, transaction: list[TransactionPackage]) -> None:
     """Atomically write deterministic transaction JSON."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=path.name + ".",
-            suffix=".tmp",
-            delete=False,
-            newline="\n",
-        ) as output:
-            temporary = Path(output.name)
-            json.dump(transaction, output, indent=2)
-            output.write("\n")
-        temporary.chmod(mode)
-        temporary.replace(path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+    with atomic_text_writer(path) as output:
+        json.dump(transaction, output, indent=2)
+        output.write("\n")
 
 
 def load_base(

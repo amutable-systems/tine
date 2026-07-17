@@ -12,7 +12,6 @@ import hashlib
 import http.client
 import json
 import lzma
-import stat
 import string
 import sys
 import tempfile
@@ -25,6 +24,8 @@ from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
 from typing import Protocol, TypedDict
 from urllib.parse import unquote, urlsplit
+
+from util import atomic_text_writer
 
 _REPOMD_NS = "http://linux.duke.edu/metadata/repo"
 _PRIMARY_NS = "http://linux.duke.edu/metadata/common"
@@ -322,44 +323,26 @@ def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
 
 def _write_snapshot(path: Path, snapshot: RepositorySnapshot) -> None:
     """Atomically replace a snapshot with deterministic, reviewable UTF-8 JSON."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=path.name + ".",
-            suffix=".tmp",
-            delete=False,
-            newline="\n",
-        ) as output:
-            temporary = Path(output.name)
-            # One package per line keeps this large generated file reviewable.
-            output.write('{\n  "packages": {\n')
-            packages = sorted(snapshot["packages"].items())
-            for index, (pkgid, package) in enumerate(packages):
-                comma = "," if index + 1 < len(packages) else ""
-                output.write(
-                    "    "
-                    + json.dumps(pkgid)
-                    + ": "
-                    + json.dumps(package, sort_keys=True, separators=(",", ":"))
-                    + comma
-                    + "\n"
-                )
-            output.write('  },\n  "repomd": ')
-            json.dump(snapshot["repomd"], output)
-            output.write(',\n  "streams": ')
-            streams = json.dumps(snapshot["streams"], indent=2, sort_keys=True)
-            output.write(streams.replace("\n", "\n  "))
-            output.write("\n}\n")
-        temporary.chmod(mode)
-        temporary.replace(path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+    with atomic_text_writer(path) as output:
+        # One package per line keeps this large generated file reviewable.
+        output.write('{\n  "packages": {\n')
+        packages = sorted(snapshot["packages"].items())
+        for index, (pkgid, package) in enumerate(packages):
+            comma = "," if index + 1 < len(packages) else ""
+            output.write(
+                "    "
+                + json.dumps(pkgid)
+                + ": "
+                + json.dumps(package, sort_keys=True, separators=(",", ":"))
+                + comma
+                + "\n"
+            )
+        output.write('  },\n  "repomd": ')
+        json.dump(snapshot["repomd"], output)
+        output.write(',\n  "streams": ')
+        streams = json.dumps(snapshot["streams"], indent=2, sort_keys=True)
+        output.write(streams.replace("\n", "\n  "))
+        output.write("\n}\n")
 
 
 def main(argv: list[str] | None = None) -> None:
