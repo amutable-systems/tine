@@ -3,7 +3,7 @@
 # Generated data lives under `snapshot/{repo,engine}/`, without target-type suffixes in filenames. Engines
 # with a resolver can derive their transaction during the build; refresh the catalog to freeze one as a
 # retained lock.
-load("//engine:rules.bzl", "engine")
+load("//engine:build.bzl", "engine")
 load("//package_system/rpm:catalog.bzl", "centos_stream_release", "fedora_release")
 
 fedora_release(

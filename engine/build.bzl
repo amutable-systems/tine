@@ -1,4 +1,4 @@
-"""Build reusable execution environments and run commands inside them."""
+"""Build reusable execution environments."""
 
 load("//package:release.bzl", "OsReleaseInfo")
 load(
@@ -7,51 +7,14 @@ load(
     "PackageRepositoryInfo",
     "select_package_artifacts",
     "select_repositories",
-    "write_repository_manifest",
 )
+load("//package:solver.bzl", "solve_command", "solver_cache")
 load("//package:system.bzl", "PackageSystemInfo")
+load(":runtime.bzl", "EngineInfo", "chroot_run")
 
-ASSEMBLY_SDE = 1739577600
 _REPOSITORY_PRIORITY = 99
 
-EngineInfo = provider(
-    # Carry the configured sandbox through providers so anonymous targets can reuse it.
-    doc = "A reusable execution environment built from one base OS release.",
-    fields = {
-        "arch": provider_field(str),
-        "root": provider_field(Artifact),  # the engine root chroot
-        "sandbox": provider_field(Dependency),
-    },
-)
-
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
-def chroot_run(
-        engine: EngineInfo,
-        exe: Dependency | str | None = None,
-        network: bool = False,
-        relaxed: bool = False) -> RunInfo:
-    """Enter an engine, optionally running a command or interactive relaxed leaf."""
-    run = cmd_args(
-        engine.sandbox[RunInfo],
-        "--tools",
-        engine.root,
-    )
-    if relaxed:
-        run.add("--relaxed")
-    else:
-        run.add("--bind-cwd", "--source-date-epoch", str(ASSEMBLY_SDE))
-    if network:
-        run.add("--network")
-    run.add("--")
-    if isinstance(exe, Dependency):
-        info = exe[DefaultInfo]
-        run.add(cmd_args(info.default_outputs[0], hidden = info.other_outputs))
-    elif exe != None:
-        run.add(exe)
-    return RunInfo(args = run)
-
-def _repository_manifest(ctx: AnalysisContext, repositories: list[Dependency]):
+def _configure_repositories(repositories: list[Dependency]) -> list[ConfiguredPackageRepositoryInfo]:
     configured = []
     for repository in repositories:
         repo = repository[PackageRepositoryInfo]
@@ -66,25 +29,7 @@ def _repository_manifest(ctx: AnalysisContext, repositories: list[Dependency]):
             priority = _REPOSITORY_PRIORITY,
             baseurl = repo.baseurl,
         ))
-    return write_repository_manifest(ctx, "repositories.json", configured)
-
-def _resolve_command(
-        engine: EngineInfo,
-        system: PackageSystemInfo,
-        repositories,
-        packages: list[str],
-        arch: str) -> cmd_args:
-    resolve = cmd_args(
-        chroot_run(engine = engine, exe = system.plan),
-        "solve",
-        "--arch",
-        arch,
-        "--repositories",
-        repositories,
-    )
-    for package in packages:
-        resolve.add("--install", package)
-    return resolve
+    return configured
 
 def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     release = ctx.attrs.release[OsReleaseInfo]
@@ -94,18 +39,30 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.attrs.enable_repository_groups,
         ctx.attrs.disable_repository_groups,
     )
-    repository_manifest = _repository_manifest(ctx, repositories)
+    configured_repositories = _configure_repositories(repositories)
 
     resolver_engine = None
     resolve = None
     if ctx.attrs.resolver_engine != None:
         resolver_engine = ctx.attrs.resolver_engine[EngineInfo]
-        resolve = _resolve_command(
+        solver_caches = [
+            solver_cache(
+                ctx,
+                ctx.attrs.resolver_engine,
+                release.package_system,
+                repository,
+                ctx.attrs.arch,
+            )
+            for repository in configured_repositories
+        ]
+        resolve = solve_command(
+            ctx = ctx,
             engine = resolver_engine,
             system = system,
-            repositories = repository_manifest,
-            packages = ctx.attrs.packages,
+            repositories = configured_repositories,
+            install = ctx.attrs.packages,
             arch = ctx.attrs.arch,
+            solver_caches = solver_caches,
         )
 
     transaction = ctx.attrs.lock
@@ -113,10 +70,8 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
         if resolve == None:
             fail("engine: a missing lock requires resolver_engine")
         transaction = ctx.actions.declare_output("transaction.json")
-        ctx.actions.run(
-            cmd_args(resolve, "--out", transaction.as_output()),
-            category = "engine_resolve",
-        )
+        resolve.add("--out", transaction.as_output())
+        ctx.actions.run(resolve, category = "engine_resolve")
 
     # A predecessor installs the transaction directly. Only a root engine must bootstrap an
     # installer-capable chroot from package payloads before it can perform the authoritative install.
@@ -166,11 +121,12 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # A locked bootstrap engine can use its completed root to update its own transaction.
     if resolve == None:
-        resolve = _resolve_command(
+        resolve = solve_command(
+            ctx = ctx,
             engine = info,
             system = system,
-            repositories = repository_manifest,
-            packages = ctx.attrs.packages,
+            repositories = configured_repositories,
+            install = ctx.attrs.packages,
             arch = ctx.attrs.arch,
         )
     sub_targets = {

@@ -1,8 +1,16 @@
 """Configured native package managers."""
 
-load("//engine:rules.bzl", "EngineInfo", "chroot_run")
+load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load(":release.bzl", "OsReleaseInfo")
-load(":repository.bzl", "ConfiguredPackageRepositoryInfo", "LocalPackageRepositoryInfo", "PackageRepositoryInfo", "merge_repositories", "select_repositories", "write_repository_manifest")
+load(
+    ":repository.bzl",
+    "ConfiguredPackageRepositoryInfo",
+    "LocalPackageRepositoryInfo",
+    "PackageRepositoryInfo",
+    "merge_repositories",
+    "select_repositories",
+)
+load(":solver.bzl", "solver_cache")
 load(":system.bzl", "PackageSystemInfo")
 
 _LOCAL_REPOSITORY_PRIORITY = 50
@@ -97,7 +105,6 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
             fail("priority override names unknown repository '{}'".format(rid))
 
     engine = engine_dep[EngineInfo]
-    system = package_system[PackageSystemInfo]
     configured_repositories = []
     for repository in repositories:
         repo = repository[PackageRepositoryInfo]
@@ -134,27 +141,13 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
             baseurl = baseurl,
         )
         if rid not in configured_by_id:
-            cache = ctx.actions.declare_output("solver-cache-{}".format(rid), dir = True)
-            manifest = write_repository_manifest(
+            solver_caches.append(solver_cache(
                 ctx,
-                "solver-cache-{}-repositories.json".format(rid),
-                [configured],
-            )
-            ctx.actions.run(
-                cmd_args(
-                    chroot_run(engine = engine, exe = system.plan),
-                    "make-cache",
-                    "--arch",
-                    engine.arch,
-                    "--repositories",
-                    manifest,
-                    "--out",
-                    cache.as_output(),
-                ),
-                category = "solver_cache",
-                identifier = rid,
-            )
-            solver_caches.append(cache)
+                engine_dep,
+                package_system,
+                configured,
+                engine.arch,
+            ))
         configured_repositories.append(configured)
 
     return [

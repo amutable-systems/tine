@@ -1,6 +1,6 @@
 """Interactive virtual-machine image runners."""
 
-load("//engine:rules.bzl", "EngineInfo", "chroot_run")
+load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//image_format:disk.bzl", "DiskImageInfo")
 
 def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:

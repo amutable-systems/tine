@@ -1,6 +1,6 @@
 """Logical filesystem images built as ordered overlay deltas."""
 
-load("//engine:rules.bzl", "EngineInfo", "chroot_run")
+load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//image_format:actions.bzl", "archive_action")
 load("//package:install.bzl", "resolve_packages")
 load("//package:manager.bzl", "PackageManagerInfo")

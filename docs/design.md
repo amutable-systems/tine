@@ -104,6 +104,10 @@ The providers have deliberately narrow roles:
   enter it. Its target label establishes provenance; the engine may serve compatible package managers for
   other releases.
 
+Solver caches are anonymous targets keyed by resolver engine, package system, configured repository,
+architecture, and execution platform. Matching engines and package managers therefore consume one shared
+cache artifact, while distinct solver contexts remain isolated.
+
 This split is visible in the default catalog. Fedora 44, Rawhide, and CentOS Stream 10 are separate OS
 releases. Their package managers solve against their own repositories while sharing the Rawhide engine.
 CentOS models BaseOS as required, AppStream as a default repository group, and CRB as an optional group
@@ -785,10 +789,10 @@ unnecessary unless real composition requirements appear.
 
 Useful implementation entry points:
 
-- `tine/package/{system,repository,release,manager,buildroot,install}.bzl`
+- `tine/package/{system,repository,release,manager,solver,buildroot,install}.bzl`
 - `tine/package_system/rpm/rules.bzl` and
   `tine/package_system/rpm/{snapshot,plan,install,createrepo,build,extract,decompress}.py`
-- `tine/engine/{rules.bzl,sandbox.py}` and `tine/rootfs/rootfs.py`
+- `tine/engine/{build,runtime}.bzl`, `tine/engine/sandbox.py`, and `tine/rootfs/rootfs.py`
 - `tine/image/{layer,uki,boot,compose,vm}.bzl` and `tine/image_format/{archive,disk}.bzl`
 - `tine/tools/catalog.py` and `tine/catalog/BUCK`
 - `distribution/apt` and `tine/package_system/rpm/generated.bzl`

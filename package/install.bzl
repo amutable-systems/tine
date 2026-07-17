@@ -1,13 +1,13 @@
 """Resolve and install native packages into filesystem roots."""
 
-load("//engine:rules.bzl", "EngineInfo", "chroot_run")
+load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load(":manager.bzl", "PackageManagerInfo", "materialize_local_repository")
 load(
     ":repository.bzl",
     "ConfiguredPackageRepositoryInfo",
     "select_package_artifacts",
-    "write_repository_manifest",
 )
+load(":solver.bzl", "solve_command")
 load(":system.bzl", "PackageSystemInfo")
 
 _EXTRA_REPO_PRIORITY = 50
@@ -43,15 +43,6 @@ def resolve_packages(
             extra_packages,
         )
 
-    tx = ctx.actions.declare_output("transaction.json")
-    plan = cmd_args(
-        chroot_run(engine = engine, exe = system.plan),
-        "solve",
-        "--arch",
-        engine.arch,
-        "--out",
-        tx.as_output(),
-    )
     plan_repositories = []
     if extra_repo != None:
         plan_repositories.append(ConfiguredPackageRepositoryInfo(
@@ -60,16 +51,18 @@ def resolve_packages(
             priority = _EXTRA_REPO_PRIORITY,
         ))
     plan_repositories.extend(configured_repositories)
-    for cache in package_manager.solver_caches:
-        plan.add("--cache", cache)
-    plan.add(
-        "--repositories",
-        write_repository_manifest(ctx, "repositories.json", plan_repositories),
+    tx = ctx.actions.declare_output("transaction.json")
+    plan = solve_command(
+        ctx = ctx,
+        engine = engine,
+        system = system,
+        repositories = plan_repositories,
+        install = install,
+        arch = engine.arch,
+        output = tx.as_output(),
+        solver_caches = package_manager.solver_caches,
+        lowers = stack,
     )
-    for lower in stack:
-        plan.add("--lower", lower)
-    for cap in install:
-        plan.add("--install", cap)
     ctx.actions.run(plan, category = "plan")
 
     return select_package_artifacts(ctx, tx, repositories = repositories, extra_packages = extra_packages)

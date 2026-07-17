@@ -1,6 +1,7 @@
 """Build project development environments and enter them interactively."""
 
-load("//engine:rules.bzl", "EngineInfo", "chroot_run", "engine")
+load("//engine:build.bzl", "engine")
+load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 
 DEFAULT_RELEASE = "tine//catalog:fedora.rawhide.release"
 DEFAULT_RESOLVER_ENGINE = "tine//catalog:fedora.rawhide.engine"
