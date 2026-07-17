@@ -11,7 +11,6 @@ import uuid
 from pathlib import Path
 
 import finalize
-
 import rootfs
 
 _SEED_NAMESPACE = uuid.UUID("b388a973-3ffa-44aa-90b7-afcc4573ea9f")
@@ -47,10 +46,7 @@ def _os_release(tree: Path) -> dict[str, str]:
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="sysext")
-    p.add_argument("--lower", action="append", default=[], help="the layer stack (bottom..top) to merge")
-    p.add_argument(
-        "--tmpfiles", action="append", default=[], help="authored tmpfiles.d snippet (repeatable)"
-    )
+    finalize.add_arguments(p)
     p.add_argument(
         "--base",
         type=int,
@@ -93,9 +89,7 @@ def main(argv: list[str] | None = None) -> None:
         lowers = lowers[args.base :]
 
     out = Path(args.out).resolve()
-    with rootfs.rootfs("/buildroot", lowers=lowers) as tree:
-        finalize.apply_tmpfiles(tree, args.tmpfiles, program="sysext")
-
+    with finalize.image(args, program="sysext", lowers=lowers) as tree:
         # A sysext identifies itself solely through its extension-release; the base os-release
         # must not ride along into the merged /usr.
         (tree / "usr/lib/os-release").unlink(missing_ok=True)

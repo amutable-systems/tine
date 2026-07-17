@@ -1,6 +1,7 @@
 """Partition and raw-disk assembly with systemd-repart."""
 
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
+load("//image:actions.bzl", "terminal_image_command")
 load("//image:layer.bzl", "ImageInfo")
 
 # buildifier: disable=name-conventions  (record types, conventionally UpperCamelCase)
@@ -265,21 +266,14 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
     if len(names) != len({name: True for name in names}):
         fail("repart: new and imported partition names must be unique")
 
-    cmd = cmd_args(
-        chroot_run(engine = image.engine[EngineInfo], exe = ctx.attrs._driver),
-        "--identity",
-        str(ctx.label),
-    )
+    cmd = terminal_image_command(image, ctx.attrs._driver)
+    cmd.add("--identity", str(ctx.label))
     if ctx.attrs.seed != None:
         cmd.add("--seed", ctx.attrs.seed)
     if ctx.attrs.private_key != None:
         cmd.add("--private-key", ctx.attrs.private_key)
     if ctx.attrs.certificate != None:
         cmd.add("--certificate", ctx.attrs.certificate)
-    for lower in image.layers:
-        cmd.add("--lower", lower)
-    for snippet in image.tmpfiles:
-        cmd.add("--tmpfiles", snippet)
     for definition in definitions:
         cmd.add("--definition", json.encode(_partition_dict(definition)))
     for value in imported:

@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
-import rootfs
+import finalize
 
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
@@ -51,7 +51,7 @@ def _normalize(spdx: Path, cdx: Path, source_name: str, source_version: str, epo
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="sbom")
-    parser.add_argument("--lower", action="append", default=[], help="image delta (bottom..top)")
+    finalize.add_arguments(parser)
     parser.add_argument("--syft", required=True, help="syft binary")
     parser.add_argument("--source-name", required=True, help="SBOM source name")
     parser.add_argument("--source-version", required=True, help="SBOM source version")
@@ -65,7 +65,7 @@ def main(argv: list[str] | None = None) -> None:
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
 
     with (
-        rootfs.rootfs("/buildroot", lowers=args.lower) as tree,
+        finalize.image(args, program="sbom") as tree,
         tempfile.TemporaryDirectory(prefix="syft.") as home,
     ):
         env = os.environ | {

@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 
 import cpio
-import rootfs
+import finalize
 
 # Ukify lives outside PATH in the engine.
 UKIFY = "/usr/lib/systemd/ukify"
@@ -49,7 +49,7 @@ def _cmdline(arguments: list[str], root_hash: Path | None, kind: str | None) -> 
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="uki")
-    p.add_argument("--lower", action="append", default=[], help="the image stack (bottom..top) to merge")
+    finalize.add_arguments(p)
     p.add_argument("--out", required=True, help="the output unified kernel image directory")
     p.add_argument(
         "--initrd", action="append", default=[], help="base initrd cpio, in load order (repeatable)"
@@ -84,7 +84,7 @@ def main(argv: list[str] | None = None) -> None:
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
 
     with (
-        rootfs.rootfs("/buildroot", lowers=args.lower) as tree,
+        finalize.image(args, program="uki") as tree,
         tempfile.TemporaryDirectory(prefix="boot.") as scratch_dir,
     ):
         scratch = Path(scratch_dir)

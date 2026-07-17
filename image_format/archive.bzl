@@ -1,7 +1,7 @@
 """Archive and materialized-directory image outputs."""
 
+load("//image:actions.bzl", "terminal_image_command")
 load("//image:layer.bzl", "ImageInfo")
-load(":actions.bzl", "archive_action")
 load(":rpmdb.bzl", "RpmdbInfo")
 load(":sbom.bzl", "SbomInfo")
 
@@ -31,16 +31,16 @@ def _image_archive_impl(ctx: AnalysisContext) -> list[Provider]:
     out = ctx.actions.declare_output(
         "image." + _EXT[ctx.attrs.format] + _COMPRESSION_EXT[ctx.attrs.compression],
     )
-    archive_action(
-        ctx,
-        image.engine,
-        image.layers,
-        image.tmpfiles,
-        ctx.attrs._driver,
-        ctx.attrs.format,
+    cmd = terminal_image_command(image, ctx.attrs._driver)
+    cmd.add(
+        "--out",
         out.as_output(),
-        ctx.attrs.compression,
+        "--format",
+        ctx.attrs.format,
     )
+    if ctx.attrs.compression != "none":
+        cmd.add("--compression", ctx.attrs.compression)
+    ctx.actions.run(cmd, category = "image_" + ctx.attrs.format)
 
     # Supply-chain sidecars ride along on a normal build via other_outputs and stay reachable as
     # subtargets. They are separate targets (one action each, shared with a standalone build), so
@@ -81,15 +81,14 @@ image_archive = rule(
 def _image_directory_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
     out = ctx.actions.declare_output("image.rootfs", dir = True)
-    archive_action(
-        ctx,
-        image.engine,
-        image.layers,
-        image.tmpfiles,
-        ctx.attrs._driver,
-        "directory",
+    cmd = terminal_image_command(image, ctx.attrs._driver)
+    cmd.add(
+        "--out",
         out.as_output(),
+        "--format",
+        "directory",
     )
+    ctx.actions.run(cmd, category = "image_directory")
     return [
         DefaultInfo(default_output = out),
         DirectoryImageInfo(engine = image.engine, rootfs = out, source = ctx.attrs.image),

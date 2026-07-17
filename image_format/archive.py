@@ -14,10 +14,8 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
-import finalize
-
 import cpio
-import rootfs
+import finalize
 
 
 def _xattrs(path: Path) -> dict[str, str]:
@@ -118,23 +116,15 @@ def _archive(tree: Path, out: Path, fmt: str, epoch: int, compression: str) -> N
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="archive")
-    parser.add_argument("--lower", action="append", default=[], help="image delta (bottom..top)")
+    finalize.add_arguments(parser)
     parser.add_argument("--out", required=True, help="output archive or directory")
     parser.add_argument("--format", required=True, choices=("tar", "cpio", "directory"))
     parser.add_argument("--compression", default="none", choices=("none", "zstd"))
-    parser.add_argument(
-        "--tmpfiles", action="append", default=[], help="authored tmpfiles.d line (repeatable)"
-    )
     args = parser.parse_args(argv)
 
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
     out = Path(args.out).resolve()
-    with rootfs.rootfs("/buildroot", lowers=args.lower) as tree:
-        finalize.apply_tmpfiles(
-            tree,
-            args.tmpfiles,
-            program="archive",
-        )
+    with finalize.image(args, program="archive") as tree:
         _archive(tree, out, args.format, epoch, args.compression)
     print(f"archive: wrote {args.format} (epoch={epoch}) -> {args.out}", file=sys.stderr)
 

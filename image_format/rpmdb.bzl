@@ -5,8 +5,8 @@ stack with a disposable overlay upper (like `image_archive`/`image_directory`) a
 trimmed database. `image_archive`/`rootfs_archive` can fold it into a normal build.
 """
 
+load("//image:actions.bzl", "terminal_image_command")
 load("//image:layer.bzl", "ImageInfo")
-load(":actions.bzl", "stack_command")
 
 RpmdbInfo = provider(
     doc = "A trimmed, Packages-only copy of an image's rpm database.",
@@ -19,7 +19,7 @@ RpmdbInfo = provider(
 def _image_rpmdb_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
     out = ctx.actions.declare_output("rpmdb.sqlite")
-    cmd = stack_command(image.engine, image.layers, ctx.attrs._driver)
+    cmd = terminal_image_command(image, ctx.attrs._driver)
     cmd.add("--out", out.as_output())
     ctx.actions.run(cmd, category = "image_rpmdb")
     return [

@@ -6,8 +6,8 @@ partition plus its verity hash (unsigned for now). With `base`, only the delta l
 that image is packaged, and the extension-release pins the base's ID/VERSION_ID.
 """
 
+load("//image:actions.bzl", "terminal_image_command")
 load("//image:layer.bzl", "ImageInfo")
-load(":actions.bzl", "stack_command")
 load(":rpmdb.bzl", "RpmdbInfo")
 
 SysextImageInfo = provider(
@@ -34,9 +34,7 @@ def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
     release["EXTENSION_RELOAD_MANAGER"] = "1"
     release.update(ctx.attrs.release)
 
-    cmd = stack_command(image.engine, image.layers, ctx.attrs._driver)
-    for snippet in image.tmpfiles:
-        cmd.add("--tmpfiles", snippet)
+    cmd = terminal_image_command(image, ctx.attrs._driver)
     if ctx.attrs.base != None:
         base = ctx.attrs.base[ImageInfo]
         if len(base.layers) >= len(image.layers):

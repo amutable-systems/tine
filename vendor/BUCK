@@ -2,6 +2,10 @@
 
 python_bootstrap_library(
     name = "mkosi",
-    srcs = ["mkosi/__init__.py", "mkosi/sandbox.py"],
+    srcs = [
+        "mkosi/__init__.py",
+        "mkosi/sandbox.py",
+        "mkosi/versioncomp.py",
+    ],
     visibility = ["tine//..."],
 )

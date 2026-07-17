@@ -5,8 +5,8 @@ stack with a disposable overlay upper (like `image_archive`/`image_directory`) a
 SBOMs from a single scan. `image_archive`/`rootfs_archive` can fold them into a normal build.
 """
 
+load("//image:actions.bzl", "terminal_image_command")
 load("//image:layer.bzl", "ImageInfo")
-load(":actions.bzl", "stack_command")
 
 SbomInfo = provider(
     doc = "SPDX and CycloneDX SBOMs generated from a logical image.",
@@ -21,7 +21,7 @@ def _image_sbom_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
     spdx = ctx.actions.declare_output("sbom.spdx.json")
     cdx = ctx.actions.declare_output("sbom.cdx.json")
-    cmd = stack_command(image.engine, image.layers, ctx.attrs._driver)
+    cmd = terminal_image_command(image, ctx.attrs._driver)
     cmd.add("--syft", ctx.attrs._syft[DefaultInfo].default_outputs[0])
     cmd.add("--source-name", ctx.attrs.source_name or ctx.label.name)
     cmd.add("--source-version", ctx.attrs.version)

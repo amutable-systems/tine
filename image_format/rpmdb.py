@@ -18,7 +18,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-import rootfs
+import finalize
 
 # Matches package_system/rpm/install.py:DBPATH.
 DBPATH = "usr/lib/sysimage/rpm/rpmdb.sqlite"
@@ -46,12 +46,12 @@ def _trim(db: Path) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="rpmdb")
-    parser.add_argument("--lower", action="append", default=[], help="image delta (bottom..top)")
+    finalize.add_arguments(parser)
     parser.add_argument("--out", required=True, help="output rpmdb.sqlite")
     args = parser.parse_args(argv)
 
     out = Path(args.out).resolve()
-    with rootfs.rootfs("/buildroot", lowers=args.lower) as tree:
+    with finalize.image(args, program="rpmdb") as tree:
         src = tree / DBPATH
         if not src.exists():
             raise SystemExit(f"no rpmdb at {src}; the image has no installed packages")

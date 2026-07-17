@@ -1,8 +1,8 @@
 """Boot artifacts and operation groups."""
 
-load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//image_format:archive.bzl", "CpioArchiveInfo")
 load("//image_format:disk.bzl", "RootHashInfo")
+load(":actions.bzl", "terminal_image_command")
 load(
     ":layer.bzl",
     "ImageInfo",
@@ -70,8 +70,8 @@ BootableImageInfo = provider(
 def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
     out = ctx.actions.declare_output("ukis", dir = True)
-    cmd = cmd_args(
-        chroot_run(engine = image.engine[EngineInfo], exe = ctx.attrs._driver),
+    cmd = terminal_image_command(image, ctx.attrs._driver)
+    cmd.add(
         "--out",
         out.as_output(),
         "--arch",
@@ -90,8 +90,6 @@ def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
     if ctx.attrs.root_hash != None:
         root_hash = ctx.attrs.root_hash[RootHashInfo]
         cmd.add("--root-hash", root_hash.hash, "--root-hash-kind", root_hash.kind)
-    for lower in image.layers:
-        cmd.add("--lower", lower)
     for initrd in ctx.attrs.initrds:
         cmd.add("--initrd", initrd[CpioArchiveInfo].archive)
     ctx.actions.run(cmd, category = "uki")
@@ -155,15 +153,8 @@ def uki(name: str, profiles: list[UkiProfile] = [], **kwargs) -> None:
 def _bootable_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
     selection = ctx.actions.declare_output("boot-artifacts.json")
-    select = cmd_args(
-        chroot_run(engine = image.engine[EngineInfo]),
-        ctx.attrs._artifacts_driver[RunInfo],
-        "select",
-        "--out",
-        selection.as_output(),
-    )
-    for lower in image.layers:
-        select.add("--lower", lower)
+    select = terminal_image_command(image, ctx.attrs._selector)
+    select.add("--out", selection.as_output())
     ctx.actions.run(select, category = "boot_artifact_select")
 
     artifacts = {}
@@ -174,19 +165,15 @@ def _bootable_impl(ctx: AnalysisContext) -> list[Provider]:
         "initrd": "initrd",
     }.items():
         out = ctx.actions.declare_output(filename)
-        extract = cmd_args(
-            chroot_run(engine = image.engine[EngineInfo]),
-            ctx.attrs._artifacts_driver[RunInfo],
-            "extract",
+        extract = terminal_image_command(image, ctx.attrs._extractor)
+        extract.add(
             "--manifest",
             selection,
-            "--kind",
+            "--artifact",
             kind,
             "--out",
             out.as_output(),
         )
-        for lower in image.layers:
-            extract.add("--lower", lower)
         ctx.actions.run(extract, category = "boot_artifact_" + kind)
         artifacts[kind] = out
         sub_targets[kind] = [DefaultInfo(default_output = out)]
@@ -212,6 +199,7 @@ bootable = rule(
             providers = [ImageInfo],
             doc = "the completed logical image from which to select boot artifacts",
         ),
-        "_artifacts_driver": attrs.dep(providers = [RunInfo], default = "tine//image:boot-artifacts"),
+        "_extractor": attrs.dep(providers = [RunInfo], default = "tine//image:artifacts"),
+        "_selector": attrs.dep(providers = [RunInfo], default = "tine//image:boot"),
     },
 )

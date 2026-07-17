@@ -1,17 +1,11 @@
 """Terminal image-output format drivers."""
 
-python_bootstrap_library(
-    name = "finalize",
-    srcs = ["finalize.py"],
-)
-
 python_bootstrap_binary(
     name = "archive",
     main = "archive.py",
     deps = [
         "//archive:cpio",
-        "//rootfs:rootfs",
-        ":finalize",
+        "//image:finalize",
     ],
     visibility = ["PUBLIC"],
 )
@@ -19,10 +13,7 @@ python_bootstrap_binary(
 python_bootstrap_binary(
     name = "disk",
     main = "disk.py",
-    deps = [
-        "//rootfs:rootfs",
-        ":finalize",
-    ],
+    deps = ["//image:finalize"],
     visibility = ["PUBLIC"],
 )
 
@@ -35,14 +26,14 @@ python_bootstrap_binary(
 python_bootstrap_binary(
     name = "rpmdb",
     main = "rpmdb.py",
-    deps = ["//rootfs:rootfs"],
+    deps = ["//image:finalize"],
     visibility = ["PUBLIC"],
 )
 
 python_bootstrap_binary(
     name = "sbom",
     main = "sbom.py",
-    deps = ["//rootfs:rootfs"],
+    deps = ["//image:finalize"],
     visibility = ["PUBLIC"],
 )
 
@@ -50,8 +41,8 @@ python_bootstrap_binary(
     name = "sysext",
     main = "sysext.py",
     deps = [
+        "//image:finalize",
         "//rootfs:rootfs",
-        ":finalize",
     ],
     visibility = ["PUBLIC"],
 )

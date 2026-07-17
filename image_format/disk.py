@@ -15,8 +15,6 @@ from typing import Any, Self
 
 import finalize
 
-import rootfs
-
 _SEED_NAMESPACE = uuid.UUID("5af2de99-4f9f-4e0b-a04b-bde36b068c4f")
 
 
@@ -182,15 +180,12 @@ def _write_root_hash(rows: list[dict[str, Any]], output: Path) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="repart")
-    p.add_argument("--lower", action="append", default=[], help="the layer stack (bottom..top) to merge")
+    finalize.add_arguments(p)
     p.add_argument("--out", help="output raw disk image")
     p.add_argument("--identity", required=True, help="stable target identity used to derive the seed")
     p.add_argument("--seed", help="explicit GPT/partition UUID seed")
     p.add_argument("--private-key", help="PEM private key for verity signing")
     p.add_argument("--certificate", help="PEM certificate for verity signing")
-    p.add_argument(
-        "--tmpfiles", action="append", default=[], help="authored tmpfiles.d snippet (repeatable)"
-    )
     p.add_argument("--definition", action="append", default=[], help="serialized partition definition")
     p.add_argument(
         "--partition",
@@ -231,7 +226,7 @@ def main(argv: list[str] | None = None) -> None:
         for index, partition in enumerate(partitions, start=len(definitions))
     ]
     with (
-        rootfs.rootfs("/buildroot", lowers=args.lower, binds=binds) as tree,
+        finalize.image(args, program="repart", binds=binds) as tree,
         tempfile.TemporaryDirectory(prefix="repart.") as scratch_dir,
     ):
         scratch = Path(scratch_dir)
@@ -244,7 +239,6 @@ def main(argv: list[str] | None = None) -> None:
             split=bool(outputs),
         )
 
-        finalize.apply_tmpfiles(tree, args.tmpfiles, program="repart")
         seed = (
             uuid.UUID(args.seed) if args.seed else _derived_seed(args.identity, raw_definitions, partitions)
         )
