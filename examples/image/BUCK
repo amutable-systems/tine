@@ -10,7 +10,7 @@ load("@tine//package:manager.bzl", "package_manager")
 # Consumer-owned solve context; project repositories can be added here.
 package_manager(
     name = "image.package-manager",
-    base = "catalog//:fedora.rawhide.package-manager",
+    base = "tine//catalog:fedora.rawhide.package-manager",
 )
 
 # Minimal install + ordered-ops demo. `:demo` is the tar; `:demo.layer` is the logical image.

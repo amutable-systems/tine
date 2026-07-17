@@ -173,7 +173,7 @@ def main(argv: list[str] | None = None) -> None:
     fmt.set_defaults(func=_fmt)
 
     scc = sub.add_parser("scc", parents=[common], help="analyze a branch's BuildRequires cycles")
-    scc.add_argument("branch", help="branch label, e.g. root//distribution/packages/fedora/rawhide")
+    scc.add_argument("branch", help="branch label, e.g. //distribution/packages/fedora/rawhide")
     scc.add_argument("--why", metavar="PKG", help="show one cycle member's edges and their reasons")
     scc.add_argument("--dot", type=Path, help="write the cycle subgraph as graphviz")
     scc.set_defaults(func=_scc)

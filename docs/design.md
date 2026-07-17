@@ -29,8 +29,8 @@ release pipeline. Images currently mix packages built in this repository with pi
 The root project consumes reusable machinery from the `tine` cell:
 
 ```text
-root//distribution/       independently versioned package specs, sources, and generated BUCK files
-root//examples/image/     image smoke targets
+//distribution/           independently versioned package specs, sources, and generated BUCK files
+//examples/image/         image smoke targets
 tine//package/            package-system-neutral providers and installation flow
 tine//package_system/rpm/ RPM repository, resolver, installer, extractor, and builder
 tine//engine/             engine bootstrap and sandbox command construction
@@ -43,8 +43,8 @@ tine//tools/              pinned development and catalog-refresh commands
 
 The default `tine//catalog` package owns its release selection, mirrors, engine choice, repository additions,
 and policy overrides. Projects can instead declare their own catalog package with Tine's reusable RPM-family
-macros or low-level rules. The `buildroots` cell maps importer-generated names such as
-`buildroots//fedora:rawhide` to default catalog targets.
+macros or low-level rules. The project's `//buildroots` package maps importer-generated names such as
+`//buildroots/fedora:rawhide` to catalog targets.
 
 Catalog targets use `<family>.<release>[.<component>].<role>` names. A rolling channel such as Rawhide
 occupies the release segment. Singular `.repository` targets own remotes, plural `.repositories` targets
@@ -667,13 +667,13 @@ tine/tools/buck run tine//tools:check
 Representative smoke builds are:
 
 ```text
-tine/tools/buck build root//distribution/packages/fedora/rawhide:zlib-ng
-tine/tools/buck build root//examples/image:demo
-tine/tools/buck build root//examples/image:layered-install
-tine/tools/buck build 'root//examples/image:layered-install.layer[directory]'
-tine/tools/buck build root//examples/image:boot-demo
-tine/tools/buck build 'root//examples/image:boot-demo[bootable][uki]'
-tine/tools/buck build 'root//examples/image:boot-demo[disk][partitions][usr]'
+tine/tools/buck build //distribution/packages/fedora/rawhide:zlib-ng
+tine/tools/buck build //examples/image:demo
+tine/tools/buck build //examples/image:layered-install
+tine/tools/buck build '//examples/image:layered-install.layer[directory]'
+tine/tools/buck build //examples/image:boot-demo
+tine/tools/buck build '//examples/image:boot-demo[bootable][uki]'
+tine/tools/buck build '//examples/image:boot-demo[disk][partitions][usr]'
 ```
 
 The first validates package import, package-manager selection, buildroot assembly, and RPM collection.

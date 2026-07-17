@@ -264,7 +264,7 @@ requirer → provider edges, annotated with the capabilities that justify each e
 strongly connected components. The `scc` dev command formats it:
 
 ```sh
-buck run tine//tools:scc -- root//distribution/packages/fedora/rawhide
+buck run tine//tools:scc -- //distribution/packages/fedora/rawhide
 ```
 
 prints the cycle summary (sizes, the packages outside any cycle) and each cycle's membership
