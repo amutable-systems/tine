@@ -19,7 +19,8 @@ The default release is `tine//catalog:fedora.rawhide.release`, resolved and inst
 `tine//catalog:fedora.rawhide.engine`. Override either attribute when the project needs a different base or
 bootstrap environment.
 
-From anywhere in that project, enter an interactive shell:
+From anywhere in that project, enter an interactive shell. Tine discovers the box target when the project
+contains only one:
 
 ```console
 $ tine box
@@ -31,10 +32,11 @@ Run a command non-interactively by placing it after `--`:
 $ tine box -- pytest
 ```
 
-The default target is `root//:box`. Use `--target` for another package or box name:
+When a project declares multiple boxes, a root `//:box` remains the default. Otherwise, select one with
+`--target`:
 
 ```console
-$ tine box --target root//tools:box -- make check
+$ tine box --target //tools:box -- make check
 ```
 
 The box root is a normal engine artifact. Its userspace is pinned and read-only, while the relaxed entry

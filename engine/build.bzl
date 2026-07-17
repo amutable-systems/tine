@@ -155,6 +155,7 @@ _engine = rule(
         ),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
+        "labels": attrs.list(attrs.string(), default = []),
         "lock": attrs.option(
             attrs.source(),
             default = None,
@@ -170,6 +171,7 @@ def engine(
         name: str,
         packages: list[str],
         release: str,
+        labels: list[str] = [],
         **kwargs) -> None:
     """Declare an engine rooted in one base OS release."""
     if not name.endswith(".engine"):
@@ -181,6 +183,7 @@ def engine(
         name = name,
         packages = packages,
         release = release,
+        labels = ["tine:engine"] + labels,
         lock = locks[0] if locks else None,
         **kwargs
     )

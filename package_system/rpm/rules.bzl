@@ -155,6 +155,7 @@ _remote_repository = rule(
             default = [],
             doc = "frozen engine transactions whose remote package transports remain available",
         ),
+        "labels": attrs.list(attrs.string(), default = []),
         "package_system": attrs.dep(providers = [PackageSystemInfo]),
         "snapshot": attrs.option(attrs.source(), default = None),
         "_decompress": attrs.exec_dep(
@@ -164,7 +165,11 @@ _remote_repository = rule(
     },
 )
 
-def rpm_remote_repository(name: str, baseurl: str, **kwargs) -> None:
+def rpm_remote_repository(
+        name: str,
+        baseurl: str,
+        labels: list[str] = [],
+        **kwargs) -> None:
     """Declare a repository backed by its optional package-relative snapshot."""
     if not name.endswith(".repository"):
         fail("rpm_remote_repository name must end with '.repository': {}".format(name))
@@ -177,6 +182,7 @@ def rpm_remote_repository(name: str, baseurl: str, **kwargs) -> None:
         name = name,
         baseurl = baseurl,
         engine_locks = glob(["snapshot/engine/*.json"]),
+        labels = ["tine:rpm-remote-repository"] + labels,
         package_system = _RPM_PACKAGE_SYSTEM,
         snapshot = snapshot,
         **kwargs

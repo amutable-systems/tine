@@ -18,6 +18,7 @@ _box = rule(
     impl = _box_impl,
     attrs = {
         "engine": attrs.dep(providers = [EngineInfo]),
+        "labels": attrs.list(attrs.string(), default = []),
     },
 )
 
@@ -29,6 +30,7 @@ def box(
         enable_repository_groups: list[str] = [],
         disable_repository_groups: list[str] = [],
         arch: str = "x86_64",
+        labels: list[str] = [],
         visibility: list[str] | None = None) -> None:
     """Build an engine and expose its host-integrated interactive entry point."""
     if not packages:
@@ -45,5 +47,6 @@ def box(
     _box(
         name = name,
         engine = ":" + name + ".engine",
+        labels = ["tine:box"] + labels,
         visibility = visibility,
     )

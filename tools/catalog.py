@@ -21,6 +21,8 @@ import urllib.request
 from pathlib import Path
 
 DEFAULT_CATALOG = "tine//catalog"
+ENGINE_LABEL = "tine:engine"
+RPM_REMOTE_REPOSITORY_LABEL = "tine:rpm-remote-repository"
 
 
 def _buck_out(buck: str, *args: str) -> str:
@@ -34,9 +36,9 @@ def _catalog_pattern(catalog: str) -> str:
     return f"{package}:"
 
 
-def _refresh_targets(buck: str, catalog: str, kind: str) -> list[str]:
-    """The refresh bindings of rule `kind` in the selected catalog package."""
-    return sorted(_buck_out(buck, "uquery", f"kind('^{kind}$', {catalog})").split())
+def _targets_with_label(buck: str, catalog: str, label: str) -> list[str]:
+    """Targets carrying `label` in the selected catalog package."""
+    return sorted(_buck_out(buck, "uquery", f"attrfilter(labels, '{label}', {catalog})").split())
 
 
 def _name_of(target: str) -> str:
@@ -81,7 +83,7 @@ def _rpmrepo_repositories(buck: str, catalog: str) -> dict[str, tuple[str, str]]
         "uquery",
         "--json",
         "--output-attribute=^metadata$",
-        f"kind('^_remote_repository$', {catalog})",
+        f"attrfilter(labels, '{RPM_REMOTE_REPOSITORY_LABEL}', {catalog})",
     )
     repositories = {}
     for target, attributes in json.loads(out).items():
@@ -182,10 +184,10 @@ def _refresh(
     advance_snapshots: bool,
 ) -> Path:
     """Snapshot repositories and resolve selected engines."""
-    all_resolves = _refresh_targets(buck, catalog, "_engine")
+    all_resolves = _targets_with_label(buck, catalog, ENGINE_LABEL)
     resolves = _select_engines(all_resolves, selected_engines)
 
-    snapshots = _refresh_targets(buck, catalog, "_remote_repository")
+    snapshots = _targets_with_label(buck, catalog, RPM_REMOTE_REPOSITORY_LABEL)
     targets = all_resolves + snapshots
     if not targets:
         raise SystemExit(f"catalog: no repository/engine refresh targets found in {catalog}")
