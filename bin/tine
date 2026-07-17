@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+caller=$PWD
+cell=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+root=$(CDPATH= cd -- "$cell/.." && pwd)
+cd "$root"
+exec "$cell/tools/buck" -v 0 run --console none tine//tine:tine -- \
+    --buck "$cell/tools/buck" \
+    --source-root "$root" \
+    --caller-directory "$caller" \
+    "$@"

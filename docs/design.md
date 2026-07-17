@@ -41,11 +41,10 @@ tine//catalog/            default repositories, locks, releases, package manager
 tine//tools/              pinned development and catalog-refresh commands
 ```
 
-The `catalog` cell is consumer-overridable. The active catalog owns its release selection, mirrors, engine
-choice, repository additions, and policy overrides. Reusable RPM-family macros provide Tine-maintained
-repository layouts and package policy, while the low-level rules remain available for unfamiliar or heavily
-customized distributions. The `buildroots` cell maps importer-generated names such as
-`buildroots//fedora:rawhide` to catalog targets.
+The default `tine//catalog` package owns its release selection, mirrors, engine choice, repository additions,
+and policy overrides. Projects can instead declare their own catalog package with Tine's reusable RPM-family
+macros or low-level rules. The `buildroots` cell maps importer-generated names such as
+`buildroots//fedora:rawhide` to default catalog targets.
 
 Catalog targets use `<family>.<release>[.<component>].<role>` names. A rolling channel such as Rawhide
 occupies the release segment. Singular `.repository` targets own remotes, plural `.repositories` targets
@@ -135,7 +134,9 @@ cacheable build action. The generated transaction is an input to the existing dy
 so the engine builds in one invocation without mutating the source tree. Its package selection changes only
 when its authored policy, resolver engine, or pinned repository inputs change.
 
-`tine/tools/buck run tine//tools:refresh-catalog` refreshes them in two phases:
+`tine/tools/buck run tine//tools:refresh-catalog` refreshes the default `tine//catalog` package in two
+phases. Pass another catalog package after `--`, for example
+`tine/tools/buck run tine//tools:refresh-catalog -- my_project//catalog`:
 
 0. Advance every repository pinned to an rpmrepo mirror (declared through the release macro's
    `rpmrepo_mirror`/`rpmrepo_snapshot` and carried on the target as `rpmrepo.*` metadata) to the
@@ -148,9 +149,9 @@ when its authored policy, resolver engine, or pinned repository inputs change.
    atomically replace their optional frozen transactions. The target engine's release, repository
    selection, package list, and architecture define the solve.
 
-The catalog tool discovers the active `catalog` cell with Buck and always reads and writes snapshots in
-that cell's directory. `--engine` limits which engine transactions are resolved; repository snapshots are
-always refreshed together.
+The catalog tool asks Buck for the selected package's canonical targets and derives the snapshot directory
+from their canonical cell and package. `--engine` limits which engine transactions are resolved; repository
+snapshots are always refreshed together.
 
 A committed engine lock retains any package transport needed to build that exact transaction. The repository
 package pool combines those retained transports with its current snapshot, so every intermediate refresh
@@ -268,7 +269,8 @@ harder.
 devices, `/run`, environment, current directory, and network come from the host, and the command remains the
 invoking user. The engine's `nss-systemd` reads native identities from the host's UserDB services under
 `/run`. This avoids importing host NSS modules or shadow databases, which may be incompatible with the
-pinned userspace. `image_vm` is the only current consumer; build actions never use relaxed mode.
+pinned userspace. Development boxes and `image_vm` are the interactive consumers; build actions never use
+relaxed mode.
 
 ### Native package installation
 
@@ -404,7 +406,7 @@ local_repository(
 
 package_manager(
     name = "project.package-manager",
-    base = "catalog//:fedora.rawhide.package-manager",
+    base = "tine//catalog:fedora.rawhide.package-manager",
     additional_repositories = [":project.repository"],
 )
 

@@ -1,0 +1,11 @@
+"""Development-box smoke target."""
+
+load("@tine//box:rules.bzl", "box")
+
+box(
+    name = "box",
+    packages = [
+        "bash",
+        "coreutils",
+    ],
+)
