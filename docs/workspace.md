@@ -21,18 +21,18 @@ $ cd ~/Projects/my-project
 $ tine workspace add .
 ```
 
-The cell name is derived from the normalized directory name. A project may also contribute arbitrary cells:
+The cell name is derived from the normalized directory name. Use cell-relative `//...` labels for targets in
+the current project; they work both when the project is standalone and when it is registered in a shared
+workspace. Run `tine workspace list` from anywhere inside the workspace to show its registered projects.
+
+Unregister a project by its directory:
 
 ```console
-$ tine workspace add . --cell support=support
+$ tine workspace remove ~/Projects/my-project
 ```
 
-Those directories must be inside the project. Contributed cells are namespaced in the parent graph and
-exposed under their original names through project-local aliases. The same configuration maps legacy
-`root//...` labels to that project's explicit cell, so existing BUCK files do not need label rewrites.
-
-Run `tine workspace list` from anywhere inside the workspace to show its registered projects and their
-contributed cells.
+Removing a project updates only the workspace registry and generated parent configuration; it does not
+remove or modify the project directory.
 
 Projects use `tine//catalog:...` for Tine's default catalog. A project-specific catalog is an ordinary
 `//catalog` package within that project and does not require workspace registration. Refresh one with
@@ -44,7 +44,6 @@ invalidate the shared file watcher. A registered path is first mapped into its o
 that cell's `[project] ignore` setting instead. Run `tine workspace doctor` to check the manifest, generated
 files, cell map, and Buck project boundary.
 
-Generated files carry a marker. The CLI refuses to replace an unmarked `.buckconfig`, project fragment, or
-mise fragment. Projects must not contain `.buckroot`, because it would stop Buck before it reaches the shared
-workspace configuration. If a project's own `.buckconfig` defines `[project] ignore`, that higher-precedence
-value must include `buck-out`; `tine workspace doctor` reports an actionable error when it does not.
+Generated files carry a marker. The CLI refuses to replace an unmarked workspace `.buckconfig` or mise
+fragment. Projects must not contain `.buckroot`, because it would stop Buck before it reaches the shared
+workspace configuration. Project `.buckconfig` files remain project-owned and unchanged.

@@ -5,6 +5,7 @@ import fcntl
 import os
 import shutil
 import stat
+import sys
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -14,6 +15,16 @@ from typing import TextIO, cast
 # Fall back only when the filesystem does not support cloning or linking.
 _CLONE_FALLBACK_ERRNOS = frozenset({errno.ENOTTY, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV})
 _LINK_FALLBACK_ERRNOS = frozenset({errno.EMLINK, errno.EOPNOTSUPP, errno.EXDEV})
+
+
+def terminal_is_dumb() -> bool:
+    """Whether terminal styling should be disabled."""
+    return not sys.stdout.isatty() or os.getenv("TERM", "") == "dumb"
+
+
+ANSI_CYAN = "\033[1;36m" if not terminal_is_dumb() else ""
+ANSI_GREEN = "\033[32m" if not terminal_is_dumb() else ""
+ANSI_RESET = "\033[0m" if not terminal_is_dumb() else ""
 
 
 def clone_file(src: Path, dst: Path, allow_link: bool = False) -> None:

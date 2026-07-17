@@ -12,8 +12,9 @@
 
 The `tine` cell contains reusable machinery organized by subsystem. Starlark rules and their
 drivers live together in `engine`, `package`, `package_system`, `image`, `image_format`, `rootfs`,
-and `archive`. Vendored code lives in `vendor`. The default catalog remains in `catalog`; consumers
-may repoint that cell. Package sources and targets live in the root repository under `distribution`.
+and `archive`. Vendored code lives in `vendor`. The default catalog is `tine//catalog`; consumers may
+instead declare a project-specific `//catalog` package. Package sources and targets live in the root
+repository under `distribution`.
 
 ## Commands
 
@@ -34,6 +35,12 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
 ## Architecture
 
 See [the design plan](docs/design.md).
+
+## Workspace compatibility
+
+- Use cell-relative `//...` labels for same-cell targets, never `root//...`; `root` is the parent registry
+  cell in a Tine workspace.
+- Registered projects must not contain `.buckroot`, because it prevents Buck from discovering the workspace.
 
 ## Python guidelines
 
