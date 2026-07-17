@@ -1,5 +1,23 @@
 """Logical image mutation and boot assembly drivers."""
 
+load(":image.bzl", "image_tools")
+
+# The one bundle every image rule resolves its drivers through.
+image_tools(
+    name = "tools",
+    archive = "//image_format:archive",
+    artifacts = ":artifacts",
+    boot = ":boot",
+    convert = "//image_format:convert",
+    disk = "//image_format:disk",
+    layer = ":layer",
+    sbom = ":sbom",
+    syft = "//tools:syft",
+    sysext = "//image_format:sysext",
+    uki = ":uki",
+    visibility = ["PUBLIC"],
+)
+
 python_bootstrap_binary(
     name = "layer",
     main = "layer.py",
@@ -17,6 +35,13 @@ python_bootstrap_binary(
         ":finalize",
         "//archive:cpio",
     ],
+    visibility = ["PUBLIC"],
+)
+
+python_bootstrap_binary(
+    name = "sbom",
+    main = "sbom.py",
+    deps = [":finalize"],
     visibility = ["PUBLIC"],
 )
 

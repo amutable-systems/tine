@@ -4,11 +4,14 @@ The signing key is generated at build time by the `:signing` target and lives on
 nothing secret is committed.
 """
 
-load("@tine//image:compose.bzl", "bootable_disk_image")
-load("@tine//image:layer.bzl", "install")
-load("@tine//image:sign.bzl", "signing_key")
-load("@tine//image:vm.bzl", "image_vm")
-load("@tine//image_format:disk.bzl", "DEFAULT_USR_VERITY_PARTITIONS")
+load(
+    "@tine//image:defs.bzl",
+    "DEFAULT_USR_VERITY_PARTITIONS",
+    "bootable_disk_image",
+    "image_vm",
+    "install",
+    "signing_key",
+)
 load("@tine//package:manager.bzl", "package_manager")
 
 package_manager(
@@ -49,6 +52,7 @@ image_vm(
         "firstboot.locale": "C.UTF-8",
         "firstboot.timezone": "UTC",
     },
+    engine = "tine//catalog:fedora.rawhide.engine",
     image = ":image",
     # select setup-mode firmware, so sd-boot enrolls the keys from the ESP on first
     # boot; VM then enforces Secure Boot.

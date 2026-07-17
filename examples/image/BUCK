@@ -1,12 +1,20 @@
 """Image construction smoke targets."""
 
-load("@tine//image:boot.bzl", "uki_profile")
-load("@tine//image:compose.bzl", "bootable_disk_image", "rootfs_archive", "sysext_image")
-load("@tine//image:layer.bzl", "image", "install", "mkdir", "remove", "run")
-load("@tine//image:vm.bzl", "image_vm")
-load("@tine//image_format:archive.bzl", "image_archive")
-load("@tine//image_format:disk.bzl", "DEFAULT_USR_VERITY_PARTITIONS")
-load("@tine//image_format:sbom.bzl", "image_sbom")
+load(
+    "@tine//image:defs.bzl",
+    "DEFAULT_USR_VERITY_PARTITIONS",
+    "bootable_disk_image",
+    "image",
+    "image_archive",
+    "image_vm",
+    "install",
+    "mkdir",
+    "remove",
+    "rootfs_archive",
+    "run",
+    "sysext_image",
+    "uki_profile",
+)
 load("@tine//package:manager.bzl", "package_manager")
 
 # Consumer-owned solve context; project repositories can be added here.
@@ -15,7 +23,7 @@ package_manager(
     base = "tine//catalog:fedora.rawhide.package-manager",
 )
 
-# Minimal install + ordered-ops demo. `:demo` is the tar; `:demo.layer` is the logical image.
+# Minimal install + ordered-ops demo. `:demo` is both the tar result and a logical image.
 rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
@@ -118,8 +126,7 @@ image_archive(
 )
 
 # Bootable GPT image; `buck run :boot-demo-vm` starts it with the engine's vmspawn stack.
-# Supply-chain siblings such as `:boot-demo.pkgdb` and `:boot-demo.sbom` build on demand, and the raw
-# disk re-encodes on demand as `:boot-demo.qcow2` and `:boot-demo.raw.zst`.
+# Supply-chain and format subtargets such as `:boot-demo[sbom]` and `:boot-demo[qcow2]` build on demand.
 bootable_disk_image(
     name = "boot-demo",
     package_manager = ":image.package-manager",
@@ -144,9 +151,8 @@ bootable_disk_image(
             cmdline = ["debug", "systemd.log_level=debug", "systemd.journald.forward_to_console=1"],
         ),
     ],
-    # Example for manually handled sysext DDI shipped via the ESP, in a systemd `.v/` versioned directory
-    # (systemd.v(7)) for handling with systemd-sysupdate
-    esp_files = {"/boot/extensions/demo-ext.raw.v/demo-ext_0_x86-64.raw": ":demo-ext"},
+    # Arbitrary declared artifacts can be shipped through the ESP.
+    esp_files = {"/boot/metadata/demo.spdx.json": ":demo[sbom][spdx]"},
     # A shipped appliance has no terminal to read a man page on.
     install_docs = False,
 )
@@ -158,6 +164,7 @@ image_vm(
         "firstboot.locale": "C.UTF-8",
         "firstboot.timezone": "UTC",
     },
+    engine = "tine//catalog:fedora.rawhide.engine",
     image = ":boot-demo",
     sysexts = [":demo-ext"],
 )
@@ -178,7 +185,7 @@ command_alias(
 # it under /var/lib/extensions.
 sysext_image(
     name = "demo-ext",
-    base = ":boot-demo.layer",
+    base = ":boot-demo",
     ops = [install(["zsh"])],
     install_docs = False,
 )
@@ -206,15 +213,4 @@ image_archive(
     name = "opaque",
     image = ":opaque-child.layer",
     format = "tar",
-)
-
-# Standalone SBOM generation: the `image_sbom` rule used directly on a layer, as opposed to the
-# composition-declared `:demo.sbom` sibling. Runs against the quick `:demo.layer` as a cheap smoke
-# test. Emits both SPDX and CycloneDX; `:demo-sbom` builds both.
-image_sbom(
-    name = "demo-sbom",
-    image = ":demo.layer",
-    # SBOM source version; also seeds the stable document id used for reproducible normalization.
-    # Defaults to "0".
-    version = "1.2.3",
 )

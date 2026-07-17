@@ -6,8 +6,13 @@ partition plus its verity hash (unsigned for now). With `base`, only the delta l
 that image is packaged, and the extension-release pins the base's ID/VERSION_ID.
 """
 
-load("//image:actions.bzl", "terminal_image_command")
-load("//image:layer.bzl", "ImageInfo")
+load(
+    "//image:image.bzl",
+    "IMAGE_TOOLS_ATTR",
+    "ImageInfo",
+    "ImageToolsInfo",
+    "terminal_image_command",
+)
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
 
@@ -20,23 +25,30 @@ SysextImageInfo = provider(
     },
 )
 
-def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
-    image = ctx.attrs.image[ImageInfo]
-    extension = ctx.attrs.extension_name or ctx.label.name
+# buildifier: disable=function-docstring-args
+# buildifier: disable=function-docstring-return
+def declare_image_sysext(
+        ctx: AnalysisContext,
+        *,
+        image: ImageInfo,
+        extension: str,
+        base: ImageInfo | None = None,
+        release: dict[str, str] = {},
+        seed: str | None = None) -> SysextImageInfo:
+    """Declare a system-extension DDI from resolved logical images."""
     out = ctx.actions.declare_output(extension + ".raw")
 
     # systemd-sysext refuses images without these fields. Without a base there is nothing to
     # match strictly, so accept any host; with one, the driver pins the base's ID/VERSION_ID.
-    release = {}
-    if ctx.attrs.base == None:
-        release["ID"] = "_any"
-    release["SYSEXT_SCOPE"] = "system"
-    release["EXTENSION_RELOAD_MANAGER"] = "1"
-    release.update(ctx.attrs.release)
+    release_fields = {}
+    if base == None:
+        release_fields["ID"] = "_any"
+    release_fields["SYSEXT_SCOPE"] = "system"
+    release_fields["EXTENSION_RELOAD_MANAGER"] = "1"
+    release_fields.update(release)
 
-    cmd = terminal_image_command(image, ctx.attrs._driver)
-    if ctx.attrs.base != None:
-        base = ctx.attrs.base[ImageInfo]
+    cmd = terminal_image_command(image, ctx.attrs._tools[ImageToolsInfo].sysext)
+    if base != None:
         if len(base.layers) >= len(image.layers):
             fail("image_sysext: image must layer a delta on top of base")
         cmd.add("--base", str(len(base.layers)))
@@ -48,27 +60,44 @@ def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
         for path in system.database_paths:
             cmd.add("--pkgdb-path", path)
     cmd.add("--identity", str(ctx.label))
-    if ctx.attrs.seed != None:
-        cmd.add("--seed", ctx.attrs.seed)
+    if seed != None:
+        cmd.add("--seed", seed)
     cmd.add("--name", extension)
-    for key in release:
-        cmd.add("--release", "{}={}".format(key, release[key]))
+    for key in sorted(release_fields):
+        cmd.add("--release", "{}={}".format(key, release_fields[key]))
     cmd.add("--out", out.as_output())
     ctx.actions.run(cmd, category = "image_sysext")
 
-    return [
-        DefaultInfo(default_output = out),
-        SysextImageInfo(
-            engine = image.engine,
-            extension = extension,
-            image = out,
-        ),
-    ]
+    return SysextImageInfo(engine = image.engine, extension = extension, image = out)
+
+def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
+    info = declare_image_sysext(
+        ctx,
+        base = ctx.attrs.base[ImageInfo] if ctx.attrs.base != None else None,
+        extension = ctx.attrs.extension_name or ctx.label.name,
+        image = ctx.attrs.image[ImageInfo],
+        release = ctx.attrs.release,
+        seed = ctx.attrs.seed,
+    )
+    return [DefaultInfo(default_output = info.image), info]
+
+SYSEXT_ATTRS = {
+    "release": attrs.dict(
+        key = attrs.string(),
+        value = attrs.string(),
+        default = {},
+        doc = "extension-release fields, overriding the defaults",
+    ),
+    "seed": attrs.option(
+        attrs.string(),
+        default = None,
+        doc = "explicit GPT/partition UUID seed; by default derive one from the target identity",
+    ),
+}
 
 image_sysext = rule(
     impl = _image_sysext_impl,
-    attrs = {
-        "image": attrs.dep(providers = [ImageInfo], doc = "the logical image supplying /usr and /opt"),
+    attrs = SYSEXT_ATTRS | {
         "base": attrs.option(
             attrs.dep(providers = [ImageInfo]),
             default = None,
@@ -79,17 +108,6 @@ image_sysext = rule(
             default = None,
             doc = "extension name; defaults to the target name",
         ),
-        "release": attrs.dict(
-            key = attrs.string(),
-            value = attrs.string(),
-            default = {},
-            doc = "extension-release fields, overriding the defaults",
-        ),
-        "seed": attrs.option(
-            attrs.string(),
-            default = None,
-            doc = "explicit GPT/partition UUID seed; by default derive one from the target identity",
-        ),
-        "_driver": attrs.dep(providers = [RunInfo], default = "tine//image_format:sysext"),
-    },
+        "image": attrs.dep(providers = [ImageInfo], doc = "the logical image supplying /usr and /opt"),
+    } | IMAGE_TOOLS_ATTR,
 )

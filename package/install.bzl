@@ -19,13 +19,16 @@ _RootInfo = provider(
     fields = {"root": provider_field(Artifact)},
 )
 
+# buildifier: disable=function-docstring-args
+# buildifier: disable=function-docstring-return
 def resolve_packages(
         ctx: AnalysisContext,
         package_manager_dep: Dependency,
         install: list[str],
         stack: list[Artifact],
         extra_packages: list[Artifact] = [],
-        local_seed: list[str] | None = None) -> Artifact:
+        local_seed: list[str] | None = None,
+        identifier: str | None = None) -> Artifact:
     """Plan an install and select its exact package artifacts.
 
     A manager with local packages offers the seed's runtime closure of locally built packages to
@@ -66,7 +69,8 @@ def resolve_packages(
             priority = _EXTRA_REPO_PRIORITY,
         ))
     plan_repositories.extend(configured_repositories)
-    tx = ctx.actions.declare_output("transaction.json")
+    prefix = identifier + "/" if identifier != None else ""
+    tx = ctx.actions.declare_output(prefix + "transaction.json")
     plan = solve_command(
         ctx = ctx,
         engine = engine,
@@ -77,8 +81,9 @@ def resolve_packages(
         output = tx.as_output(),
         solver_caches = package_manager.solver_caches,
         lowers = stack,
+        manifest_name = prefix + "repositories.json",
     )
-    ctx.actions.run(plan, category = "plan")
+    ctx.actions.run(plan, category = "plan", identifier = identifier or "install")
 
     return select_package_artifacts(
         ctx,
@@ -86,6 +91,7 @@ def resolve_packages(
         repositories = repositories,
         suffix = system.package_suffix,
         extra_packages = extra_packages,
+        name = prefix + "install.closure",
     )
 
 def _install_actions(

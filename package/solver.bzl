@@ -4,6 +4,8 @@ load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load(":repository.bzl", "ConfiguredPackageRepositoryInfo", "write_repository_manifest")
 load(":system.bzl", "PackageSystemInfo")
 
+# buildifier: disable=function-docstring-args
+# buildifier: disable=function-docstring-return
 def solve_command(
         ctx: AnalysisContext,
         engine: EngineInfo,
@@ -13,7 +15,8 @@ def solve_command(
         arch: str,
         output: OutputArtifact | None = None,
         solver_caches: list[Artifact] = [],
-        lowers: list[Artifact] = []) -> cmd_args:
+        lowers: list[Artifact] = [],
+        manifest_name: str = "repositories.json") -> cmd_args:
     """Construct a package solve command for one configured solver context."""
     command = cmd_args(
         chroot_run(engine = engine, exe = system.plan),
@@ -25,7 +28,7 @@ def solve_command(
         command.add("--out", output)
     for cache in solver_caches:
         command.add("--cache", cache)
-    command.add("--repositories", write_repository_manifest(ctx, "repositories.json", repositories))
+    command.add("--repositories", write_repository_manifest(ctx, manifest_name, repositories))
     for lower in lowers:
         command.add("--lower", lower)
     for package in install:

@@ -1,333 +1,402 @@
-"""Convenience macros for common image compositions."""
+"""Convenience compositions for image products."""
 
-load("//image_format:archive.bzl", "image_archive", "image_directory")
+load(
+    "//image_format:archive.bzl",
+    "ARCHIVE_ATTRS",
+    "ImageArchiveInfo",
+    "declare_image_archive",
+    "declare_image_directory",
+)
 load(
     "//image_format:disk.bzl",
     "DISK_FORMATS",
     "Partition",  # @unused Used as a type.
-    "disk_convert",
+    "declare_disk_conversion",
+    "declare_repart",
+    "encode_definitions",
     "format_partition_labels",
-    "repart",
 )
-load("//image_format:pkgdb.bzl", "image_pkgdb")
-load("//image_format:sbom.bzl", "image_sbom")
-load("//image_format:sysext.bzl", "image_sysext")
+load("//image_format:sysext.bzl", "SYSEXT_ATTRS", "declare_image_sysext")
 load(
-    ":boot.bzl",
-    "ARCHES",
+    "//image_format:uki.bzl",
+    "UKI_ATTRS",
     "UkiProfile",  # @unused Used as a type.
-    "install_systemd_boot",
-    "sign_systemd_boot",
-    "uki",
+    "declare_uki",
+    "encode_profiles",
 )
+load("//package:manager.bzl", "PackageManagerInfo")
 load(
-    ":layer.bzl",
+    ":image.bzl",
+    "ARCHES",
+    "FILENAME_PATTERN",
+    "IMAGE_ATTRS",
+    "ImageInfo",
+    "LayerOperation",  # @unused Used as a type.
     "LayerOperationTree",  # @unused Used as a type.
+    "check_name",
     "copy",
-    "image",
+    "declare_image",
+    "flatten_operations",
+    "image_metadata_subtargets",
+    "image_providers",
     "install_package_set",
+    "install_systemd_boot",
     "merge_os_release",
     "remove",
+    "sign_systemd_boot",
     "symlink",
 )
 
-def rootfs_archive(
-        name: str,
-        package_manager: str,
-        ops: list[LayerOperationTree],
-        tmpfiles: list[str] = [],
-        format: str = "tar",
-        compression: str = "none",
-        install_docs: bool = True,
-        version: str = "0",
-        visibility: list[str] | None = None) -> None:
-    """Build a root filesystem from ordered operations and archive it."""
-    image(
-        name = name + ".layer",
-        package_manager = package_manager,
-        ops = ops,
-        tmpfiles = tmpfiles,
-        install_docs = install_docs,
-    )
-    image_pkgdb(
-        name = name + ".pkgdb",
-        image = ":" + name + ".layer",
-        visibility = visibility,
-    )
-    image_sbom(
-        name = name + ".sbom",
-        image = ":" + name + ".layer",
-        source_name = name,
-        version = version,
-        visibility = visibility,
-    )
-    image_archive(
-        name = name,
-        image = ":" + name + ".layer",
-        format = format,
-        compression = compression,
-        visibility = visibility,
+InitrdInfo = provider(
+    doc = "A logical initrd image and its derived cpio archive.",
+    fields = {
+        "cpio": provider_field(ImageArchiveInfo),
+        "image": provider_field(ImageInfo),
+    },
+)
+
+def _composed_image(ctx: AnalysisContext, **kwargs) -> ImageInfo:
+    return declare_image(
+        ctx,
+        identifier = "image",
+        install_docs = ctx.attrs.install_docs,
+        install_langs = ctx.attrs.install_langs,
+        ops = ctx.attrs.ops,
+        tmpfiles = ctx.attrs.tmpfiles,
+        version = ctx.attrs.version,
+        **kwargs
     )
 
-def sysext_image(
-        name: str,
-        ops: list[LayerOperationTree],
-        package_manager: str | None = None,
-        base: str | None = None,
-        tmpfiles: list[str] = [],
-        release: dict[str, str] = {},
-        seed: str | None = None,
-        install_docs: bool = True,
-        version: str = "0",
-        visibility: list[str] | None = None) -> None:
-    """Build a systemd system-extension DDI from ordered operations.
+def _rootfs_archive_impl(ctx: AnalysisContext) -> list[Provider]:
+    image = _composed_image(ctx, package_manager = ctx.attrs.package_manager)
+    archive = declare_image_archive(
+        ctx,
+        compression = ctx.attrs.compression,
+        format = ctx.attrs.format,
+        image = image,
+    )
+    return image_providers(
+        default_outputs = [archive.archive],
+        extra = [archive],
+        image = image,
+    )
 
-    With `base`, the operations layer on top of that image and only the delta is packaged;
-    the extension-release then pins the base's ID/VERSION_ID. With `package_manager`, the
-    extension is self-contained and matches any host.
-    """
-    if (base == None) == (package_manager == None):
+_rootfs_archive = rule(
+    impl = _rootfs_archive_impl,
+    attrs = IMAGE_ATTRS | ARCHIVE_ATTRS | {
+        "package_manager": attrs.dep(providers = [PackageManagerInfo]),
+    },
+)
+
+def _sysext_image_impl(ctx: AnalysisContext) -> list[Provider]:
+    if (ctx.attrs.base == None) == (ctx.attrs.package_manager == None):
         fail("sysext_image: exactly one of base and package_manager is required")
-    if base == None:
-        image(
-            name = name + ".layer",
-            package_manager = package_manager,
-            ops = ops,
-            tmpfiles = tmpfiles,
-            install_docs = install_docs,
-        )
+
+    base = ctx.attrs.base[ImageInfo] if ctx.attrs.base != None else None
+    if base != None:
+        image = _composed_image(ctx, parent = base)
     else:
-        image(
-            name = name + ".layer",
-            parent = base,
-            ops = ops,
-            tmpfiles = tmpfiles,
-            install_docs = install_docs,
-        )
-    image_pkgdb(
-        name = name + ".pkgdb",
-        image = ":" + name + ".layer",
-        visibility = visibility,
-    )
-    image_sbom(
-        name = name + ".sbom",
-        image = ":" + name + ".layer",
-        source_name = name,
-        version = version,
-        visibility = visibility,
-    )
-    image_sysext(
-        name = name,
-        image = ":" + name + ".layer",
+        image = _composed_image(ctx, package_manager = ctx.attrs.package_manager)
+
+    sysext = declare_image_sysext(
+        ctx,
         base = base,
-        release = release,
-        seed = seed,
-        visibility = visibility,
+        extension = ctx.label.name,
+        image = image,
+        release = ctx.attrs.release,
+        seed = ctx.attrs.seed,
+    )
+    return image_providers(
+        default_outputs = [sysext.image],
+        extra = [sysext],
+        image = image,
     )
 
-# buildifier: disable=function-docstring-args
-def _default_initrd(name: str, package_manager: str) -> str:
-    image(
-        name = name + ".initrd.layer",
-        package_manager = package_manager,
-        ops = [
-            install_package_set("initrd"),
-            symlink("/usr/lib/systemd/systemd", "/init"),
-            symlink("/etc/os-release", "/etc/initrd-release"),
-            # udev reads its binary hardware database at run time, not the sources it was
-            # generated from during installation.
-            remove("/usr/lib/udev/hwdb.d"),
-            # A journal catalog only matters where a journal is read, and that is the booted system.
-            remove("/usr/lib/systemd/catalog"),
-            remove("/var/lib/systemd/catalog"),
-            # Nothing in an initrd resolves a service name.
-            remove("/etc/services"),
-        ],
-        # Nothing in an initrd is ever read by a human, so neither documentation nor translations
-        # are worth carrying.
-        install_docs = False,
-        install_langs = ["C.UTF-8"],
+_sysext_image = rule(
+    impl = _sysext_image_impl,
+    attrs = IMAGE_ATTRS | SYSEXT_ATTRS | {
+        "base": attrs.option(attrs.dep(providers = [ImageInfo]), default = None),
+        "package_manager": attrs.option(
+            attrs.dep(providers = [PackageManagerInfo]),
+            default = None,
+        ),
+    },
+)
+
+_DEFAULT_INITRD_OPS = [
+    install_package_set("initrd"),
+    symlink("/usr/lib/systemd/systemd", "/init"),
+    symlink("/etc/os-release", "/etc/initrd-release"),
+    # udev reads its binary hardware database at run time, not the sources installed with it.
+    remove("/usr/lib/udev/hwdb.d"),
+    # These databases serve humans and service-name resolution, neither of which happens in the initrd.
+    remove("/usr/lib/systemd/catalog"),
+    remove("/var/lib/systemd/catalog"),
+    remove("/etc/services"),
+]
+
+def _esp_operations(ctx: AnalysisContext, ukis: Artifact) -> list[LayerOperation]:
+    operations = [copy(ukis, "/boot/EFI/Linux")] + install_systemd_boot(
+        certificate = ctx.attrs.secure_boot_certificate,
+        private_key = ctx.attrs.secure_boot_private_key,
     )
-    return ":" + name + ".initrd.layer"
+    for destination in sorted(ctx.attrs.esp_files):
+        if not (destination.startswith("/boot/") or destination.startswith("/efi/")):
+            fail("bootable_disk_image: esp_files destination must be under /boot or /efi, got {!r}".format(
+                destination,
+            ))
+        operations.append(copy(ctx.attrs.esp_files[destination], destination))
+    return operations
+
+def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
+    image_id = check_name(
+        "bootable_disk_image image_id",
+        ctx.attrs.image_id or ctx.label.name,
+    )
+
+    # The version lands in partition labels and the UKI filename.
+    version = check_name("bootable_disk_image version", ctx.attrs.version, FILENAME_PATTERN)
+
+    if ctx.attrs.initrd != None:
+        initrd = ctx.attrs.initrd[ImageInfo]
+    else:
+        initrd = declare_image(
+            ctx,
+            identifier = "initrd",
+            install_docs = False,
+            install_langs = ["C.UTF-8"],
+            ops = _DEFAULT_INITRD_OPS,
+            package_manager = ctx.attrs.package_manager,
+            source_name = ctx.label.name + ".initrd",
+            version = version,
+        )
+
+    root = declare_image(
+        ctx,
+        identifier = "root",
+        install_docs = ctx.attrs.install_docs,
+        install_langs = ctx.attrs.install_langs,
+        ops = ctx.attrs.ops,
+        package_manager = ctx.attrs.package_manager,
+        tmpfiles = ctx.attrs.tmpfiles,
+        version = version,
+    )
+
+    # The identity stamp lives in its own thin layer so that a changing version only re-runs the
+    # artifacts that embed it, never package installation or the caller's operations. systemd-boot
+    # signing joins it for the same reason (a key change must not re-run the caller's operations):
+    # it must precede the verity partitions below so that the booted /usr carries the signed
+    # binary (see sign_systemd_boot).
+    identity_ops = [merge_os_release({"IMAGE_ID": image_id, "IMAGE_VERSION": version})]
+    if ctx.attrs.secure_boot_private_key != None:
+        identity_ops += sign_systemd_boot(
+            ctx.attrs.secure_boot_private_key,
+            ctx.attrs.secure_boot_certificate,
+            ctx.attrs.arch,
+        )
+    identity = declare_image(
+        ctx,
+        identifier = "identity",
+        ops = identity_ops,
+        parent = root,
+        version = version,
+    )
+
+    definitions = format_partition_labels(
+        [json.decode(value) for value in ctx.attrs.definitions],
+        image_id,
+        version,
+    )
+    system_definitions = []
+    boot_definitions = []
+    verity = False
+    for definition in definitions:
+        if definition["type"] == "esp":
+            boot_definitions.append(json.encode(definition))
+        else:
+            system_definitions.append(json.encode(definition))
+            verity = verity or definition["verity"] == "data"
+    if not system_definitions or not boot_definitions:
+        fail("bootable_disk_image: definitions must include system and ESP partitions")
+
+    system = declare_repart(
+        ctx,
+        certificate = ctx.attrs.verity_certificate,
+        definitions = system_definitions,
+        disk = False,
+        identifier = "system",
+        image = identity,
+        private_key = ctx.attrs.verity_private_key,
+        seed = ctx.attrs.disk_seed,
+        split = True,
+    )
+    initrd_archive = declare_image_archive(
+        ctx,
+        compression = "zstd",
+        format = "cpio",
+        identifier = "initrd",
+        image = initrd,
+    )
+    uki = declare_uki(
+        ctx,
+        arch = ctx.attrs.arch,
+        cmdline = ctx.attrs.cmdline,
+        identifier = "uki",
+        image = identity,
+        image_id = image_id,
+        initrds = [initrd_archive],
+        profiles = ctx.attrs.profiles,
+        root_hash = system.info.root_hash if verity else None,
+        secure_boot_certificate = ctx.attrs.secure_boot_certificate,
+        secure_boot_private_key = ctx.attrs.secure_boot_private_key,
+        version = version,
+    )
+    esp = declare_image(
+        ctx,
+        identifier = "esp",
+        ops = _esp_operations(ctx, uki.ukis),
+        parent = identity,
+        version = version,
+    )
+
+    # The disk file leaves the build as an update or installation medium, so it carries the image
+    # identity in its name, exactly like the UKI.
+    basename = "{}_{}_{}".format(image_id, version, ARCHES[ctx.attrs.arch].systemd)
+    disk = declare_repart(
+        ctx,
+        basename = basename,
+        definitions = boot_definitions,
+        identifier = "disk",
+        image = esp,
+        imported = [system.info],
+        imported_root_hash = system.info.root_hash,
+        seed = ctx.attrs.disk_seed,
+        split = True,
+    )
+    raw = disk.info.disk
+    if raw == None:
+        fail("bootable_disk_image: internal disk repart did not expose a composed disk")
+    directory = declare_image_directory(ctx, identifier = "directory", image = esp)
+    conversions = [
+        declare_disk_conversion(
+            ctx,
+            basename = basename,
+            disk = disk.info,
+            engine = esp.engine,
+            format = format,
+            identifier = format,
+        )
+        for format in DISK_FORMATS
+    ]
+
+    initrd_info = InitrdInfo(cpio = initrd_archive, image = initrd)
+    sub_targets = dict(disk.sub_targets)
+    sub_targets.update({
+        "directory": [DefaultInfo(default_output = directory.directory), directory],
+        "initrd": [
+            DefaultInfo(
+                default_output = initrd_archive.archive,
+                sub_targets = image_metadata_subtargets(initrd),
+            ),
+            initrd_info,
+        ],
+        "uki": [DefaultInfo(default_output = uki.ukis), uki],
+    })
+    for conversion in conversions:
+        sub_targets[conversion.format] = [
+            DefaultInfo(default_output = conversion.image),
+            conversion,
+        ]
+
+    return image_providers(
+        default_outputs = [raw],
+        extra = [directory, disk.info, initrd_info, uki],
+        image = esp,
+        sub_targets = sub_targets,
+    )
+
+_bootable_disk_image = rule(
+    impl = _bootable_disk_image_impl,
+    attrs = IMAGE_ATTRS | UKI_ATTRS | {
+        "cmdline": attrs.list(
+            attrs.string(),
+            default = ["root=tmpfs", "mount.usr=dissect", "rw"],
+        ),
+        "definitions": attrs.list(attrs.string(), doc = "serialized partition definitions"),
+        "disk_seed": attrs.option(attrs.string(), default = None),
+        "esp_files": attrs.dict(
+            attrs.string(),
+            attrs.source(allow_directory = True),
+            default = {},
+        ),
+        "image_id": attrs.option(attrs.string(), default = None),
+        "initrd": attrs.option(
+            attrs.dep(providers = [ImageInfo]),
+            default = None,
+            doc = (
+                "logical image to archive and use as the initrd; " +
+                "defaults to the release initrd package set"
+            ),
+        ),
+        "package_manager": attrs.dep(providers = [PackageManagerInfo]),
+        "verity_certificate": attrs.option(attrs.source(), default = None),
+        "verity_private_key": attrs.option(attrs.source(), default = None),
+    },
+)
+
+def rootfs_archive(name: str, ops: list[LayerOperationTree] = [], **kwargs) -> None:
+    """Build one logical image from operations and emit it as an archive."""
+    _rootfs_archive(
+        name = name,
+        ops = flatten_operations(ops),
+        **kwargs
+    )
+
+def sysext_image(name: str, ops: list[LayerOperationTree] = [], **kwargs) -> None:
+    """Build one logical image from operations and package it as a system-extension DDI."""
+    _sysext_image(
+        name = name,
+        ops = flatten_operations(ops),
+        **kwargs
+    )
 
 # buildifier: disable=function-docstring-args
 def bootable_disk_image(
         name: str,
-        package_manager: str,
-        ops: list[LayerOperationTree],
         definitions: list[Partition],
-        tmpfiles: list[str] = [],
-        initrd: str | None = None,
-        cmdline: list[str] = ["root=tmpfs", "mount.usr=dissect", "rw"],
+        ops: list[LayerOperationTree] = [],
         profiles: list[UkiProfile] = [],
-        arch: str = "x86_64",
-        disk_seed: str | None = None,
         verity_private_key: str | None = None,
         verity_certificate: str | None = None,
         secure_boot_private_key: str | None = None,
         secure_boot_certificate: str | None = None,
-        esp_files: dict[str, str] = {},
-        install_docs: bool = True,
-        image_id: str | None = None,
-        version: str = "0",
-        visibility: list[str] | None = None) -> None:
-    """Build a UKI-based, systemd-boot GPT disk image.
+        **kwargs) -> None:
+    """Compose the default initrd, versioned UKIs, the ESP, and system partitions into a disk.
 
     With secure_boot_private_key/_certificate, the UKIs and systemd-boot are signed for Secure
     Boot, the UKIs carry a signed expected-PCR policy, and the ESP receives key auto-enrollment
     files for firmware in setup mode.
     """
-    if image_id == None:
-        image_id = name
-    if not regex_match("^[a-zA-Z0-9._-]+$", image_id):
-        fail("bootable_disk_image: invalid image_id {!r}".format(image_id))
-
-    # The version lands in partition labels and the UKI filename; "+" would collide with
-    # sd-boot's boot-counting suffixes, "~" is systemd's pre-release separator.
-    if not regex_match("^[a-zA-Z0-9._~-]+$", version):
-        fail("bootable_disk_image: invalid version {!r}".format(version))
-    if initrd == None:
-        initrd = _default_initrd(name, package_manager)
-
-    # The composition owns the cpio so that the supply-chain siblings can scan the initrd (see design.md).
-    image_archive(
-        name = name + ".initrd",
-        image = initrd,
-        format = "cpio",
-        compression = "zstd",
-    )
-    image(
-        name = name + ".layer",
-        package_manager = package_manager,
-        ops = ops,
-        tmpfiles = tmpfiles,
-        install_docs = install_docs,
-    )
-
-    # The identity stamp lives in its own thin layer so that a changing version only re-runs
-    # the artifacts that embed it, never package installation or the caller's operations.
-    # systemd-boot signing joins it for the same reason (a key change must not re-run the
-    # caller's operations): it must precede the verity partitions below so that the booted
-    # /usr carries the signed binary (see sign_systemd_boot).
-    identity_ops = [merge_os_release({"IMAGE_ID": image_id, "IMAGE_VERSION": version})]
-    if secure_boot_private_key != None:
-        identity_ops += sign_systemd_boot(secure_boot_private_key, secure_boot_certificate, arch)
-    image(
-        name = name + ".identity.layer",
-        parent = ":" + name + ".layer",
-        ops = identity_ops,
-    )
-    definitions = format_partition_labels(definitions, image_id, version)
-    system_definitions = [definition for definition in definitions if definition.type != "esp"]
-    boot_definitions = [definition for definition in definitions if definition.type == "esp"]
-    if not system_definitions or not boot_definitions:
-        fail("bootable_disk_image: definitions must include system and ESP partitions")
-    repart(
-        name = name + ".partitions",
-        image = ":" + name + ".identity.layer",
-        definitions = system_definitions,
-        disk = False,
-        split = True,
-        seed = disk_seed,
-        private_key = verity_private_key,
-        certificate = verity_certificate,
-    )
-    verity = [definition for definition in system_definitions if definition.verity == "data"]
-    uki(
-        name = name + ".uki",
-        image = ":" + name + ".identity.layer",
-        initrds = [":" + name + ".initrd"],
-        cmdline = cmdline,
-        profiles = profiles,
-        arch = arch,
-        image_id = image_id,
-        version = version,
-        root_hash = ":" + name + ".partitions" if verity else None,
-        secure_boot_private_key = secure_boot_private_key,
-        secure_boot_certificate = secure_boot_certificate,
-        visibility = visibility,
-    )
-    esp_ops = [
-        copy(
-            source = ":" + name + ".uki",
-            destination = "/boot/EFI/Linux",
-        ),
-        install_systemd_boot(
-            private_key = secure_boot_private_key,
-            certificate = secure_boot_certificate,
-        ),
-    ]
-
-    # Copy caller-provided artifacts onto the ESP. The ESP partition's `copy_files = ["/boot:/", "/efi:/"]`
-    # carries them onto the disk, so each destination must live under one of those trees.
-    for destination, source in esp_files.items():
-        if not (destination.startswith("/boot/") or destination.startswith("/efi/")):
-            fail("bootable_disk_image: esp_files destination must be under /boot or /efi, got {!r}".format(
-                destination,
-            ))
-        esp_ops.append(copy(source = source, destination = destination))
-
-    image(
-        name = name + ".esp.layer",
-        parent = ":" + name + ".identity.layer",
-        ops = esp_ops,
-    )
-
-    # The disk file leaves the build as an update or installation medium, so it carries the image
-    # identity in its name, exactly like the UKI.
-    basename = "{}_{}_{}".format(image_id, version, ARCHES[arch].systemd)
-    repart(
+    if (verity_private_key == None) != (verity_certificate == None):
+        fail("bootable_disk_image: verity_private_key and verity_certificate must be specified together")
+    if (secure_boot_private_key == None) != (secure_boot_certificate == None):
+        fail("bootable_disk_image: secure_boot_private_key and secure_boot_certificate must be specified together")
+    _bootable_disk_image(
         name = name,
-        image = ":" + name + ".esp.layer",
-        definitions = boot_definitions,
-        partitions = [":" + name + ".partitions"],
-        basename = basename,
-        split = True,
-        seed = disk_seed,
-        visibility = visibility,
-    )
-    image_directory(
-        name = name + ".directory",
-        image = ":" + name + ".esp.layer",
-        visibility = visibility,
-    )
-
-    # Alternative disk encodings are always addressable siblings (e.g. `:name.qcow2`); Buck only re-encodes
-    # the one that is actually requested, so exposing them all costs nothing on a default build.
-    for format in DISK_FORMATS:
-        disk_convert(
-            name = "{}.{}".format(name, format),
-            disk = ":" + name,
-            basename = basename,
-            format = format,
-            visibility = visibility,
-        )
-
-    # The initrd resolves its own package closure, so keep its supply-chain outputs separate from
-    # the root filesystem's. Every artifact is an explicit sibling terminal target.
-    image_pkgdb(
-        name = name + ".pkgdb",
-        image = ":" + name + ".esp.layer",
-        visibility = visibility,
-    )
-    image_pkgdb(
-        name = name + ".initrd.pkgdb",
-        image = initrd,
-        visibility = visibility,
-    )
-    image_sbom(
-        name = name + ".sbom",
-        image = ":" + name + ".esp.layer",
-        source_name = name,
-        version = version,
-        visibility = visibility,
-    )
-
-    # A distinct source name keeps the two documents apart, including their normalized ids.
-    image_sbom(
-        name = name + ".initrd.sbom",
-        image = initrd,
-        source_name = name + ".initrd",
-        version = version,
-        visibility = visibility,
+        # The rule renders label placeholders from its own identity during analysis.
+        definitions = encode_definitions(
+            definitions,
+            disk = True,
+            imports = False,
+            rendered = False,
+            signed = verity_private_key != None,
+            split = True,
+        ),
+        ops = flatten_operations(ops),
+        profiles = encode_profiles(profiles),
+        secure_boot_certificate = secure_boot_certificate,
+        secure_boot_private_key = secure_boot_private_key,
+        verity_certificate = verity_certificate,
+        verity_private_key = verity_private_key,
+        **kwargs
     )

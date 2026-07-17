@@ -35,8 +35,8 @@ http_tool(
     spec = _pins["ty"],
 )
 
-# SBOM generator (static release binary; not packaged in Fedora). Scans an image tree for the
-# package database, ELF-bundled modules, etc. Used by the image_sbom rule against an assembled image.
+# SBOM generator (static release binary; not packaged in Fedora). Scans an assembled image tree for the
+# package database, ELF-bundled modules, and other package metadata.
 http_tool(
     name = "syft",
     path = "syft",

@@ -60,6 +60,15 @@ is described in [design.md](design.md).
 
 ## Declaring an image
 
+Everything below is re-exported from one facade, so a `BUCK` file needs a single load:
+
+```python
+load("@tine//image:defs.bzl", "image", "install", "rootfs_archive", "run")
+```
+
+The modules behind the facade (`image.bzl`, `compose.bzl`, and the `image_format` package) are
+implementation structure and may be rearranged; load them directly only from inside the cell.
+
 An initial image fixes one package manager for its whole lifetime; every derived image and terminal output
 inherits it and its engine. Take a catalog package manager, optionally extend it with project repositories,
 and create the initial image. For example, a project can expose locally built packages without adding them
@@ -114,17 +123,37 @@ ordered operation sequence in one action and persists exactly one delta:
   through the image's package manager. One operation sequence may contain one install, at any position.
 - `run([...])` executes a command with the image's own binaries in a chroot; `chroot = False` instead
   executes engine tooling with the image available at `/buildroot`. Its `env` argument overlays variables
-  on the engine or image environment for that command.
+  on the engine or image environment for that command, and an `artifact(...)` argument is replaced with a
+  declared artifact's path (only under `chroot = False`, since build outputs are not visible inside the
+  image).
 - `copy` introduces a declared Buck artifact at an absolute image path; `mkdir`, `symlink`, and `remove`
   mutate the same root.
 
-Operation lists are recursively flattened, allowing reusable helpers to return ordered groups of
-operations. Materialize a complete logical image explicitly with `image_directory`.
+`image()` recursively flattens operation lists, allowing reusable helpers to return ordered groups of
+operations; `rootfs_archive`, `sysext_image`, and `bootable_disk_image` accept the same nested groups.
+Materialize a complete logical image explicitly with `image_directory`.
+
+Every `ImageInfo` carries its canonical lazy SBOM artifacts, and a package database whenever the image has
+a package manager. The same
+artifacts are exposed as subtargets, and `ImageSbomInfo` remains available for consumers that need only the
+SBOM formats:
+
+```text
+//examples/image:chained-base
+├── [pkgdb]
+└── [sbom]
+    ├── [spdx]
+    └── [cyclonedx]
+```
+
+The `version` attribute sets the SBOM source version and defaults to `"0"`. Merely building the image still
+produces only its latest delta. Selecting `[pkgdb]` runs the image's package system's capture driver;
+selecting either nested SBOM format runs one shared scan of the completed stack.
 
 `image` also takes `install_langs`: keep translated files only for these languages, instead of all of them.
 Nothing matches a value that is not a language, so `install_langs = ["C.UTF-8"]` installs no translations
 at all. `install_docs = False` likewise installs no documentation, keeping the licenses that packages ship.
-The default initrd sets both.
+The default initrd sets both. Both configure an install, so a layer that installs nothing ignores them.
 
 ## Terminal outputs
 
@@ -132,41 +161,58 @@ Logical images and terminal outputs are separate rule families. Terminal rules m
 when needed:
 
 - `image_archive` writes deterministic tar or newc cpio archives, optionally zstd-compressed
-  (`compression = "zstd"`), and provides `CpioArchiveInfo` for the latter;
-- `image_directory` materializes a Buck directory artifact;
-- `uki` builds the unified kernel image for the image's single installed kernel from one or more
-  `CpioArchiveInfo` dependencies, named `<image_id>_<version>_<arch>.efi` (defaults: target name and
-  `0`; systemd architecture spelling, e.g. `x86-64`), the shape systemd-sysupdate UKI transfers
-  match. Alternative kernel command lines are `uki_profile()` records, which add boot profiles as separate
-  sd-boot menu entries, each appending its arguments to the base kernel command line; with declared
-  `secure_boot_*` key material, the UKI and its embedded kernel are signed for Secure Boot and sealed
-  with a signed expected-PCR 11 policy per profile (opt out per profile with `sign_expected_pcr`);
+  (`compression = "zstd"`), and provides `ImageArchiveInfo`, which names the format alongside the artifact;
+- `image_directory` materializes a Buck directory artifact and provides `ImageDirectoryInfo`;
+- `uki` builds the unified kernel image for the image's single installed kernel from one or more cpio
+  `ImageArchiveInfo` dependencies and provides `UkiInfo`, named `<image_id>_<version>_<arch>.efi`
+  (defaults: target name and `0`; systemd architecture spelling, e.g. `x86-64`), the shape
+  systemd-sysupdate UKI transfers match. Alternative kernel command lines are `uki_profile()` descriptors,
+  which add boot profiles as separate sd-boot menu entries, each appending its arguments to the base kernel
+  command line; with declared `secure_boot_*` key material, the UKI and its embedded kernel are signed for
+  Secure Boot and sealed with a signed expected-PCR 11 policy per profile (opt out per profile with
+  `sign_expected_pcr`);
 - `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
-  GPT disk with `DiskImageInfo`, independent partition artifacts with `split = True`, or both;
+  GPT disk and independent partition artifacts in one `RepartInfo`; its disk field is absent for a
+  split-only invocation;
+- `disk_convert` re-encodes a raw disk with an explicitly selected engine and provides `DiskConversionInfo`;
 - `bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
-- `image_pkgdb` runs the image's package system's own capture driver, copying the package database out
-  into a separate directory artifact that holds whatever files that database consists of (rpm's is one,
-  trimmed to the `Packages` table alone);
-- `image_sbom` runs `syft` over the assembled tree in one scan, emitting SPDX and CycloneDX SBOMs;
 - `image_sysext` builds a systemd-sysext(8) DDI (unsigned for now) with `systemd-repart`, containing
   `/usr`, `/opt`, and `extension-release.<name>`, and provides `SysextImageInfo`; with `base`, only the
   delta layered above that image is packaged, and the extension-release pins the base's `ID`/`VERSION_ID`;
-- `image_vm` runs the raw image ephemerally with the engine's `systemd-vmspawn`, QEMU, and OVMF stack,
+- `image_vm` runs the raw image ephemerally with its explicitly selected engine's `systemd-vmspawn`, QEMU,
+  and OVMF stack,
   and binds all given `sysexts` DDIs into the guest at `/var/lib/extensions`, where systemd-sysext merges
   them at boot. With `secure_boot`, vmspawn picks Secure Boot capable firmware without pre-enrolled keys,
   so an image carrying `loader/keys/auto` enrollment files enrolls them on first boot and then boots with
   Secure Boot enforced, and attaches a software TPM so the UKI's signed expected-PCR policy is measured.
 
-`rootfs_archive()` is the convenience composition for building a single layer from operations and emitting
-an archive; `image_archive` remains the terminal rule for archiving an existing logical image.
-`sysext_image()` is the equivalent composition for a system-extension DDI. Every composition takes
-`install_docs` and passes it to the layer it builds.
+`rootfs_archive` is the composition rule for building one logical image from operations and emitting an
+archive; `image_archive` remains the terminal rule for archiving an existing logical image. `sysext_image`
+is the equivalent composition for a system-extension DDI. Every composition takes `install_docs` and passes
+it to the image it builds.
 
-Every composition declares the package database and SBOM as explicit `<name>.pkgdb`/`<name>.sbom` sibling
-targets; `bootable_disk_image` declares them for both the root filesystem and initrd. Buck builds a
-sibling only when it is requested, so the declarations cost nothing on a default build (a wildcard
-build like `//...` does build them all).
+Each composition publishes one product target that also provides its logical filesystem as `ImageInfo`.
+`rootfs_archive` defaults to its archive and provides `ImageArchiveInfo`. `sysext_image` defaults to its DDI
+and provides `SysextImageInfo`. Both expose their supply-chain
+artifacts without conventionally named helper targets:
+
+```text
+//examples/image:demo
+├── [pkgdb]
+└── [sbom]
+    ├── [spdx]
+    └── [cyclonedx]
+
+//examples/image:demo-ext
+├── [pkgdb]
+└── [sbom]
+    ├── [spdx]
+    └── [cyclonedx]
+```
+
+The product targets provide `ImageSbomInfo` for typed consumers. Buck builds an optional artifact only when
+it is requested, so declaring these views costs nothing on a default build.
 
 ### bootable_disk_image
 
@@ -178,7 +224,7 @@ Required attributes:
 - `package_manager` (target label): See "Declaring an image" above.
 - `ops` (operation list) and `tmpfiles` (list of tmpfiles.d lines): Build the root filesystem layer;
   passed on to `image`.
-- `definitions` (list of `partition()` records): Partition layout; `DEFAULT_ROOT_PARTITIONS`,
+- `definitions` (list of `partition()` descriptors): Partition layout; `DEFAULT_ROOT_PARTITIONS`,
   `DEFAULT_USR_VERITY_PARTITIONS`, and `DEFAULT_SIGNED_USR_VERITY_PARTITIONS` are reusable conventional
   layouts; it must contain system and ESP partitions; passed on to `repart()`.
 
@@ -189,11 +235,12 @@ Optional attributes:
   partition; passed on to `repart()`.
 - `secure_boot_private_key` / `secure_boot_certificate` (string): PEM pair signing the UKIs and
   systemd-boot; see "Secure Boot signing" below.
-- `initrd` (target label): A logical image whose tree becomes the initrd, replacing the default
-  initrd package image. The composition archives it into the zstd-compressed cpio itself.
+- `initrd` (target label providing `ImageInfo`): A logical image whose tree becomes the initrd, replacing
+  the default initrd package image. The rule consumes the resolved provider, archives it into the
+  zstd-compressed cpio itself, and republishes the package database and SBOM that image already carries.
 - `cmdline` (string list): Kernel command line arguments, default
   `["root=tmpfs", "mount.usr=dissect", "rw"]`; passed on to `uki()`.
-- `profiles` (`uki_profile()` record list): Alternative sd-boot menu entries, passed on to `uki()`.
+- `profiles` (`uki_profile()` descriptor list): Alternative sd-boot menu entries, passed on to `uki()`.
 - `arch` (string): Architecture; only `x86_64` is supported right now; passed on to `uki()`.
 - `esp_files` (dict): Map from an absolute image path (under `/boot` or `/efi`, the trees the ESP
   partition carries) to a source target copied onto the ESP.
@@ -204,7 +251,7 @@ Optional attributes:
   cannot re-identify the installed OS (systemd-sysupdate matches partitions and UKIs by this
   identity at run time).
 - `version` (string): Declared image version. Default `"0"`; stamped into the image's os-release as
-  `IMAGE_VERSION` and passed on to `image_sbom` as the SBOM source version. Together with `image_id`
+  `IMAGE_VERSION` and used as the SBOM source version. Together with `image_id`
   it also names the UKI (`<image_id>_<version>_<arch>.efi`) and renders partition label placeholders.
 
 The identity stamp is applied in its own thin layer between the root filesystem layer and everything
@@ -218,34 +265,53 @@ rebuild under an unchanged version puts different content behind identical names
 cannot distinguish from the release a device already installed, and so never applies. The release pipeline
 that publishes update artifacts must enforce version immutability by rejecting an already-published version.
 
-The requested target name is the raw disk. Other terminal views are explicit sibling targets:
+The requested target name is one bootable-image result whose default output is the raw disk. Other terminal
+views and supply-chain artifacts are lazy subtargets:
 
 ```text
-//examples/image:boot-demo.uki
-//examples/image:boot-demo[roothash]
-//examples/image:boot-demo[partitions][usr]
-//examples/image:boot-demo[partitions][esp]
-//examples/image:boot-demo.directory
-//examples/image:boot-demo.qcow2
-//examples/image:boot-demo.raw.zst
-//examples/image:boot-demo.pkgdb
-//examples/image:boot-demo.sbom
-//examples/image:boot-demo.initrd.pkgdb
-//examples/image:boot-demo.initrd.sbom
+//examples/image:boot-demo
+├── [uki]
+├── [directory]
+├── [qcow2]
+├── [raw.zst]
+├── [pkgdb]
+├── [sbom]
+│   ├── [spdx]
+│   └── [cyclonedx]
+├── [initrd]
+│   ├── [pkgdb]
+│   └── [sbom]
+│       ├── [spdx]
+│       └── [cyclonedx]
+├── [roothash]
+└── [partitions]
+    ├── [usr]
+    ├── [usr-verity]
+    └── [esp]
 ```
 
-The `.qcow2` and `.raw.zst` sibling targets re-encode the raw disk into a compact qcow2 or a compressed raw
-on demand; Buck only runs the conversion actually requested, so they add nothing to a default build. The
-disk and its re-encodings are files named `<image_id>_<version>_<arch>.<ext>`, so they keep the image
+The disk and its re-encodings are files named `<image_id>_<version>_<arch>.<ext>`, so they keep the image
 identity when copied out of the build, exactly matching the UKI's `<image_id>_<version>_<arch>.efi`.
+The `[qcow2]` and `[raw.zst]` subtargets re-encode the raw disk into a compact qcow2 or a compressed raw on
+demand, each publishing one `DiskConversionInfo`; the encodings are reachable only through those subtargets,
+because one result cannot carry the same provider type twice. The target has no aggregate bootable-image
+provider: it returns `ImageInfo`, `RepartInfo`, `InitrdInfo`, `ImageDirectoryInfo`, and `UkiInfo`
+independently.
+`RepartInfo` contains the optional `RootHashInfo` when verity is enabled. The completed `ImageInfo` includes
+the ESP layer, so another image can use the bootable image as its parent without relying on a generated
+helper label. The same `InitrdInfo`, containing its logical `ImageInfo` and derived `ImageArchiveInfo`, is
+the sole typed provider published by `[initrd]`. Merely carrying an artifact in a provider does not build it;
+optional actions run only when a consumer uses the artifact or a user selects its subtarget.
+`[directory]` has the same representability limit as `image_directory`: it fails when the completed tree
+contains a path, such as a systemd-escaped unit name, that Buck directory artifacts cannot store.
 
-The `.initrd.*` siblings describe the initrd, which resolves its own package closure and may therefore
-contain packages that the root filesystem does not install. Nothing scans the initrd once it is a cpio inside
-the UKI's PE, so it carries its own artifacts rather than being folded into the root filesystem's. Keeping
-them separate also preserves the distinction a vulnerability triage needs: a package reachable only during
-early boot is not exposed the way the same package in the running system is. The union of the two accounts
-for everything in the UKI, provided the image keeps the kernel package installed in its own tree, which is
-where the UKI's kernel and modules come from.
+The nested metadata describes the initrd, which resolves its own package closure and may therefore contain
+packages that the root filesystem does not install. Nothing scans the initrd once it is a cpio inside the
+UKI's PE, so it carries its own artifacts rather than being folded into the root filesystem's. Keeping them
+separate also preserves the distinction a vulnerability triage needs: a package reachable only during early
+boot is not exposed the way the same package in the running system is. The union of the two accounts for
+everything in the UKI, provided the image keeps the kernel rpm installed in its own tree, which is where the
+UKI's kernel and modules come from.
 
 ## Secure Boot signing
 
@@ -276,9 +342,9 @@ Either way, keep production signing behind a dedicated boundary (see the design 
 
 ## Running the image in a VM
 
-Runtime policy lives on the `image_vm` target, not in the image: its `autologin` option provisions a
-locked root password and runtime `login.noauth`, and arbitrary non-secret system credentials configure
-settings such as first-boot locale and timezone.
+Runtime and execution policy live on the `image_vm` target, not in the disk provider: its explicit `engine`
+supplies the VM stack, its `autologin` option provisions a locked root password and runtime `login.noauth`,
+and arbitrary non-secret system credentials configure settings such as first-boot locale and timezone.
 
 ```sh
 tine/tools/buck run //examples/image:boot-demo-vm
@@ -296,7 +362,7 @@ tine/tools/buck build //packages/fedora/rawhide:zlib-ng
 tine/tools/buck build //examples/image:demo
 tine/tools/buck build //examples/image:layered-install
 tine/tools/buck build //examples/image:boot-demo
-tine/tools/buck build //examples/image:boot-demo.uki
+tine/tools/buck build '//examples/image:boot-demo[uki]'
 tine/tools/buck build '//examples/image:boot-demo[partitions][usr]'
 tine/tools/buck build //examples/image:demo-ext
 tine/tools/buck build //examples/image-local-packages:image

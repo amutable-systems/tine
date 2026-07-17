@@ -2,7 +2,8 @@
 """Generate SPDX and CycloneDX SBOMs from a logical image with syft.
 
 Scanning the whole assembled tree (not just the package database) also catches packages no
-not know about, e.g. Go modules bundled into ELF binaries. Two formats come from one scan:
+package manager knows about, such as Go modules bundled into ELF binaries. Two formats come
+from one scan:
   spdx-json:      ISO/IEC 5962 standard, authoritative/compliance SBOM
   cyclonedx-json: modern standard, consumed by grype/trivy, basis for native VEX
 The expensive part is the scan, so both formats are always emitted; the second is negligible.

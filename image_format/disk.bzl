@@ -1,23 +1,18 @@
 """Partition and raw-disk assembly with systemd-repart."""
 
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
-load("//image:actions.bzl", "terminal_image_command")
-load("//image:layer.bzl", "ImageInfo")
-
-# buildifier: disable=name-conventions  (record types, conventionally UpperCamelCase)
-Partition = record(
-    name = str,
-    type = str,
-    label = field(str | None, default = None),
-    filesystem = field(str | None, default = None),
-    copy_files = field(list[str], default = []),
-    size_min = field(str | int | None, default = None),
-    size_max = field(str | int | None, default = None),
-    minimize = field(str | None, default = None),
-    compression = field(str | None, default = None),
-    verity = field(str | None, default = None),
-    verity_match_key = field(str | None, default = None),
+load(
+    "//image:image.bzl",
+    "IMAGE_TOOLS_ATTR",
+    "ImageInfo",
+    "ImageToolsInfo",
+    "check_name",
+    "declare_out",
+    "terminal_image_command",
 )
+
+# buildifier: disable=name-conventions  (type alias, conventionally UpperCamelCase)
+Partition = dict[str, typing.Any]
 
 # buildifier: disable=function-docstring-args
 # buildifier: disable=function-docstring-return
@@ -38,8 +33,7 @@ def partition(
         fail("partition: type cannot be empty")
     if name == None:
         name = type
-    if not regex_match("^[a-zA-Z0-9._-]+$", name):
-        fail("partition: invalid artifact name {!r}".format(name))
+    check_name("partition artifact name", name)
     if label != None and len(label) > 36:
         fail("partition: label {!r} exceeds GPT's limit of 36 characters".format(label))
     if minimize not in (None, "off", "best", "guess"):
@@ -51,19 +45,22 @@ def partition(
     for copy in copy_files:
         if not copy:
             fail("partition: copy_files entries cannot be empty")
-    return Partition(
-        name = name,
-        type = type,
-        label = label,
-        filesystem = filesystem,
-        copy_files = copy_files,
-        size_min = size_min,
-        size_max = size_max,
-        minimize = minimize,
-        compression = compression,
-        verity = verity,
-        verity_match_key = verity_match_key,
-    )
+
+    # The driver derives partition UUIDs from these bytes, so the key order is part of the
+    # contract: changing it re-identifies every partition of every unchanged image.
+    return {
+        "name": name,
+        "type": type,
+        "label": label,
+        "filesystem": filesystem,
+        "copy_files": copy_files,
+        "size_min": size_min,
+        "size_max": size_max,
+        "minimize": minimize,
+        "compression": compression,
+        "verity": verity,
+        "verity_match_key": verity_match_key,
+    }
 
 _ESP_PARTITION = partition(
     type = "esp",
@@ -131,37 +128,55 @@ def format_partition_labels(
     """Render {image_id} and {version} placeholders in partition labels."""
     formatted = []
     for definition in definitions:
-        if definition.label == None or "{" not in definition.label:
+        label = definition["label"]
+        if label == None or "{" not in label:
             formatted.append(definition)
             continue
-        formatted.append(partition(
-            type = definition.type,
-            name = definition.name,
-            label = definition.label.format(image_id = image_id, version = version),
-            filesystem = definition.filesystem,
-            copy_files = definition.copy_files,
-            size_min = definition.size_min,
-            size_max = definition.size_max,
-            minimize = definition.minimize,
-            compression = definition.compression,
-            verity = definition.verity,
-            verity_match_key = definition.verity_match_key,
-        ))
+        formatted.append(definition | {
+            "label": label.format(image_id = image_id, version = version),
+        })
+
+    # Rendering can only lengthen a label, so re-check GPT's limit on the final value.
+    for definition in formatted:
+        if definition["label"] != None and len(definition["label"]) > 36:
+            fail("partition: label {!r} exceeds GPT's limit of 36 characters".format(
+                definition["label"],
+            ))
     return formatted
 
-# buildifier: disable=name-conventions  (record type, conventionally UpperCamelCase)
+def encode_definitions(
+        definitions: list[Partition],
+        *,
+        imports: bool,
+        disk: bool,
+        split: bool,
+        signed: bool,
+        rendered: bool = True) -> list[str]:
+    """Validate a partition layout and serialize it for an attribute.
+
+    `rendered = False` accepts label placeholders for a caller that renders them itself.
+    """
+    if not definitions and (split or not imports):
+        fail("repart: definitions may be empty only when assembling partition inputs")
+    if not disk and not split:
+        fail("repart: at least one of disk or split must be enabled")
+    names = {}
+    for definition in definitions:
+        if definition["name"] in names:
+            fail("repart: definition names must be unique")
+        names[definition["name"]] = True
+        label = definition["label"]
+        if rendered and label != None and "{" in label:
+            fail("repart: unrendered placeholder in label {!r}; render with format_partition_labels()".format(label))
+    signatures = [it for it in definitions if it["verity"] == "signature"]
+    if bool(signatures) != signed:
+        fail("repart: Verity=signature and signing credentials must be specified together")
+    return [json.encode(definition) for definition in definitions]
+
 PartitionInfo = record(
     definition = Partition,
     blocks = Artifact,
     metadata = Artifact,
-)
-
-RepartInfo = provider(
-    doc = "Independent partition artifacts produced by a split repart invocation.",
-    fields = {
-        "engine": provider_field(Dependency),
-        "partitions": provider_field(list[PartitionInfo]),
-    },
 )
 
 RootHashInfo = provider(
@@ -172,55 +187,32 @@ RootHashInfo = provider(
     },
 )
 
-DiskImageInfo = provider(
-    doc = "A raw disk and any independently available constituent partitions.",
+RepartInfo = provider(
+    doc = "A repart result containing an optional disk and any independent partition artifacts.",
     fields = {
-        "engine": provider_field(Dependency),
-        "image": provider_field(Artifact),
+        "disk": provider_field(Artifact | None, default = None),
         "partitions": provider_field(list[PartitionInfo]),
+        "root_hash": provider_field(RootHashInfo | None, default = None),
     },
 )
 
-def _partition_dict(value: Partition) -> dict[str, typing.Any]:
-    return {
-        "name": value.name,
-        "type": value.type,
-        "label": value.label,
-        "filesystem": value.filesystem,
-        "copy_files": value.copy_files,
-        "size_min": value.size_min,
-        "size_max": value.size_max,
-        "minimize": value.minimize,
-        "compression": value.compression,
-        "verity": value.verity,
-        "verity_match_key": value.verity_match_key,
-    }
-
-def _partition_from_dict(value: dict[str, typing.Any]) -> Partition:
-    return Partition(
-        name = value["name"],
-        type = value["type"],
-        label = value["label"],
-        filesystem = value["filesystem"],
-        copy_files = value["copy_files"],
-        size_min = value["size_min"],
-        size_max = value["size_max"],
-        minimize = value["minimize"],
-        compression = value["compression"],
-        verity = value["verity"],
-        verity_match_key = value["verity_match_key"],
-    )
+# buildifier: disable=name-conventions  (record type, conventionally UpperCamelCase)
+RepartOutput = record(
+    info = RepartInfo,
+    outputs = list[Artifact],
+    sub_targets = dict[str, list[Provider]],
+)
 
 def _verity_kind(definitions: list[Partition]) -> str | None:
     kind = None
     for definition in definitions:
-        if definition.verity != "data":
+        if definition["verity"] != "data":
             continue
         if kind != None:
             fail("repart: one invocation cannot produce more than one verity root hash")
-        if definition.type.startswith("usr"):
+        if definition["type"].startswith("usr"):
             kind = "usr"
-        elif definition.type.startswith("root"):
+        elif definition["type"].startswith("root"):
             kind = "root"
         else:
             fail("repart: Verity=data requires a usr or root partition type")
@@ -228,135 +220,180 @@ def _verity_kind(definitions: list[Partition]) -> str | None:
 
 def _partition_sub_targets(partitions: list[PartitionInfo]) -> dict[str, list[Provider]]:
     return {
-        partition.definition.name: [
+        partition.definition["name"]: [
             DefaultInfo(default_output = partition.blocks, other_outputs = [partition.metadata]),
         ]
         for partition in partitions
     }
 
-def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
-    image = ctx.attrs.image[ImageInfo]
-    definitions = [_partition_from_dict(json.decode(value)) for value in ctx.attrs.definitions]
-    imported = []
-    imported_root_hash = None
-    for dep in ctx.attrs.partitions:
-        info = dep[RepartInfo]
-        if info.engine != image.engine:
-            fail("repart: image and imported partitions must use the same engine")
-        imported.extend(info.partitions)
-        root_hash = dep.get(RootHashInfo)
-        if root_hash != None:
-            if imported_root_hash != None:
-                fail("repart: cannot combine multiple verity root hashes")
-            imported_root_hash = root_hash
-    names = [definition.name for definition in definitions] + [
-        partition.definition.name
-        for partition in imported
+# buildifier: disable=function-docstring-args
+# buildifier: disable=function-docstring-return
+def declare_repart(
+        ctx: AnalysisContext,
+        *,
+        image: ImageInfo,
+        definitions: list[str],
+        disk: bool = True,
+        split: bool = False,
+        imported: list[RepartInfo] = [],
+        imported_root_hash: RootHashInfo | None = None,
+        seed: str | None = None,
+        private_key: Artifact | None = None,
+        certificate: Artifact | None = None,
+        basename: str = "image",
+        identifier: str | None = None) -> RepartOutput:
+    """Declare repart actions from resolved image and partition providers."""
+    decoded = [json.decode(value) for value in definitions]
+    encode_definitions(
+        decoded,
+        disk = disk,
+        imports = bool(imported),
+        signed = private_key != None,
+        split = split,
+    )
+    if (private_key == None) != (certificate == None):
+        fail("repart: private_key and certificate must be specified together")
+
+    imported_partitions = []
+    for info in imported:
+        imported_partitions.extend(info.partitions)
+
+    names = [definition["name"] for definition in decoded] + [
+        partition.definition["name"]
+        for partition in imported_partitions
     ]
     if len(names) != len({name: True for name in names}):
         fail("repart: new and imported partition names must be unique")
 
-    cmd = terminal_image_command(image, ctx.attrs._driver)
-    cmd.add("--identity", str(ctx.label))
-    if ctx.attrs.seed != None:
-        cmd.add("--seed", ctx.attrs.seed)
-    if ctx.attrs.private_key != None:
-        cmd.add("--private-key", ctx.attrs.private_key)
-    if ctx.attrs.certificate != None:
-        cmd.add("--certificate", ctx.attrs.certificate)
+    cmd = terminal_image_command(image, ctx.attrs._tools[ImageToolsInfo].disk)
+    cmd.add("--identity", "{}[{}]".format(ctx.label, identifier or "repart"))
+    if seed != None:
+        cmd.add("--seed", seed)
+    if private_key != None:
+        cmd.add("--private-key", private_key)
+    if certificate != None:
+        cmd.add("--certificate", certificate)
     for definition in definitions:
-        cmd.add("--definition", json.encode(_partition_dict(definition)))
-    for value in imported:
+        cmd.add("--definition", definition)
+    for value in imported_partitions:
         cmd.add(
             "--partition",
-            json.encode(_partition_dict(value.definition)),
+            json.encode(value.definition),
             value.blocks,
             value.metadata,
         )
 
     outputs = []
-    partitions = []
-    if ctx.attrs.split:
-        for definition in definitions:
-            blocks = ctx.actions.declare_output("partitions/{}.raw".format(definition.name))
-            metadata = ctx.actions.declare_output("partitions/{}.json".format(definition.name))
-            cmd.add("--split-output", definition.name, blocks.as_output(), metadata.as_output())
+    new_partitions = []
+    if split:
+        for definition in decoded:
+            name = definition["name"]
+            blocks = declare_out(ctx, identifier, "partitions/{}.raw".format(name))
+            metadata = declare_out(ctx, identifier, "partitions/{}.json".format(name))
+            cmd.add("--split-output", name, blocks.as_output(), metadata.as_output())
             outputs.append(blocks)
-            partitions.append(PartitionInfo(definition = definition, blocks = blocks, metadata = metadata))
+            new_partitions.append(PartitionInfo(
+                definition = definition,
+                blocks = blocks,
+                metadata = metadata,
+            ))
 
     out = None
-    if ctx.attrs.disk:
-        out = ctx.actions.declare_output(ctx.attrs.basename + ".raw")
+    if disk:
+        out = declare_out(ctx, identifier, basename + ".raw")
         cmd.add("--out", out.as_output())
 
-    extra_providers = []
-    kind = _verity_kind(definitions)
+    kind = _verity_kind(decoded)
     if kind != None and imported_root_hash != None:
         fail("repart: cannot combine multiple verity root hashes")
     root_hash = imported_root_hash
     if kind != None:
-        hash_output = ctx.actions.declare_output("{}hash".format(kind))
+        hash_output = declare_out(ctx, identifier, "{}hash".format(kind))
         cmd.add("--root-hash-out", hash_output.as_output())
         root_hash = RootHashInfo(hash = hash_output, kind = kind)
-    if root_hash != None:
-        extra_providers.append(root_hash)
 
-    available_partitions = imported + partitions
+    available_partitions = imported_partitions + new_partitions
+    info = RepartInfo(
+        disk = out,
+        partitions = available_partitions,
+        root_hash = root_hash,
+    )
     sub_targets = {}
     if root_hash != None:
-        sub_targets["roothash"] = [DefaultInfo(default_output = root_hash.hash)]
+        sub_targets["roothash"] = [DefaultInfo(default_output = root_hash.hash), info]
 
-    providers = []
     if out != None:
+        outputs = [out]
         if available_partitions:
             sub_targets["partitions"] = [
                 DefaultInfo(
                     default_outputs = [partition.blocks for partition in available_partitions],
                     sub_targets = _partition_sub_targets(available_partitions),
                 ),
+                info,
             ]
-        providers.extend([
-            DefaultInfo(default_output = out, sub_targets = sub_targets),
-            DiskImageInfo(
-                engine = image.engine,
-                image = out,
-                partitions = available_partitions,
-            ),
-        ])
     else:
-        sub_targets.update(_partition_sub_targets(partitions))
-        providers.append(DefaultInfo(default_outputs = outputs, sub_targets = sub_targets))
-    if ctx.attrs.split:
-        providers.append(RepartInfo(engine = image.engine, partitions = available_partitions))
+        sub_targets.update(_partition_sub_targets(new_partitions))
+    ctx.actions.run(
+        cmd,
+        category = "repart_split" if split else "repart",
+        identifier = identifier or "repart",
+    )
+    return RepartOutput(info = info, outputs = outputs, sub_targets = sub_targets)
 
-    category = "repart"
-    if ctx.attrs.split:
-        category += "_split"
-    ctx.actions.run(cmd, category = category)
-    return providers + extra_providers
+def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
+    imported = []
+    imported_root_hash = None
+    for dep in ctx.attrs.partitions:
+        info = dep[RepartInfo]
+        imported.append(info)
+        root_hash = info.root_hash
+        if root_hash != None:
+            if imported_root_hash != None:
+                fail("repart: cannot combine multiple verity root hashes")
+            imported_root_hash = root_hash
+    result = declare_repart(
+        ctx,
+        basename = ctx.attrs.basename,
+        certificate = ctx.attrs.certificate,
+        definitions = ctx.attrs.definitions,
+        disk = ctx.attrs.disk,
+        image = ctx.attrs.image[ImageInfo],
+        imported = imported,
+        imported_root_hash = imported_root_hash,
+        private_key = ctx.attrs.private_key,
+        seed = ctx.attrs.seed,
+        split = ctx.attrs.split,
+    )
+    return [
+        DefaultInfo(default_outputs = result.outputs, sub_targets = result.sub_targets),
+        result.info,
+    ]
+
+REPART_ATTRS = {
+    "basename": attrs.string(default = "image", doc = "file name of the composed disk, without extension"),
+    "certificate": attrs.option(attrs.source(), default = None, doc = "PEM certificate for verity signing"),
+    "definitions": attrs.list(attrs.string(), doc = "serialized partition definitions"),
+    "private_key": attrs.option(attrs.source(), default = None, doc = "PEM key for verity signing"),
+    "seed": attrs.option(
+        attrs.string(),
+        default = None,
+        doc = "explicit GPT/partition UUID seed; by default derive one from target identity and definitions",
+    ),
+}
 
 _repart = rule(
     impl = _repart_impl,
-    attrs = {
-        "image": attrs.dep(providers = [ImageInfo], doc = "the logical image used to populate new partitions"),
-        "basename": attrs.string(default = "image", doc = "file name of the composed disk, without extension"),
-        "definitions": attrs.list(attrs.string(), doc = "serialized partition definitions"),
+    attrs = REPART_ATTRS | {
         "disk": attrs.bool(default = True, doc = "emit a composed raw disk image"),
+        "image": attrs.dep(providers = [ImageInfo], doc = "the logical image used to populate new partitions"),
         "partitions": attrs.list(
             attrs.dep(providers = [RepartInfo]),
             default = [],
             doc = "split repart targets whose partitions should be copied into the result",
         ),
         "split": attrs.bool(default = False, doc = "also emit independent artifacts for new partitions"),
-        "seed": attrs.option(
-            attrs.string(),
-            default = None,
-            doc = "explicit GPT/partition UUID seed; by default derive one from target identity and definitions",
-        ),
-        "private_key": attrs.option(attrs.source(), default = None, doc = "PEM key for verity signing"),
-        "certificate": attrs.option(attrs.source(), default = None, doc = "PEM certificate for verity signing"),
-        "_driver": attrs.dep(providers = [RunInfo], default = "tine//image_format:disk"),
-    },
+    } | IMAGE_TOOLS_ATTR,
 )
 
 # buildifier: disable=function-docstring-args
@@ -370,26 +407,17 @@ def repart(
         certificate: str | None = None,
         **kwargs) -> None:
     """Create a disk, independent partitions, or both."""
-    if not definitions and (split or not partitions):
-        fail("repart: definitions may be empty only when assembling partition inputs")
-    if not disk and not split:
-        fail("repart: at least one of disk or split must be enabled")
-    names = [definition.name for definition in definitions]
-    if len(names) != len({name: True for name in names}):
-        fail("repart: definition names must be unique")
-    for definition in definitions:
-        if definition.label != None and "{" in definition.label:
-            fail("repart: unrendered placeholder in label {!r}; render with format_partition_labels()".format(
-                definition.label,
-            ))
     if (private_key == None) != (certificate == None):
         fail("repart: private_key and certificate must be specified together")
-    signed = [definition for definition in definitions if definition.verity == "signature"]
-    if bool(signed) != (private_key != None):
-        fail("repart: Verity=signature and signing credentials must be specified together")
     _repart(
         name = name,
-        definitions = [json.encode(_partition_dict(value)) for value in definitions],
+        definitions = encode_definitions(
+            definitions,
+            disk = disk,
+            imports = bool(partitions),
+            signed = private_key != None,
+            split = split,
+        ),
         partitions = partitions,
         disk = disk,
         split = split,
@@ -401,27 +429,56 @@ def repart(
 # The disk conversion output formats, doubling as each artifact's extension.
 DISK_FORMATS = ["qcow2", "raw.zst"]
 
-def _disk_convert_impl(ctx: AnalysisContext) -> list[Provider]:
-    disk = ctx.attrs.disk[DiskImageInfo]
-    out = ctx.actions.declare_output(ctx.attrs.basename + "." + ctx.attrs.format)
+DiskConversionInfo = provider(
+    doc = "A composed raw disk re-encoded into one distributable format.",
+    fields = {
+        "format": provider_field(str),
+        "image": provider_field(Artifact),
+    },
+)
+
+# buildifier: disable=function-docstring-args
+# buildifier: disable=function-docstring-return
+def declare_disk_conversion(
+        ctx: AnalysisContext,
+        *,
+        disk: RepartInfo,
+        engine: Dependency,
+        format: str,
+        basename: str = "image",
+        identifier: str | None = None) -> DiskConversionInfo:
+    """Declare a disk format conversion from a resolved raw disk provider."""
+    if disk.disk == None:
+        fail("disk_convert: RepartInfo does not contain a composed disk")
+    out = declare_out(ctx, identifier, basename + "." + format)
     cmd = cmd_args(
-        chroot_run(engine = disk.engine[EngineInfo], exe = ctx.attrs._driver),
+        chroot_run(engine = engine[EngineInfo], exe = ctx.attrs._tools[ImageToolsInfo].convert),
         "--format",
-        ctx.attrs.format,
+        format,
         "--input",
-        disk.image,
+        disk.disk,
         "--out",
         out.as_output(),
     )
-    ctx.actions.run(cmd, category = "disk_convert", identifier = ctx.attrs.format)
-    return [DefaultInfo(default_output = out)]
+    ctx.actions.run(cmd, category = "disk_convert", identifier = identifier or format)
+    return DiskConversionInfo(format = format, image = out)
+
+def _disk_convert_impl(ctx: AnalysisContext) -> list[Provider]:
+    info = declare_disk_conversion(
+        ctx,
+        basename = ctx.attrs.basename,
+        disk = ctx.attrs.disk[RepartInfo],
+        engine = ctx.attrs.engine,
+        format = ctx.attrs.format,
+    )
+    return [DefaultInfo(default_output = info.image), info]
 
 disk_convert = rule(
     impl = _disk_convert_impl,
     attrs = {
-        "disk": attrs.dep(providers = [DiskImageInfo], doc = "the composed raw disk to re-encode"),
         "basename": attrs.string(default = "image", doc = "file name of the re-encoded disk, without extension"),
+        "disk": attrs.dep(providers = [RepartInfo], doc = "the composed raw disk to re-encode"),
+        "engine": attrs.dep(providers = [EngineInfo], doc = "execution environment supplying conversion tools"),
         "format": attrs.enum(DISK_FORMATS),
-        "_driver": attrs.dep(providers = [RunInfo], default = "tine//image_format:convert"),
-    },
+    } | IMAGE_TOOLS_ATTR,
 )

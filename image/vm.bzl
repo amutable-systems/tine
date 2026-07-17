@@ -1,19 +1,21 @@
 """Interactive virtual-machine image runners."""
 
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
-load("//image_format:disk.bzl", "DiskImageInfo")
+load("//image_format:disk.bzl", "RepartInfo")
 load("//image_format:sysext.bzl", "SysextImageInfo")
 
 def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
-    disk = ctx.attrs.image[DiskImageInfo]
+    disk = ctx.attrs.image[RepartInfo]
+    if disk.disk == None:
+        fail("image_vm: RepartInfo does not contain a composed disk")
     run = cmd_args(
         chroot_run(
-            engine = disk.engine[EngineInfo],
+            engine = ctx.attrs.engine[EngineInfo],
             exe = "systemd-vmspawn",
             relaxed = True,
         ),
         "--image",
-        disk.image,
+        disk.disk,
         "--console=native",
         "--ephemeral",
         "--kvm=yes",
@@ -75,7 +77,8 @@ image_vm = rule(
             default = {},
             doc = "non-secret system credentials passed to systemd-vmspawn",
         ),
-        "image": attrs.dep(providers = [DiskImageInfo], doc = "the raw disk image to boot ephemerally"),
+        "engine": attrs.dep(providers = [EngineInfo], doc = "execution environment supplying the VM stack"),
+        "image": attrs.dep(providers = [RepartInfo], doc = "the raw disk image to boot ephemerally"),
         "secure_boot": attrs.bool(
             default = False,
             doc = "boot with Secure Boot capable firmware",
