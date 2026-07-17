@@ -404,9 +404,8 @@ them as not installed rather than claiming files that are absent. They belong to
 an initrd needs neither, while the root filesystem it boots may want both. Each package system implements
 them in its own driver.
 
-Every `image_layer` exposes a `directory` subtarget which lazily materializes the complete logical image at
-that point. The layer's default output remains its persisted delta, and downstream image rules continue to
-consume `ImageInfo` rather than the directory artifact.
+An `image_layer` exposes only its persisted delta and `ImageInfo`. Materializing the complete stack is an
+explicit terminal operation, so logical image construction does not depend on an output-format subsystem.
 
 Package installation and image tooling remain separate concerns:
 
@@ -431,7 +430,7 @@ in are built; the universe target itself never forces a package build.
 
 Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
 needed. The catalog of terminal rules (`image_archive`, `image_directory`, `uki`, `repart`, `bootable`,
-`image_rpmdb`, `image_sbom`, `image_sysext`, `image_result`, `image_vm`) and the
+`image_rpmdb`, `image_sbom`, `image_sysext`, and `image_vm`) and the
 `rootfs_archive()`/`sysext_image()` convenience compositions are documented in [images.md](images.md).
 
 The rpm database and SBOMs are supply-chain outputs read from the assembled image, never shipped in it.
@@ -440,8 +439,10 @@ about, such as Go modules bundled into ELF binaries.
 
 Terminal rules leave the rpmdb and other package state intact — except `image_sysext`, which drops the
 rpm database: a merged extension must not shadow the host's. Image cleanup is an explicit, configurable
-layer so output formats do not silently alter image contents. Terminal rules apply deferred tmpfiles lines
-with `systemd-tmpfiles --root`; a missing tool is an error whenever finalization is needed. The directives
+layer so output formats do not silently alter image contents. Every terminal driver receives the same
+ordered layer stack and deferred tmpfiles snippets. It applies those snippets with
+`systemd-tmpfiles --root` before reading or emitting image content; a missing tool is an error whenever
+finalization is needed. The directives
 run against a disposable overlay upper and can create paths or restore modes and xattrs. Image-shipped
 tmpfiles configuration is not applied implicitly; enabling it will be an explicit output option once its
 single-UID/GID behavior is defined. Ownership and named ACL entries are deliberately unsupported: all
@@ -462,7 +463,7 @@ of first copying a directory artifact. Partition inputs are `RepartInfo` outputs
 their blocks are copied into the new disk with their resolved type and UUID preserved. Calls emit a disk by
 default. `split = True` additionally exposes each newly defined partition with normalized metadata alongside
 its block artifact; `disk = False` makes such a call partition-only. No partial disk is passed between
-actions. `DirectoryImageInfo` is an independent terminal view and is never an input to repart.
+actions. `image_directory` is an independent terminal view and is never an input to repart.
 
 Partition layouts are always explicit inputs; neither `repart` nor `bootable_disk_image` chooses one
 implicitly. The reusable conventional layouts are listed in [images.md](images.md).
@@ -492,9 +493,9 @@ root filesystem layer ──> identity layer ──> split /usr + verity ──>
                                                        v
                                               ESP layer
                                               │          │          │
-                                              │          │          └─> directory facet
-                                              │          └─> bootable facet
-                                              └─> split ESP + system partitions ─> disk facet
+                                              │          │          └─> explicit directory target
+                                              │          └─> explicit boot-artifact target
+                                              └─> split ESP + system partitions ─> public disk target
 ```
 
 The identity layer stamps `IMAGE_ID` and `IMAGE_VERSION` into the image's os-release. It is a separate
@@ -505,7 +506,7 @@ By default, the base initrd is a separate package image with `/init` pointing to
 `/etc/initrd-release` pointing to `/etc/os-release`, installing the release's `initrd` package set, so family
 catalog policy supplies concrete native package names. Callers can instead supply any logical image, and
 `bootable_disk_image` then skips the default initrd image entirely. The composition owns the cpio, since a
-macro cannot look through a `CpioArchiveInfo` target to the layer the supply-chain facets scan. `uki.py`
+macro cannot look through a `CpioArchiveInfo` target to the layer the supply-chain siblings scan. `uki.py`
 appends the kernel-modules cpio and runs `ukify`; the UKI is named `<image_id>_<version>_<arch>.efi` from the
 image identity. For now an image holds exactly one kernel — the name (and sysupdate's matching of it) could
 not distinguish more. If several kernels per image ever become a requirement, add naming configuration to
@@ -524,33 +525,40 @@ addon stub and joined into every UKI; a profile's arguments extend the shared ba
 the verity hash), and kernel arguments are last-wins, so profiles can also override it.
 
 A composed raw disk can be re-encoded into distributable formats without rebuilding it: `disk_convert`
-drives `qemu-img` for a compact qcow2 and `zstd` for a compressed raw, each carried as `ConvertedDiskInfo`.
-These are alternative encodings of the same disk, so `image_result` exposes them as format-named subtargets
-rather than default outputs.
+drives `qemu-img` for a compact qcow2 and `zstd` for a compressed raw. These are alternative encodings of
+the same disk and remain explicit sibling targets rather than default outputs.
 
-Bootability and output format are independent capabilities. A final target may return any combination of
-`BootableImageInfo`, `DiskImageInfo`, `DirectoryImageInfo`, `RpmdbInfo`, and `SbomInfo`, while continuing to
-return the underlying `ImageInfo`. Each facet records its source dependency, and `image_result` rejects
-facets that do not describe the image they are attached to. One facet supplies the target's default output;
-nested subtargets namespace all other views (the subtarget listing is shown in [images.md](images.md)).
+Bootability and output format are independent terminal capabilities. `bootable_disk_image()` publishes the
+disk at the requested target name and exposes the UKI directory and materialized directory as explicit
+sibling targets, without an aggregate rule that forwards unrelated outputs:
 
-Every facet but one is a different rendering of a single filesystem. `:boot-demo[bootable]`, `[disk]`,
-`[directory]`, `[rpmdb]`, and `[sbom]` all derive from the same ESP layer: the disk is that tree written into
-GPT partitions, the directory is that tree materialized, the rpm database is that tree's package database.
-They cannot disagree about which packages exist, and comparing source labels is what enforces it. The initrd
-is a second filesystem. It is a separate layer resolving its own package set, so it may contain packages that
-the root filesystem does not install, and its rpm database and SBOM describe different content. They are
-therefore declared against the initrd rather than the image, and stay reachable only through their
-subtargets: a target returns at most one provider of each type, and the top-level `RpmdbInfo`/`SbomInfo` are
-the root filesystem's.
+```text
+//examples/image:boot-demo.uki
+//examples/image:boot-demo[roothash]
+//examples/image:boot-demo[partitions][usr]
+//examples/image:boot-demo[partitions][esp]
+//examples/image:boot-demo.directory
+//examples/image:boot-demo.qcow2
+//examples/image:boot-demo.raw.zst
+//examples/image:boot-demo.rpmdb
+//examples/image:boot-demo.sbom
+//examples/image:boot-demo.initrd.rpmdb
+//examples/image:boot-demo.initrd.sbom
+```
 
-The bootable facet extracts semantic artifacts lazily from the completed logical image rather than
-forwarding whichever intermediate target created them. A shared selection manifest chooses the newest
-valid UKI by its embedded kernel release and extracts its `.linux` and `.initrd` sections. Without a UKI, it
-chooses the newest standalone kernel. In either case, bootability requires an initrd matching that exact
-release. A UKI remains an optional extraction: requesting it fails if the selected image has only standalone
-artifacts. Requesting a bootable or directory facet does not assemble the disk, and repart never
-materializes the directory facet.
+The disk, directory, rpm database, and SBOM siblings all derive from the same ESP layer. The initrd is a
+second filesystem with its own package closure, so its rpm database and SBOM are declared against that
+logical image and remain separate from the root filesystem's artifacts.
+
+The standalone `bootable` rule extracts semantic boot artifacts lazily from a completed logical image
+rather than forwarding whichever intermediate target created them; it earns its keep on images whose
+kernels arrive through package installation rather than a composition-built UKI. A boot-specific selector
+chooses the newest valid UKI by its embedded kernel release and writes a generic artifact manifest. The
+image artifact driver only extracts a named path or PE section from that manifest. Without a UKI, the
+selector chooses the newest standalone kernel. In either case, bootability requires an initrd matching that
+exact release. A UKI remains an optional extraction: requesting it fails if the selected image has only
+standalone artifacts. Building the directory sibling does not assemble the disk, and repart never
+materializes the directory.
 
 Repart derives stable UUID seeds from target identity and logical configuration; callers can override them
 explicitly. VM runners are declared separately from disk composition. Runtime policy is passed to `image_vm`

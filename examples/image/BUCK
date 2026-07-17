@@ -16,7 +16,6 @@ package_manager(
 )
 
 # Minimal install + ordered-ops demo. `:demo` is the tar; `:demo.layer` is the logical image.
-# `rpmdb = True` also captures the trimmed rpm database on a normal build (`:demo[rpmdb]`).
 rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
@@ -26,7 +25,6 @@ rootfs_archive(
         run(["/usr/bin/bash", "-c", "echo built-by-tine > /etc/tine/marker"]),
     ],
     format = "tar",
-    rpmdb = True,
 )
 
 # Base-only image exercising a single-component delta stack.
@@ -127,8 +125,8 @@ image_archive(
 )
 
 # Bootable GPT image; `buck run :boot-demo-vm` starts it with the engine's vmspawn stack.
-# `rpmdb`/`sbom` expose the supply-chain facets: `:boot-demo[rpmdb]` and `:boot-demo[sbom]`. The raw
-# disk re-encodes on demand as `:boot-demo[qcow2]` and `:boot-demo[raw.zst]`.
+# Supply-chain siblings such as `:boot-demo.rpmdb` and `:boot-demo.sbom` build on demand, and the raw
+# disk re-encodes on demand as `:boot-demo.qcow2` and `:boot-demo.raw.zst`.
 bootable_disk_image(
     name = "boot-demo",
     package_manager = ":image.package-manager",
@@ -158,8 +156,6 @@ bootable_disk_image(
     esp_files = {"/boot/extensions/demo-ext.raw.v/demo-ext_0_x86-64.raw": ":demo-ext"},
     # A shipped appliance has no terminal to read a man page on.
     install_docs = False,
-    rpmdb = True,
-    sbom = True,
 )
 
 image_vm(
@@ -192,7 +188,6 @@ sysext_image(
     base = ":boot-demo.layer",
     ops = [install(["zsh"])],
     install_docs = False,
-    rpmdb = True,
 )
 
 # Replacing a populated directory exercises the opaque-dir marker.
@@ -226,7 +221,7 @@ image_archive(
 )
 
 # Standalone SBOM generation: the `image_sbom` rule used directly on a layer, as opposed to the
-# `sbom = True` ride-along on `:boot-demo`. Runs against the quick `:demo.layer` as a cheap smoke
+# composition-declared `:demo.sbom` sibling. Runs against the quick `:demo.layer` as a cheap smoke
 # test. Emits both SPDX and CycloneDX; `:demo-sbom` builds both.
 image_sbom(
     name = "demo-sbom",

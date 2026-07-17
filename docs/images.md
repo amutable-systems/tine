@@ -131,7 +131,7 @@ when needed:
 
 - `image_archive` writes deterministic tar or newc cpio archives, optionally zstd-compressed
   (`compression = "zstd"`), and provides `CpioArchiveInfo` for the latter;
-- `image_directory` materializes a Buck directory artifact and provides `DirectoryImageInfo`;
+- `image_directory` materializes a Buck directory artifact;
 - `uki` builds the unified kernel image for the image's single installed kernel from one or more
   `CpioArchiveInfo` dependencies, named `<image_id>_<version>_<arch>.efi` (defaults: target name and
   `0`; systemd architecture spelling, e.g. `x86-64`), the shape systemd-sysupdate UKI transfers
@@ -139,16 +139,14 @@ when needed:
   sd-boot menu entries, each appending its arguments to the base kernel command line;
 - `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
   GPT disk with `DiskImageInfo`, independent partition artifacts with `split = True`, or both;
-- `bootable` selects a kernel and matching initrd from a logical image and provides `BootableImageInfo`;
+- `bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
+  and `[initrd]` subtargets;
 - `image_rpmdb` copies the image's rpm database out as a separate artifact, trimmed to the `Packages`
-  table alone, and provides `RpmdbInfo`;
-- `image_sbom` runs `syft` over the assembled tree in one scan, emitting SPDX and CycloneDX SBOMs and
-  providing `SbomInfo`;
+  table alone;
+- `image_sbom` runs `syft` over the assembled tree in one scan, emitting SPDX and CycloneDX SBOMs;
 - `image_sysext` builds a systemd-sysext(8) DDI (unsigned for now) with `systemd-repart`, containing
   `/usr`, `/opt`, and `extension-release.<name>`, and provides `SysextImageInfo`; with `base`, only the
   delta layered above that image is packaged, and the extension-release pins the base's `ID`/`VERSION_ID`;
-- `image_result` aggregates independent facets of the same logical image without creating another
-  artifact;
 - `image_vm` runs the raw image ephemerally with the engine's `systemd-vmspawn`, QEMU, and OVMF stack,
   and binds all given `sysexts` DDIs into the guest at `/var/lib/extensions`, where systemd-sysext merges
   them at boot. With `secure_boot`, vmspawn picks Secure Boot capable firmware without pre-enrolled keys,
@@ -160,10 +158,10 @@ an archive; `image_archive` remains the terminal rule for archiving an existing 
 `sysext_image()` is the equivalent composition for a system-extension DDI. Every composition takes
 `install_docs` and passes it to the layer it builds.
 
-The rpm database and SBOM facets can also ride along on a normal build: `image_archive` (and
-`rootfs_archive`) accept `rpmdb`/`sbom` flags that fold the artifacts into `other_outputs`,
-`sysext_image` likewise accepts `rpmdb`, and `bootable_disk_image` exposes both as `image_result` facets,
-for the root filesystem and the initrd each.
+Every composition declares the rpm database and SBOM as explicit `<name>.rpmdb`/`<name>.sbom` sibling
+targets; `bootable_disk_image` declares them for both the root filesystem and initrd. Buck builds a
+sibling only when it is requested, so the declarations cost nothing on a default build (a wildcard
+build like `//...` does build them all).
 
 ### bootable_disk_image
 
@@ -194,10 +192,6 @@ Optional attributes:
   partition carries) to a source target copied onto the ESP.
 - `install_docs` (boolean): Passed to the root filesystem layer; the default initrd never installs
   documentation regardless.
-- `rpmdb` (boolean): Attach the `image_rpmdb` facets, exposed as the `[rpmdb]` and `[initrd.rpmdb]`
-  subtargets.
-- `sbom` (boolean): Attach the `image_sbom` facets, exposed as the `[sbom]` and `[initrd.sbom]`
-  subtargets.
 - `image_id` (string): The image identity, stamped into the image's os-release as `IMAGE_ID`.
   Defaults to the target name; a product should set it explicitly so that renaming a Buck target
   cannot re-identify the installed OS (systemd-sysupdate matches partitions and UKIs by this
@@ -217,29 +211,26 @@ rebuild under an unchanged version puts different content behind identical names
 cannot distinguish from the release a device already installed, and so never applies. The release pipeline
 that publishes update artifacts must enforce version immutability by rejecting an already-published version.
 
-A final target may return several independent facets; one supplies the
-target's default output, and nested subtargets namespace all other views:
+The requested target name is the raw disk. Other terminal views are explicit sibling targets:
 
 ```text
-//examples/image:boot-demo[bootable][uki]
-//examples/image:boot-demo[bootable][kernel]
-//examples/image:boot-demo[bootable][initrd]
-//examples/image:boot-demo[disk][roothash]
-//examples/image:boot-demo[disk][partitions][usr]
-//examples/image:boot-demo[disk][partitions][esp]
-//examples/image:boot-demo[directory]
-//examples/image:boot-demo[qcow2]
-//examples/image:boot-demo[raw.zst]
-//examples/image:boot-demo[rpmdb]
-//examples/image:boot-demo[sbom]
-//examples/image:boot-demo[initrd.rpmdb]
-//examples/image:boot-demo[initrd.sbom]
+//examples/image:boot-demo.uki
+//examples/image:boot-demo[roothash]
+//examples/image:boot-demo[partitions][usr]
+//examples/image:boot-demo[partitions][esp]
+//examples/image:boot-demo.directory
+//examples/image:boot-demo.qcow2
+//examples/image:boot-demo.raw.zst
+//examples/image:boot-demo.rpmdb
+//examples/image:boot-demo.sbom
+//examples/image:boot-demo.initrd.rpmdb
+//examples/image:boot-demo.initrd.sbom
 ```
 
-The `[qcow2]` and `[raw.zst]` subtargets re-encode the raw disk into a compact qcow2 or a compressed raw on
-demand; Buck only runs the conversion actually requested, so they add nothing to a default build.
+The `.qcow2` and `.raw.zst` sibling targets re-encode the raw disk into a compact qcow2 or a compressed raw
+on demand; Buck only runs the conversion actually requested, so they add nothing to a default build.
 
-The `initrd.*` subtargets describe the initrd, which resolves its own package closure and may therefore
+The `.initrd.*` siblings describe the initrd, which resolves its own package closure and may therefore
 contain packages that the root filesystem does not install. Nothing scans the initrd once it is a cpio inside
 the UKI's PE, so it carries its own artifacts rather than being folded into the root filesystem's. Keeping
 them separate also preserves the distinction a vulnerability triage needs: a package reachable only during
@@ -269,8 +260,8 @@ tine/tools/buck build //packages/fedora/rawhide:zlib-ng
 tine/tools/buck build //examples/image:demo
 tine/tools/buck build //examples/image:layered-install
 tine/tools/buck build //examples/image:boot-demo
-tine/tools/buck build '//examples/image:boot-demo[bootable][uki]'
-tine/tools/buck build '//examples/image:boot-demo[disk][partitions][usr]'
+tine/tools/buck build //examples/image:boot-demo.uki
+tine/tools/buck build '//examples/image:boot-demo[partitions][usr]'
 tine/tools/buck build //examples/image:demo-ext
 tine/tools/buck build //examples/image-local-packages:image
 ```

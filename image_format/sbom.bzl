@@ -2,20 +2,11 @@
 
 This is a supply-chain output, not shipped in the image. The rule mounts the image's delta
 stack with a disposable overlay upper (like `image_archive`/`image_directory`) and writes both
-SBOMs from a single scan. `image_archive`/`rootfs_archive` can fold them into a normal build.
+SBOMs from a single scan. Compositions expose them as an explicit `<name>.sbom` sibling target.
 """
 
 load("//image:actions.bzl", "terminal_image_command")
 load("//image:layer.bzl", "ImageInfo")
-
-SbomInfo = provider(
-    doc = "SPDX and CycloneDX SBOMs generated from a logical image.",
-    fields = {
-        "cdx": provider_field(Artifact),
-        "source": provider_field(Dependency),
-        "spdx": provider_field(Artifact),
-    },
-)
 
 def _image_sbom_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
@@ -28,11 +19,9 @@ def _image_sbom_impl(ctx: AnalysisContext) -> list[Provider]:
     cmd.add("--spdx", spdx.as_output())
     cmd.add("--cdx", cdx.as_output())
     ctx.actions.run(cmd, category = "image_sbom")
-    return [
-        # One syft run emits both formats; there is no per-format selection.
-        DefaultInfo(default_outputs = [spdx, cdx]),
-        SbomInfo(cdx = cdx, source = ctx.attrs.image, spdx = spdx),
-    ]
+
+    # One syft run emits both formats; there is no per-format selection.
+    return [DefaultInfo(default_outputs = [spdx, cdx])]
 
 image_sbom = rule(
     impl = _image_sbom_impl,

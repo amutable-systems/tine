@@ -56,17 +56,6 @@ def uki_profile(id: str, title: str, cmdline: list[str]) -> UkiProfile:
             fail("uki_profile: cmdline arguments cannot be empty")
     return UkiProfile(id = id, title = title, cmdline = cmdline)
 
-BootableImageInfo = provider(
-    doc = "A logical image with a selected kernel and matching initrd.",
-    fields = {
-        "engine": provider_field(Dependency),
-        "initrd": provider_field(Artifact),
-        "kernel": provider_field(Artifact),
-        "source": provider_field(Dependency),
-        "uki": provider_field(Artifact),
-    },
-)
-
 def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
     out = ctx.actions.declare_output("ukis", dir = True)
@@ -178,17 +167,12 @@ def _bootable_impl(ctx: AnalysisContext) -> list[Provider]:
         artifacts[kind] = out
         sub_targets[kind] = [DefaultInfo(default_output = out)]
 
+    # A UKI is not guaranteed to exist (kernels can ship as plain files), so the default
+    # outputs stay limited to the artifacts selection always yields; [uki] extracts on demand.
     return [
         DefaultInfo(
             default_outputs = [artifacts["kernel"], artifacts["initrd"]],
             sub_targets = sub_targets,
-        ),
-        BootableImageInfo(
-            engine = image.engine,
-            initrd = artifacts["initrd"],
-            kernel = artifacts["kernel"],
-            source = ctx.attrs.image,
-            uki = artifacts["uki"],
         ),
     ]
 

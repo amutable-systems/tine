@@ -15,7 +15,6 @@ load("//image_format:sysext.bzl", "image_sysext")
 load(
     ":boot.bzl",
     "UkiProfile",  # @unused Used as a type.
-    "bootable",
     "install_systemd_boot",
     "uki",
 )
@@ -30,7 +29,6 @@ load(
     "remove",
     "symlink",
 )
-load(":result.bzl", "image_result")
 
 def rootfs_archive(
         name: str,
@@ -40,8 +38,6 @@ def rootfs_archive(
         format: str = "tar",
         compression: str = "none",
         install_docs: bool = True,
-        rpmdb: bool = False,
-        sbom: bool = False,
         version: str = "0",
         visibility: list[str] | None = None) -> None:
     """Build a root filesystem from ordered operations and archive it."""
@@ -56,21 +52,23 @@ def rootfs_archive(
         tmpfiles = tmpfiles,
         install_docs = install_docs,
     )
-    rpmdb_facet = None
-    if rpmdb:
-        image_rpmdb(name = name + ".rpmdb", image = ":" + name + ".layer")
-        rpmdb_facet = ":" + name + ".rpmdb"
-    sbom_facet = None
-    if sbom:
-        image_sbom(name = name + ".sbom", image = ":" + name + ".layer", source_name = name, version = version)
-        sbom_facet = ":" + name + ".sbom"
+    image_rpmdb(
+        name = name + ".rpmdb",
+        image = ":" + name + ".layer",
+        visibility = visibility,
+    )
+    image_sbom(
+        name = name + ".sbom",
+        image = ":" + name + ".layer",
+        source_name = name,
+        version = version,
+        visibility = visibility,
+    )
     image_archive(
         name = name,
         image = ":" + name + ".layer",
         format = format,
         compression = compression,
-        rpmdb = rpmdb_facet,
-        sbom = sbom_facet,
         visibility = visibility,
     )
 
@@ -83,7 +81,7 @@ def sysext_image(
         release: dict[str, str] = {},
         seed: str | None = None,
         install_docs: bool = True,
-        rpmdb: bool = False,
+        version: str = "0",
         visibility: list[str] | None = None) -> None:
     """Build a systemd system-extension DDI from ordered operations.
 
@@ -108,17 +106,24 @@ def sysext_image(
         tmpfiles = tmpfiles,
         install_docs = install_docs,
     )
-    rpmdb_facet = None
-    if rpmdb:
-        image_rpmdb(name = name + ".rpmdb", image = ":" + name + ".layer")
-        rpmdb_facet = ":" + name + ".rpmdb"
+    image_rpmdb(
+        name = name + ".rpmdb",
+        image = ":" + name + ".layer",
+        visibility = visibility,
+    )
+    image_sbom(
+        name = name + ".sbom",
+        image = ":" + name + ".layer",
+        source_name = name,
+        version = version,
+        visibility = visibility,
+    )
     image_sysext(
         name = name,
         image = ":" + name + ".layer",
         base = base,
         release = release,
         seed = seed,
-        rpmdb = rpmdb_facet,
         visibility = visibility,
     )
 
@@ -163,8 +168,6 @@ def bootable_disk_image(
         verity_certificate: str | None = None,
         esp_files: dict[str, str] = {},
         install_docs: bool = True,
-        rpmdb: bool = False,
-        sbom: bool = False,
         image_id: str | None = None,
         version: str = "0",
         visibility: list[str] | None = None) -> None:
@@ -185,7 +188,7 @@ def bootable_disk_image(
     if initrd == None:
         initrd = _default_initrd(name, ":" + name + ".image")
 
-    # The composition owns the cpio so that the supply-chain facets can scan the initrd (see design.md).
+    # The composition owns the cpio so that the supply-chain siblings can scan the initrd (see design.md).
     image_archive(
         name = name + ".initrd",
         image = initrd,
@@ -233,6 +236,7 @@ def bootable_disk_image(
         image_id = image_id,
         version = version,
         root_hash = ":" + name + ".partitions" if verity else None,
+        visibility = visibility,
     )
     esp_ops = [
         copy(
@@ -257,81 +261,55 @@ def bootable_disk_image(
         ops = esp_ops,
     )
     repart(
-        name = name + ".disk",
+        name = name,
         image = ":" + name + ".esp.layer",
         definitions = boot_definitions,
         partitions = [":" + name + ".partitions"],
         split = True,
         seed = disk_seed,
-    )
-    bootable(
-        name = name + ".bootable",
-        image = ":" + name + ".esp.layer",
+        visibility = visibility,
     )
     image_directory(
         name = name + ".directory",
         image = ":" + name + ".esp.layer",
+        visibility = visibility,
     )
 
-    # Alternative disk encodings are always addressable (e.g. `:name[qcow2]`); Buck only re-encodes
+    # Alternative disk encodings are always addressable siblings (e.g. `:name.qcow2`); Buck only re-encodes
     # the one that is actually requested, so exposing them all costs nothing on a default build.
-    conversions = []
     for format in DISK_FORMATS:
         disk_convert(
-            name = "{}.disk.{}".format(name, format),
-            disk = ":" + name + ".disk",
+            name = "{}.{}".format(name, format),
+            disk = ":" + name,
             format = format,
+            visibility = visibility,
         )
-        conversions.append(":{}.disk.{}".format(name, format))
 
-    # Supply-chain facets scan the same layer image_result aggregates, so their source labels match.
-    # The initrd is scanned too, under the same flags: it resolves its own package closure, so it can
-    # ship packages the root filesystem does not.
-    rpmdb_facet = None
-    initrd_rpmdb_facet = None
-    if rpmdb:
-        image_rpmdb(
-            name = name + ".rpmdb",
-            image = ":" + name + ".esp.layer",
-        )
-        rpmdb_facet = ":" + name + ".rpmdb"
-        image_rpmdb(
-            name = name + ".initrd.rpmdb",
-            image = initrd,
-        )
-        initrd_rpmdb_facet = ":" + name + ".initrd.rpmdb"
-    sbom_facet = None
-    initrd_sbom_facet = None
-    if sbom:
-        image_sbom(
-            name = name + ".sbom",
-            image = ":" + name + ".esp.layer",
-            source_name = name,
-            version = version,
-        )
-        sbom_facet = ":" + name + ".sbom"
-
-        # A distinct source name keeps the two documents apart, including their normalized ids.
-        image_sbom(
-            name = name + ".initrd.sbom",
-            image = initrd,
-            source_name = name + ".initrd",
-            version = version,
-        )
-        initrd_sbom_facet = ":" + name + ".initrd.sbom"
-
-    image_result(
-        name = name,
+    # The initrd resolves its own package closure, so keep its supply-chain outputs separate from
+    # the root filesystem's. Every artifact is an explicit sibling terminal target.
+    image_rpmdb(
+        name = name + ".rpmdb",
         image = ":" + name + ".esp.layer",
-        bootable = ":" + name + ".bootable",
-        conversions = conversions,
-        directory = ":" + name + ".directory",
-        disk = ":" + name + ".disk",
-        initrd = initrd,
-        initrd_rpmdb = initrd_rpmdb_facet,
-        initrd_sbom = initrd_sbom_facet,
-        rpmdb = rpmdb_facet,
-        sbom = sbom_facet,
-        default_facet = "disk",
+        visibility = visibility,
+    )
+    image_rpmdb(
+        name = name + ".initrd.rpmdb",
+        image = initrd,
+        visibility = visibility,
+    )
+    image_sbom(
+        name = name + ".sbom",
+        image = ":" + name + ".esp.layer",
+        source_name = name,
+        version = version,
+        visibility = visibility,
+    )
+
+    # A distinct source name keeps the two documents apart, including their normalized ids.
+    image_sbom(
+        name = name + ".initrd.sbom",
+        image = initrd,
+        source_name = name + ".initrd",
+        version = version,
         visibility = visibility,
     )

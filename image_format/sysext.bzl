@@ -8,7 +8,6 @@ that image is packaged, and the extension-release pins the base's ID/VERSION_ID.
 
 load("//image:actions.bzl", "terminal_image_command")
 load("//image:layer.bzl", "ImageInfo")
-load(":rpmdb.bzl", "RpmdbInfo")
 
 SysextImageInfo = provider(
     doc = "A systemd system-extension DDI generated from a logical image.",
@@ -16,7 +15,6 @@ SysextImageInfo = provider(
         "engine": provider_field(Dependency),
         "extension": provider_field(str),
         "image": provider_field(Artifact),
-        "source": provider_field(Dependency),
     },
 )
 
@@ -49,25 +47,14 @@ def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
     cmd.add("--out", out.as_output())
     ctx.actions.run(cmd, category = "image_sysext")
 
-    # The rpm database is dropped from the DDI; the sidecar rides along like on image_archive.
-    providers = []
-    sidecars = []
-    sub_targets = {}
-    if ctx.attrs.rpmdb != None:
-        info = ctx.attrs.rpmdb[DefaultInfo]
-        sidecars.extend(info.default_outputs)
-        sub_targets["rpmdb"] = [info]
-        providers.append(ctx.attrs.rpmdb[RpmdbInfo])
-
     return [
-        DefaultInfo(default_output = out, other_outputs = sidecars, sub_targets = sub_targets),
+        DefaultInfo(default_output = out),
         SysextImageInfo(
             engine = image.engine,
             extension = extension,
             image = out,
-            source = ctx.attrs.image,
         ),
-    ] + providers
+    ]
 
 image_sysext = rule(
     impl = _image_sysext_impl,
@@ -89,7 +76,6 @@ image_sysext = rule(
             default = {},
             doc = "extension-release fields, overriding the defaults",
         ),
-        "rpmdb": attrs.option(attrs.dep(providers = [RpmdbInfo]), default = None, doc = "rpmdb artifact to ride along"),
         "seed": attrs.option(
             attrs.string(),
             default = None,

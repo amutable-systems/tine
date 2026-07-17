@@ -178,16 +178,6 @@ DiskImageInfo = provider(
         "engine": provider_field(Dependency),
         "image": provider_field(Artifact),
         "partitions": provider_field(list[PartitionInfo]),
-        "source": provider_field(Dependency),
-    },
-)
-
-ConvertedDiskInfo = provider(
-    doc = "A composed raw disk image re-encoded into a distributable output format.",
-    fields = {
-        "format": provider_field(str),
-        "image": provider_field(Artifact),
-        "source": provider_field(Dependency),
     },
 )
 
@@ -331,7 +321,6 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
                 engine = image.engine,
                 image = out,
                 partitions = available_partitions,
-                source = ctx.attrs.image,
             ),
         ])
     else:
@@ -424,10 +413,7 @@ def _disk_convert_impl(ctx: AnalysisContext) -> list[Provider]:
         out.as_output(),
     )
     ctx.actions.run(cmd, category = "disk_convert", identifier = ctx.attrs.format)
-    return [
-        DefaultInfo(default_output = out),
-        ConvertedDiskInfo(format = ctx.attrs.format, image = out, source = disk.source),
-    ]
+    return [DefaultInfo(default_output = out)]
 
 disk_convert = rule(
     impl = _disk_convert_impl,
