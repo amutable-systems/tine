@@ -12,18 +12,22 @@ _CPU_SETTING = {
 def _tool_impl(ctx: AnalysisContext) -> list[Provider]:
     return [
         DefaultInfo(default_output = ctx.attrs.src),
-        RunInfo(args = cmd_args(ctx.attrs.src)),
+        RunInfo(args = cmd_args(ctx.attrs.src, ctx.attrs.args)),
     ]
 
 _tool = rule(
     impl = _tool_impl,
-    attrs = {"src": attrs.source()},
+    attrs = {
+        "args": attrs.list(attrs.string(), default = []),
+        "src": attrs.source(),
+    },
 )
 
 # buildifier: disable=function-docstring-args
 def http_tool(
         name: str,
         platforms: dict[str, dict[str, str]],
+        args: list[str] | None = None,
         path: str | None = None,
         visibility: list[str] | None = None) -> None:
     """Pin a raw binary or archive member for each supported CPU."""
@@ -46,4 +50,4 @@ def http_tool(
             urls = urls,
         )
         src = ":{}-download[{}]".format(name, path)
-    _tool(name = name, src = src, visibility = visibility)
+    _tool(name = name, args = args or [], src = src, visibility = visibility)
