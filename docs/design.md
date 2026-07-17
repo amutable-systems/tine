@@ -69,12 +69,13 @@ PackageSystemInfo (RPM drivers)
         │                           ├── RepositoryUniverseInfo
         │                           │          │
         └───────────────────────────┴── OsReleaseInfo
-                                               ├── engine lock ── EngineInfo ──┬── rpm_package
-                                               │                              ├── image tooling
-                                               │                              │
-                                               └──────────────────────────────┴── PackageManagerInfo
-                                                                            ├── image installation
-                                                                            └── BuildrootInfo ── rpm_package
+                                               ├── engine transaction ── EngineInfo ──┬── rpm_package
+                                               │                                     ├── image tooling
+                                               │                                     │
+                                               └─────────────────────────────────────┴── PackageManagerInfo
+                                                                                   ├── image installation
+                                                                                   └── BuildrootInfo
+                                                                                          └── rpm_package
 ```
 
 The providers have deliberately narrow roles:
@@ -119,17 +120,22 @@ base root, not OS identity alone, is its relevant input.
 
 ### Catalog pinning and refresh
 
-Normal builds do not resolve against live network repositories. The catalog contains two generated forms
-of committed lock data:
+Normal builds do not resolve against live network repositories. The catalog contains one required and one
+optional generated form:
 
 - `snapshot/repo/<name>.json` pins filtered `repomd.xml`, the primary/filelists/group streams needed by
   libdnf5, and the complete primary-metadata package inventory keyed by SHA-256 `pkgid`;
-- `snapshot/engine/<name>.json` pins the engine transaction. Remote records contain
+- `snapshot/engine/<name>.json` optionally freezes an engine transaction. Remote records contain
   `{source, repo, pkgid, nevra, url, size}`: `pkgid` verifies the bytes, while `url` and `size` record the
   last known transport after rolling repository metadata stops advertising that package. The target's
   `.repository` or `.engine` suffix is not repeated in the snapshot filename.
 
-`tine/tools/buck run tine//tools:refresh-catalog` refreshes them in three phases:
+An engine with `resolver_engine` and no committed transaction resolves through that predecessor as a normal
+cacheable build action. The generated transaction is an input to the existing dynamic package selectors,
+so the engine builds in one invocation without mutating the source tree. Its package selection changes only
+when its authored policy, resolver engine, or pinned repository inputs change.
+
+`tine/tools/buck run tine//tools:refresh-catalog` refreshes them in two phases:
 
 0. Advance every repository pinned to an rpmrepo mirror (declared through the release macro's
    `rpmrepo_mirror`/`rpmrepo_snapshot` and carried on the target as `rpmrepo.*` metadata) to the
@@ -139,17 +145,17 @@ of committed lock data:
    repodata, drops unused streams, validates package locations, and atomically writes deterministic, pure
    snapshot JSON. It does not carry packages forward from an earlier snapshot.
 2. Run the selected engines' `[resolve]` sub-targets against the freshly pinned repository trees and
-   atomically replace their transactions. The target engine's release, repository selection, package list,
-   and architecture define the solve.
+   atomically replace their optional frozen transactions. The target engine's release, repository
+   selection, package list, and architecture define the solve.
 
 The catalog tool discovers the active `catalog` cell with Buck and always reads and writes snapshots in
 that cell's directory. `--engine` limits which engine transactions are resolved; repository snapshots are
 always refreshed together.
 
-A committed engine lock itself retains any package transport needed to build that engine. The repository
+A committed engine lock retains any package transport needed to build that exact transaction. The repository
 package pool combines those retained transports with its current snapshot, so every intermediate refresh
-state remains buildable and an interrupted refresh can simply be re-run. Transitional repository snapshots
-are unnecessary.
+state remains buildable and an interrupted refresh can simply be re-run. A lockless engine always resolves
+from the current pinned snapshot and therefore needs no retained transport for packages absent from it.
 
 Transport retention does not turn a rolling mirror into an archive. A URL may eventually disappear; a
 clean-cache rebuild then needs a durable archive/content store, while an already fetched artifact can still
@@ -161,15 +167,15 @@ are ordinary Buck source inputs, so changes invalidate only consumers of the cha
 
 `rpm_remote_repository()` derives its optional snapshot by stripping `.repository` from the target name and
 looking under `snapshot/repo/`. This lets a new repository target analyze before its first refresh;
-consuming its empty package pool fails with an explicit instruction to refresh the catalog. An established
-engine that resolves itself needs a usable committed bootstrap transaction. A new engine may instead seed
-an internal empty lock by setting `resolver_engine` to a working predecessor. The predecessor supplies only
-the execution environment for `plan.py`; the new engine's release, repositories, packages, and architecture
-still define the resulting transaction. Refreshing the catalog creates the derived lock path.
+consuming its empty package pool fails with an explicit instruction to refresh the catalog. An engine that
+resolves itself needs a usable committed bootstrap transaction. A new engine instead names a working
+`resolver_engine`; the predecessor supplies only the execution environment for `plan.py`, while the new
+engine's release, repositories, packages, and architecture define the generated transaction. Refreshing the
+catalog is optional for that engine and freezes the generated result at the conventional lock path.
 
 The refresh convention keeps repository and engine declarations plus their generated JSON in the active
 catalog's root Buck package, with generated data grouped under `snapshot/{repo,engine}/`. This makes
-target-name-derived paths and the package-local `snapshot/engine/*.json` retention inputs agree.
+target-name-derived paths and the package-local optional `snapshot/engine/*.json` retention inputs agree.
 
 ### Authoritative repository package pools
 
@@ -203,23 +209,30 @@ Why repository ownership matters:
 
 ### Engine bootstrap
 
-An engine is a pinned execution environment built from one base OS release. It supplies rpm, Python,
+An engine is a reproducible execution environment built from one base OS release. It supplies rpm, Python,
 libdnf5, `createrepo_c`, core utilities, sandbox dependencies, and currently the image-building/VM tools.
 The base release identifies where this userspace came from, not the only release it may operate on.
 
-An engine normally uses its own completed root to run its `[resolve]` command. During a bootstrap or tooling
-transition, `resolver_engine` can point at a predecessor root instead. This edge is deliberately one-way:
-it changes where resolution executes, not the repositories, requested packages, architecture, or root built
-for the new engine. Engine resolution does not consume package-manager priority policy; its repositories use
-the native default priority until bootstrap needs an explicit policy of its own.
+A lockless engine uses `resolver_engine` to produce its build transaction and perform the authoritative RPM
+installation. Its target root therefore contains only the requested packages and their dependencies; it
+does not need Python, libdnf5, rpm, or other construction tools unless they are part of its intended runtime.
+A locked engine can use its own completed root to run the explicit `[resolve]` update command; during a
+bootstrap or tooling transition, a predecessor may run that command instead. This edge is deliberately
+one-way: it changes where resolution and installation execute, not the repositories, requested packages,
+architecture, or root built for the new engine. Engine resolution does not consume package-manager priority
+policy; its repositories use the native default priority until bootstrap needs an explicit policy of its own.
 
-Bootstrapping breaks the dependency on host RPM tooling in two stages:
+Only a root engine without a predecessor bootstraps its own installation tools in two stages:
 
-1. The repository pool supplies pre-decompressed payload cpio artifacts for the locked engine transaction.
+1. The repository pool supplies pre-decompressed payload cpio artifacts for the effective engine transaction.
    The minimal `extract.py`/`cpio.py` path unpacks them into `chroot1` without running scriptlets or creating
    an rpmdb.
 2. The package-system installer runs from `chroot1` and properly installs the raw RPM closure into
    `chroot2`, including scriptlets and the rpmdb. `chroot2` becomes the reusable `EngineInfo` root.
+
+Engine configuration prefers a target-provided systemd factory `nsswitch.conf`, but writes a deterministic
+files/DNS fallback for minimal roots. Resolver integration and target configuration therefore do not impose
+specific implementation packages on a derived engine.
 
 The bootstrap extractor currently supports the RPM v4/newc form used by the pinned Fedora repository. It
 does not implement RPM v6's index-based payload metadata. The second-stage install is authoritative for
@@ -529,7 +542,7 @@ against `/buildroot`.
 Reproducibility is both a release property and a caching requirement. Current mechanisms include:
 
 - repository metadata, package bytes, and source archives pinned by SHA-256;
-- committed engine transactions containing repository/package identities and retained transports;
+- generated or committed engine transactions containing repository/package identities;
 - a fixed assembly `SOURCE_DATE_EPOCH` for roots that should be shared across consumers;
 - per-package source date epochs for RPM output timestamps and build headers;
 - a fixed `_buildhost` and frozen rpmautospec macros;
@@ -559,20 +572,21 @@ Buck cannot add ordinary target dependencies discovered from an action output. D
 among declared inputs but cannot turn newly discovered BuildRequires into a new static graph. Therefore
 dependency discovery/import must produce committed or analysis-time lock data before normal builds.
 
-### Commit catalog and dependency lock data
+### Commit repository snapshots and selectively freeze engines
 
-Repository snapshots and engine transactions are generated data, but committing them makes normal
-resolution independent of live repository state and reviewable. Buck may still fetch content-pinned
-artifacts. A refresh is an explicit update operation rather than an invisible part of every build. This is
-analogous to a language dependency lockfile, only it also pins repository metadata and retains the transport
-for packages needed to rebuild an engine after a rolling repository advances.
+Repository snapshots are committed so normal resolution remains independent of live repository state and
+reviewable. Engines with a predecessor resolve a cacheable transaction from those pins during their build.
+Committing an engine transaction is an explicit freeze operation for bootstrap roots, releases, or other
+engines that must remain stable across repository snapshot updates. Unlike an ordinary language lockfile, a
+frozen engine transaction also retains the transport for packages needed after a rolling repository
+advances.
 
 ### Let repositories own upstream packages
 
 Putting downloads in each closure duplicated ownership and left derived operations without a stable home.
 The authoritative named pool instead gives every upstream package one action owner per repository. The
-current snapshot defines available packages, while committed engine locks retain older packages required to
-bootstrap their resolver. Closures select artifacts; they do not fetch or transform them.
+current snapshot defines available packages, while optional committed engine locks retain older packages
+required by frozen transactions. Closures select artifacts; they do not fetch or transform them.
 
 ### Separate package system, OS release, package manager, and buildroot
 

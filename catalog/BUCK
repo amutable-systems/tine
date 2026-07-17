@@ -1,8 +1,8 @@
 """The active catalog: repositories, OS releases, engines, package managers, and build profiles."""
 
 # Repoint the `catalog` cell to replace these root-package declarations. Generated data lives under
-# `snapshot/{repo,engine}/`, without target-type suffixes in filenames. A new engine transaction may start
-# as `{}` when `resolver_engine` names a working predecessor. Refresh after adding either kind of target.
+# `snapshot/{repo,engine}/`, without target-type suffixes in filenames. Engines with a resolver can derive
+# their transaction during the build; refresh the catalog to freeze one as a retained lock.
 load("@tine//engine:rules.bzl", "engine")
 load("@tine//package_system/rpm:catalog.bzl", "centos_stream_release", "fedora_release")
 

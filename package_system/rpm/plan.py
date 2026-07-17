@@ -66,7 +66,7 @@ def load_repositories(path: Path) -> list[Repository]:
 
 
 def write_transaction(path: Path, transaction: list[TransactionPackage]) -> None:
-    """Atomically replace an engine lock with deterministic UTF-8 JSON."""
+    """Atomically write deterministic transaction JSON."""
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     temporary = None

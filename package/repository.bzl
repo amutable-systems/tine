@@ -282,7 +282,7 @@ def _select_package_artifacts_impl(
     # Select already-owned artifacts; the transaction never creates new downloads.
     entries = tx.read_json()
     if type(entries) != type([]):
-        fail("transaction is not a list (an engine lock still seeded `{}`?); run refresh-catalog")
+        fail("transaction is not a list (a frozen transaction still seeded `{}`?); resolve or remove it")
 
     by_repo = {
         rid: pool.providers[PackagePoolValueInfo].packages

@@ -153,7 +153,7 @@ _remote_repository = rule(
         "engine_locks": attrs.list(
             attrs.source(),
             default = [],
-            doc = "engine transaction locks whose remote package transports remain available",
+            doc = "frozen engine transactions whose remote package transports remain available",
         ),
         "package_system": attrs.dep(providers = [PackageSystemInfo]),
         "snapshot": attrs.option(attrs.source(), default = None),

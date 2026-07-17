@@ -20,6 +20,13 @@ DBPATH = "usr/lib/sysimage/rpm"
 # A fixed install path avoids embedding Buck hashes and supports scriptlet chroots.
 BUILDROOT = "/buildroot"
 
+MINIMAL_NSSWITCH = """\
+passwd: files
+group: files
+shadow: files
+hosts: files dns
+"""
+
 
 def install(rpms_dir: Path, installroot: Path, cachedir: Path, *, system: bool = False) -> None:
     base = libdnf5.base.Base()
@@ -89,9 +96,12 @@ def scrub(installroot: Path) -> None:
 def configure_engine(installroot: Path) -> None:
     """Materialize configuration needed before the engine is ever booted."""
     factory_nsswitch = installroot / "usr/share/factory/etc/nsswitch.conf"
-    if not factory_nsswitch.is_file():
-        raise SystemExit(f"engine has no factory NSS configuration at {factory_nsswitch}")
-    shutil.copy2(factory_nsswitch, installroot / "etc/nsswitch.conf")
+    nsswitch = installroot / "etc/nsswitch.conf"
+    if factory_nsswitch.is_file():
+        shutil.copy2(factory_nsswitch, nsswitch)
+    elif not nsswitch.is_file():
+        # Minimal engines need not install systemd's factory configuration.
+        nsswitch.write_text(MINIMAL_NSSWITCH)
 
     # Create the Fedora-style mountpoint for the sandbox's resolver bind.
     resolv = installroot / "etc/resolv.conf"

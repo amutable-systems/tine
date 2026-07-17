@@ -51,6 +51,41 @@ def chroot_run(
         run.add(exe)
     return RunInfo(args = run)
 
+def _repository_manifest(ctx: AnalysisContext, repositories: list[Dependency]):
+    configured = []
+    for repository in repositories:
+        repo = repository[PackageRepositoryInfo]
+        if repo.dir == None:
+            fail("engine: repository '{}' has no bootstrap directory".format(repository.label.name))
+        if repo.baseurl == None:
+            fail("engine: repository '{}' has no bootstrap base URL".format(repository.label.name))
+        configured.append(ConfiguredPackageRepositoryInfo(
+            id = repository.label.name,
+            dependency = repository,
+            directory = repo.dir,
+            priority = _REPOSITORY_PRIORITY,
+            baseurl = repo.baseurl,
+        ))
+    return write_repository_manifest(ctx, "repositories.json", configured)
+
+def _resolve_command(
+        engine: EngineInfo,
+        system: PackageSystemInfo,
+        repositories,
+        packages: list[str],
+        arch: str) -> cmd_args:
+    resolve = cmd_args(
+        chroot_run(engine = engine, exe = system.plan),
+        "solve",
+        "--arch",
+        arch,
+        "--repositories",
+        repositories,
+    )
+    for package in packages:
+        resolve.add("--install", package)
+    return resolve
+
 def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     release = ctx.attrs.release[OsReleaseInfo]
     system = release.package_system[PackageSystemInfo]
@@ -59,39 +94,59 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.attrs.enable_repository_groups,
         ctx.attrs.disable_repository_groups,
     )
-    lock = ctx.attrs.lock
-    if lock == None:
-        if ctx.attrs.resolver_engine == None:
-            fail("engine: a missing lock requires resolver_engine; run refresh-catalog")
-        lock = ctx.actions.write("initial-lock.json", "{}")
+    repository_manifest = _repository_manifest(ctx, repositories)
 
-    # Select installable and payload representations from the locked seed transaction.
-    packages = select_package_artifacts(ctx, lock, repositories = repositories)
-    payloads = select_package_artifacts(
-        ctx,
-        lock,
-        name = "extract.closure",
-        repositories = repositories,
-        representation = "payload",
-    )
+    resolver_engine = None
+    resolve = None
+    if ctx.attrs.resolver_engine != None:
+        resolver_engine = ctx.attrs.resolver_engine[EngineInfo]
+        resolve = _resolve_command(
+            engine = resolver_engine,
+            system = system,
+            repositories = repository_manifest,
+            packages = ctx.attrs.packages,
+            arch = ctx.attrs.arch,
+        )
 
-    # Bootstrap chroot1 without an RPM database or scriptlets.
-    chroot1 = ctx.actions.declare_output("chroot1", dir = True)
-    ctx.actions.run(
-        cmd_args(system.extract[RunInfo], chroot1.as_output(), payloads),
-        category = "extract",
-    )
+    transaction = ctx.attrs.lock
+    if transaction == None:
+        if resolve == None:
+            fail("engine: a missing lock requires resolver_engine")
+        transaction = ctx.actions.declare_output("transaction.json")
+        ctx.actions.run(
+            cmd_args(resolve, "--out", transaction.as_output()),
+            category = "engine_resolve",
+        )
 
-    # Use chroot1 to produce the fully installed engine.
+    # A predecessor installs the transaction directly. Only a root engine must bootstrap an
+    # installer-capable chroot from package payloads before it can perform the authoritative install.
+    packages = select_package_artifacts(ctx, transaction, repositories = repositories)
+    installer_engine = resolver_engine
+    if installer_engine == None:
+        payloads = select_package_artifacts(
+            ctx,
+            transaction,
+            name = "extract.closure",
+            repositories = repositories,
+            representation = "payload",
+        )
+        chroot1 = ctx.actions.declare_output("chroot1", dir = True)
+        ctx.actions.run(
+            cmd_args(system.extract[RunInfo], chroot1.as_output(), payloads),
+            category = "extract",
+        )
+        installer_engine = EngineInfo(
+            arch = ctx.attrs.arch,
+            root = chroot1,
+            sandbox = ctx.attrs._sandbox,
+        )
+
+    # Use the predecessor or bootstrapped root to produce the fully installed engine.
     chroot2 = ctx.actions.declare_output("chroot2", dir = True)
     ctx.actions.run(
         cmd_args(
             chroot_run(
-                engine = EngineInfo(
-                    arch = ctx.attrs.arch,
-                    root = chroot1,
-                    sandbox = ctx.attrs._sandbox,
-                ),
+                engine = installer_engine,
                 exe = system.install,
             ),
             "--packages-dir",
@@ -109,33 +164,18 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
         sandbox = ctx.attrs._sandbox,
     )
 
-    # The target release defines the solve; a predecessor only supplies its execution environment.
-    resolver = info
-    if ctx.attrs.resolver_engine != None:
-        resolver = ctx.attrs.resolver_engine[EngineInfo]
-    resolve = cmd_args(chroot_run(engine = resolver, exe = system.plan), "solve", "--arch", ctx.attrs.arch)
-    plan_repositories = []
-    for repository in repositories:
-        repo = repository[PackageRepositoryInfo]
-        if repo.dir == None:
-            fail("engine: repository '{}' has no bootstrap directory".format(repository.label.name))
-        if repo.baseurl == None:
-            fail("engine: repository '{}' has no bootstrap base URL".format(repository.label.name))
-        plan_repositories.append(ConfiguredPackageRepositoryInfo(
-            id = repository.label.name,
-            dependency = repository,
-            directory = repo.dir,
-            priority = _REPOSITORY_PRIORITY,
-            baseurl = repo.baseurl,
-        ))
-    resolve.add(
-        "--repositories",
-        write_repository_manifest(ctx, "repositories.json", plan_repositories),
-    )
-    for package in ctx.attrs.packages:
-        resolve.add("--install", package)
+    # A locked bootstrap engine can use its completed root to update its own transaction.
+    if resolve == None:
+        resolve = _resolve_command(
+            engine = info,
+            system = system,
+            repositories = repository_manifest,
+            packages = ctx.attrs.packages,
+            arch = ctx.attrs.arch,
+        )
     sub_targets = {
         "resolve": [DefaultInfo(), RunInfo(args = resolve)],
+        "transaction": [DefaultInfo(default_output = transaction)],
     }
 
     return [
@@ -149,20 +189,20 @@ _engine = rule(
     attrs = {
         "packages": attrs.list(
             attrs.string(),
-            doc = "top-level engine package names (authored; the lock pins the closure)",
+            doc = "top-level engine package names used to resolve the effective transaction",
         ),
         "release": attrs.dep(providers = [OsReleaseInfo], doc = "base OS release for the engine root"),
         "resolver_engine": attrs.option(
             attrs.dep(providers = [EngineInfo]),
             default = None,
-            doc = "predecessor engine used to resolve this engine's transaction",
+            doc = "predecessor engine used to resolve and install this engine's transaction",
         ),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
         "lock": attrs.option(
             attrs.source(),
             default = None,
-            doc = "the @generated engine transaction, including remote package transport pins",
+            doc = "optional frozen transaction, including remote package transport pins",
         ),
         "arch": attrs.string(default = "x86_64", doc = "the resolution arch"),
         # EngineInfo carries this into the rest of the graph.
