@@ -7,5 +7,6 @@ box(
     packages = [
         "bash",
         "coreutils",
+        "fish",
     ],
 )

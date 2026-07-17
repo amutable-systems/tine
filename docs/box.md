@@ -26,6 +26,17 @@ contains only one:
 $ tine box
 ```
 
+Tine sets `TINE_BOX` to `box`, or `box:2`, `box:3`, and so on for nested boxes. For ordinary prompts it
+also adds the corresponding marker to the standard `SHELL_PROMPT_PREFIX`.
+
+Starship owns its multiline layout, so Tine leaves `SHELL_PROMPT_PREFIX` alone when `STARSHIP_SHELL` is
+set. Add a native segment to `~/.config/starship.toml` instead:
+
+```toml
+[env_var.TINE_BOX]
+format = '[\($env_value\)](bold cyan) '
+```
+
 Run a command non-interactively by placing it after `--`:
 
 ```console
