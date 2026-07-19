@@ -44,7 +44,7 @@ def _starlark_srcs(buck: str) -> list[Path]:
     return [f for f in files if f.is_relative_to(Path(cells["tine"])) and f.suffix != ".json"]
 
 
-def _check(args: argparse.Namespace) -> None:
+def _lint(args: argparse.Namespace) -> None:
     cell = _cell_root(args.buck, "tine")
     _bold("ruff")
     _run([args.ruff, "format", "--check", "--no-cache", cell])
@@ -161,11 +161,11 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="dev")
     sub = p.add_subparsers(dest="command", required=True)
 
-    check = sub.add_parser("check", parents=[common], help="run the source checks (fmt fixes)")
+    lint = sub.add_parser("lint", parents=[common], help="run the source lints (fmt fixes)")
     for tool in ("buildifier", "ruff", "ty"):
-        check.add_argument(f"--{tool}", required=True)
-    check.add_argument("--engine", required=True, help="engine root for ty --python")
-    check.set_defaults(func=_check)
+        lint.add_argument(f"--{tool}", required=True)
+    lint.add_argument("--engine", required=True, help="engine root for ty --python")
+    lint.set_defaults(func=_lint)
 
     fmt = sub.add_parser("fmt", parents=[common], help="auto-format and auto-fix lints")
     for tool in ("buildifier", "ruff"):

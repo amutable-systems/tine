@@ -98,13 +98,13 @@ command_alias(
     exe = ":bump-driver",
 )
 
-# Source checks; ty resolves imports against the engine root.
+# Source lints; ty resolves imports against the engine root.
 # FIXME: type check python in every engine? Some python dependencies will only be
 # available in certain engines.
 command_alias(
-    name = "check",
+    name = "lint",
     args = [
-        "check",
+        "lint",
         "--buck",
         "$(source buck)",
         "--buildifier",
@@ -117,6 +117,12 @@ command_alias(
         "$(location tine//catalog:fedora.rawhide.engine)",
     ],
     exe = ":dev",
+)
+
+# check aggregates lint and the test suites (which hook in as resource dependencies).
+command_alias(
+    name = "check",
+    exe = ":lint",
 )
 
 # BuildRequires cycle analysis of a branch (pass its label, e.g. //packages/fedora:rawhide's dir).

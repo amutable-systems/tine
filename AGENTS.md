@@ -22,7 +22,8 @@ The pinned `buck` lives in `tools/`,; invoke it by path. Everything else (python
 is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck run` targets.
 
 - **buck (whole project):** `buck build //...`.
-- **Check (format, lint, type-check):** `buck run tine//tools:check`
+- **Lint (format, lint, type-check):** `buck run tine//tools:lint`
+- **Check (lint plus the hooked-in test suites):** `buck run tine//tools:check`
 - **Auto-format + auto-fix:** `buck run tine//tools:fmt`
 - **Refresh the catalog lock:** `buck run tine//tools:refresh-catalog`;
   `buck run tine//tools:verify-catalog` asserts the committed lock matches.
