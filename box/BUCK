@@ -1,1 +1,25 @@
 """Interactive development boxes."""
+
+load(":rules.bzl", "box")
+
+# tine's dev environment for importer and its unit tests. Used by
+# `tine//tests:unit-test` (hermetic), `tine box` (relaxed), and
+# `tine//tools:importer` (relaxed).
+# Derived from the main engine (lockless transaction, resolved during the
+# build), so dev tooling changes never invalidate the build graph that depends
+# on the main engine.
+
+box(
+    name = "dev",
+    packages = [
+        "coreutils",
+        # for "importer srpm"
+        "dist-git-client",
+        "gawk",
+        "git-core",
+        "python3",
+        "rpm-build",
+        "sed",
+    ],
+    visibility = ["PUBLIC"],
+)

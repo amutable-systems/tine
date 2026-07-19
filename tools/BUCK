@@ -119,10 +119,18 @@ command_alias(
     exe = ":dev",
 )
 
-# check aggregates lint and the test suites (which hook in as resource dependencies).
+# check = lint + the unit tests: the resource dependency builds (runs) tine//tests:unit-test.
 command_alias(
     name = "check",
     exe = ":lint",
+    resources = ["tine//tests:unit-test"],
+)
+
+# The importer sources for the unit-test tree (tine//tests:unit-test).
+export_file(
+    name = "importer-src",
+    src = "importer",
+    visibility = ["tine//tests:unit-test"],
 )
 
 # BuildRequires cycle analysis of a branch (pass its label, e.g. //packages/fedora:rawhide's dir).

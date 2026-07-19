@@ -1,0 +1,15 @@
+"""The unit-test suite, a build action running hermetically in the dev box engine."""
+
+load(":defs.bzl", "engine_unittest")
+
+# The tests locate the tool under test relative to their own file, so the tree mirrors the
+# cell layout. `buck build tine//tests:unit-test` runs the suite; the action caches, so it
+# only reruns when the tests, the tool, or the engine change.
+engine_unittest(
+    name = "unit-test",
+    engine = "//box:dev.engine",
+    srcs = {"tests/" + f: f for f in glob(["__init__.py", "test_*.py"])} | {
+        "tools/importer": "//tools:importer-src",
+    },
+    visibility = ["tine//tools:check"],
+)

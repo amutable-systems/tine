@@ -43,6 +43,7 @@ def box(
         enable_repository_groups = enable_repository_groups,
         disable_repository_groups = disable_repository_groups,
         arch = arch,
+        visibility = visibility,
     )
     _box(
         name = name,

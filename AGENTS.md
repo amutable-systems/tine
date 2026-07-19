@@ -24,6 +24,8 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
 - **buck (whole project):** `buck build //...`.
 - **Lint (format, lint, type-check):** `buck run tine//tools:lint`
 - **Check (lint plus the hooked-in test suites):** `buck run tine//tools:check`
+- **Unit tests alone:** `buck build tine//tests:unit-test` — a cached build action, so it only
+  reruns when the tests, the tool under test, or the dev box engine change.
 - **Auto-format + auto-fix:** `buck run tine//tools:fmt`
 - **Refresh the catalog lock:** `buck run tine//tools:refresh-catalog`;
   `buck run tine//tools:verify-catalog` asserts the committed lock matches.
