@@ -1,6 +1,6 @@
 """Boot artifacts and operation groups."""
 
-load("//engine:rules.bzl", "EngineInfo", "chroot_run")
+load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//image_format:archive.bzl", "CpioArchiveInfo")
 load("//image_format:disk.bzl", "RootHashInfo")
 load(

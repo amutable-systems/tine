@@ -1,6 +1,6 @@
 """Shared actions for materializing logical image stacks."""
 
-load("//engine:rules.bzl", "EngineInfo", "chroot_run")
+load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 
 def archive_action(
         ctx: AnalysisContext,

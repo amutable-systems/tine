@@ -1,6 +1,6 @@
 """Partition and raw-disk assembly with systemd-repart."""
 
-load("//engine:rules.bzl", "EngineInfo", "chroot_run")
+load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//image:layer.bzl", "ImageInfo")
 
 _ARTIFACT_NAME_CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
