@@ -126,6 +126,14 @@ command_alias(
     resources = ["tine//tests:unit-test"],
 )
 
+# The rpm importer (see docs/packages.md): its verbs need the pinned rpm toolchain plus the
+# host's git identity, network, and cwd, so it runs through the dev box's relaxed entry.
+command_alias(
+    name = "importer",
+    args = ["$(source importer)"],
+    exe = "tine//box:dev",
+)
+
 # The importer sources for the unit-test tree (tine//tests:unit-test).
 export_file(
     name = "importer-src",

@@ -33,7 +33,10 @@ To actually build an image, the selection needs to happen in some "build configu
 
 ## Operations
 
-A single CLI tool (`tine/tools/importer`) performs these operations (via CLI verb).
+A single CLI tool (`tine/tools/importer`) performs these operations (via CLI verb). Run it as
+`tine/tools/buck run tine//tools:importer -- <verb> …`: that executes it in the `tine//box:dev`
+environment (host identity, network, and cwd; the pinned rpm/git toolchain from the box engine), so the
+host needs no rpm tooling installed. Verbs that only use git also work by executing the script directly.
 
 Operations on the `upstream-rpm` branch to import/fetch upstream dist-git changes into `OS.git`:
 

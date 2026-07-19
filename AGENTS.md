@@ -29,6 +29,8 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
 - **Auto-format + auto-fix:** `buck run tine//tools:fmt`
 - **Refresh the catalog lock:** `buck run tine//tools:refresh-catalog`;
   `buck run tine//tools:verify-catalog` asserts the committed lock matches.
+- **rpm importer:** `buck run tine//tools:importer -- <verb>` runs the package import/update tool
+  in the dev box with the host's git identity and network; see [packages.md](docs/packages.md).
 - **BuildRequires cycle analysis:** `buck run tine//tools:scc -- <branch label>`; background in
   [self-host-approaches.md](docs/self-host-approaches.md).
 - **Inspect a failed action's stderr:** `tools/buck log what-ran --failed --show-std-err` prints the
