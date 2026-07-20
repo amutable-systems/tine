@@ -29,7 +29,7 @@ release pipeline. Images currently mix packages built in this repository with pi
 The root project consumes reusable machinery from the `tine` cell:
 
 ```text
-//distribution/           independently versioned package specs, sources, and generated BUCK files
+//packages/               independently versioned package specs, sources, and generated BUCK files
 //examples/image/         image smoke targets
 tine//package/            package-system-neutral providers and installation flow
 tine//package_system/rpm/ RPM repository, resolver, installer, extractor, and builder
@@ -54,8 +54,9 @@ macros instead take a `<family>.<release>` prefix and declare the complete repos
 package-manager, and buildroot bundle. An engine's identity describes its provenance rather than every
 release that may consume it.
 
-The package source tree at `distribution/` is a separate Git repository. It is intentionally not part of
-the reusable `tine` cell: package policy and imported source data change independently of build machinery.
+The package source tree lives in the OS.git repository (which vendors this `tine` cell) under `packages/`.
+It is intentionally not part of the reusable `tine` cell: package policy and imported source data change
+independently of build machinery.
 
 ### Component model
 
@@ -314,7 +315,7 @@ the root then captures names and overlay metadata into Buck-storable form. A fre
 
 ### RPM import and build flow
 
-The independent `distribution/` repository contains imported source-package metadata and generated BUCK
+The OS.git repository's `packages/` tree contains imported source-package metadata and generated BUCK
 files. The importer emits data; the Starlark in `package_system/rpm/generated.bzl` validates that data and
 creates targets.
 
@@ -672,7 +673,7 @@ tine/tools/buck run tine//tools:check
 Representative smoke builds are:
 
 ```text
-tine/tools/buck build //distribution/packages/fedora/rawhide:zlib-ng
+tine/tools/buck build //packages/fedora/rawhide:zlib-ng
 tine/tools/buck build //examples/image:demo
 tine/tools/buck build //examples/image:layered-install
 tine/tools/buck build '//examples/image:layered-install.layer[directory]'
@@ -796,7 +797,7 @@ Useful implementation entry points:
 - `tine/engine/{build,runtime}.bzl`, `tine/engine/sandbox.py`, and `tine/rootfs/rootfs.py`
 - `tine/image/{layer,uki,boot,compose,vm}.bzl` and `tine/image_format/{archive,disk}.bzl`
 - `tine/tools/catalog.py` and `tine/catalog/BUCK`
-- `distribution/apt` and `tine/package_system/rpm/generated.bzl`
+- the generated `packages/*/*/BUCK` and `tine/package_system/rpm/generated.bzl`
 
 External projects that informed the design:
 

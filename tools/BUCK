@@ -119,7 +119,7 @@ command_alias(
     exe = ":dev",
 )
 
-# BuildRequires cycle analysis of a branch (pass its label, e.g. //distribution/...:rawhide's dir).
+# BuildRequires cycle analysis of a branch (pass its label, e.g. //packages/fedora:rawhide's dir).
 command_alias(
     name = "scc",
     args = [
