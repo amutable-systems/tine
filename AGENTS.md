@@ -5,6 +5,9 @@
 - **Never touch `buck-out/` directly** — no `rm`, `mv`, edits, or reads-for-mutation. Force a
   rebuild with buck (`buck clean`, then rebuild the target); to inspect an output, get its path
   from `buck build --show-output`/`--out` and read it read-only.
+- **Never `buck build | tail`** — redirect full output to a log file, show the path so that the user can
+  follow along, and check exit separately. Inspect failed actions with
+  `tools/buck log what-ran --failed --show-std-err`.
 - Line break documents and plans at 109 columns.
 - Keep comments concise; say each thing once. Comments explain *why*, not *what*.
 
