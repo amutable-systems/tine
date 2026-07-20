@@ -2,6 +2,7 @@
 
 load("//image_format:archive.bzl", "DirectoryImageInfo")
 load("//image_format:disk.bzl", "DiskImageInfo", "RootHashInfo")
+load("//image_format:rpmdb.bzl", "RpmdbInfo")
 load(":boot.bzl", "BootableImageInfo")
 load(":layer.bzl", "ImageInfo")
 
@@ -44,6 +45,17 @@ def _image_result_impl(ctx: AnalysisContext) -> list[Provider]:
         sub_targets["disk"] = disk_subtarget
         facets["disk"] = dep
 
+    # Supply-chain outputs are never the default facet, but ride along on a normal build via
+    # other_outputs (and stay individually reachable as subtargets).
+    ride_along = []
+    if ctx.attrs.rpmdb != None:
+        dep = ctx.attrs.rpmdb
+        info = dep[RpmdbInfo]
+        _check_source("rpmdb", info.source, image)
+        providers.append(info)
+        sub_targets["rpmdb"] = [dep[DefaultInfo], info]
+        ride_along.extend(dep[DefaultInfo].default_outputs)
+
     default = facets.get(ctx.attrs.default_facet)
     if default == None:
         fail("image result default facet {!r} is not configured".format(ctx.attrs.default_facet))
@@ -51,7 +63,7 @@ def _image_result_impl(ctx: AnalysisContext) -> list[Provider]:
     return [
         DefaultInfo(
             default_outputs = info.default_outputs,
-            other_outputs = info.other_outputs,
+            other_outputs = info.other_outputs + ride_along,
             sub_targets = sub_targets,
         ),
     ] + providers
@@ -64,5 +76,6 @@ image_result = rule(
         "directory": attrs.option(attrs.dep(providers = [DirectoryImageInfo]), default = None),
         "disk": attrs.option(attrs.dep(providers = [DiskImageInfo]), default = None),
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image shared by every facet"),
+        "rpmdb": attrs.option(attrs.dep(providers = [RpmdbInfo]), default = None),
     },
 )

@@ -467,8 +467,15 @@ needed:
 - `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a GPT
   disk with `DiskImageInfo`, independent partition artifacts with `split = True`, or both;
 - `bootable` selects a kernel and matching initrd from a logical image and provides `BootableImageInfo`;
+- `image_rpmdb` copies the image's rpm database out as a separate artifact, trimmed to the `Packages`
+  table alone, and provides `RpmdbInfo`;
 - `image_result` aggregates independent facets of the same logical image without creating another artifact;
 - `image_vm` runs the raw image ephemerally with the engine's `systemd-vmspawn`, QEMU, and OVMF stack.
+
+The rpm database is a supply-chain output read from the assembled image, never shipped in it. Security
+scanners read it directly, as there is no SBOM format they all consume. It can also ride along on a normal
+build: `image_archive` (and `rootfs_archive`) accept an `rpmdb` flag that folds the artifact into
+`other_outputs`, and `bootable_disk_image` exposes it as an `image_result` facet.
 
 `rootfs_archive()` is the convenience composition for building a single layer from operations and emitting
 an archive. `image_archive` remains the terminal rule for archiving an existing logical image.
@@ -539,10 +546,10 @@ Kernel command lines remain lists of arguments through the Starlark API and driv
 driver appends any generated verity hash and joins the arguments only when writing ukify's command-line file.
 
 Bootability and output format are independent capabilities. A final target may return any combination of
-`BootableImageInfo`, `DiskImageInfo`, and `DirectoryImageInfo`, while continuing to return the underlying
-`ImageInfo`. Each facet records its source dependency, and `image_result` rejects facets derived from
-different logical images. One facet supplies the target's default output; nested subtargets namespace all
-other views:
+`BootableImageInfo`, `DiskImageInfo`, `DirectoryImageInfo`, and `RpmdbInfo`, while continuing to return the
+underlying `ImageInfo`. Each facet records its source dependency, and `image_result` rejects facets derived
+from different logical images. One facet supplies the target's default output; nested subtargets namespace
+all other views:
 
 ```text
 //examples/image:boot-demo[bootable][uki]
@@ -552,6 +559,7 @@ other views:
 //examples/image:boot-demo[disk][partitions][usr]
 //examples/image:boot-demo[disk][partitions][esp]
 //examples/image:boot-demo[directory]
+//examples/image:boot-demo[rpmdb]
 ```
 
 The bootable facet extracts semantic artifacts lazily from the completed logical image rather than

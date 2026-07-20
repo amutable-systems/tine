@@ -2,6 +2,13 @@
 
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 
+def stack_command(engine: Dependency, layers: list[Artifact], driver: Dependency) -> cmd_args:
+    """Build a `driver --lower <delta>...` command that reads an image's delta stack."""
+    cmd = cmd_args(chroot_run(engine = engine[EngineInfo], exe = driver))
+    for lower in layers:
+        cmd.add("--lower", lower)
+    return cmd
+
 def archive_action(
         ctx: AnalysisContext,
         engine: Dependency,

@@ -2,6 +2,7 @@
 
 load("//image:layer.bzl", "ImageInfo")
 load(":actions.bzl", "archive_action")
+load(":rpmdb.bzl", "RpmdbInfo")
 
 _EXT = {"tar": "tar", "cpio": "cpio"}
 
@@ -34,7 +35,21 @@ def _image_archive_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.attrs.format,
         out.as_output(),
     )
-    providers = [DefaultInfo(default_output = out)]
+
+    # Supply-chain sidecars ride along on a normal build via other_outputs and stay reachable as
+    # subtargets. They are separate targets (one action each, shared with a standalone build), so
+    # this only forwards their outputs; neither is shipped in the archive.
+    providers = []
+    sidecars = []
+    sub_targets = {}
+
+    if ctx.attrs.rpmdb != None:
+        info = ctx.attrs.rpmdb[DefaultInfo]
+        sidecars.extend(info.default_outputs)
+        sub_targets["rpmdb"] = [info]
+        providers.append(ctx.attrs.rpmdb[RpmdbInfo])
+
+    providers.insert(0, DefaultInfo(default_output = out, other_outputs = sidecars, sub_targets = sub_targets))
     if ctx.attrs.format == "cpio":
         providers.append(CpioArchiveInfo(archive = out, source = ctx.attrs.image))
     return providers
@@ -42,8 +57,9 @@ def _image_archive_impl(ctx: AnalysisContext) -> list[Provider]:
 image_archive = rule(
     impl = _image_archive_impl,
     attrs = {
-        "image": attrs.dep(providers = [ImageInfo], doc = "the logical image to archive"),
         "format": attrs.enum(["tar", "cpio"], default = "tar"),
+        "image": attrs.dep(providers = [ImageInfo], doc = "the logical image to archive"),
+        "rpmdb": attrs.option(attrs.dep(providers = [RpmdbInfo]), default = None, doc = "rpmdb artifact to ride along"),
         "_driver": attrs.dep(providers = [RunInfo], default = "tine//image_format:archive"),
     },
 )

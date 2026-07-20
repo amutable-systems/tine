@@ -14,6 +14,7 @@ package_manager(
 )
 
 # Minimal install + ordered-ops demo. `:demo` is the tar; `:demo.layer` is the logical image.
+# `rpmdb = True` also captures the trimmed rpm database on a normal build (`:demo[rpmdb]`).
 rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
@@ -23,6 +24,7 @@ rootfs_archive(
         run(["/usr/bin/bash", "-c", "echo built-by-tine > /etc/tine/marker"]),
     ],
     format = "tar",
+    rpmdb = True,
 )
 
 # Base-only image exercising a single-component delta stack.
@@ -123,6 +125,7 @@ image_archive(
 )
 
 # Bootable GPT image; `buck run :boot-demo-vm` starts it with the engine's vmspawn stack.
+# `rpmdb = True` exposes the trimmed rpm database as `:boot-demo[rpmdb]`.
 bootable_disk_image(
     name = "boot-demo",
     package_manager = ":image.package-manager",
@@ -140,6 +143,7 @@ bootable_disk_image(
             "dbus-broker",
         ]),
     ],
+    rpmdb = True,
 )
 
 image_vm(

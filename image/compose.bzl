@@ -6,6 +6,7 @@ load(
     "Partition",  # @unused Used as a type.
     "repart",
 )
+load("//image_format:rpmdb.bzl", "image_rpmdb")
 load(":boot.bzl", "bootable", "install_systemd_boot", "uki")
 load(
     ":layer.bzl",
@@ -24,6 +25,7 @@ def rootfs_archive(
         ops: list[LayerOperationTree],
         tmpfiles: list[str] = [],
         format: str = "tar",
+        rpmdb: bool = False,
         visibility: list[str] | None = None) -> None:
     """Build a root filesystem from ordered operations and archive it."""
     image(
@@ -36,10 +38,15 @@ def rootfs_archive(
         ops = ops,
         tmpfiles = tmpfiles,
     )
+    rpmdb_facet = None
+    if rpmdb:
+        image_rpmdb(name = name + ".rpmdb", image = ":" + name + ".layer")
+        rpmdb_facet = ":" + name + ".rpmdb"
     image_archive(
         name = name,
         image = ":" + name + ".layer",
         format = format,
+        rpmdb = rpmdb_facet,
         visibility = visibility,
     )
 
@@ -75,6 +82,7 @@ def bootable_disk_image(
         disk_seed: str | None = None,
         verity_private_key: str | None = None,
         verity_certificate: str | None = None,
+        rpmdb: bool = False,
         visibility: list[str] | None = None) -> None:
     """Build a UKI-based, systemd-boot GPT disk image."""
     image(
@@ -140,12 +148,23 @@ def bootable_disk_image(
         name = name + ".directory",
         image = ":" + name + ".esp.layer",
     )
+
+    # The rpmdb facet scans the same layer image_result aggregates, so their source labels match.
+    rpmdb_facet = None
+    if rpmdb:
+        image_rpmdb(
+            name = name + ".rpmdb",
+            image = ":" + name + ".esp.layer",
+        )
+        rpmdb_facet = ":" + name + ".rpmdb"
+
     image_result(
         name = name,
         image = ":" + name + ".esp.layer",
         bootable = ":" + name + ".bootable",
         directory = ":" + name + ".directory",
         disk = ":" + name + ".disk",
+        rpmdb = rpmdb_facet,
         default_facet = "disk",
         visibility = visibility,
     )
