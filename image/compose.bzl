@@ -7,6 +7,7 @@ load(
     "repart",
 )
 load("//image_format:rpmdb.bzl", "image_rpmdb")
+load("//image_format:sbom.bzl", "image_sbom")
 load(":boot.bzl", "bootable", "install_systemd_boot", "uki")
 load(
     ":layer.bzl",
@@ -26,6 +27,8 @@ def rootfs_archive(
         tmpfiles: list[str] = [],
         format: str = "tar",
         rpmdb: bool = False,
+        sbom: bool = False,
+        version: str = "0",
         visibility: list[str] | None = None) -> None:
     """Build a root filesystem from ordered operations and archive it."""
     image(
@@ -42,11 +45,16 @@ def rootfs_archive(
     if rpmdb:
         image_rpmdb(name = name + ".rpmdb", image = ":" + name + ".layer")
         rpmdb_facet = ":" + name + ".rpmdb"
+    sbom_facet = None
+    if sbom:
+        image_sbom(name = name + ".sbom", image = ":" + name + ".layer", source_name = name, version = version)
+        sbom_facet = ":" + name + ".sbom"
     image_archive(
         name = name,
         image = ":" + name + ".layer",
         format = format,
         rpmdb = rpmdb_facet,
+        sbom = sbom_facet,
         visibility = visibility,
     )
 
@@ -83,6 +91,8 @@ def bootable_disk_image(
         verity_private_key: str | None = None,
         verity_certificate: str | None = None,
         rpmdb: bool = False,
+        sbom: bool = False,
+        version: str = "0",
         visibility: list[str] | None = None) -> None:
     """Build a UKI-based, systemd-boot GPT disk image."""
     image(
@@ -149,7 +159,7 @@ def bootable_disk_image(
         image = ":" + name + ".esp.layer",
     )
 
-    # The rpmdb facet scans the same layer image_result aggregates, so their source labels match.
+    # Supply-chain facets scan the same layer image_result aggregates, so their source labels match.
     rpmdb_facet = None
     if rpmdb:
         image_rpmdb(
@@ -157,6 +167,15 @@ def bootable_disk_image(
             image = ":" + name + ".esp.layer",
         )
         rpmdb_facet = ":" + name + ".rpmdb"
+    sbom_facet = None
+    if sbom:
+        image_sbom(
+            name = name + ".sbom",
+            image = ":" + name + ".esp.layer",
+            source_name = name,
+            version = version,
+        )
+        sbom_facet = ":" + name + ".sbom"
 
     image_result(
         name = name,
@@ -165,6 +184,7 @@ def bootable_disk_image(
         directory = ":" + name + ".directory",
         disk = ":" + name + ".disk",
         rpmdb = rpmdb_facet,
+        sbom = sbom_facet,
         default_facet = "disk",
         visibility = visibility,
     )

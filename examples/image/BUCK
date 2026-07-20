@@ -5,6 +5,7 @@ load("@tine//image:layer.bzl", "image", "image_layer", "install", "mkdir", "remo
 load("@tine//image:vm.bzl", "image_vm")
 load("@tine//image_format:archive.bzl", "image_archive")
 load("@tine//image_format:disk.bzl", "DEFAULT_USR_VERITY_PARTITIONS")
+load("@tine//image_format:sbom.bzl", "image_sbom")
 load("@tine//package:manager.bzl", "package_manager")
 
 # Consumer-owned solve context; project repositories can be added here.
@@ -125,7 +126,7 @@ image_archive(
 )
 
 # Bootable GPT image; `buck run :boot-demo-vm` starts it with the engine's vmspawn stack.
-# `rpmdb = True` exposes the trimmed rpm database as `:boot-demo[rpmdb]`.
+# `rpmdb`/`sbom` expose the supply-chain facets: `:boot-demo[rpmdb]` and `:boot-demo[sbom]`.
 bootable_disk_image(
     name = "boot-demo",
     package_manager = ":image.package-manager",
@@ -144,6 +145,7 @@ bootable_disk_image(
         ]),
     ],
     rpmdb = True,
+    sbom = True,
 )
 
 image_vm(
@@ -184,4 +186,15 @@ image_archive(
     name = "opaque",
     image = ":opaque-child.layer",
     format = "tar",
+)
+
+# Standalone SBOM generation: the `image_sbom` rule used directly on a layer, as opposed to the
+# `sbom = True` ride-along on `:boot-demo`. Runs against the quick `:demo.layer` as a cheap smoke
+# test. Emits both SPDX and CycloneDX; `:demo-sbom` builds both.
+image_sbom(
+    name = "demo-sbom",
+    image = ":demo.layer",
+    # SBOM source version; also seeds the stable document id used for reproducible normalization.
+    # Defaults to "0".
+    version = "1.2.3",
 )

@@ -75,6 +75,24 @@ http_tool(
     },
 )
 
+# SBOM generator (static release binary; not packaged in Fedora). Scans an image tree for the
+# rpmdb, ELF-bundled modules, etc. Used by the image_sbom rule against an assembled image.
+http_tool(
+    name = "syft",
+    path = "syft",
+    platforms = {
+        "aarch64": {
+            "sha256": "6865a3d97c4e28b4b38571c17a2bf512da4494ef1d37613c3122fce0d67e63b0",
+            "url": "https://github.com/anchore/syft/releases/download/v1.48.0/syft_1.48.0_linux_arm64.tar.gz",
+        },
+        "x86_64": {
+            "sha256": "6cef9a7f37220d9067eaf9cfaaa2fce986e9f320a8d42cbc36658c99af78ea04",
+            "url": "https://github.com/anchore/syft/releases/download/v1.48.0/syft_1.48.0_linux_amd64.tar.gz",
+        },
+    },
+    visibility = ["PUBLIC"],
+)
+
 # Runtime driver for the source-tree commands below.
 python_bootstrap_binary(
     name = "dev",

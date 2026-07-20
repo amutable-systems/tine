@@ -469,13 +469,16 @@ needed:
 - `bootable` selects a kernel and matching initrd from a logical image and provides `BootableImageInfo`;
 - `image_rpmdb` copies the image's rpm database out as a separate artifact, trimmed to the `Packages`
   table alone, and provides `RpmdbInfo`;
+- `image_sbom` runs `syft` over the assembled tree in one scan, emitting SPDX and CycloneDX SBOMs and
+  providing `SbomInfo`;
 - `image_result` aggregates independent facets of the same logical image without creating another artifact;
 - `image_vm` runs the raw image ephemerally with the engine's `systemd-vmspawn`, QEMU, and OVMF stack.
 
-The rpm database is a supply-chain output read from the assembled image, never shipped in it. Security
-scanners read it directly, as there is no SBOM format they all consume. It can also ride along on a normal
-build: `image_archive` (and `rootfs_archive`) accept an `rpmdb` flag that folds the artifact into
-`other_outputs`, and `bootable_disk_image` exposes it as an `image_result` facet.
+The rpm database and SBOMs are supply-chain outputs read from the assembled image, never shipped in it.
+Scanning the whole tree, rather than only the rpm database, additionally catches packages rpm does not know
+about, such as Go modules bundled into ELF binaries. Both facets can also ride along on a normal build:
+`image_archive` (and `rootfs_archive`) accept `rpmdb`/`sbom` flags that fold the artifacts into
+`other_outputs`, and `bootable_disk_image` exposes them as `image_result` facets.
 
 `rootfs_archive()` is the convenience composition for building a single layer from operations and emitting
 an archive. `image_archive` remains the terminal rule for archiving an existing logical image.
@@ -546,10 +549,10 @@ Kernel command lines remain lists of arguments through the Starlark API and driv
 driver appends any generated verity hash and joins the arguments only when writing ukify's command-line file.
 
 Bootability and output format are independent capabilities. A final target may return any combination of
-`BootableImageInfo`, `DiskImageInfo`, `DirectoryImageInfo`, and `RpmdbInfo`, while continuing to return the
-underlying `ImageInfo`. Each facet records its source dependency, and `image_result` rejects facets derived
-from different logical images. One facet supplies the target's default output; nested subtargets namespace
-all other views:
+`BootableImageInfo`, `DiskImageInfo`, `DirectoryImageInfo`, `RpmdbInfo`, and `SbomInfo`, while continuing to
+return the underlying `ImageInfo`. Each facet records its source dependency, and `image_result` rejects
+facets derived from different logical images. One facet supplies the target's default output; nested
+subtargets namespace all other views:
 
 ```text
 //examples/image:boot-demo[bootable][uki]
@@ -560,6 +563,7 @@ all other views:
 //examples/image:boot-demo[disk][partitions][esp]
 //examples/image:boot-demo[directory]
 //examples/image:boot-demo[rpmdb]
+//examples/image:boot-demo[sbom]
 ```
 
 The bootable facet extracts semantic artifacts lazily from the completed logical image rather than

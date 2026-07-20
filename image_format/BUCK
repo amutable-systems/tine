@@ -32,3 +32,10 @@ python_bootstrap_binary(
     deps = ["//rootfs:rootfs"],
     visibility = ["PUBLIC"],
 )
+
+python_bootstrap_binary(
+    name = "sbom",
+    main = "sbom.py",
+    deps = ["//rootfs:rootfs"],
+    visibility = ["PUBLIC"],
+)

@@ -3,6 +3,7 @@
 load("//image_format:archive.bzl", "DirectoryImageInfo")
 load("//image_format:disk.bzl", "DiskImageInfo", "RootHashInfo")
 load("//image_format:rpmdb.bzl", "RpmdbInfo")
+load("//image_format:sbom.bzl", "SbomInfo")
 load(":boot.bzl", "BootableImageInfo")
 load(":layer.bzl", "ImageInfo")
 
@@ -56,6 +57,14 @@ def _image_result_impl(ctx: AnalysisContext) -> list[Provider]:
         sub_targets["rpmdb"] = [dep[DefaultInfo], info]
         ride_along.extend(dep[DefaultInfo].default_outputs)
 
+    if ctx.attrs.sbom != None:
+        dep = ctx.attrs.sbom
+        info = dep[SbomInfo]
+        _check_source("sbom", info.source, image)
+        providers.append(info)
+        sub_targets["sbom"] = [dep[DefaultInfo], info]
+        ride_along.extend(dep[DefaultInfo].default_outputs)
+
     default = facets.get(ctx.attrs.default_facet)
     if default == None:
         fail("image result default facet {!r} is not configured".format(ctx.attrs.default_facet))
@@ -77,5 +86,6 @@ image_result = rule(
         "disk": attrs.option(attrs.dep(providers = [DiskImageInfo]), default = None),
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image shared by every facet"),
         "rpmdb": attrs.option(attrs.dep(providers = [RpmdbInfo]), default = None),
+        "sbom": attrs.option(attrs.dep(providers = [SbomInfo]), default = None),
     },
 )
