@@ -18,6 +18,11 @@ TRAILER = "TRAILER!!!"
 _HEADER = 110  # 6-byte magic + 13 * 8-hex fields
 # Fixed alignment keeps bytes reproducible across filesystems.
 _BLOCK = 4096
+# A newc name is a full path, so the kernel's initramfs unpacker bounds the namesize field by
+# its PATH_MAX and silently skips larger entries (init/initramfs.c, do_header). That is the
+# consuming kernel's fixed ABI constant (include/uapi/linux/limits.h), not a property of the
+# build host, so it must not be queried via pathconf here.
+_PATH_MAX = 4096
 
 # Bootstrap Python omits os.copy_file_range, so bind the host libc symbol.
 _libc = ctypes.CDLL(None, use_errno=True)
@@ -231,8 +236,11 @@ class Writer:
         raw = name.encode()
         namesize = len(raw) + 1  # name + its NUL terminator
         if block_align:
-            # Newc namesize permits padding file data to the reflink boundary.
-            namesize = _roundup(self._pos + _HEADER + namesize, _BLOCK) - (self._pos + _HEADER)
+            # Newc namesize permits padding file data to the reflink boundary — unless the
+            # padding would push namesize past PATH_MAX; then the entry stays unaligned.
+            padded = _roundup(self._pos + _HEADER + namesize, _BLOCK) - (self._pos + _HEADER)
+            if padded <= _PATH_MAX:
+                namesize = padded
         fields = (self._ino, mode, 0, 0, 1, min(mtime, self._epoch), filesize, 0, 0, 0, 0, namesize, 0)
         self._write(MAGIC + b"".join(b"%08x" % v for v in fields))
         self._write(raw + b"\x00" * (namesize - len(raw)))
