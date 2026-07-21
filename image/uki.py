@@ -6,6 +6,7 @@ extends the supplied base initrds.
 """
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -59,6 +60,13 @@ def main(argv: list[str] | None = None) -> None:
         metavar="ARGUMENT",
         help="kernel command-line argument embedded in the UKI (repeatable)",
     )
+    p.add_argument(
+        "--profile",
+        action="append",
+        default=[],
+        metavar="PROFILE",
+        help="alternative boot profile as JSON with id, title, and cmdline fields (repeatable)",
+    )
     p.add_argument("--root-hash", help="file containing a generated verity root hash")
     p.add_argument("--root-hash-kind", choices=("root", "usr"))
     p.add_argument("--arch", required=True, choices=tuple(_ARCH))
@@ -91,15 +99,37 @@ def main(argv: list[str] | None = None) -> None:
         if not stub.exists():
             raise SystemExit("uki: the image ships no systemd-boot stub — install systemd-boot-unsigned")
 
-        cmdline = scratch / "cmdline"
-        cmdline.write_text(
-            _cmdline(
-                args.cmdline,
-                Path(args.root_hash).resolve() if args.root_hash else None,
-                args.root_hash_kind,
-            )
-            + "\x00"
+        base = _cmdline(
+            args.cmdline,
+            Path(args.root_hash).resolve() if args.root_hash else None,
+            args.root_hash_kind,
         )
+        cmdline = scratch / "cmdline"
+        cmdline.write_text(base + "\x00")
+
+        # Each profile becomes a small PE of .profile and .cmdline sections, joined into every
+        # UKI below; the profile arguments extend the shared base cmdline.
+        profile_pes = []
+        addon_stub = tree / "usr/lib/systemd/boot/efi" / f"addon{efi_arch}.efi.stub"
+        if args.profile and not addon_stub.exists():
+            raise SystemExit("uki: the image ships no addon stub — install systemd-boot-unsigned")
+        for value in args.profile:
+            profile = json.loads(value)
+            section = scratch / f"{profile['id']}.profile"
+            section.write_text(f"ID={profile['id']}\nTITLE={profile['title']}\n")
+            profile_cmdline = scratch / f"{profile['id']}.cmdline"
+            profile_cmdline.write_text(" ".join(([base] if base else []) + profile["cmdline"]) + "\x00")
+            pe = scratch / f"{profile['id']}.efi"
+            cmd = [
+                UKIFY, "build",
+                "--profile", f"@{section}",
+                "--cmdline", f"@{profile_cmdline}",
+                "--stub", str(addon_stub),
+                "--efi-arch", efi_arch,
+                "--output", str(pe),
+            ]  # fmt: skip
+            subprocess.run(cmd, check=True)
+            profile_pes.append(pe)
 
         for kver in kvers:
             modules = scratch / f"modules-{kver}.cpio"
@@ -116,6 +146,7 @@ def main(argv: list[str] | None = None) -> None:
                 cmd += ["--initrd", str(initrd)]
             cmd += [
                 "--cmdline", f"@{cmdline}",
+                *(argument for pe in profile_pes for argument in ("--join-profile", str(pe))),
                 "--os-release", f"@{os_release}",
                 "--uname", kver,
                 "--stub", str(stub),

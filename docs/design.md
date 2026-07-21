@@ -463,7 +463,8 @@ needed:
   `CpioArchiveInfo` for the latter;
 - `image_directory` materializes a Buck directory artifact and provides `DirectoryImageInfo`;
 - `uki` builds versioned unified kernel images for every installed kernel using one or more
-  `CpioArchiveInfo` dependencies;
+  `CpioArchiveInfo` dependencies; `uki_profile()` records add alternative boot profiles as separate
+  sd-boot menu entries, each appending its arguments to the base kernel command line;
 - `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a GPT
   disk with `DiskImageInfo`, independent partition artifacts with `split = True`, or both;
 - `bootable` selects a kernel and matching initrd from a logical image and provides `BootableImageInfo`;
@@ -555,6 +556,9 @@ standalone artifacts.
 
 Kernel command lines remain lists of arguments through the Starlark API and driver invocation. The UKI
 driver appends any generated verity hash and joins the arguments only when writing ukify's command-line file.
+Boot profiles become small PE binaries of `.profile` and `.cmdline` sections, built against the image's
+addon stub and joined into every UKI; a profile's arguments extend the shared base command line (including
+the verity hash), and kernel arguments are last-wins, so profiles can also override it.
 
 Bootability and output format are independent capabilities. A final target may return any combination of
 `BootableImageInfo`, `DiskImageInfo`, `DirectoryImageInfo`, `RpmdbInfo`, and `SbomInfo`, while continuing to
@@ -826,7 +830,7 @@ Near-term image gaps are:
 
 - offline SELinux labeling instead of `selinux=0`;
 - deterministic ext4/FAT byte-level validation and any required normalization;
-- measured boot, production verity signing, and Secure Boot integration;
+- measured boot, production verity signing, per-profile expected-PCR signing, and Secure Boot integration;
 - OCI, confext, ESP, and other terminal formats as real consumers require them;
 - sysext verity signing;
 - richer ordered operations for setting file metadata directly;

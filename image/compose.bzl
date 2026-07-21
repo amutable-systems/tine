@@ -9,7 +9,13 @@ load(
 load("//image_format:rpmdb.bzl", "image_rpmdb")
 load("//image_format:sbom.bzl", "image_sbom")
 load("//image_format:sysext.bzl", "image_sysext")
-load(":boot.bzl", "bootable", "install_systemd_boot", "uki")
+load(
+    ":boot.bzl",
+    "UkiProfile",  # @unused Used as a type.
+    "bootable",
+    "install_systemd_boot",
+    "uki",
+)
 load(
     ":layer.bzl",
     "LayerOperationTree",  # @unused Used as a type.
@@ -132,6 +138,7 @@ def bootable_disk_image(
         tmpfiles: list[str] = [],
         initrd: str | None = None,
         cmdline: list[str] = ["root=tmpfs", "mount.usr=dissect", "rw"],
+        profiles: list[UkiProfile] = [],
         entry: str = "linux",
         arch: str = "x86_64",
         disk_seed: str | None = None,
@@ -174,6 +181,7 @@ def bootable_disk_image(
         image = ":" + name + ".layer",
         initrds = [initrd],
         cmdline = cmdline,
+        profiles = profiles,
         arch = arch,
         entry = entry,
         root_hash = ":" + name + ".partitions" if verity else None,

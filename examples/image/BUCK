@@ -1,5 +1,6 @@
 """Image construction smoke targets."""
 
+load("@tine//image:boot.bzl", "uki_profile")
 load("@tine//image:compose.bzl", "bootable_disk_image", "rootfs_archive", "sysext_image")
 load("@tine//image:layer.bzl", "image", "image_layer", "install", "mkdir", "remove", "run")
 load("@tine//image:vm.bzl", "image_vm")
@@ -143,6 +144,13 @@ bootable_disk_image(
             "util-linux",
             "dbus-broker",
         ]),
+    ],
+    profiles = [
+        uki_profile(
+            id = "debug",
+            title = "Boot with debug logs enabled",
+            cmdline = ["debug", "systemd.log_level=debug", "systemd.journald.forward_to_console=1"],
+        ),
     ],
     rpmdb = True,
     sbom = True,
