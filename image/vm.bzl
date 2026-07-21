@@ -2,6 +2,7 @@
 
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//image_format:disk.bzl", "DiskImageInfo")
+load("//image_format:sysext.bzl", "SysextImageInfo")
 
 def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
     disk = ctx.attrs.image[DiskImageInfo]
@@ -18,6 +19,24 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
         "--kvm=yes",
         "--network-user-mode",
     )
+
+    if ctx.attrs.sysexts:
+        # each DDI must be named after its extension.
+        extensions = {}
+        for dep in ctx.attrs.sysexts:
+            info = dep[SysextImageInfo]
+            if info.extension + ".raw" in extensions:
+                fail("image_vm: duplicate sysext {!r}".format(info.extension))
+            extensions[info.extension + ".raw"] = info.image
+        run.add(
+            cmd_args(
+                ctx.actions.copied_dir("extensions", extensions),
+                # can't use /run/extensions: vmspawn marks binds x-initrd.mount, so the initrd
+                # mounts them at /sysroot/<target>; switch-root then moves the initrd's own /run
+                # tmpfs onto the new root's /run, burying a mount on that directory.
+                format = "--bind={}:/var/lib/extensions",
+            ),
+        )
 
     if ctx.attrs.autologin != None:
         if not ctx.attrs.autologin:
@@ -52,5 +71,10 @@ image_vm = rule(
             doc = "non-secret system credentials passed to systemd-vmspawn",
         ),
         "image": attrs.dep(providers = [DiskImageInfo], doc = "the raw disk image to boot ephemerally"),
+        "sysexts": attrs.list(
+            attrs.dep(providers = [SysextImageInfo]),
+            default = [],
+            doc = "sysext DDIs exposed to the guest under /var/lib/extensions",
+        ),
     },
 )

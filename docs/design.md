@@ -472,7 +472,9 @@ needed:
 - `image_sbom` runs `syft` over the assembled tree in one scan, emitting SPDX and CycloneDX SBOMs and
   providing `SbomInfo`;
 - `image_result` aggregates independent facets of the same logical image without creating another artifact;
-- `image_vm` runs the raw image ephemerally with the engine's `systemd-vmspawn`, QEMU, and OVMF stack.
+- `image_vm` runs the raw image ephemerally with the engine's `systemd-vmspawn`, QEMU, and OVMF stack,
+  and binds all given `sysexts` DDIs into the guest at `/var/lib/extensions`, where systemd-sysext merges
+  them at boot.
 
 The rpm database and SBOMs are supply-chain outputs read from the assembled image, never shipped in it.
 Scanning the whole tree, rather than only the rpm database, additionally catches packages rpm does not know
