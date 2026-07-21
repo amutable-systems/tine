@@ -3,8 +3,6 @@
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//image:layer.bzl", "ImageInfo")
 
-_ARTIFACT_NAME_CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
-
 # buildifier: disable=name-conventions  (record types, conventionally UpperCamelCase)
 Partition = record(
     name = str,
@@ -39,11 +37,8 @@ def partition(
         fail("partition: type cannot be empty")
     if name == None:
         name = type
-    if not name:
+    if not regex_match("^[a-zA-Z0-9._-]+$", name):
         fail("partition: invalid artifact name {!r}".format(name))
-    for character in name.elems():
-        if character not in _ARTIFACT_NAME_CHARACTERS:
-            fail("partition: invalid artifact name {!r}".format(name))
     if minimize not in (None, "off", "best", "guess"):
         fail("partition: invalid minimize value {!r}".format(minimize))
     if verity not in (None, "data", "hash", "signature"):
