@@ -471,6 +471,9 @@ needed:
   table alone, and provides `RpmdbInfo`;
 - `image_sbom` runs `syft` over the assembled tree in one scan, emitting SPDX and CycloneDX SBOMs and
   providing `SbomInfo`;
+- `image_sysext` builds a systemd-sysext(8) DDI (unsigned for now) with `systemd-repart`, containing `/usr`,
+  `/opt`, and `extension-release.<name>`, and provides `SysextImageInfo`; with `base`, only the delta
+  layered above that image is packaged, and the extension-release pins the base's `ID`/`VERSION_ID`;
 - `image_result` aggregates independent facets of the same logical image without creating another artifact;
 - `image_vm` runs the raw image ephemerally with the engine's `systemd-vmspawn`, QEMU, and OVMF stack,
   and binds all given `sysexts` DDIs into the guest at `/var/lib/extensions`, where systemd-sysext merges
@@ -480,12 +483,15 @@ The rpm database and SBOMs are supply-chain outputs read from the assembled imag
 Scanning the whole tree, rather than only the rpm database, additionally catches packages rpm does not know
 about, such as Go modules bundled into ELF binaries. Both facets can also ride along on a normal build:
 `image_archive` (and `rootfs_archive`) accept `rpmdb`/`sbom` flags that fold the artifacts into
-`other_outputs`, and `bootable_disk_image` exposes them as `image_result` facets.
+`other_outputs`, `sysext_image` likewise accepts `rpmdb`, and `bootable_disk_image` exposes both as
+`image_result` facets.
 
 `rootfs_archive()` is the convenience composition for building a single layer from operations and emitting
 an archive. `image_archive` remains the terminal rule for archiving an existing logical image.
+`sysext_image()` is the equivalent composition for a system-extension DDI.
 
-Terminal rules leave the rpmdb and other package state intact. Image cleanup is an explicit, configurable
+Terminal rules leave the rpmdb and other package state intact — except `image_sysext`, which drops the
+rpm database: a merged extension must not shadow the host's. Image cleanup is an explicit, configurable
 layer so output formats do not silently alter image contents. Terminal rules apply deferred tmpfiles lines
 with `systemd-tmpfiles --root`; a missing tool is an error whenever finalization is needed. The directives
 run against a disposable overlay upper and can create paths or restore modes and xattrs. Image-shipped
@@ -821,7 +827,8 @@ Near-term image gaps are:
 - offline SELinux labeling instead of `selinux=0`;
 - deterministic ext4/FAT byte-level validation and any required normalization;
 - measured boot, production verity signing, and Secure Boot integration;
-- OCI, sysext/confext, ESP, and other terminal formats as real consumers require them;
+- OCI, confext, ESP, and other terminal formats as real consumers require them;
+- sysext verity signing;
 - richer ordered operations for setting file metadata directly;
 - deciding whether package installation and image tooling eventually need distinct compatible engines.
 
@@ -852,7 +859,7 @@ Useful implementation entry points:
 - `tine/package_system/rpm/rules.bzl` and
   `tine/package_system/rpm/{snapshot,plan,install,createrepo,build,extract,decompress}.py`
 - `tine/engine/{build,runtime}.bzl`, `tine/engine/sandbox.py`, and `tine/rootfs/rootfs.py`
-- `tine/image/{layer,uki,boot,compose,vm}.bzl` and `tine/image_format/{archive,disk}.bzl`
+- `tine/image/{layer,uki,boot,compose,vm}.bzl` and `tine/image_format/{archive,disk,sysext}.bzl`
 - `tine/tools/catalog.py` and `tine/catalog/BUCK`
 - the generated `packages/*/*/BUCK` and `tine/package_system/rpm/generated.bzl`
 

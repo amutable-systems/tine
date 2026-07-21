@@ -8,6 +8,7 @@ load(
 )
 load("//image_format:rpmdb.bzl", "image_rpmdb")
 load("//image_format:sbom.bzl", "image_sbom")
+load("//image_format:sysext.bzl", "image_sysext")
 load(":boot.bzl", "bootable", "install_systemd_boot", "uki")
 load(
     ":layer.bzl",
@@ -55,6 +56,52 @@ def rootfs_archive(
         format = format,
         rpmdb = rpmdb_facet,
         sbom = sbom_facet,
+        visibility = visibility,
+    )
+
+def sysext_image(
+        name: str,
+        ops: list[LayerOperationTree],
+        package_manager: str | None = None,
+        base: str | None = None,
+        tmpfiles: list[str] = [],
+        release: dict[str, str] = {},
+        seed: str | None = None,
+        rpmdb: bool = False,
+        visibility: list[str] | None = None) -> None:
+    """Build a systemd system-extension DDI from ordered operations.
+
+    With `base`, the operations layer on top of that image and only the delta is packaged;
+    the extension-release then pins the base's ID/VERSION_ID. With `package_manager`, the
+    extension is self-contained and matches any host.
+    """
+    if (base == None) == (package_manager == None):
+        fail("sysext_image: exactly one of base and package_manager is required")
+    if base == None:
+        image(
+            name = name + ".image",
+            package_manager = package_manager,
+        )
+        parent = ":" + name + ".image"
+    else:
+        parent = base
+    image_layer(
+        name = name + ".layer",
+        parent = parent,
+        ops = ops,
+        tmpfiles = tmpfiles,
+    )
+    rpmdb_facet = None
+    if rpmdb:
+        image_rpmdb(name = name + ".rpmdb", image = ":" + name + ".layer")
+        rpmdb_facet = ":" + name + ".rpmdb"
+    image_sysext(
+        name = name,
+        image = ":" + name + ".layer",
+        base = base,
+        release = release,
+        seed = seed,
+        rpmdb = rpmdb_facet,
         visibility = visibility,
     )
 

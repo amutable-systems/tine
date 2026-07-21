@@ -39,3 +39,13 @@ python_bootstrap_binary(
     deps = ["//rootfs:rootfs"],
     visibility = ["PUBLIC"],
 )
+
+python_bootstrap_binary(
+    name = "sysext",
+    main = "sysext.py",
+    deps = [
+        "//rootfs:rootfs",
+        ":finalize",
+    ],
+    visibility = ["PUBLIC"],
+)

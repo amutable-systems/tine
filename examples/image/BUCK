@@ -1,6 +1,6 @@
 """Image construction smoke targets."""
 
-load("@tine//image:compose.bzl", "bootable_disk_image", "rootfs_archive")
+load("@tine//image:compose.bzl", "bootable_disk_image", "rootfs_archive", "sysext_image")
 load("@tine//image:layer.bzl", "image", "image_layer", "install", "mkdir", "remove", "run")
 load("@tine//image:vm.bzl", "image_vm")
 load("@tine//image_format:archive.bzl", "image_archive")
@@ -156,6 +156,17 @@ image_vm(
         "firstboot.timezone": "UTC",
     },
     image = ":boot-demo",
+    sysexts = [":demo-ext"],
+)
+
+# System-extension DDI extending :boot-demo: only the delta above the base lands in the
+# image, and its extension-release pins the base's ID/VERSION_ID. `boot-demo-vm` exposes
+# it under /var/lib/extensions.
+sysext_image(
+    name = "demo-ext",
+    base = ":boot-demo.layer",
+    ops = [install(["bash-doc"])],
+    rpmdb = True,
 )
 
 # Replacing a populated directory exercises the opaque-dir marker.
