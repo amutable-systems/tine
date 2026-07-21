@@ -53,6 +53,7 @@ engine(
         "systemd-container",
         "qemu-system-x86-core",
         "edk2-ovmf",
+        "virtiofsd",
         "openssh",
     ],
     release = ":fedora.rawhide.release",

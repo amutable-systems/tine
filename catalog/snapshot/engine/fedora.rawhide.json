@@ -1432,6 +1432,14 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/v/veritysetup-2.8.7~rc2-1.fc45.x86_64.rpm"
   },
   {
+    "nevra": "virtiofsd-1.14.0-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "5c98c9a13fe18f1dce370ad6c2fdce7ef678c58b735eecc8b4256bc7dbab3518",
+    "source": "repo",
+    "size": 984400,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/v/virtiofsd-1.14.0-1.fc45.x86_64.rpm"
+  },
+  {
     "nevra": "xen-libs-4.21.1-8.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkgid": "3e68db43bdbebed4200700d3a2072fdd3a4a8793c037cd4224523df85072bb06",
