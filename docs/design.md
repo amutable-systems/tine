@@ -7,6 +7,9 @@ Statements under **Current architecture** describe code that exists. **Roadmap**
 possible future work and labels open questions explicitly. When implementation and this document disagree,
 the implementation is authoritative and this document should be corrected.
 
+User-facing guides live alongside this document: [images.md](images.md) covers building and running
+images, and [importer.md](importer.md) covers maintaining packages with the importer.
+
 ## Purpose and scope
 
 Tine uses Buck2 to build native packages and compose operating-system images. The long-term goal is a
@@ -247,12 +250,8 @@ The bootstrap extractor currently supports the RPM v4/newc form used by the pinn
 does not implement RPM v6's index-based payload metadata. The second-stage install is authoritative for
 package metadata, ownership behavior available through the unprivileged sandbox, and scriptlets.
 
-The host contract is intentionally small:
-
-- the pinned Buck2 binary and its bundled prelude;
-- the pinned bootstrap Python used to run the minimal extractor and development tools;
-- unprivileged user namespaces and the filesystem/kernel facilities required by mkosi-sandbox/overlayfs;
-- `/dev/kvm` only when running the VM target.
+The host contract is intentionally small; its short list of requirements is documented in
+[images.md](images.md).
 
 ### Execution isolation and target roots
 
@@ -412,41 +411,9 @@ Package installation and image tooling remain separate concerns:
 - a derived package manager adds such repositories to a base manager's configured selection;
 - a manager's `local_packages` instead selects locally built packages per install by runtime closure.
 
-For example, a project can expose locally built packages without adding them to its OS release:
-
-```python
-local_repository(
-    name = "project.repository",
-    packages = ["//packages:project"],
-)
-
-package_manager(
-    name = "project.package-manager",
-    base = "tine//catalog:fedora.rawhide.package-manager",
-    additional_repositories = [":project.repository"],
-)
-
-image(
-    name = "project.image",
-    package_manager = ":project.package-manager",
-)
-
-image_layer(
-    name = "project.layer",
-    parent = ":project.image",
-    ops = [install(["project"])],
-)
-```
-
-A package manager may instead attach a branch's generated local-packages universe:
-
-```python
-package_manager(
-    name = "image.package-manager",
-    base = "tine//catalog:fedora.rawhide.package-manager",
-    local_packages = "//packages/fedora/rawhide:_local_packages",
-)
-```
+A project can therefore expose locally built packages without adding them to its OS release, or a package
+manager may instead attach a branch's generated local-packages universe; worked examples of both
+declarations are in [images.md](images.md).
 
 Each install operation then computes the runtime closure of its requested packages at analysis time over
 the imported Requires/Provides metadata, builds exactly the locally built packages in that closure, and
@@ -457,39 +424,13 @@ backed in later solves. Unlike a static `local_repository`, only the packages an
 in are built; the universe target itself never forces a package build.
 
 Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
-needed:
-
-- `image_archive` writes deterministic tar or uncompressed newc cpio archives and provides
-  `CpioArchiveInfo` for the latter;
-- `image_directory` materializes a Buck directory artifact and provides `DirectoryImageInfo`;
-- `uki` builds versioned unified kernel images for every installed kernel using one or more
-  `CpioArchiveInfo` dependencies; `uki_profile()` records add alternative boot profiles as separate
-  sd-boot menu entries, each appending its arguments to the base kernel command line;
-- `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a GPT
-  disk with `DiskImageInfo`, independent partition artifacts with `split = True`, or both;
-- `bootable` selects a kernel and matching initrd from a logical image and provides `BootableImageInfo`;
-- `image_rpmdb` copies the image's rpm database out as a separate artifact, trimmed to the `Packages`
-  table alone, and provides `RpmdbInfo`;
-- `image_sbom` runs `syft` over the assembled tree in one scan, emitting SPDX and CycloneDX SBOMs and
-  providing `SbomInfo`;
-- `image_sysext` builds a systemd-sysext(8) DDI (unsigned for now) with `systemd-repart`, containing `/usr`,
-  `/opt`, and `extension-release.<name>`, and provides `SysextImageInfo`; with `base`, only the delta
-  layered above that image is packaged, and the extension-release pins the base's `ID`/`VERSION_ID`;
-- `image_result` aggregates independent facets of the same logical image without creating another artifact;
-- `image_vm` runs the raw image ephemerally with the engine's `systemd-vmspawn`, QEMU, and OVMF stack,
-  and binds all given `sysexts` DDIs into the guest at `/var/lib/extensions`, where systemd-sysext merges
-  them at boot.
+needed. The catalog of terminal rules (`image_archive`, `image_directory`, `uki`, `repart`, `bootable`,
+`image_rpmdb`, `image_sbom`, `image_sysext`, `image_result`, `image_vm`) and the
+`rootfs_archive()`/`sysext_image()` convenience compositions are documented in [images.md](images.md).
 
 The rpm database and SBOMs are supply-chain outputs read from the assembled image, never shipped in it.
 Scanning the whole tree, rather than only the rpm database, additionally catches packages rpm does not know
-about, such as Go modules bundled into ELF binaries. Both facets can also ride along on a normal build:
-`image_archive` (and `rootfs_archive`) accept `rpmdb`/`sbom` flags that fold the artifacts into
-`other_outputs`, `sysext_image` likewise accepts `rpmdb`, and `bootable_disk_image` exposes both as
-`image_result` facets.
-
-`rootfs_archive()` is the convenience composition for building a single layer from operations and emitting
-an archive. `image_archive` remains the terminal rule for archiving an existing logical image.
-`sysext_image()` is the equivalent composition for a system-extension DDI.
+about, such as Go modules bundled into ELF binaries.
 
 Terminal rules leave the rpmdb and other package state intact — except `image_sysext`, which drops the
 rpm database: a merged extension must not shadow the host's. Image cleanup is an explicit, configurable
@@ -514,9 +455,7 @@ its block artifact; `disk = False` makes such a call partition-only. No partial 
 actions. `DirectoryImageInfo` is an independent terminal view and is never an input to repart.
 
 Partition layouts are always explicit inputs; neither `repart` nor `bootable_disk_image` chooses one
-implicitly. `DEFAULT_ROOT_PARTITIONS`, `DEFAULT_USR_VERITY_PARTITIONS`, and
-`DEFAULT_SIGNED_USR_VERITY_PARTITIONS` provide reusable conventional layouts without hiding the choice at
-the call site.
+implicitly. The reusable conventional layouts are listed in [images.md](images.md).
 
 Verity data, hash, and optional signature partitions are produced together in the split action. The root or
 usr hash is an artifact because its value is known only after execution; a separate provider lets `uki`
@@ -564,19 +503,7 @@ Bootability and output format are independent capabilities. A final target may r
 `BootableImageInfo`, `DiskImageInfo`, `DirectoryImageInfo`, `RpmdbInfo`, and `SbomInfo`, while continuing to
 return the underlying `ImageInfo`. Each facet records its source dependency, and `image_result` rejects
 facets derived from different logical images. One facet supplies the target's default output; nested
-subtargets namespace all other views:
-
-```text
-//examples/image:boot-demo[bootable][uki]
-//examples/image:boot-demo[bootable][kernel]
-//examples/image:boot-demo[bootable][initrd]
-//examples/image:boot-demo[disk][roothash]
-//examples/image:boot-demo[disk][partitions][usr]
-//examples/image:boot-demo[disk][partitions][esp]
-//examples/image:boot-demo[directory]
-//examples/image:boot-demo[rpmdb]
-//examples/image:boot-demo[sbom]
-```
+subtargets namespace all other views (the subtarget listing is shown in [images.md](images.md)).
 
 The bootable facet extracts semantic artifacts lazily from the completed logical image rather than
 forwarding whichever intermediate target created them. A shared selection manifest chooses the newest
@@ -589,9 +516,6 @@ materializes the directory facet.
 Repart derives stable UUID seeds from target identity and logical configuration; callers can override them
 explicitly. VM runners are declared separately from disk composition. Runtime policy is passed to `image_vm`
 rather than baked into the image.
-Its `autologin` option provisions a locked root password and runtime `login.noauth`; arbitrary non-secret
-system credentials configure settings such as first-boot locale and timezone. The smoke image uses a tmpfs
-root with `mount.usr=dissect`; SELinux is disabled because the build does not yet produce filesystem labels.
 
 The image build tools live in the engine and are not installed into the image merely to build it. Chrooted
 `run` operations intentionally use the image's own binaries; non-chrooted runs explicitly use engine tools
@@ -721,37 +645,8 @@ source/prebuilt provider model (see Roadmap) subsumes them.
 
 ## Operating the current system
 
-The Buck bootstrap needs `jq` and, on first use, `curl`, `sha256sum`, and `zstd`. It verifies and caches the
-pinned Buck binary under `${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2`; cached invocations work offline.
-Update the pinned fork release with `tine/tools/buck run tine//tools:bump -- --buck2`.
-
-The wrapper commands work from anywhere in the root project:
-
-```text
-tine/tools/buck run tine//tools:refresh-catalog
-tine/tools/buck run tine//tools:verify-catalog
-tine/tools/buck run tine//tools:fmt
-tine/tools/buck run tine//tools:check
-```
-
-Representative smoke builds are:
-
-```text
-tine/tools/buck build //packages/fedora/rawhide:zlib-ng
-tine/tools/buck build //examples/image:demo
-tine/tools/buck build //examples/image:layered-install
-tine/tools/buck build '//examples/image:layered-install.layer[directory]'
-tine/tools/buck build //examples/image:boot-demo
-tine/tools/buck build '//examples/image:boot-demo[bootable][uki]'
-tine/tools/buck build '//examples/image:boot-demo[disk][partitions][usr]'
-tine/tools/buck build //examples/image-local-packages:image
-```
-
-The first validates package import, package-manager selection, buildroot assembly, and RPM collection.
-Packages with `buildroot_deps` additionally exercise local-package preference. The image targets validate
-package installation and commands sharing one delta, incremental layering, archive packing, versioned UKI
-creation, semantic boot-artifact extraction, ESP-layer assembly, and disk composition. Running
-`boot-demo-vm` validates the interactive VM runner; ephemeral mode preserves the Buck disk artifact.
+Host requirements, the wrapper commands, and representative smoke builds are documented in
+[images.md](images.md).
 
 ## Current limitations
 

@@ -6,6 +6,8 @@
 
 The importer itself is part of `tine`. The actual packages are maintained in a target distribution/product monorepo which vendors in `tine`; this is called `OS.git` in this document. (In this repository, `tine` is checked out inside `OS.git` as `tine/`; `repo_root()` walks up to the `OS.git` root that holds `packages/`.)
 
+This document records the design: branch layout, metadata, operation internals, and rebuild strategy. The user guide is [importer.md](importer.md). It covers running the tool, the verb reference, the local-modification workflow, release conventions, changing import source, and `_properties.json` curation.
+
 ## Branch/Directory Layout
 
  - `OS.git`'s `upstream-rpm` branch contains the pristine imports and any future updates to these. I.e. this is a "dist-git mirror" from which we can then do efficient and local operations.
@@ -33,31 +35,8 @@ To actually build an image, the selection needs to happen in some "build configu
 
 ## Operations
 
-A single CLI tool (`tine/tools/importer`) performs these operations (via CLI verb). Run it as
-`tine/tools/buck run tine//tools:importer -- <verb> …`: that executes it in the `tine//box:dev`
-environment (host identity, network, and cwd; the pinned rpm/git toolchain from the box engine), so the
-host needs no rpm tooling installed. Verbs that only use git also work by executing the script directly.
-
-Operations on the `upstream-rpm` branch to import/fetch upstream dist-git changes into `OS.git`:
-
- - `import-upstream pkgname distro branch`: new package from `fedora`, `centos`, or [`hummingbird`](https://gitlab.com/redhat/hummingbird/rpms)
- - `update-upstreams`: check for any new upstream dist-git commits for all currently imported packages and pull them in
-
-Operations on the `main` branch to maintain AOS packages:
-
- - `import pkgname [distro branch]`: copies `packages/…`_pkgname_`{/,.json}` from `upstream-rpm` branch into main, as a single commit. If there are multiple imports, you have to specify distro and branch to disambiguate.
- - `update pkgname`: applies all new upstream commits on top of current state.
-     * for unmodified local package this always works, file content remains identical between up- and downstream.
-     * for modified local package this may result in conflicts
- - `update-all`: Run `update pkgname` for all currently imported packages; i.e. keeps individual per-package commits, but will just result in one branch/PR with the whole update batch. That (1) groups together updates that were published to Fedora in a single batch, (2) avoids unnecessarily many CI runs, and (3) retains bisectability of package updates.
- - `rpm-metadata [--distro … --branch …] pkgname rpm [rpm...]`: Recompute `pkgname.json` from locally built rpms. Meant to be run by the build system for a package import/update branch/PR.
- - `sync pkgname`: Discard our local changes (when they are obsolete) and reset the package to its `upstream-rpm` version (same path on both branches)
- - `diff pkgname`: show diff between the `upstream-rpm` and `main` versions of `packages/…/pkgname/` (ignores metadata differences)
- - `srpm pkgname`: assemble the `.src.rpm`: freeze the `%autorelease`/`%autochangelog` macros (see below), fetch the sources from the lookaside cache, and run `rpmbuild -bs`. Can then be locally built with `mock`, and later consumed by the production build system.
- - `mockbuild pkgname`: Build `pkgname` using `mock`, in the chroot config that matches its import source (e.g. `fedora-rawhide-x86_64`). Developer tool for validating changes sent to Fedora (production builds happen with buck).
- - `rebuild pkgname reasonpkg-version-release`: Generate an automated "pkgname: Rebuild against reasonpkg-version-release" commit
- - `list`: table with all rpms, local and upstream version/release (might be "AOS only"), and modification status
- - `check [start-ref]`: Validate consistency of all commits (optionally, starting from given ref); will run in all PRs
+A single CLI tool (`tine/tools/importer`) performs all operations via CLI verbs; how to run it and the
+verb reference are documented in [importer.md](importer.md).
 
 ## Design principles
 
@@ -65,13 +44,9 @@ Operations on the `main` branch to maintain AOS packages:
  - Avoid redundant state like duplicating version/release numbers or modification status in separate JSON metadata. This should only be done if performance would otherwise be too slow. `srcpkg.json` is a deliberate exception: on `upstream-rpm` it is *primary* data, not redundant — it can only be (re)computed by a full package build, so we cannot derive it from anything cheaper in the tree. On `main` it requires a package build, so it's expensive enough to record it statically. Its consistency is verified by the post-build recompute check (see below), per the next principle.
  - If we have to introduce any redundant metadata (e.g. the copied `srcpkg.json` on `main`), there must be a check happening on each commit/PR that validates its consistency.
  - Applying a local modification happens naturally: the developer updates the spec file, release, etc. There does not need to be any tool invocation for that, and future upstream updates then get merged with our modificatoins.
- - Local modifications don't modify `%changelog`: We document changes in git, this avoids unnecessary merge conflicts
+ - Local modifications don't modify `%changelog` and bump `Release:` in our own sub-namespace; the concrete conventions developers follow are spelled out in [importer.md](importer.md)
  - Every commit on `main` is a build. We don't "stage" modifications, as that just creates time bombs and makes it difficult to do integration testing. Devel branches can of course deviate from this (in particular, draft PRs which need conflict resolution, see below)
  - We configure our own `%dist` tag in our mock/build config, by appending `aos` to the upstream dist tag, e.g. `.fc44aos`, `.el10aos`, or `.hum1aos`. This keeps NEVRs unique across distros/branches (the same package may be built from several), and makes our rpms look different from Fedora etc. as they build against different library versions/toolchains; security scanners have to know about that, and NEVR in the VEX feed has to be accurate.
- - Local commits (i.e. not from imports) increase `Release:` by 0.1 to avoid colliding with Fedora/CentOS/other upstream's namespaces. Note: Hummingbird already does that, so if we modify a Hummingbird import, it will have to be bumped by 0.0.1. Consistency checks enforce this.
-     * E.g. `glibc-2.43-6.fc44.x86_64` in Fedora → unmodified import builds as `glibc-2.43-6.fc44aos.x86_64`, next modifications are `*-2.43-6.1.fc44aos.*`, `-6.2.fc44aos.*`, etc.
-     * Hummingbird import of `openssl-3.5.6-0.3.hum1.x86_64` gets imported as `*-3.5.6-0.3.hum1aos.*`, and next modification is `*-0.3.1.hum1aos.*`
-     * The common rule is: "append `.1` for a modification of a previously unmodified package" and "increase last component for a modified one"
  - Rebuilding a package which uses `%autorelease` happens through a commit with subject "pkgname: Rebuild <reason>" (for humans) and an `X-Rebuild: pkgname` trailer (load-bearing). It contains *only* the resulting `srcpkg.json` changes. This avoids touching an arbitrary file in `packages/…/pkgname/`, as we want to avoid unnecessary diff noise.
  - tool code should deliberately be brittle: there should ideally be *no* `except:`. If there is any unforeseen situation in a newly imported or updated package, or a missing file or inconsistent state in our repository, the code crashes with a traceback, and developers need to fix it. Don't try to recover and apply heuristics/warnings.
  - We keep using the lookaside cache principle for sources. Storing them in git directly is out of the question, it will make `git clone` take way too long and become brittle. Depending on the choice of our build system, our lookaside cache might even be a part of e.g. buck2's shared cache in r2.
@@ -96,14 +71,14 @@ Operations on the `main` branch to maintain AOS packages:
    - predict the `%dist` tag change (appending `aos` as above) and update dist tags in the relations lists before build. This will help the buck build system to resolve dependencies correctly and should already cover most of the "diff noise". This is a heuristic, but the result will be validated by the next step.
    - After building the packages (in the update PR), a post-build check re-computes the relationships/file lists, amends the corresponding commits, and re-pushes the temporary import branch for the PR.
  * `import`/`update` can further transform the per-srcpackage metadata into AOS build system specific form/rules in the future, once it has been designed/built. These rules will be included into the import commit, so that all corresponding changes are tied together.
- * `srpm`: Download the `sources` into `packages/…/pkgname/`, uncommitted. Like Fedora's koji plugin, compute the `%autorelease` value and write it into the SRPM by prepending a static spec definition (`%global autorelease <pkgrel>[.<minorbump>]%{?dist}` plus an empty `%global autochangelog %{nil}`). With that, the buildroot needs no git access and the SRPM rebuilds reproducibly anywhere. `<pkgrel>` comes straight from the imported `srcpkg.json`. The optional `.<minorbump>` is our AOS modification bump (the `.1`/`.2` *before* the dist tag, per the release rule above) and equals the count of local commits since the most recent import: commits without `X-Upstream-Commit:` which either touch `packages/…/pkgname/` or have an `X-Rebuild: pkgname`. A fresh upstream release restarts the bump, so the next modification is `.1` again. This is the only place that counts commits, and it is fully contained in our history. We are not interested in changelogs, hence an empty `%autochangelog`. For production, the buck rules will do the same.
+ * `srpm`: Download the `sources` into `packages/…/pkgname/`, uncommitted. Like Fedora's koji plugin, compute the `%autorelease` value and write it into the SRPM by prepending a static spec definition (`%global autorelease <pkgrel>[.<minorbump>]%{?dist}` plus an empty `%global autochangelog %{nil}`). With that, the buildroot needs no git access and the SRPM rebuilds reproducibly anywhere. `<pkgrel>` comes straight from the imported `srcpkg.json`. The optional `.<minorbump>` is our AOS modification bump (the `.1`/`.2` *before* the dist tag, per the release rules in [importer.md](importer.md)) and equals the count of local commits since the most recent import: commits without `X-Upstream-Commit:` which either touch `packages/…/pkgname/` or have an `X-Rebuild: pkgname`. A fresh upstream release restarts the bump, so the next modification is `.1` again. This is the only place that counts commits, and it is fully contained in our history. We are not interested in changelogs, hence an empty `%autochangelog`. For production, the buck rules will do the same.
  * `update`/`list`: If the *only* dist-git difference between upstream and ours is in the `Release:` line, then disregard that delta (revert before cherry-pick) and consider the package to be unmodified. We commonly have to do such bumps for rebuilds against newer dependencies.
- * `rebuild`: If the package uses `%autorelease`, generate a commit with `X-Rebuild: pkgname` and no actual changes to the package directory; otherwise, bump `Release:` per the rules above. In both cases, update `srcpkg.json` for the expected Release: bump result, similar to what `import`/`update` do.
+ * `rebuild`: If the package uses `%autorelease`, generate a commit with `X-Rebuild: pkgname` and no actual changes to the package directory; otherwise, bump `Release:` per the release rules in [importer.md](importer.md). In both cases, update `srcpkg.json` for the expected Release: bump result, similar to what `import`/`update` do.
  * `check`: Walk through all commits (or all since the given ref, `origin/main` in PRs) of the current branch (usually `main` or a temporary developer or package update PR branch). For each commit that touches `packages/`:
    - check that `srcpkg.json` is valid JSON
    - check that `Version:` and `Release:` numbers agree between the architectures in the `binaries` map.
    - if it has `X-Upstream-Commit:`, check that it resolves to a corresponding commit on the `upstream-rpm` branch at the identical `packages/` path
-   - if it does *not* have an `X-Upstream-Commit:`, check that the package either uses `%autorelease` or `Release:` was bumped according to the above rules. This includes AOS specific packages.
+   - if it does *not* have an `X-Upstream-Commit:`, check that the package either uses `%autorelease` or `Release:` was bumped according to the release rules in [importer.md](importer.md). This includes AOS specific packages.
    - if it does *not* have an `X-Upstream-Commit:`, check that it changes `srcpkg.json`; release numbers are part of `Provides:`; guards against accidentally forgetting to update (or `git add`) metadata. Imported commits legitimately lack the metadata change when upstream never built that commit on its own (batched pushes, built once at the end with `%autorelease` counting them all)
    - if it does *not* have an `X-Upstream-Commit:` and *only* changes `srcpkg.json` metadata, check that the package uses `%autorelease` and commit has `X-Rebuild:`. Every other case of local metadata modification has to come from a sourceful modification or no-change rebuild which bumps `Release:`. (Imported commits are legitimately metadata-only: upstream's rpmautospec mass rebuilds are empty dist-git commits, and their build's recomputed json is all the mirrored commit has to show.)
    - if it has `X-Rebuild:`, check that package uses `%autorelease` and the commit only changes `srcpkg.json` and nothing else.
@@ -111,22 +86,6 @@ Operations on the `main` branch to maintain AOS packages:
    - if package uses `%autorelease`, check the recorded release against the metadata chain: an imported commit that changes the recorded version-release must advance the release unless the version changed with it (upstream's counter restarted); a local commit's release must be the last import's release plus `.<count of local commits since>`.
 
    This does *not* check the integrity of the metadata -- we trust humans won't mess around with this, and it can only be validated through a rebuild of the rpms. There might be more checks in the future.
-
-## Changing import source
-
-This might happen sometimes if we e.g. decide to move a package from Fedora to Hummingbird, or more commonly to move from Fedora 44 to 45 or rawhide. As each distro/branch is its own path, this means importing the package at the new coordinate (`import-upstream` + `import`) and pointing the build configuration at it; the old coordinate can be dropped once nothing selects it. We may eventually introduce a proper tool verb for that cleanup, but that can wait until the need actually arises.
-
-## Making local package modifications
-
-The workflow for changing a package downstream, like adding a patch or tweaking the spec:
-
- 1. Edit the package in `packages/…/pkgname/`: modify the spec, add patch files, etc. There is no tool verb for this, it is a plain git change. Don't touch `%changelog` (git documents the change), and bump `Release:` per the rules above unless the package uses `%autorelease`.
- 2. If the change introduces new `BuildRequires:`, add them to `srcpkg.json`'s `build_requires` map manually. This is unavoidable: the buck build system installs the buildroot from the metadata, it does not dynamically resolve `BuildRequires:` from the spec.
- 3. Build the package locally with the buck build system, or possibly `mockbuild pkgname` (see below).
- 4. Recompute the metadata from the built rpms with `rpm-metadata pkgname _build/*.rpm`. This picks up all unpredictable metadata changes to relationships, added/removed files, or binary rpm structure.
- 5. Commit the package change together with the recomputed `srcpkg.json` in a single commit; `check` enforces this and the Release/`%changelog` conventions.
-
-The canonical `srcpkg.json` comes from the buck build (the post-build recompute in the PR, see "Operation details"). A `mockbuild`-based recompute of the same change likely has changes in the `/usr/lib/.build-id/…` file lists: the GNU build-id is a content hash of each built binary, and mock's buildroot resolves the live distro repos instead of buck's pinned snapshot, so the binaries are not bit-identical between the two.
 
 ## Rebuilds
 
@@ -165,37 +124,11 @@ That fallback assumes the seed can actually provide the dropped edge (i.e. BR). 
 
 The only current case is `gcc`, which build-requires `(glibc32 or glibc-devel(x86-32))`. `glibc32` is a `glibc` subpackage that lives only in koji's buildroot, never in the compose; the only compose-side alternative is the 32-bit multilib `glibc-devel.i686`, but as we don't build/track that architecture, our build system cannot use it. (Also, the alternative declaration (and koji) prefer `glibc32` anyway). We *do* build `glibc32`, rawhide's `glibc.spec` emits it, but with the naïve "ignore the cycle" approach from above we cannot use it, and thus `gcc` cannot build.
 
-The `buildroot_only_packages` branch property lists these packages: a listed edge survives the cycle-breaking, so it introduces a gcc → glibc dependency edge and hence gcc builds against *our* glibc build. The reverse glibc → gcc edge stays dropped as per the general rule above.
-
-### When and how to add an entry
-
-The list lives in the branch's `_properties.json` (see Layout):
-
-```json
-{ "buildroot_only_packages": ["glibc32"] }
-```
-
-The importer folds it into the generated branch `BUCK`'s `rpm_branch(...)` call (`regenerate_buck`); never hand-edit the `@generated` `BUCK` itself. Add a package when another package fails to build because a `BuildRequires` it needs is all three of: (a) produced by one of our own packages, (b) never present in the seed/compose, and (c) inside a BuildRequires cycle, so the lock drops the edge to it. `rpm_branch` validates the list on every load, failing loudly if either invariant breaks: every entry must have a local provider (else the claim is simply wrong), and the kept edges must still form a DAG (else that cycle needs a staged bootstrap instead, not a kept edge).
+The `buildroot_only_packages` branch property lists these packages: a listed edge survives the cycle-breaking, so it introduces a gcc → glibc dependency edge and hence gcc builds against *our* glibc build. The reverse glibc → gcc edge stays dropped as per the general rule above. When and how to add an entry, and the `_properties.json` format, are documented in [importer.md](importer.md).
 
 ## Seed-only packages
 
-The opposite curation: the `seed_only_packages` branch property lists *source* packages whose builds we ship but never want to build *against*. Their role in other package builds is tool use (a compiler, a signature verifier, test data), not linkage. A `BuildRequires:` on anything a listed source package provides (`gcc` covers gcc-c++ and libstdc++-devel, `kernel` covers kernel-devel) never becomes a dependency edge between our packages; it is always resolved from the seed instead.
-
-```json
-{ "seed_only_packages": ["gcc"] }
-```
-
-Since such edges are inside the BuildRequires cycle today, listing a package changes nothing about which rpms end up in a buildroot -- it turns the cycle fallback into policy, and thereby shrinks the cycle itself (fewer intra-cycle edges), which is what makes the future self-hosting approaches cheaper. The list is intentionally empty for now; the analyzed candidates (gcc, gnupg2, kernel, tzdata -- cycle 69 → 38) and their trade-offs are documented in `tine/docs/self-host-approaches.md`.
-
-## Per-package rpmbuild options
-
-Some specs offer build-trimming or other configuration through build conditionals (`%bcond`) or macros. The `rpmbuild_options` branch property in `_properties.json` maps a package to the extra rpmbuild CLI options (`--with`/`--without`/`--define`) its build is invoked with:
-
-```json
-{ "rpmbuild_options": { "gcc": ["--with=basic"] } }
-```
-
-The importer folds it into the generated branch `BUCK`'s `rpm_branch(...)` call, and `rpm-metadata` applies the same options when recomputing the package's srcpkg.json, so the recorded subpackages and BuildRequires match what the build actually produces. An upstream import re-records the package as koji built it (all subpackages); the next local build + `rpm-metadata` recompute converges it back.
+The opposite curation: the `seed_only_packages` branch property (defined and exemplified in [importer.md](importer.md)) resolves everything a listed source package provides from the seed, because its role in other package builds is tool use, not linkage. Since such edges are inside the BuildRequires cycle today, listing a package changes nothing about which rpms end up in a buildroot -- it turns the cycle fallback into policy, and thereby shrinks the cycle itself (fewer intra-cycle edges), which is what makes the future self-hosting approaches cheaper. The analyzed candidates (gcc, gnupg2, kernel, tzdata -- cycle 69 → 38) and their trade-offs are documented in [self-host-approaches.md](self-host-approaches.md).
 
 ## aarch64 support
 

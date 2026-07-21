@@ -144,7 +144,7 @@ command_alias(
     resources = ["tine//tests:unit-test"],
 )
 
-# The rpm importer (see docs/packages.md): its verbs need the pinned rpm toolchain plus the
+# The rpm importer (see docs/importer.md): its verbs need the pinned rpm toolchain plus the
 # host's git identity, network, and cwd, so it runs through the dev box's relaxed entry.
 command_alias(
     name = "importer",
