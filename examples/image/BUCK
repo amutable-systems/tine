@@ -168,6 +168,22 @@ image_vm(
     sysexts = [":demo-ext"],
 )
 
+# Throwaway boot smoke test: drives :boot-demo-vm's console over a pty, asserts the system settles,
+# then powers off. `buck run :boot-demo-vm-smoke` runs the same thing locally and in CI.
+python_bootstrap_binary(
+    name = "boot-smoke-driver",
+    main = "boot-smoke.py",
+)
+
+command_alias(
+    name = "boot-demo-vm-smoke",
+    # exe_target, not exe: the runner is data for the driver, not a host tool, so keep it in the
+    # target configuration and reuse the image `buck build :boot-demo` already produced (exe would
+    # pull it into the exec configuration and rebuild it).
+    args = ["$(exe_target :boot-demo-vm)"],
+    exe = ":boot-smoke-driver",
+)
+
 # System-extension DDI extending :boot-demo: only the delta above the base lands in the
 # image, and its extension-release pins the base's ID/VERSION_ID. `boot-demo-vm` exposes
 # it under /var/lib/extensions.
