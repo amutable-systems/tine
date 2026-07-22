@@ -177,30 +177,49 @@ def _select_engines(all_resolves: list[str], selected_engines: list[str] | None)
     return [target for target in all_resolves if _name_of(target) in selected]
 
 
+def _repositories_for_engines(buck: str, engines: list[str]) -> list[str]:
+    """rpm-remote-repository targets reachable from the given engine targets."""
+    engine_set = " ".join(engines)
+    query = f"attrfilter(labels, '{RPM_REMOTE_REPOSITORY_LABEL}', deps(set({engine_set})))"
+    return sorted(_buck_out(buck, "uquery", query).split())
+
+
 def _refresh(
     buck: str,
     catalog: str,
     selected_engines: list[str] | None,
     advance_snapshots: bool,
-) -> Path:
-    """Snapshot repositories and resolve selected engines."""
+) -> tuple[Path, list[Path]]:
+    """Snapshot repositories and resolve selected engines; return the catalog dir and written files.
+
+    Selecting engines also scopes the snapshotted repositories to those the engines depend on, so a
+    partial refresh or verify never touches repositories outside the selection (e.g. the deliberately
+    unpinned CentOS mirrors, which drift and are not meant to be verified).
+    """
     all_resolves = _targets_with_label(buck, catalog, ENGINE_LABEL)
     resolves = _select_engines(all_resolves, selected_engines)
 
-    snapshots = _targets_with_label(buck, catalog, RPM_REMOTE_REPOSITORY_LABEL)
+    if selected_engines is None:
+        snapshots = _targets_with_label(buck, catalog, RPM_REMOTE_REPOSITORY_LABEL)
+    else:
+        snapshots = _repositories_for_engines(buck, resolves)
     targets = all_resolves + snapshots
     if not targets:
         raise SystemExit(f"catalog: no repository/engine refresh targets found in {catalog}")
     catalog_dir = _catalog_directory(buck, targets)
     if advance_snapshots:
         _advance_snapshots(buck, catalog, catalog_dir)
+
+    written = []
     for target in snapshots:
         _snapshot(buck, target, catalog_dir)
+        written.append(_repository_snapshot_path(catalog_dir, target))
 
     for target in resolves:
         _resolve(buck, target, catalog_dir)
+        written.append(_engine_snapshot_path(catalog_dir, target))
 
-    return catalog_dir
+    return catalog_dir, written
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -217,7 +236,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--engine",
         action="append",
-        help="only (re)resolve these engines (repos still all snapshot); default: all",
+        help="only (re)resolve these engines and snapshot the repositories they depend on; default: all",
     )
     p.add_argument(
         "--verify",
@@ -229,7 +248,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # Run nested commands from the project root so wrappers resolve consistently.
     with contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")):
-        catalog_dir = _refresh(
+        catalog_dir, written = _refresh(
             args.buck,
             catalog,
             args.engine,
@@ -238,6 +257,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.verify:
         print("==> verifying the committed catalog matches", file=sys.stderr)
+        # Check exactly the files this run regenerated, so a scoped verify ignores everything else.
+        pathspecs = sorted(str(path.relative_to(catalog_dir)) for path in written)
         status = subprocess.run(
             [
                 "git",
@@ -247,7 +268,7 @@ def main(argv: list[str] | None = None) -> None:
                 "--porcelain=v1",
                 "--untracked-files=all",
                 "--",
-                ":(glob)snapshot/**/*.json",
+                *pathspecs,
             ],
             check=True,
             capture_output=True,
@@ -256,7 +277,7 @@ def main(argv: list[str] | None = None) -> None:
         if status:
             print(status, end="", file=sys.stderr)
             subprocess.run(
-                ["git", "-C", str(catalog_dir), "diff", "--", ":(glob)snapshot/**/*.json"],
+                ["git", "-C", str(catalog_dir), "diff", "--", *pathspecs],
                 check=True,
             )
             raise SystemExit(1)
