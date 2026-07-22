@@ -7,6 +7,7 @@ Target-root setup belongs to rootfs.py rather than this launcher.
 
 import argparse
 import os
+import tempfile
 from pathlib import Path
 from typing import NoReturn
 
@@ -69,6 +70,39 @@ def _relaxed(out: list[str], tools: Path) -> None:
     for f in _HOST_ETC:
         if Path("/etc", f).exists() and (tools / "etc" / f).exists():
             out += ["--ro-bind", f"/etc/{f}", f"/etc/{f}"]
+    _identity(out, tools)
+
+
+def _identity(out: list[str], tools: Path) -> None:
+    """Make the invoking uid/gid resolvable inside the sandbox.
+
+    Relaxed /etc comes from the tools tree, which lists only system users. On a host the caller's uid
+    is resolved by nss-systemd via the bound /run, but where that is unavailable (e.g. a CI runner
+    whose uid is served by neither files nor userdb) getpwuid() fails and callers like ssh-keygen
+    abort. Append an entry for the caller to the passwd/group tables and bind them over /etc; a file
+    bind stacks over the read-only /etc mount, which a plain write could not.
+    """
+    uid, gid = os.getuid(), os.getgid()
+    name = os.environ.get("USER") or ""
+    home = os.environ.get("HOME") or ""
+    if not name or not name.isascii() or ":" in name or "\n" in name:
+        name = f"u{uid}"
+    if not home or ":" in home or "\n" in home:
+        home = "/root"
+    tables = {
+        "passwd": f"{name}:x:{uid}:{gid}::{home}:/bin/sh\n",
+        "group": f"{name}:x:{gid}:\n",
+    }
+    for base, entry in tables.items():
+        source = tools / "etc" / base
+        content = source.read_text(encoding="utf-8") if source.exists() else ""
+        # Deterministic per-uid path: overwritten each run rather than accumulated, and O_NOFOLLOW so
+        # a pre-planted symlink can't redirect the write.
+        path = Path(tempfile.gettempdir(), f".tine-sandbox-{base}-{uid}")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content + entry)
+        out += ["--ro-bind", str(path), f"/etc/{base}"]
 
 
 def main(argv: list[str] | None = None) -> NoReturn:
