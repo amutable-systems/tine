@@ -52,6 +52,8 @@ engine(
         "mtools",
         "systemd-container",
         "qemu-system-x86-core",
+        "qemu-img",
+        "zstd",
         "edk2-ovmf",
         "virtiofsd",
         "openssh",

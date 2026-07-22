@@ -1216,6 +1216,14 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/q/qemu-common-11.0.0-11.fc45.x86_64.rpm"
   },
   {
+    "nevra": "qemu-img-2:11.0.0-11.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "0acf3779801c327301d44c72cb8443ae8205ac2873878263b2079bed384216a1",
+    "source": "repo",
+    "size": 2810867,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/q/qemu-img-11.0.0-11.fc45.x86_64.rpm"
+  },
+  {
     "nevra": "qemu-system-x86-core-2:11.0.0-11.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkgid": "46fb676e098aca5acc8a85cdb7b4d5d567750f3f778c55555e2ab3ed8d23473e",
@@ -1494,5 +1502,13 @@
     "source": "repo",
     "size": 93385,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/z/zlib-ng-compat-2.3.3-5.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "zstd-1.5.7-5.fc44.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "81842450c0ed61c29869dd40de7491663d0174e7bf614ee80848e5eaaf7e5497",
+    "source": "repo",
+    "size": 197134,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/z/zstd-1.5.7-5.fc44.x86_64.rpm"
   }
 ]
