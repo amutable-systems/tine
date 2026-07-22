@@ -499,6 +499,11 @@ Boot profiles become small PE binaries of `.profile` and `.cmdline` sections, bu
 addon stub and joined into every UKI; a profile's arguments extend the shared base command line (including
 the verity hash), and kernel arguments are last-wins, so profiles can also override it.
 
+A composed raw disk can be re-encoded into distributable formats without rebuilding it: `disk_convert`
+drives `qemu-img` for a compact qcow2 and `zstd` for a compressed raw, each carried as `ConvertedDiskInfo`.
+These are alternative encodings of the same disk, so `image_result` exposes them as format-named subtargets
+rather than default outputs.
+
 Bootability and output format are independent capabilities. A final target may return any combination of
 `BootableImageInfo`, `DiskImageInfo`, `DirectoryImageInfo`, `RpmdbInfo`, and `SbomInfo`, while continuing to
 return the underlying `ImageInfo`. Each facet records its source dependency, and `image_result` rejects

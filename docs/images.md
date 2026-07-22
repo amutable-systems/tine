@@ -170,9 +170,14 @@ target's default output, and nested subtargets namespace all other views:
 //examples/image:boot-demo[disk][partitions][usr]
 //examples/image:boot-demo[disk][partitions][esp]
 //examples/image:boot-demo[directory]
+//examples/image:boot-demo[qcow2]
+//examples/image:boot-demo[raw.zst]
 //examples/image:boot-demo[rpmdb]
 //examples/image:boot-demo[sbom]
 ```
+
+The `[qcow2]` and `[raw.zst]` subtargets re-encode the raw disk into a compact qcow2 or a compressed raw on
+demand; Buck only runs the conversion actually requested, so they add nothing to a default build.
 
 ## Running the image in a VM
 

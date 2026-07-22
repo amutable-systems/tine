@@ -3,7 +3,9 @@
 load("//image_format:archive.bzl", "image_archive", "image_directory")
 load(
     "//image_format:disk.bzl",
+    "DISK_FORMATS",
     "Partition",  # @unused Used as a type.
+    "disk_convert",
     "repart",
 )
 load("//image_format:rpmdb.bzl", "image_rpmdb")
@@ -214,6 +216,17 @@ def bootable_disk_image(
         image = ":" + name + ".esp.layer",
     )
 
+    # Alternative disk encodings are always addressable (e.g. `:name[qcow2]`); Buck only re-encodes
+    # the one that is actually requested, so exposing them all costs nothing on a default build.
+    conversions = []
+    for format in DISK_FORMATS:
+        disk_convert(
+            name = "{}.disk.{}".format(name, format),
+            disk = ":" + name + ".disk",
+            format = format,
+        )
+        conversions.append(":{}.disk.{}".format(name, format))
+
     # Supply-chain facets scan the same layer image_result aggregates, so their source labels match.
     rpmdb_facet = None
     if rpmdb:
@@ -236,6 +249,7 @@ def bootable_disk_image(
         name = name,
         image = ":" + name + ".esp.layer",
         bootable = ":" + name + ".bootable",
+        conversions = conversions,
         directory = ":" + name + ".directory",
         disk = ":" + name + ".disk",
         rpmdb = rpmdb_facet,

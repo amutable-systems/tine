@@ -1,7 +1,7 @@
 """Aggregate independent capabilities of one logical image."""
 
 load("//image_format:archive.bzl", "DirectoryImageInfo")
-load("//image_format:disk.bzl", "DiskImageInfo", "RootHashInfo")
+load("//image_format:disk.bzl", "ConvertedDiskInfo", "DiskImageInfo", "RootHashInfo")
 load("//image_format:rpmdb.bzl", "RpmdbInfo")
 load("//image_format:sbom.bzl", "SbomInfo")
 load(":boot.bzl", "BootableImageInfo")
@@ -46,6 +46,14 @@ def _image_result_impl(ctx: AnalysisContext) -> list[Provider]:
         sub_targets["disk"] = disk_subtarget
         facets["disk"] = dep
 
+    # Converted disks are alternative encodings of the raw disk, reachable as format-named subtargets
+    # (e.g. `[qcow2]`). They are never the default facet, and are omitted from other_outputs so a plain
+    # build does not re-encode the whole disk.
+    for conversion in ctx.attrs.conversions:
+        info = conversion[ConvertedDiskInfo]
+        _check_source(info.format, info.source, image)
+        sub_targets[info.format] = [conversion[DefaultInfo], info]
+
     # Supply-chain outputs are never the default facet, but ride along on a normal build via
     # other_outputs (and stay individually reachable as subtargets).
     ride_along = []
@@ -81,6 +89,11 @@ image_result = rule(
     impl = _image_result_impl,
     attrs = {
         "bootable": attrs.option(attrs.dep(providers = [BootableImageInfo]), default = None),
+        "conversions": attrs.list(
+            attrs.dep(providers = [ConvertedDiskInfo]),
+            default = [],
+            doc = "alternative disk encodings exposed as format-named subtargets",
+        ),
         "default_facet": attrs.enum(["bootable", "directory", "disk"]),
         "directory": attrs.option(attrs.dep(providers = [DirectoryImageInfo]), default = None),
         "disk": attrs.option(attrs.dep(providers = [DiskImageInfo]), default = None),

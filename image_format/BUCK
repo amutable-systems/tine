@@ -27,6 +27,12 @@ python_bootstrap_binary(
 )
 
 python_bootstrap_binary(
+    name = "convert",
+    main = "convert.py",
+    visibility = ["PUBLIC"],
+)
+
+python_bootstrap_binary(
     name = "rpmdb",
     main = "rpmdb.py",
     deps = ["//rootfs:rootfs"],

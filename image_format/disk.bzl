@@ -144,6 +144,15 @@ DiskImageInfo = provider(
     },
 )
 
+ConvertedDiskInfo = provider(
+    doc = "A composed raw disk image re-encoded into a distributable output format.",
+    fields = {
+        "format": provider_field(str),
+        "image": provider_field(Artifact),
+        "source": provider_field(Dependency),
+    },
+)
+
 def _partition_dict(value: Partition) -> dict[str, typing.Any]:
     return {
         "name": value.name,
@@ -362,3 +371,33 @@ def repart(
         certificate = certificate,
         **kwargs
     )
+
+# The disk conversion output formats, doubling as each artifact's extension.
+DISK_FORMATS = ["qcow2", "raw.zst"]
+
+def _disk_convert_impl(ctx: AnalysisContext) -> list[Provider]:
+    disk = ctx.attrs.disk[DiskImageInfo]
+    out = ctx.actions.declare_output("image." + ctx.attrs.format)
+    cmd = cmd_args(
+        chroot_run(engine = disk.engine[EngineInfo], exe = ctx.attrs._driver),
+        "--format",
+        ctx.attrs.format,
+        "--input",
+        disk.image,
+        "--out",
+        out.as_output(),
+    )
+    ctx.actions.run(cmd, category = "disk_convert", identifier = ctx.attrs.format)
+    return [
+        DefaultInfo(default_output = out),
+        ConvertedDiskInfo(format = ctx.attrs.format, image = out, source = disk.source),
+    ]
+
+disk_convert = rule(
+    impl = _disk_convert_impl,
+    attrs = {
+        "disk": attrs.dep(providers = [DiskImageInfo], doc = "the composed raw disk to re-encode"),
+        "format": attrs.enum(DISK_FORMATS),
+        "_driver": attrs.dep(providers = [RunInfo], default = "tine//image_format:convert"),
+    },
+)
