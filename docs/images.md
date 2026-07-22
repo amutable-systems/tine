@@ -146,7 +146,9 @@ when needed:
   artifact;
 - `image_vm` runs the raw image ephemerally with the engine's `systemd-vmspawn`, QEMU, and OVMF stack,
   and binds all given `sysexts` DDIs into the guest at `/var/lib/extensions`, where systemd-sysext merges
-  them at boot.
+  them at boot. With `secure_boot`, vmspawn picks Secure Boot capable firmware without pre-enrolled keys,
+  so an image carrying `loader/keys/auto` enrollment files enrolls them on first boot and then boots with
+  Secure Boot enforced, and attaches a software TPM so the UKI's signed expected-PCR policy is measured.
 
 `rootfs_archive()` is the convenience composition for building a single layer from operations and emitting
 an archive; `image_archive` remains the terminal rule for archiving an existing logical image.

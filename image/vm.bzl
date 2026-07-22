@@ -20,6 +20,11 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
         "--network-user-mode",
     )
 
+    if ctx.attrs.secure_boot:
+        # OVMF variable store starts in setup mode and sd-boot enrolls the
+        # image's loader/keys/auto keys on first boot.
+        run.add("--secure-boot=yes", "--tpm=yes")
+
     if ctx.attrs.sysexts:
         # each DDI must be named after its extension.
         extensions = {}
@@ -71,6 +76,10 @@ image_vm = rule(
             doc = "non-secret system credentials passed to systemd-vmspawn",
         ),
         "image": attrs.dep(providers = [DiskImageInfo], doc = "the raw disk image to boot ephemerally"),
+        "secure_boot": attrs.bool(
+            default = False,
+            doc = "boot with Secure Boot capable firmware",
+        ),
         "sysexts": attrs.list(
             attrs.dep(providers = [SysextImageInfo]),
             default = [],
