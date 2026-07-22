@@ -56,6 +56,10 @@ engine(
         "zstd",
         "edk2-ovmf",
         "virtiofsd",
+        # software TPM so systemd-vmspawn can offer the guest a vTPM for measured boot;
+        # swtpm-tools provides swtpm_setup, which vmspawn runs to initialize the TPM state
+        "swtpm",
+        "swtpm-tools",
         "openssh",
     ],
     release = ":fedora.rawhide.release",

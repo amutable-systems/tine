@@ -128,6 +128,14 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/d/device-mapper-libs-1.02.215-2.fc45.x86_64.rpm"
   },
   {
+    "nevra": "dns-root-data-2026260100-4.fc45.noarch",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "c634f4aad89164da23a9a197c69ac1c083317791b20de23e0c6c76b54dd180da",
+    "source": "repo",
+    "size": 16619,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/d/dns-root-data-2026260100-4.fc45.noarch.rpm"
+  },
+  {
     "nevra": "dosfstools-4.2-18.fc44.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkgid": "441775480374ead22854707eda259fa52564ea5940ee43b15084afeb1ec1255e",
@@ -352,12 +360,36 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/g/gnutls-3.8.13-1.fc45.x86_64.rpm"
   },
   {
+    "nevra": "gnutls-dane-3.8.13-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "d58874567d3c9fea4907f1f7b2ab26cbb715f153a87a48c70b9ec826bc503c88",
+    "source": "repo",
+    "size": 57603,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/g/gnutls-dane-3.8.13-1.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "gnutls-utils-3.8.13-1.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "e4a90004811e1e17d651a14f9cb5bb1c8556b474e200d5e9f62ab343d31e62e0",
+    "source": "repo",
+    "size": 320649,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/g/gnutls-utils-3.8.13-1.fc45.x86_64.rpm"
+  },
+  {
     "nevra": "grep-3.12-3.fc44.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkgid": "7a989b8e97d4ee4ae7fe817df900af8954936045d103b83a75bf2ef4bc8d01dd",
     "source": "repo",
     "size": 308791,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/g/grep-3.12-3.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "hiredis-1.2.0-9.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "7ff2c8e4d5d825ec11c92fbeb874bf4fb2dcc85b7ebc9bf6bd6e4a562e1bec54",
+    "source": "repo",
+    "size": 53273,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/h/hiredis-1.2.0-9.fc45.x86_64.rpm"
   },
   {
     "nevra": "igvm-libs-0.4.0-10.fc45.x86_64",
@@ -390,6 +422,14 @@
     "source": "repo",
     "size": 47441,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/j/json-c-0.18-8.fc44.x86_64.rpm"
+  },
+  {
+    "nevra": "json-glib-1.10.8-5.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "661ec0d573abd0017f49fbed49afca4b689ff229a80912db1445c24333c482f4",
+    "source": "repo",
+    "size": 179733,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/j/json-glib-1.10.8-5.fc45.x86_64.rpm"
   },
   {
     "nevra": "kbd-2.10.0-1.fc45.x86_64",
@@ -824,6 +864,14 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/l/libtool-ltdl-2.5.4-10.fc44.x86_64.rpm"
   },
   {
+    "nevra": "libtpms-0.10.2-4.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "11bf63858079f1315556eaff9cc03c5d5bdc926949f7df9a815598a296244474",
+    "source": "repo",
+    "size": 441868,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/l/libtpms-0.10.2-4.fc45.x86_64.rpm"
+  },
+  {
     "nevra": "libunistring-1.1-11.fc44.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkgid": "6a82e5597815dc93a66b55066717e70839680dc8f96efb4dfa18a82cfa9dc2dc",
@@ -1104,6 +1152,14 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/p/popt-1.19-10.fc44.x86_64.rpm"
   },
   {
+    "nevra": "protobuf3-c-1.5.2-51.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "c2fe9d6a04bc5b70e5599ffac0e9b9779e32109167deb642b06647ec75656497",
+    "source": "repo",
+    "size": 33816,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/p/protobuf3-c-1.5.2-51.fc45.x86_64.rpm"
+  },
+  {
     "nevra": "publicsuffix-list-dafsa-20260624-1.fc45.noarch",
     "repo": "fedora.rawhide.repository",
     "pkgid": "51673b1ffa092f1408041dcfe9124ff5aa82761d05288d312f9a638b923e6f28",
@@ -1344,6 +1400,30 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/s/sqlite-libs-3.53.3-1.fc45.x86_64.rpm"
   },
   {
+    "nevra": "swtpm-0.10.1-4.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "d538bdb2f41d0ce191ddc8d826d539ea76f384d703480e58076ab9489cab9984",
+    "source": "repo",
+    "size": 34810,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/s/swtpm-0.10.1-4.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "swtpm-libs-0.10.1-4.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "f94eba841519a58d77ba0bbc16bdfca19e106c9c5552c9f6873da22cc9b9bb7c",
+    "source": "repo",
+    "size": 65768,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/s/swtpm-libs-0.10.1-4.fc45.x86_64.rpm"
+  },
+  {
+    "nevra": "swtpm-tools-0.10.1-4.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "bff444dc3d2eefa5af2810df22bed76bebd177145026b46ae163c2d970cdf4f3",
+    "source": "repo",
+    "size": 120486,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/s/swtpm-tools-0.10.1-4.fc45.x86_64.rpm"
+  },
+  {
     "nevra": "systemd-261.1-2.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkgid": "38621ceebc3946e8e97b47969c7aae64c286d3edd0d7b7451ed15e2ffa27d7e9",
@@ -1422,6 +1502,14 @@
     "source": "repo",
     "size": 730598,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/t/tzdata-2026b-1.fc45.noarch.rpm"
+  },
+  {
+    "nevra": "unbound-libs-1.25.1-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkgid": "5c86c12182048f75ae2088f32662283f27d28bcd01afdc765ea8875c0262266c",
+    "source": "repo",
+    "size": 618948,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260721/Packages/u/unbound-libs-1.25.1-3.fc45.x86_64.rpm"
   },
   {
     "nevra": "util-linux-core-2.42.2-1.fc45.x86_64",
