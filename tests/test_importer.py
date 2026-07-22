@@ -327,7 +327,6 @@ class PackagesTestCase(unittest.TestCase):
             mock.patch.object(self.tool, "WORKTREE", self.monorepo / ".upstream-rpm"),
             mock.patch.dict(self.tool.DISTROS),  # snapshot; make_upstream retargets a distro
             mock.patch("xmlrpc.client.ServerProxy", side_effect=self._server_proxy),
-            mock.patch("urllib.request.urlretrieve", side_effect=self._urlretrieve),
             mock.patch("urllib.request.urlopen", side_effect=self._urlopen),
         ]
         for p in self._patches:
@@ -356,12 +355,12 @@ class PackagesTestCase(unittest.TestCase):
     def _server_proxy(self, url: str, *a: object, **k: object) -> FakeKoji:
         return self._koji
 
-    def _urlretrieve(self, url: str, dest: str | os.PathLike[str]) -> tuple[str, None]:
-        shutil.copy(self._rpms[url.rsplit("/", 1)[-1]], dest)
-        return str(dest), None
-
     def _urlopen(self, url: str, *a: object, **k: object) -> io.BytesIO:
-        return io.BytesIO(self._lookaside[url.rsplit("/", 1)[-1]])
+        # Serve both koji rpm downloads (self._rpms) and lookaside sources (self._lookaside).
+        name = url.rsplit("/", 1)[-1]
+        if name in self._rpms:
+            return io.BytesIO(self._rpms[name].read_bytes())
+        return io.BytesIO(self._lookaside[name])
 
     # --- fixture builder ----------------------------------------------------------------
 
@@ -522,6 +521,30 @@ class UpstreamPackages(PackagesTestCase):
         )
         self.assertEqual(meta["sources"][0]["size"], len(self._lookaside["testpkg-1.0.tar.gz"]))
         self.assertTrue(meta["sources"][0]["url"].endswith("/testpkg-1.0.tar.gz"))
+
+    def test_download_retries_transient_reset(self) -> None:
+        """A connection reset mid-download is retried, so the import still completes."""
+        sha = self.make_upstream("flaky", "fedora", "rawhide")
+
+        attempts = {"n": 0}
+
+        def reset_once(url: str, *a: object, **k: object) -> object:
+            attempts["n"] += 1
+            if attempts["n"] == 1:  # first download drops the connection mid-body, like the CI failures
+                resp = mock.MagicMock()
+                resp.__exit__.return_value = False  # do not swallow the error raised inside the with
+                resp.__enter__.return_value.read.side_effect = ConnectionResetError(104, "reset")
+                return resp
+            return self._urlopen(url, *a, **k)
+
+        # time.sleep is patched out so the back-off does not slow the test.
+        with mock.patch("time.sleep"), mock.patch("urllib.request.urlopen", side_effect=reset_once):
+            self.tool.import_upstream("fedora", "rawhide", "flaky", sha)
+
+        # The reset was injected and the import still finished: the mirror was written.
+        self.assertGreaterEqual(attempts["n"], 2)  # first attempt reset, then retried
+        rel = "packages/fedora/rawhide/flaky"
+        self.assertTrue((self.monorepo / ".upstream-rpm" / rel / "flaky.spec").is_file())
 
     def test_gitignored_tracked_files_imported(self) -> None:
         """Files upstream tracks are imported even when the package's .gitignore names them.

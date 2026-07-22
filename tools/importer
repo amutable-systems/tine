@@ -16,6 +16,8 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
+import urllib.error
 import urllib.request
 import xmlrpc.client
 from pathlib import Path
@@ -164,6 +166,42 @@ def git(*args: str, cwd: Path | None = None) -> str:
                           stdout=subprocess.PIPE, text=True).stdout
 
 
+# transient overload, gateway, and rate-limit conditions; any other 4xx is a definitive answer
+RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+HTTP_RETRIES = 4
+HTTP_BACKOFF = 2.0  # seconds before the first retry, doubled each time
+
+
+def urlopen_retry(url: str) -> bytes:
+    """Fetch a URL's full body, retrying transient failures with exponential back-off.
+
+    Retries the RETRYABLE_STATUS server responses, a connection that never completed (URLError), and
+    a connection dropped mid-transfer (reset or timeout). Any other HTTP status is a definitive
+    answer that a retry cannot change, so it propagates immediately.
+    """
+    for attempt in range(HTTP_RETRIES + 1):
+        try:
+            with urllib.request.urlopen(url) as response:
+                return response.read()
+        except urllib.error.HTTPError as e:
+            if e.code not in RETRYABLE_STATUS or attempt == HTTP_RETRIES:
+                raise
+            reason = f'HTTP {e.code}'
+        except urllib.error.URLError as e:  # the request never reached a responding server
+            if attempt == HTTP_RETRIES:
+                raise
+            reason = str(e.reason)
+        except (ConnectionError, TimeoutError) as e:  # the connection dropped mid-body
+            if attempt == HTTP_RETRIES:
+                raise
+            reason = str(e)
+        delay = HTTP_BACKOFF * 2 ** attempt
+        logging.warning('%s failed (%s); retrying in %.0fs (%d/%d)',
+                        url, reason, delay, attempt + 1, HTTP_RETRIES)
+        time.sleep(delay)
+    raise AssertionError('unreachable')  # range() is non-empty, so the loop always returns or raises
+
+
 def ensure_worktree() -> Path:
     """Return a checkout of the upstream-rpm branch. Fail if the branch is absent."""
     assert git('branch', '--list', 'upstream-rpm', cwd=ROOT).strip(), \
@@ -204,7 +242,7 @@ def fetch_rpm(destdir: Path, distro: str, build: KojiBuild, rpm: KojiRPM) -> Pat
     url = f"{base}/{build['name']}/{build['version']}/{build['release']}/{rpm['arch']}/{fn}"
     dest = destdir / fn
     logging.debug('fetch %s', url)
-    urllib.request.urlretrieve(url, dest)
+    dest.write_bytes(urlopen_retry(url))
     return dest
 
 
@@ -274,8 +312,7 @@ def is_published(koji: xmlrpc.client.ServerProxy, distro: str, branch: str, buil
         return True
     bodhi = DISTROS[distro].get('bodhi')
     assert bodhi, f'{distro} has no bodhi configured'
-    with urllib.request.urlopen(f'{bodhi}?builds={build["nvr"]}') as f:
-        updates = json.load(f)['updates']
+    updates = json.loads(urlopen_retry(f'{bodhi}?builds={build["nvr"]}'))['updates']
     logging.debug('bodhi: %s -> %d update(s)', build['nvr'], len(updates))
     return bool(updates)
 
@@ -505,8 +542,7 @@ def compute_sources(sources_file: Path, distro: str, packagename: str) -> list[S
         url = f'{base}/{packagename}/{filename}/{hashtype.lower()}/{hexdigest}/{filename}'
         logging.info('%s: fetching %s from the lookaside', packagename, filename)
         logging.debug('GET %s', url)
-        with urllib.request.urlopen(url) as f:
-            data = f.read()
+        data = urlopen_retry(url)
         # validate current sum
         actual = hashlib.new(hashtype, data).hexdigest()
         assert actual == hexdigest.lower(), f'{filename}: {hashtype} mismatch ({actual} != {hexdigest})'
