@@ -14,8 +14,7 @@ The host contract is intentionally small:
 - `/dev/kvm` only when running a VM target.
 
 The Buck bootstrap needs `jq`, `curl`, `sha256sum`, and `zstd`. It verifies and caches the pinned Buck binary
-under `${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2`; cached invocations work offline. Update the pinned fork
-release with `tine/tools/buck run tine//tools:bump -- --buck2`.
+under `${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2`; cached invocations work offline.
 
 ## Concepts
 
@@ -218,3 +217,24 @@ system-extension DDI on top of `boot-demo`. Running `boot-demo-vm` validates the
 exposes `demo-ext` under `/var/lib/extensions` in the guest, which validates the sysext merge at boot. The
 `//packages/...` and `//examples/image-local-packages` targets need the package sources of a vendoring OS
 monorepo; the other targets also build from a standalone checkout.
+
+## Updating pinned tools
+
+`bump` refreshes the pinned tool releases against their upstream GitHub releases.
+
+Update one or more pinned tools by name (`buck2`, `python3`, `buildifier`, `ruff`, `ty`, `syft`):
+
+```sh
+tine/tools/buck run tine//tools:bump -- --tool ruff --tool ty
+```
+
+Update all tools:
+
+```sh
+tine/tools/buck run tine//tools:bump -- --all
+```
+
+Each tool is resolved to its latest upstream release and its `url` and `sha256` are rewritten in place.
+
+python3 minor version stays pinned in pyproject.toml; updating to a new minor release stays a deliberate
+manual change.

@@ -4,7 +4,7 @@ load(":defs.bzl", "http_tool")
 load(":tools.json", _pins = "value")
 
 # The shell bootstrap fetches Buck; Buck then fetches and verifies the remaining tools. Their pinned
-# releases live in ./tools.json.
+# releases live in ./tools.json and are refreshed by `bump` (see docs/images.md).
 
 # Relocatable bootstrap Python; 3.14 provides stdlib zstd for RPM payloads.
 http_tool(
