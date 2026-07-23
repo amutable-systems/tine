@@ -13,3 +13,11 @@ engine_unittest(
     },
     visibility = ["tine//tools:check"],
 )
+
+# Generic image_vm boot smoke driver: boots any VM runner under a pty, waits for the autologin
+# shell, asserts the system settled, then powers off. Reused by the example smoke targets.
+python_bootstrap_binary(
+    name = "boot-smoke",
+    main = "boot-smoke.py",
+    visibility = ["PUBLIC"],
+)

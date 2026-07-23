@@ -4,7 +4,7 @@
 The image_vm runner drives systemd-vmspawn with --console=native, so its console is a terminal, not
 a pipe. This wraps the runner in a pseudo-terminal to make that console machine-controllable: wait
 for the autologin root shell, assert the system settled, then poweroff and wait for the guest to go
-down. A throwaway smoke test -- the real OS carries its own suite.
+down. A small smoke test -- the real OS carries its own suite.
 
 Usage: boot-smoke.py <vm-runner-command...>   (e.g. the expansion of `buck run :boot-demo-vm`)
 """
@@ -19,6 +19,7 @@ import struct
 import sys
 import termios
 import time
+from typing import NoReturn
 
 # A first boot runs firstboot credential setup and mounts the sysext, so allow a generous window.
 BOOT_TIMEOUT = float(os.environ.get("SMOKE_BOOT_TIMEOUT", "300"))
@@ -111,7 +112,7 @@ def drain_terminal() -> None:
         pass
 
 
-def fail(console: Console, message: str) -> None:
+def fail(console: Console, message: str) -> NoReturn:
     print(f"\n[boot-smoke] FAIL: {message}", file=sys.stderr)
     console.close()
     drain_terminal()
@@ -138,7 +139,9 @@ def main(argv: list[str]) -> None:
 
     # Capture the state via a bracketed token so the echoed command (which contains "running") can't
     # match. Redirect the query so only our printf reaches the console.
-    console.send("systemctl is-system-running >/tmp/smoke 2>&1; printf 'SMOKE_STATE[%s]\\n' \"$(cat /tmp/smoke)\"")
+    console.send(
+        "systemctl is-system-running >/tmp/smoke 2>&1; printf 'SMOKE_STATE[%s]\\n' \"$(cat /tmp/smoke)\""
+    )
     match = console.expect(STATE, STEP_TIMEOUT)
     if match is None:
         fail(console, "system state query produced no result")
