@@ -32,10 +32,6 @@ def _array(value: object, description: str) -> list[object]:
     return cast(list[object], value)
 
 
-def _read_data(path: Path) -> dict[str, Any]:
-    return _object(json.loads(path.read_text(encoding="utf-8")), str(path))
-
-
 def _github_json(url: str) -> object:
     headers = {
         "Accept": "application/vnd.github+json",
@@ -73,40 +69,32 @@ def _asset_digest(asset: dict[str, Any], name: str) -> str:
     return value
 
 
-def _bump_buck2(path: Path) -> None:
-    data = _read_data(path)
-    repository = _string(data.get("repository"), f"repository in {path}")
-    platforms = _object(data.get("platforms"), f"platforms in {path}")
+def _bump_buck2(buck2: dict[str, Any]) -> None:
+    repository = _string(buck2.get("repository"), "buck2.repository")
+    platforms = _object(buck2.get("platforms"), "buck2.platforms")
+    previous = _string(buck2.get("release"), "buck2.release")
     release = _latest_release(repository)
     tag = _string(release.get("tag_name"), "latest Buck2 release tag")
-
     assets = {}
     for index, raw_asset in enumerate(_array(release.get("assets"), f"assets for Buck2 {tag}")):
         asset = _object(raw_asset, f"Buck2 {tag} asset {index}")
         assets[_string(asset.get("name"), f"name of Buck2 {tag} asset {index}")] = asset
-
-    updated_platforms = {}
+    changed = tag != previous
     for platform, raw_entry in platforms.items():
-        entry = _object(raw_entry, f"Buck2 platform {platform}")
-        artifact = _string(entry.get("artifact"), f"artifact for Buck2 platform {platform}")
+        entry = _object(raw_entry, f"buck2 platform {platform}")
+        artifact = _string(entry.get("artifact"), f"artifact for buck2 platform {platform}")
         if artifact not in assets:
             raise ValueError(f"Buck2 {tag} has no {artifact} asset")
-        updated_platforms[platform] = {**entry, "sha256": _asset_digest(assets[artifact], artifact)}
-
-    previous = _string(data.get("release"), f"release in {path}")
-    data["release"] = tag
-    data["platforms"] = updated_platforms
-    content = json.dumps(data, indent=2) + "\n"
-    if path.read_text(encoding="utf-8") == content:
-        print(f"buck2: {tag} is up to date")
-        return
-    atomic_write_text(path, content)
-    print(f"buck2: updated {previous} -> {tag}")
+        digest = _asset_digest(assets[artifact], artifact)
+        changed = changed or entry.get("sha256") != digest
+        entry["sha256"] = digest
+    buck2["release"] = tag
+    print(f"buck2: updated {previous} -> {tag}" if changed else f"buck2: {tag} is up to date")
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=Path(__file__).with_name("buck.json"))
+    parser.add_argument("--data", type=Path, default=Path(__file__).with_name("tools.json"))
     parser.add_argument("--buck2", action="store_true", help="update the Buck2 fork release")
     args = parser.parse_args()
     if not args.buck2:
@@ -116,9 +104,15 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+    path = args.data
     try:
+        original = path.read_text(encoding="utf-8")
+        data = _object(json.loads(original), str(path))
         if args.buck2:
-            _bump_buck2(args.data)
+            _bump_buck2(_object(data.get("buck2"), f"buck2 in {path}"))
+        content = json.dumps(data, indent=2) + "\n"
+        if content != original:
+            atomic_write_text(path, content)
     except (OSError, ValueError, json.JSONDecodeError, urllib.error.URLError) as error:
         raise SystemExit(f"bump: {error}") from error
 

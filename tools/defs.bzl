@@ -26,12 +26,18 @@ _tool = rule(
 # buildifier: disable=function-docstring-args
 def http_tool(
         name: str,
-        platforms: dict[str, dict[str, str]],
+        spec: dict,
         args: list[str] | None = None,
         path: str | None = None,
         visibility: list[str] | None = None) -> None:
-    """Pin a raw binary or archive member for each supported CPU."""
-    urls = select({_CPU_SETTING[cpu]: [e["url"]] for cpu, e in platforms.items()})
+    """Pin a raw binary or archive member for each supported CPU.
+
+    `spec` is the tools.json entry: a `repository`, a `release` tag, and per-CPU `artifact` + `sha256`
+    (+ optional `strip_prefix`). The download URL is derived from these.
+    """
+    base = "https://github.com/{}/releases/download/{}".format(spec["repository"], spec["release"])
+    platforms = spec["platforms"]
+    urls = select({_CPU_SETTING[cpu]: ["{}/{}".format(base, e["artifact"])] for cpu, e in platforms.items()})
     sha256 = select({_CPU_SETTING[cpu]: e["sha256"] for cpu, e in platforms.items()})
     if path == None:
         http_file(

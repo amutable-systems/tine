@@ -7,7 +7,7 @@ fail() {
 }
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-data=$script_dir/buck.json
+data=$script_dir/tools.json
 
 if ! command -v jq >/dev/null 2>&1; then
     fail "required tool not found: jq"
@@ -28,15 +28,15 @@ case "$(uname -s)-$(uname -m)" in
         ;;
 esac
 
-repository=$(jq -er '.repository | strings | select(length > 0)' "$data")
-release=$(jq -er '.release | strings | select(length > 0)' "$data")
+repository=$(jq -er '.buck2.repository | strings | select(length > 0)' "$data")
+release=$(jq -er '.buck2.release | strings | select(length > 0)' "$data")
 artifact=$(
     jq -er --arg platform "$platform" \
-        '.platforms[$platform].artifact | strings | select(length > 0)' "$data"
+        '.buck2.platforms[$platform].artifact | strings | select(length > 0)' "$data"
 )
 sha256=$(
     jq -er --arg platform "$platform" \
-        '.platforms[$platform].sha256 | strings | select(length > 0)' "$data"
+        '.buck2.platforms[$platform].sha256 | strings | select(length > 0)' "$data"
 )
 
 case "$sha256" in

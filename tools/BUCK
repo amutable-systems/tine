@@ -1,78 +1,38 @@
 """Pinned tool binaries and development commands fetched by Buck."""
 
 load(":defs.bzl", "http_tool")
+load(":tools.json", _pins = "value")
 
-# The shell bootstrap fetches Buck; Buck then fetches and verifies the remaining tools.
+# The shell bootstrap fetches Buck; Buck then fetches and verifies the remaining tools. Their pinned
+# releases live in ./tools.json.
 
 # Relocatable bootstrap Python; 3.14 provides stdlib zstd for RPM payloads.
 http_tool(
     name = "python3",
     args = ["-B"],
     path = "bin/python3",
-    platforms = {
-        "aarch64": {
-            "sha256": "93af46aac9d7c210b4842ab2813a2ac6e0af60d2550b3ca5f761f2e0f5e18b64",
-            "strip_prefix": "python",
-            "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260623/cpython-3.14.6+20260623-aarch64-unknown-linux-gnu-install_only.tar.gz",
-        },
-        "x86_64": {
-            "sha256": "3d943d8b4360823959012d7e9f4c755256ac1e9c04b609c24894a1b480736e36",
-            "strip_prefix": "python",
-            "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260623/cpython-3.14.6+20260623-x86_64-unknown-linux-gnu-install_only.tar.gz",
-        },
-    },
+    spec = _pins["python3"],
     visibility = ["toolchains//:python_bootstrap"],
 )
 
 # Raw static binary, so no archive path is needed.
 http_tool(
     name = "buildifier",
-    platforms = {
-        "aarch64": {
-            "sha256": "947bf6700d708026b2057b09bea09abbc3cafc15d9ecea35bb3885c4b09ccd04",
-            "url": "https://github.com/bazelbuild/buildtools/releases/download/v8.5.1/buildifier-linux-arm64",
-        },
-        "x86_64": {
-            "sha256": "887377fc64d23a850f4d18a077b5db05b19913f4b99b270d193f3c7334b5a9a7",
-            "url": "https://github.com/bazelbuild/buildtools/releases/download/v8.5.1/buildifier-linux-amd64",
-        },
-    },
+    spec = _pins["buildifier"],
 )
 
 # Python formatter + linter (static musl builds).
 http_tool(
     name = "ruff",
     path = "ruff",
-    platforms = {
-        "aarch64": {
-            "sha256": "d6945815c5b2b32d01483e1d59ac7d2e744df0a20272680b2290c3e5e4ce5020",
-            "strip_prefix": "ruff-aarch64-unknown-linux-musl",
-            "url": "https://github.com/astral-sh/ruff/releases/download/0.15.19/ruff-aarch64-unknown-linux-musl.tar.gz",
-        },
-        "x86_64": {
-            "sha256": "682158b99b14ce60b62e7b4585100a11ebd5716355efe4048760690eda21fb99",
-            "strip_prefix": "ruff-x86_64-unknown-linux-musl",
-            "url": "https://github.com/astral-sh/ruff/releases/download/0.15.19/ruff-x86_64-unknown-linux-musl.tar.gz",
-        },
-    },
+    spec = _pins["ruff"],
 )
 
 # Python type checker (static musl builds).
 http_tool(
     name = "ty",
     path = "ty",
-    platforms = {
-        "aarch64": {
-            "sha256": "a66df5fe96dd54c7232fd46d51adb2f6f6f3f1b62e3421c9b0f9e0d6eebb9d1a",
-            "strip_prefix": "ty-aarch64-unknown-linux-musl",
-            "url": "https://github.com/astral-sh/ty/releases/download/0.0.52/ty-aarch64-unknown-linux-musl.tar.gz",
-        },
-        "x86_64": {
-            "sha256": "2cce40f34e3996fd638406fce25f39f7dbb0098319a2300605cdf9035b39be76",
-            "strip_prefix": "ty-x86_64-unknown-linux-musl",
-            "url": "https://github.com/astral-sh/ty/releases/download/0.0.52/ty-x86_64-unknown-linux-musl.tar.gz",
-        },
-    },
+    spec = _pins["ty"],
 )
 
 # SBOM generator (static release binary; not packaged in Fedora). Scans an image tree for the
@@ -80,16 +40,7 @@ http_tool(
 http_tool(
     name = "syft",
     path = "syft",
-    platforms = {
-        "aarch64": {
-            "sha256": "6865a3d97c4e28b4b38571c17a2bf512da4494ef1d37613c3122fce0d67e63b0",
-            "url": "https://github.com/anchore/syft/releases/download/v1.48.0/syft_1.48.0_linux_arm64.tar.gz",
-        },
-        "x86_64": {
-            "sha256": "6cef9a7f37220d9067eaf9cfaaa2fce986e9f320a8d42cbc36658c99af78ea04",
-            "url": "https://github.com/anchore/syft/releases/download/v1.48.0/syft_1.48.0_linux_amd64.tar.gz",
-        },
-    },
+    spec = _pins["syft"],
     visibility = ["PUBLIC"],
 )
 
@@ -112,7 +63,7 @@ python_bootstrap_binary(
 
 command_alias(
     name = "bump",
-    args = ["--data", "$(source buck.json)"],
+    args = ["--data", "$(source tools.json)"],
     exe = ":bump-driver",
 )
 
