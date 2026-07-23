@@ -1,34 +1,34 @@
 {
   "buck2": {
     "repository": "daandemeyer/buck2",
-    "release": "2026-07-17-20.23.37",
+    "release": "2026-07-18-20.16.22",
     "platforms": {
       "Linux-aarch64": {
         "artifact": "buck2-aarch64-unknown-linux-musl.zst",
-        "sha256": "48f51c95daffd7fa005d8d48e2fb7be63db91784c22eca7fb339ec66f20fd838"
+        "sha256": "31632ddaae476148050f0b99aa1c9f16483b961fc0ab2e2bb14ace7802324c20"
       },
       "Linux-riscv64": {
         "artifact": "buck2-riscv64gc-unknown-linux-gnu.zst",
-        "sha256": "6e1163a2f9acfd74d5c8bee9a7c7a7e585910cc655f6ac878dee27001a7556f7"
+        "sha256": "aad86109796a00047c1eb1014ceac05da9230ab39f242ccdfef976ec6ff063b6"
       },
       "Linux-x86_64": {
         "artifact": "buck2-x86_64-unknown-linux-musl.zst",
-        "sha256": "a7c1a32febe49818002a44867602ee524af6021e8b4dd47ac9ee5da379b1d83a"
+        "sha256": "58f3d5a69592eb18b0d018b29c9a2e0ff22eb9cad3c2084519e7584692f83f7e"
       }
     }
   },
   "python3": {
     "repository": "astral-sh/python-build-standalone",
-    "release": "20260623",
+    "release": "20260718",
     "platforms": {
       "aarch64": {
-        "artifact": "cpython-3.14.6+20260623-aarch64-unknown-linux-gnu-install_only.tar.gz",
-        "sha256": "93af46aac9d7c210b4842ab2813a2ac6e0af60d2550b3ca5f761f2e0f5e18b64",
+        "artifact": "cpython-3.14.6+20260718-aarch64-unknown-linux-gnu-install_only.tar.gz",
+        "sha256": "97f9ddaa547f9420a5ab59e9eac7a5b04acd96acec2ef532f4a64283e3164aad",
         "strip_prefix": "python"
       },
       "x86_64": {
-        "artifact": "cpython-3.14.6+20260623-x86_64-unknown-linux-gnu-install_only.tar.gz",
-        "sha256": "3d943d8b4360823959012d7e9f4c755256ac1e9c04b609c24894a1b480736e36",
+        "artifact": "cpython-3.14.6+20260718-x86_64-unknown-linux-gnu-install_only.tar.gz",
+        "sha256": "b442fb93903c6f3392b2430961d4725354ae0da7558c785a908d714264309b28",
         "strip_prefix": "python"
       }
     }
@@ -49,47 +49,47 @@
   },
   "ruff": {
     "repository": "astral-sh/ruff",
-    "release": "0.15.19",
+    "release": "0.15.22",
     "platforms": {
       "aarch64": {
         "artifact": "ruff-aarch64-unknown-linux-musl.tar.gz",
-        "sha256": "d6945815c5b2b32d01483e1d59ac7d2e744df0a20272680b2290c3e5e4ce5020",
+        "sha256": "88feb2dc2fafb92482185201f4d483134fbaab10370c79512d3dd372f1d3f28b",
         "strip_prefix": "ruff-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "ruff-x86_64-unknown-linux-musl.tar.gz",
-        "sha256": "682158b99b14ce60b62e7b4585100a11ebd5716355efe4048760690eda21fb99",
+        "sha256": "853462df618fb9f156a9f04d9d899d9e5a9e1a43fbffaec72df4bb159348e71b",
         "strip_prefix": "ruff-x86_64-unknown-linux-musl"
       }
     }
   },
   "ty": {
     "repository": "astral-sh/ty",
-    "release": "0.0.52",
+    "release": "0.0.63",
     "platforms": {
       "aarch64": {
         "artifact": "ty-aarch64-unknown-linux-musl.tar.gz",
-        "sha256": "a66df5fe96dd54c7232fd46d51adb2f6f6f3f1b62e3421c9b0f9e0d6eebb9d1a",
+        "sha256": "e44b9da55ec237a8e8c53991c9df56603d2948d721c9710ec430e4112e2fbe6e",
         "strip_prefix": "ty-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "ty-x86_64-unknown-linux-musl.tar.gz",
-        "sha256": "2cce40f34e3996fd638406fce25f39f7dbb0098319a2300605cdf9035b39be76",
+        "sha256": "363c340abc2490f3cfd7d9b829ff89cd8e79a41f8d9db911bf78dae48c36c436",
         "strip_prefix": "ty-x86_64-unknown-linux-musl"
       }
     }
   },
   "syft": {
     "repository": "anchore/syft",
-    "release": "v1.48.0",
+    "release": "v1.49.0",
     "platforms": {
       "aarch64": {
-        "artifact": "syft_1.48.0_linux_arm64.tar.gz",
-        "sha256": "6865a3d97c4e28b4b38571c17a2bf512da4494ef1d37613c3122fce0d67e63b0"
+        "artifact": "syft_1.49.0_linux_arm64.tar.gz",
+        "sha256": "c7c32de183c32368de197edba75e8dba7632915f7761bacd55149a9ca7fe0fa4"
       },
       "x86_64": {
-        "artifact": "syft_1.48.0_linux_amd64.tar.gz",
-        "sha256": "6cef9a7f37220d9067eaf9cfaaa2fce986e9f320a8d42cbc36658c99af78ea04"
+        "artifact": "syft_1.49.0_linux_amd64.tar.gz",
+        "sha256": "7aa2f03ee92739cf643279ba3990548b9925d4e22cae13f46831ee62821147fe"
       }
     }
   }
