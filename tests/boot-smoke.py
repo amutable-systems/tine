@@ -3,12 +3,15 @@
 
 The image_vm runner drives systemd-vmspawn with --console=native, so its console is a terminal, not
 a pipe. This wraps the runner in a pseudo-terminal to make that console machine-controllable: wait
-for the autologin root shell, assert the system settled, then poweroff and wait for the guest to go
-down. A small smoke test -- the real OS carries its own suite.
+for the autologin root shell, assert the system settled, optionally assert that given guest commands
+succeed, then poweroff and wait for the guest to go down. A small smoke test -- the real OS carries
+its own suite.
 
-Usage: boot-smoke.py <vm-runner-command...>   (e.g. the expansion of `buck run :boot-demo-vm`)
+Usage: boot-smoke.py [--check COMMAND] <vm-runner-command...>
 """
 
+import argparse
+import base64
 import fcntl
 import os
 import pty
@@ -37,6 +40,10 @@ PROMPT = re.compile(rb"-?(?:bash|sh)-[0-9.]+[#$]|\][#$]")
 # echoed command line, so matching it can't trip over the command itself.
 READY = re.compile(rb"TINE_READY\[ok\]")
 STATE = re.compile(rb"SMOKE_STATE\[([a-z-]+)\]")
+# A failed --check command's base64-encoded output: the marker carries arbitrary multi-line text on
+# a single line, and base64's alphabet excludes '%', so the echoed printf (literal SMOKE_OUTPUT[%s])
+# cannot match ahead of the real output.
+OUTPUT = re.compile(rb"SMOKE_OUTPUT\[([A-Za-z0-9+/=]*)\]")
 # CSI/escape sequences and bare CRs, stripped before matching so prompts survive the native console.
 ANSI = re.compile(rb"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[=>()][A-Za-z0-9]?|\r")
 
@@ -120,13 +127,25 @@ def fail(console: Console, message: str) -> NoReturn:
 
 
 def main(argv: list[str]) -> None:
-    if not argv:
-        raise SystemExit("usage: boot-smoke.py <vm-runner-command...>")
-    # command_alias expands `$(exe :target)` into one space-joined argument; split it back into argv.
-    # buck-out paths carry no spaces, so a plain shell split round-trips the runner command exactly.
-    if len(argv) == 1:
-        argv = shlex.split(argv[0])
-    console = Console(argv)
+    parser = argparse.ArgumentParser(
+        prog="boot-smoke", description="Boot an image_vm target and smoke-check it."
+    )
+    parser.add_argument(
+        "--check",
+        metavar="COMMAND",
+        action="append",
+        default=[],
+        help="assert this shell command succeeds in the guest (repeatable)",
+    )
+    parser.add_argument("command", nargs="+", help="the image_vm runner command to launch")
+    args = parser.parse_args(argv)
+
+    command = args.command
+    # command_alias expands `$(exe_target :target)` into one space-joined argument; split it back into
+    # argv. buck-out paths carry no spaces, so a plain shell split round-trips the command exactly.
+    if len(command) == 1:
+        command = shlex.split(command[0])
+    console = Console(command)
 
     print("[boot-smoke] waiting for the autologin shell...", file=sys.stderr)
     if console.expect(PROMPT, BOOT_TIMEOUT) is None:
@@ -149,6 +168,21 @@ def main(argv: list[str]) -> None:
     print(f"\n[boot-smoke] system state: {state}", file=sys.stderr)
     if state not in ACCEPT:
         fail(console, f"unacceptable system state {state!r} (accepting {sorted(ACCEPT)})")
+
+    # Each sentinel carries its index: expect() matches against everything seen so far, so a
+    # repeated bare marker would re-match an earlier check's result.
+    for index, command in enumerate(args.check):
+        console.send(f"{command} >/tmp/smoke 2>&1; printf 'SMOKE_CHECK[{index}:%s]\\n' \"$?\"")
+        match = console.expect(re.compile(rf"SMOKE_CHECK\[{index}:([0-9]+)\]".encode()), STEP_TIMEOUT)
+        if match is None:
+            fail(console, f"check produced no result: {command}")
+        status = match.group(1).decode()
+        if status != "0":
+            console.send("printf 'SMOKE_OUTPUT[%s]\\n' \"$(base64 -w0 </tmp/smoke)\"")
+            output = console.expect(OUTPUT, STEP_TIMEOUT)
+            captured = base64.b64decode(output.group(1)).decode(errors="replace") if output else ""
+            fail(console, f"check exited {status}: {command}\n{captured}")
+        print(f"[boot-smoke] check passed: {command}", file=sys.stderr)
 
     print("[boot-smoke] powering off...", file=sys.stderr)
     console.send("poweroff")

@@ -176,7 +176,7 @@ command_alias(
     # exe_target, not exe: the runner is data for the driver, not a host tool, so keep it in the
     # target configuration and reuse the image `buck build :boot-demo` already produced (exe would
     # pull it into the exec configuration and rebuild it).
-    args = ["$(exe_target :boot-demo-vm)"],
+    args = ["--check", "bootctl | grep -F 'Secure Boot: disabled (setup)'", "$(exe_target :boot-demo-vm)"],
     exe = "tine//tests:boot-smoke",
 )
 
