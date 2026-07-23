@@ -52,7 +52,7 @@ def install(rpms_dir: Path, installroot: Path, cachedir: Path, *, system: bool =
         query.filter_repo_id(["@commandline"])
     goal = libdnf5.base.Goal(base)
     # SWIG exposes iteration at runtime but not in its type information.
-    packages: list[libdnf5.rpm.Package] = list(query)  # ty: ignore
+    packages: list[libdnf5.rpm.Package] = list(query)  # ty: ignore[invalid-argument-type, invalid-assignment]
     for pkg in packages:
         goal.add_rpm_install(pkg)
     tx = goal.resolve()
