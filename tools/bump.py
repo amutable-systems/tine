@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import tomllib
 import urllib.error
 import urllib.request
@@ -138,8 +139,10 @@ def _select_asset(assets: list[dict[str, Any]], description: str) -> dict[str, A
 
 def _bump_tool(
     name: str, spec: dict[str, Any], python_minor: str, releases: dict[str, dict[str, Any]]
-) -> None:
+) -> tuple[str, str] | None:
     """Resolve the latest release for one tool and rewrite its per-platform pins.
+
+    Returns the (old, new) release tags when anything changed, else None.
 
     Projects which only publish prereleases resolve through _latest_full_release's scan fallback;
     every other tool has a plain latest release. Version-independent artifact names match verbatim;
@@ -168,6 +171,22 @@ def _bump_tool(
         entry["sha256"] = digest
     spec["release"] = tag
     print(f"{name}: updated {previous} -> {tag}" if changed else f"{name}: {tag} is up to date")
+    return (previous, tag) if changed else None
+
+
+def _commit(path: Path, updates: list[tuple[str, str, str]]) -> None:
+    """Commit the rewritten pins with a message itemizing each update.
+
+    These are mechanical, machine-generated commits, so they are not signed off.
+    """
+    body = "\n".join(f"- {name}: {previous} → {new}" for name, previous, new in updates)
+    message = f"tool: Bump pinned tool releases\n\n{body}\n"
+    subprocess.run(
+        ["git", "-C", str(path.parent), "commit", "--file=-", "--", path.name],
+        input=message,
+        encoding="utf-8",
+        check=True,
+    )
 
 
 def _selected_names(args: argparse.Namespace, data: dict[str, Any]) -> list[str]:
@@ -190,6 +209,9 @@ def _parse_args() -> argparse.Namespace:
         help="update a pinned tool by name, e.g. buck2 or ruff (repeatable)",
     )
     parser.add_argument("--all", action="store_true", help="update every pinned tool")
+    parser.add_argument(
+        "--commit", action="store_true", help="commit the updated pins with an itemized message"
+    )
     args = parser.parse_args()
     if not (args.tool or args.all):
         parser.error("select at least one tool to bump")
@@ -205,12 +227,23 @@ def main() -> None:
         data = _object(json.loads(original), str(path))
         python_minor = _python_minor(pyproject)
         releases: dict[str, dict[str, Any]] = {}
+        updates: list[tuple[str, str, str]] = []
         for name in _selected_names(args, data):
-            _bump_tool(name, _object(data.get(name), f"{name} in {path}"), python_minor, releases)
+            change = _bump_tool(name, _object(data.get(name), f"{name} in {path}"), python_minor, releases)
+            if change is not None:
+                updates.append((name, *change))
         content = json.dumps(data, indent=2) + "\n"
         if content != original:
             atomic_write_text(path, content)
-    except (OSError, ValueError, json.JSONDecodeError, urllib.error.URLError) as error:
+        if args.commit and updates:
+            _commit(path, updates)
+    except (
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+        subprocess.CalledProcessError,
+        urllib.error.URLError,
+    ) as error:
         raise SystemExit(f"bump: {error}") from error
 
 

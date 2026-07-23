@@ -235,6 +235,7 @@ tine/tools/buck run tine//tools:bump -- --all
 ```
 
 Each tool is resolved to its latest upstream release and its `url` and `sha256` are rewritten in place.
+Add `--commit` to record the result as a git commit whose message itemizes each update.
 
 python3 minor version stays pinned in pyproject.toml; updating to a new minor release stays a deliberate
 manual change.
