@@ -82,36 +82,71 @@ DEFAULT_ROOT_PARTITIONS = [
     ),
 ]
 
-_USR_VERITY_PARTITIONS = [
-    partition(
-        name = "usr",
-        type = "usr",
-        filesystem = "erofs",
-        copy_files = ["/usr:/"],
-        minimize = "best",
-        compression = "zstd",
-        verity = "data",
-        verity_match_key = "usr",
-    ),
-    partition(
-        name = "usr-verity",
-        type = "usr-verity",
-        minimize = "best",
-        verity = "hash",
-        verity_match_key = "usr",
-    ),
-]
+# systemd-sysupdate A/B slots match partitions by exact label, so the default layouts carry the
+# image identity: `bootable_disk_image()` renders the placeholders from its image_id and version
+# attributes (raw `repart()` users render them with `format_partition_labels()`).
+def _usr_verity_partitions(signed: bool) -> list[Partition]:
+    label = "{image_id}_{version}"
+    definitions = [
+        partition(
+            name = "usr",
+            type = "usr",
+            label = label,
+            filesystem = "erofs",
+            copy_files = ["/usr:/"],
+            minimize = "best",
+            compression = "zstd",
+            verity = "data",
+            verity_match_key = "usr",
+        ),
+        partition(
+            name = "usr-verity",
+            type = "usr-verity",
+            label = label + "_verity",
+            minimize = "best",
+            verity = "hash",
+            verity_match_key = "usr",
+        ),
+    ]
+    if signed:
+        definitions.append(partition(
+            name = "usr-verity-sig",
+            type = "usr-verity-sig",
+            label = label + "_verity_sig",
+            verity = "signature",
+            verity_match_key = "usr",
+        ))
+    return definitions + [_ESP_PARTITION]
 
-DEFAULT_USR_VERITY_PARTITIONS = _USR_VERITY_PARTITIONS + [_ESP_PARTITION]
-DEFAULT_SIGNED_USR_VERITY_PARTITIONS = _USR_VERITY_PARTITIONS + [
-    partition(
-        name = "usr-verity-sig",
-        type = "usr-verity-sig",
-        verity = "signature",
-        verity_match_key = "usr",
-    ),
-    _ESP_PARTITION,
-]
+DEFAULT_USR_VERITY_PARTITIONS = _usr_verity_partitions(signed = False)
+DEFAULT_SIGNED_USR_VERITY_PARTITIONS = _usr_verity_partitions(signed = True)
+
+# buildifier: disable=function-docstring-args
+# buildifier: disable=function-docstring-return
+def format_partition_labels(
+        definitions: list[Partition],
+        image_id: str,
+        version: str) -> list[Partition]:
+    """Render {image_id} and {version} placeholders in partition labels."""
+    formatted = []
+    for definition in definitions:
+        if definition.label == None or "{" not in definition.label:
+            formatted.append(definition)
+            continue
+        formatted.append(partition(
+            type = definition.type,
+            name = definition.name,
+            label = definition.label.format(image_id = image_id, version = version),
+            filesystem = definition.filesystem,
+            copy_files = definition.copy_files,
+            size_min = definition.size_min,
+            size_max = definition.size_max,
+            minimize = definition.minimize,
+            compression = definition.compression,
+            verity = definition.verity,
+            verity_match_key = definition.verity_match_key,
+        ))
+    return formatted
 
 # buildifier: disable=name-conventions  (record type, conventionally UpperCamelCase)
 PartitionInfo = record(
@@ -358,6 +393,11 @@ def repart(
     names = [definition.name for definition in definitions]
     if len(names) != len({name: True for name in names}):
         fail("repart: definition names must be unique")
+    for definition in definitions:
+        if definition.label != None and "{" in definition.label:
+            fail("repart: unrendered placeholder in label {!r}; render with format_partition_labels()".format(
+                definition.label,
+            ))
     if (private_key == None) != (certificate == None):
         fail("repart: private_key and certificate must be specified together")
     signed = [definition for definition in definitions if definition.verity == "signature"]

@@ -457,6 +457,13 @@ actions. `DirectoryImageInfo` is an independent terminal view and is never an in
 Partition layouts are always explicit inputs; neither `repart` nor `bootable_disk_image` chooses one
 implicitly. The reusable conventional layouts are listed in [images.md](images.md).
 
+Partition labels may contain `{image_id}` and `{version}` placeholders. `format_partition_labels()`
+renders them — `bootable_disk_image()` calls it with its own image identity, raw `repart()` users call it
+themselves, and unrendered placeholders fail the build. The usr-verity layouts carry such labels to
+produce the `<id>_<version>[_verity[_sig]]` names that systemd-sysupdate A/B slot matching expects.
+Rendered labels pass through `partition()` again, so GPT's 36-character label limit is enforced on the
+final value.
+
 Verity data, hash, and optional signature partitions are produced together in the split action. The root or
 usr hash is an artifact because its value is known only after execution; a separate provider lets `uki`
 consume it without learning about the partition layout. One split call may produce at most one such hash.

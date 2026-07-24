@@ -6,6 +6,7 @@ load(
     "DISK_FORMATS",
     "Partition",  # @unused Used as a type.
     "disk_convert",
+    "format_partition_labels",
     "repart",
 )
 load("//image_format:rpmdb.bzl", "image_rpmdb")
@@ -178,6 +179,7 @@ def bootable_disk_image(
         parent = ":" + name + ".layer",
         ops = [merge_os_release({"IMAGE_ID": image_id, "IMAGE_VERSION": version})],
     )
+    definitions = format_partition_labels(definitions, image_id, version)
     system_definitions = [definition for definition in definitions if definition.type != "esp"]
     boot_definitions = [definition for definition in definitions if definition.type == "esp"]
     if not system_definitions or not boot_definitions:
