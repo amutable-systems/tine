@@ -3,13 +3,14 @@
 
 import argparse
 import json
-import shutil
 import struct
 import subprocess
 from dataclasses import dataclass
 from functools import cmp_to_key
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Literal
+
+import util
 
 import rootfs
 
@@ -284,7 +285,8 @@ def _extract(tree: Path, selection: Selection, kind: Literal["uki", "kernel", "i
     path = _image_path(tree, source.path)
     if source.section is None:
         out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(path, out)
+        # Reflink: UKIs, kernels, and initrds are large
+        util.clone_file(path, out)
         return
     sections = _pe_sections(path)
     section = sections.get(source.section)

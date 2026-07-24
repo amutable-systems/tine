@@ -10,6 +10,8 @@ import sys
 from pathlib import Path, PurePosixPath
 from typing import cast
 
+import util
+
 import rootfs
 
 
@@ -55,7 +57,8 @@ def _copy(source: Path, destination: Path) -> None:
             source,
             destination,
             dirs_exist_ok=True,
-            copy_function=shutil.copy2,
+            # Reflink each regular file; copytree recreates symlinks itself
+            copy_function=lambda s, d: util.clone_file(Path(s), Path(d)),
             symlinks=True,
         )
     else:
@@ -63,7 +66,7 @@ def _copy(source: Path, destination: Path) -> None:
             raise SystemExit(f"cannot replace directory {destination} with file {source}")
         if destination.is_symlink():
             destination.unlink()
-        shutil.copy2(source, destination)
+        util.clone_file(source, destination)
 
 
 def _apply_filesystem(operation: list[object]) -> None:

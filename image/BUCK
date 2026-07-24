@@ -3,7 +3,10 @@
 python_bootstrap_binary(
     name = "layer",
     main = "layer.py",
-    deps = ["//rootfs:rootfs"],
+    deps = [
+        "//:util",
+        "//rootfs:rootfs",
+    ],
     visibility = ["PUBLIC"],
 )
 
@@ -20,6 +23,9 @@ python_bootstrap_binary(
 python_bootstrap_binary(
     name = "boot-artifacts",
     main = "boot_artifacts.py",
-    deps = ["//rootfs:rootfs"],
+    deps = [
+        "//:util",
+        "//rootfs:rootfs",
+    ],
     visibility = ["PUBLIC"],
 )
