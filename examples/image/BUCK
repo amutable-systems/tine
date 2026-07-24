@@ -153,6 +153,9 @@ bootable_disk_image(
             cmdline = ["debug", "systemd.log_level=debug", "systemd.journald.forward_to_console=1"],
         ),
     ],
+    # Example for manually handled sysext DDI shipped via the ESP, in a systemd `.v/` versioned directory
+    # (systemd.v(7)) for handling with systemd-sysupdate
+    esp_files = {"/boot/extensions/demo-ext.raw.v/demo-ext_0_x86-64.raw": ":demo-ext"},
     rpmdb = True,
     sbom = True,
 )

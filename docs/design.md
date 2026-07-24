@@ -491,7 +491,7 @@ and includes the operations returned by `install_systemd_boot()`. Those create t
 creates and exports the ESP while copying the previously split system partitions into the same disk. The
 default system partition is a compressed EROFS `/usr` protected by dm-verity; the generated `usrhash=` is
 embedded in every UKI. The same copy operation can place device trees, bootloader entries, and future
-standalone artifacts.
+standalone artifacts; `esp_files` exposes it, copying caller-declared artifacts to chosen ESP paths.
 
 Kernel command lines remain lists of arguments through the Starlark API and driver invocation. The UKI
 driver appends any generated verity hash and joins the arguments only when writing ukify's command-line file.

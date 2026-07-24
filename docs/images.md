@@ -184,6 +184,8 @@ Optional attributes:
 - `entry` (string): Filename prefix for the generated UKIs, `<entry>-<kernel release>.efi`; default
   `linux`; passed on to `uki()`.
 - `arch` (string): Architecture; only `x86_64` is supported right now; passed on to `uki()`.
+- `esp_files` (dict): Map from an absolute image path (under `/boot` or `/efi`, the trees the ESP
+  partition carries) to a source target copied onto the ESP.
 - `rpmdb` (boolean): Attach the `image_rpmdb` facet, exposed as the `[rpmdb]` subtarget.
 - `sbom` (boolean): Attach the `image_sbom` facet, exposed as the `[sbom]` subtarget.
 - `version` (string): Declared image version. Default `"0"`; passed on to `image_sbom` as the SBOM source

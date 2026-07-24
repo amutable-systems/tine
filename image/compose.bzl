@@ -146,6 +146,7 @@ def bootable_disk_image(
         disk_seed: str | None = None,
         verity_private_key: str | None = None,
         verity_certificate: str | None = None,
+        esp_files: dict[str, str] = {},
         rpmdb: bool = False,
         sbom: bool = False,
         version: str = "0",
@@ -188,16 +189,27 @@ def bootable_disk_image(
         entry = entry,
         root_hash = ":" + name + ".partitions" if verity else None,
     )
+    esp_ops = [
+        copy(
+            source = ":" + name + ".uki",
+            destination = "/boot/EFI/Linux",
+        ),
+        install_systemd_boot(),
+    ]
+
+    # Copy caller-provided artifacts onto the ESP. The ESP partition's `copy_files = ["/boot:/", "/efi:/"]`
+    # carries them onto the disk, so each destination must live under one of those trees.
+    for destination, source in esp_files.items():
+        if not (destination.startswith("/boot/") or destination.startswith("/efi/")):
+            fail("bootable_disk_image: esp_files destination must be under /boot or /efi, got {!r}".format(
+                destination,
+            ))
+        esp_ops.append(copy(source = source, destination = destination))
+
     image_layer(
         name = name + ".esp.layer",
         parent = ":" + name + ".layer",
-        ops = [
-            copy(
-                source = ":" + name + ".uki",
-                destination = "/boot/EFI/Linux",
-            ),
-            install_systemd_boot(),
-        ],
+        ops = esp_ops,
     )
     repart(
         name = name + ".disk",
