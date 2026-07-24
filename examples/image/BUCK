@@ -138,10 +138,13 @@ image_archive(
 
 # Bootable GPT image; `buck run :boot-demo-vm` starts it with the engine's vmspawn stack.
 # Supply-chain and format subtargets such as `:boot-demo[sbom]` and `:boot-demo[qcow2]` build on demand.
+# The version stamps os-release, partition labels, and the UKI and disk file names; inject a real
+# one with `-c demo.image-version=...` (see "Image versioning" in images.md).
 bootable_disk_image(
     name = "boot-demo",
     package_manager = ":image.package-manager",
     definitions = DEFAULT_USR_VERITY_PARTITIONS,
+    version = read_config("demo", "image-version", "unversioned"),
     ops = [
         install([
             "kernel-core",

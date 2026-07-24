@@ -314,6 +314,23 @@ boot is not exposed the way the same package in the running system is. The union
 everything in the UKI, provided the image keeps the kernel rpm installed in its own tree, which is where the
 UKI's kernel and modules come from.
 
+### Image versioning
+
+A version derived from the current commit or any other dynamic query cannot be computed inside the build
+graph, so it gets passed as explicit build configuration. An image's BUCK file reads a config key like:
+
+```python
+version = read_config("demo", "image-version", "unversioned")
+```
+
+and the invoker computes the value outside the graph and injects it:
+
+```sh
+buck build -c demo.image-version="$(git describe ...)" //your:image
+```
+
+The injected per-commit version rebuilds only the artifacts that embed it, never package installation.
+
 ## Secure Boot signing
 
 `bootable_disk_image()` accepts a `secure_boot_private_key`/`secure_boot_certificate` PEM pair. It signs the
