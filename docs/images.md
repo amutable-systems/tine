@@ -323,11 +323,30 @@ graph, so it gets passed as explicit build configuration. An image's BUCK file r
 version = read_config("demo", "image-version", "unversioned")
 ```
 
-and the invoker computes the value outside the graph and injects it:
+and the invoker computes the value outside the graph and injects it. `tine//tools:version` derives one
+from git state, in three shapes against the latest `v*` tag (or 0.0.0 if there is no tag):
+
+| build    | git state                            | version          |
+|----------|--------------------------------------|------------------|
+| release  | clean checkout of v1.4.2             | `1.4.2`          |
+| snapshot | clean, 3 commits past the tag        | `1.4.2^3-08f2c4` |
+| dev      | dirty, 86400 s after the last commit | `1.4.2^3^86400`  |
+
+systemd version comparison orders these correctly (`tag` < `tag^count-hash` < `tag^count^seconds` <
+`nexttag`), which systemd-sysupdate needs to recognize an update. The hash names the commit for tracking; it
+shrinks (never below 4 characters) until the longest partition label still fits GPT's 36-character limit. A
+dev build carries the seconds since the last commit instead, so every rebuild of a dirty tree gets a strictly
+increasing version; `-` sorts below `^`, so dev builds are always newer than snapshot builds.
 
 ```sh
-buck build -c demo.image-version="$(git describe ...)" //your:image
+buck build -c demo.image-version="$(buck run tine//tools:version -- \
+    'myos_{version}')" //your:image
 ```
+
+Images without versioned labels pass plain `{version}`. That applies to the `DEFAULT_ROOT_PARTITIONS`
+layout: versioned labels only serve sysupdate's A/B slot matching, and a single writable root has no
+slots and mutates in place, so its labels stay systemd-repart's type defaults and the version only lands
+in os-release and the UKI name.
 
 The injected per-commit version rebuilds only the artifacts that embed it, never package installation.
 

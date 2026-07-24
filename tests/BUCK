@@ -10,6 +10,7 @@ engine_unittest(
     engine = "//box:dev.engine",
     srcs = {"tests/" + f: f for f in glob(["__init__.py", "test_*.py"])} | {
         "tools/importer": "//tools:importer-src",
+        "tools/version.py": "//tools:version-src",
     },
     visibility = ["tine//tools:check"],
 )
