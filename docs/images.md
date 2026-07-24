@@ -128,9 +128,10 @@ when needed:
 - `image_archive` writes deterministic tar or uncompressed newc cpio archives and provides
   `CpioArchiveInfo` for the latter;
 - `image_directory` materializes a Buck directory artifact and provides `DirectoryImageInfo`;
-- `uki` builds versioned unified kernel images for every installed kernel using one or more
-  `CpioArchiveInfo` dependencies, each named `<entry>-<kernel release>.efi` after its `entry` filename
-  prefix (default `linux`); `uki_profile()` records add alternative boot profiles as separate
+- `uki` builds the unified kernel image for the image's single installed kernel from one or more
+  `CpioArchiveInfo` dependencies, named `<image_id>_<version>_<arch>.efi` (defaults: target name and
+  `0`; systemd architecture spelling, e.g. `x86-64`), the shape systemd-sysupdate UKI transfers
+  match. Alternative kernel command lines are `uki_profile()` records, which add boot profiles as separate
   sd-boot menu entries, each appending its arguments to the base kernel command line;
 - `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
   GPT disk with `DiskImageInfo`, independent partition artifacts with `split = True`, or both;
@@ -181,8 +182,6 @@ Optional attributes:
 - `cmdline` (string list): Kernel command line arguments, default
   `["root=tmpfs", "mount.usr=dissect", "rw"]`; passed on to `uki()`.
 - `profiles` (`uki_profile()` record list): Alternative sd-boot menu entries, passed on to `uki()`.
-- `entry` (string): Filename prefix for the generated UKIs, `<entry>-<kernel release>.efi`; default
-  `linux`; passed on to `uki()`.
 - `arch` (string): Architecture; only `x86_64` is supported right now; passed on to `uki()`.
 - `esp_files` (dict): Map from an absolute image path (under `/boot` or `/efi`, the trees the ESP
   partition carries) to a source target copied onto the ESP.
@@ -193,7 +192,8 @@ Optional attributes:
   cannot re-identify the installed OS (systemd-sysupdate matches partitions and UKIs by this
   identity at run time).
 - `version` (string): Declared image version. Default `"0"`; stamped into the image's os-release as
-  `IMAGE_VERSION` and passed on to `image_sbom` as the SBOM source version.
+  `IMAGE_VERSION` and passed on to `image_sbom` as the SBOM source version. Together with `image_id`
+  it also names the UKI (`<image_id>_<version>_<arch>.efi`) and renders partition label placeholders.
 
 The identity stamp is applied in its own thin layer between the root filesystem layer and everything
 derived from it, so building the same target with a different `version` re-runs only the artifacts

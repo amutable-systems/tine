@@ -143,7 +143,6 @@ def bootable_disk_image(
         initrd: str | None = None,
         cmdline: list[str] = ["root=tmpfs", "mount.usr=dissect", "rw"],
         profiles: list[UkiProfile] = [],
-        entry: str = "linux",
         arch: str = "x86_64",
         disk_seed: str | None = None,
         verity_private_key: str | None = None,
@@ -159,6 +158,11 @@ def bootable_disk_image(
         image_id = name
     if not regex_match("^[a-zA-Z0-9._-]+$", image_id):
         fail("bootable_disk_image: invalid image_id {!r}".format(image_id))
+
+    # The version lands in partition labels and the UKI filename; "+" would collide with
+    # sd-boot's boot-counting suffixes, "~" is systemd's pre-release separator.
+    if not regex_match("^[a-zA-Z0-9._~-]+$", version):
+        fail("bootable_disk_image: invalid version {!r}".format(version))
     image(
         name = name + ".image",
         package_manager = package_manager,
@@ -202,7 +206,8 @@ def bootable_disk_image(
         cmdline = cmdline,
         profiles = profiles,
         arch = arch,
-        entry = entry,
+        image_id = image_id,
+        version = version,
         root_hash = ":" + name + ".partitions" if verity else None,
     )
     esp_ops = [

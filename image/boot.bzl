@@ -76,9 +76,13 @@ def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
         out.as_output(),
         "--arch",
         ctx.attrs.arch,
-        "--entry",
-        ctx.attrs.entry,
     )
+    image_id = ctx.attrs.image_id if ctx.attrs.image_id != None else ctx.label.name
+    version = ctx.attrs.version if ctx.attrs.version != None else "0"
+    for value in (image_id, version):
+        if not regex_match("^[a-zA-Z0-9._~-]+$", value):
+            fail("uki: invalid filename component {!r}".format(value))
+    cmd.add("--image-id", image_id, "--version", version)
     for argument in ctx.attrs.cmdline:
         cmd.add("--cmdline", argument)
     for profile in ctx.attrs.profiles:
@@ -113,7 +117,12 @@ _uki = rule(
             doc = "serialized alternative boot profiles",
         ),
         "arch": attrs.enum(["x86_64"], default = "x86_64"),
-        "entry": attrs.string(default = "linux", doc = "filename prefix for the generated UKIs"),
+        "image_id": attrs.option(
+            attrs.string(),
+            default = None,
+            doc = "first component of the UKI name <image_id>_<version>_<arch>.efi; defaults to the target name",
+        ),
+        "version": attrs.option(attrs.string(), default = None, doc = "image version in the UKI name, default 0"),
         "root_hash": attrs.option(
             attrs.dep(providers = [RootHashInfo]),
             default = None,

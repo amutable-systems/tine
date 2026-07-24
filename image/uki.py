@@ -1,7 +1,7 @@
 #!/usr/bin/python3
-"""Build unified kernel images for every kernel in a logical filesystem image.
+"""Build the unified kernel image for a logical filesystem image's single kernel.
 
-Engine tools operate on the mounted image without chrooting. A per-kernel modules cpio
+Engine tools operate on the mounted image without chrooting. A kernel-modules cpio
 extends the supplied base initrds.
 """
 
@@ -20,8 +20,9 @@ import rootfs
 UKIFY = "/usr/lib/systemd/ukify"
 
 
+# EFI architecture, stub name, and systemd architecture (as in systemd's %a specifier).
 _ARCH = {
-    "x86_64": ("x64", "linuxx64.efi.stub"),
+    "x86_64": ("x64", "linuxx64.efi.stub", "x86-64"),
 }
 
 
@@ -70,13 +71,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--root-hash", help="file containing a generated verity root hash")
     p.add_argument("--root-hash-kind", choices=("root", "usr"))
     p.add_argument("--arch", required=True, choices=tuple(_ARCH))
-    p.add_argument("--entry", required=True, help="filename prefix for generated UKIs")
+    p.add_argument("--image-id", required=True, help="name the UKI <image-id>_<version>_<arch>.efi")
+    p.add_argument("--version", required=True, help="image version in the UKI name")
     args = p.parse_args(argv)
 
     if bool(args.root_hash) != bool(args.root_hash_kind):
         p.error("--root-hash and --root-hash-kind must be specified together")
-    if not args.entry or Path(args.entry).name != args.entry or args.entry in (".", ".."):
-        p.error("--entry must be a filename prefix")
 
     out = Path(args.out).resolve()
     out.mkdir(parents=True)
@@ -89,12 +89,19 @@ def main(argv: list[str] | None = None) -> None:
     ):
         scratch = Path(scratch_dir)
         kvers = _kvers(tree)
+        if len(kvers) > 1:
+            raise SystemExit(
+                "uki: one image holds one kernel, found: "
+                + ", ".join(kvers)
+                + " — split kernel variants into separate images"
+            )
+        kver = kvers[0]
         os_release = tree / "usr/lib/os-release"
         if not os_release.exists():
             raise SystemExit(
                 "uki: the image ships no /usr/lib/os-release (ukify needs it) — install a release package"
             )
-        efi_arch, stub_name = _ARCH[args.arch]
+        efi_arch, stub_name, systemd_arch = _ARCH[args.arch]
         stub = tree / "usr/lib/systemd/boot/efi" / stub_name
         if not stub.exists():
             raise SystemExit("uki: the image ships no systemd-boot stub — install systemd-boot-unsigned")
@@ -131,31 +138,29 @@ def main(argv: list[str] | None = None) -> None:
             subprocess.run(cmd, check=True)
             profile_pes.append(pe)
 
-        for kver in kvers:
-            modules = scratch / f"modules-{kver}.cpio"
-            prefix = f"usr/lib/modules/{kver}"
-            cpio.pack_tree(
-                tree, modules, epoch,
-                subtree=prefix,
-                exclude=(f"{prefix}/vmlinuz*", f"{prefix}/vmlinux*", f"{prefix}/System.map"),
-            )  # fmt: skip
+        modules = scratch / f"modules-{kver}.cpio"
+        prefix = f"usr/lib/modules/{kver}"
+        cpio.pack_tree(
+            tree, modules, epoch,
+            subtree=prefix,
+            exclude=(f"{prefix}/vmlinuz*", f"{prefix}/vmlinux*", f"{prefix}/System.map"),
+        )  # fmt: skip
 
-            output = out / f"{args.entry}-{kver}.efi"
-            cmd = [UKIFY, "build", "--linux", str(tree / prefix / "vmlinuz")]
-            for initrd in [*initrds, modules]:
-                cmd += ["--initrd", str(initrd)]
-            cmd += [
-                "--cmdline", f"@{cmdline}",
-                *(argument for pe in profile_pes for argument in ("--join-profile", str(pe))),
-                "--os-release", f"@{os_release}",
-                "--uname", kver,
-                "--stub", str(stub),
-                "--efi-arch", efi_arch,
-                "--output", str(output),
-            ]  # fmt: skip
-            subprocess.run(cmd, check=True)
-            print(f"uki: built {output.name} (arch={args.arch})", file=sys.stderr)
-    print(f"uki: built {len(kvers)} UKI(s) -> {out}", file=sys.stderr)
+        output = out / f"{args.image_id}_{args.version}_{systemd_arch}.efi"
+        cmd = [UKIFY, "build", "--linux", str(tree / prefix / "vmlinuz")]
+        for initrd in [*initrds, modules]:
+            cmd += ["--initrd", str(initrd)]
+        cmd += [
+            "--cmdline", f"@{cmdline}",
+            *(argument for pe in profile_pes for argument in ("--join-profile", str(pe))),
+            "--os-release", f"@{os_release}",
+            "--uname", kver,
+            "--stub", str(stub),
+            "--efi-arch", efi_arch,
+            "--output", str(output),
+        ]  # fmt: skip
+        subprocess.run(cmd, check=True)
+    print(f"uki: built {output.name} (arch={args.arch}) -> {out}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -495,8 +495,10 @@ By default, the base initrd is a separate package image with `/init` pointing to
 `/etc/initrd-release` pointing to `/etc/os-release`. Callers can instead supply any `CpioArchiveInfo` target;
 `bootable_disk_image` then skips the default initrd image entirely. Otherwise the default layer installs the
 release's `initrd` package set, so family catalog policy supplies concrete native package names. `uki.py`
-discovers every installed kernel, appends its kernel-modules cpio, and runs `ukify`. UKIs use the configured
-entry prefix and kernel release as their filenames. The ESP layer copies the UKI directory into `EFI/Linux`
+appends the kernel-modules cpio and runs `ukify`; the UKI is named `<image_id>_<version>_<arch>.efi` from the
+image identity. For now an image holds exactly one kernel — the name (and sysupdate's matching of it) could
+not distinguish more. If several kernels per image ever become a requirement, add naming configuration to
+`uki()` to disambiguate them. The ESP layer copies the UKI directory into `EFI/Linux`
 and includes the operations returned by `install_systemd_boot()`. Those create the ESP path, run the engine's
 `bootctl` with its paths in the command environment, and remove the random seed. The final repart action
 creates and exports the ESP while copying the previously split system partitions into the same disk. The
