@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -69,6 +70,32 @@ def _copy(source: Path, destination: Path) -> None:
         util.clone_file(source, destination)
 
 
+def _merge_os_release(tree: Path, raw_fields: object) -> None:
+    """Merge quoted KEY="value" assignments into /usr/lib/os-release, replacing existing keys."""
+    if not isinstance(raw_fields, dict) or not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in raw_fields.items()
+    ):
+        raise SystemExit(f"image op 'os_release' has invalid fields: {raw_fields!r}")
+    fields = dict(cast(dict[str, str], raw_fields))
+    for key, value in fields.items():
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
+            raise SystemExit(f"image op 'os_release' has invalid key: {key!r}")
+        # Values are emitted double-quoted verbatim, so refuse anything needing escapes.
+        if '"' in value or "\\" in value or "\n" in value:
+            raise SystemExit(f"image op 'os_release' value needs escaping: {value!r}")
+    path = tree / "usr/lib/os-release"
+    lines = []
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            key, sep, _ = line.partition("=")
+            if sep and key in fields:
+                line = f'{key}="{fields.pop(key)}"'
+            lines.append(line)
+    lines += [f'{key}="{value}"' for key, value in fields.items()]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+
+
 def _apply_filesystem(operation: list[object]) -> None:
     match operation:
         case ["mkdir", str(path), mode]:
@@ -124,6 +151,8 @@ def _apply(
                 _run(raw_cmd, raw_env)
         case ["copy", str(source), str(destination)]:
             _copy(Path(source), _destination(target, destination))
+        case ["os_release", raw_fields]:
+            _merge_os_release(target, raw_fields)
         case ["mkdir", _, _] | ["symlink", _, _] | ["remove", _]:
             with rootfs.chroot(target):
                 _apply_filesystem(operation)

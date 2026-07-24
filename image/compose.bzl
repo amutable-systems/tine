@@ -25,6 +25,7 @@ load(
     "image",
     "image_layer",
     "install_package_set",
+    "merge_os_release",
     "symlink",
 )
 load(":result.bzl", "image_result")
@@ -149,9 +150,14 @@ def bootable_disk_image(
         esp_files: dict[str, str] = {},
         rpmdb: bool = False,
         sbom: bool = False,
+        image_id: str | None = None,
         version: str = "0",
         visibility: list[str] | None = None) -> None:
     """Build a UKI-based, systemd-boot GPT disk image."""
+    if image_id == None:
+        image_id = name
+    if not regex_match("^[a-zA-Z0-9._-]+$", image_id):
+        fail("bootable_disk_image: invalid image_id {!r}".format(image_id))
     image(
         name = name + ".image",
         package_manager = package_manager,
@@ -164,13 +170,21 @@ def bootable_disk_image(
         ops = ops,
         tmpfiles = tmpfiles,
     )
+
+    # The identity stamp lives in its own thin layer so that a changing version only re-runs
+    # the artifacts that embed it, never package installation or the caller's operations.
+    image_layer(
+        name = name + ".identity.layer",
+        parent = ":" + name + ".layer",
+        ops = [merge_os_release({"IMAGE_ID": image_id, "IMAGE_VERSION": version})],
+    )
     system_definitions = [definition for definition in definitions if definition.type != "esp"]
     boot_definitions = [definition for definition in definitions if definition.type == "esp"]
     if not system_definitions or not boot_definitions:
         fail("bootable_disk_image: definitions must include system and ESP partitions")
     repart(
         name = name + ".partitions",
-        image = ":" + name + ".layer",
+        image = ":" + name + ".identity.layer",
         definitions = system_definitions,
         disk = False,
         split = True,
@@ -181,7 +195,7 @@ def bootable_disk_image(
     verity = [definition for definition in system_definitions if definition.verity == "data"]
     uki(
         name = name + ".uki",
-        image = ":" + name + ".layer",
+        image = ":" + name + ".identity.layer",
         initrds = [initrd],
         cmdline = cmdline,
         profiles = profiles,
@@ -208,7 +222,7 @@ def bootable_disk_image(
 
     image_layer(
         name = name + ".esp.layer",
-        parent = ":" + name + ".layer",
+        parent = ":" + name + ".identity.layer",
         ops = esp_ops,
     )
     repart(

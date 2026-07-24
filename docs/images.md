@@ -188,8 +188,17 @@ Optional attributes:
   partition carries) to a source target copied onto the ESP.
 - `rpmdb` (boolean): Attach the `image_rpmdb` facet, exposed as the `[rpmdb]` subtarget.
 - `sbom` (boolean): Attach the `image_sbom` facet, exposed as the `[sbom]` subtarget.
-- `version` (string): Declared image version. Default `"0"`; passed on to `image_sbom` as the SBOM source
-  version.
+- `image_id` (string): The image identity, stamped into the image's os-release as `IMAGE_ID`.
+  Defaults to the target name; a product should set it explicitly so that renaming a Buck target
+  cannot re-identify the installed OS (systemd-sysupdate matches partitions and UKIs by this
+  identity at run time).
+- `version` (string): Declared image version. Default `"0"`; stamped into the image's os-release as
+  `IMAGE_VERSION` and passed on to `image_sbom` as the SBOM source version.
+
+The identity stamp is applied in its own thin layer between the root filesystem layer and everything
+derived from it, so building the same target with a different `version` re-runs only the artifacts
+that embed the version (`/usr` partition and verity, UKI, ESP, disk) while package installation and
+the caller's operations stay cached.
 
 A final target may return several independent facets; one supplies the
 target's default output, and nested subtargets namespace all other views:

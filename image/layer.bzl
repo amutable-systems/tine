@@ -106,6 +106,10 @@ def copy(source: str, destination: str) -> LayerOperation:
     """Copy a declared artifact to an absolute path in the image."""
     return LayerOperation(value = ("copy", source, destination))
 
+def merge_os_release(fields: dict[str, str]) -> LayerOperation:
+    """Merge quoted KEY="value" assignments into the image's /usr/lib/os-release."""
+    return LayerOperation(value = ("os_release", fields))
+
 def _install_specs(
         operation: tuple,
         package_sets: dict[str, list[str]] | None) -> list[str] | None:
@@ -265,6 +269,10 @@ _operation_attr = attrs.one_of(
         attrs.enum(["copy"]),
         attrs.source(allow_directory = True),
         attrs.string(),
+    ),
+    attrs.tuple(
+        attrs.enum(["os_release"]),
+        attrs.dict(attrs.string(), attrs.string()),
     ),
 )
 

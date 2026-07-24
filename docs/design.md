@@ -469,16 +469,20 @@ partitions require an explicitly declared key and certificate.
 ```text
 base initrd package image (cpio)
               ├──────┐
-root filesystem layer ──> split /usr + verity ──> hash ──> versioned UKIs
-                                │                            │
-                                └──────────────┬─────────────┘
-                                               v
-                                      ESP layer
-                                      │          │          │
-                                      │          │          └─> directory facet
-                                      │          └─> bootable facet
-                                      └─> split ESP + system partitions ─> disk facet
+root filesystem layer ──> identity layer ──> split /usr + verity ──> hash ──> versioned UKIs
+                                │                                               │
+                                └──────────────────────┬────────────────────────┘
+                                                       v
+                                              ESP layer
+                                              │          │          │
+                                              │          │          └─> directory facet
+                                              │          └─> bootable facet
+                                              └─> split ESP + system partitions ─> disk facet
 ```
+
+The identity layer stamps `IMAGE_ID` and `IMAGE_VERSION` into the image's os-release. It is a separate
+thin layer so that a per-commit version string invalidates only the version-embedding artifacts below it,
+never package installation.
 
 By default, the base initrd is a separate package image with `/init` pointing to systemd and
 `/etc/initrd-release` pointing to `/etc/os-release`. Callers can instead supply any `CpioArchiveInfo` target;
