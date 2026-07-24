@@ -129,7 +129,8 @@ when needed:
   `CpioArchiveInfo` for the latter;
 - `image_directory` materializes a Buck directory artifact and provides `DirectoryImageInfo`;
 - `uki` builds versioned unified kernel images for every installed kernel using one or more
-  `CpioArchiveInfo` dependencies; `uki_profile()` records add alternative boot profiles as separate
+  `CpioArchiveInfo` dependencies, each named `<entry>-<kernel release>.efi` after its `entry` filename
+  prefix (default `linux`); `uki_profile()` records add alternative boot profiles as separate
   sd-boot menu entries, each appending its arguments to the base kernel command line;
 - `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
   GPT disk with `DiskImageInfo`, independent partition artifacts with `split = True`, or both;
@@ -157,10 +158,38 @@ The rpm database and SBOM facets can also ride along on a normal build: `image_a
 `rootfs_archive`) accept `rpmdb`/`sbom` flags that fold the artifacts into `other_outputs`,
 `sysext_image` likewise accepts `rpmdb`, and `bootable_disk_image` exposes both as `image_result` facets.
 
+### bootable_disk_image
+
 `bootable_disk_image()` composes the default initrd, versioned UKIs, the ESP, and a verity-protected
-`/usr` into a GPT disk. It never chooses a partition layout implicitly: pass `definitions`, with
-`DEFAULT_ROOT_PARTITIONS`, `DEFAULT_USR_VERITY_PARTITIONS`, and `DEFAULT_SIGNED_USR_VERITY_PARTITIONS` as
-reusable conventional layouts. A final target may return several independent facets; one supplies the
+`/usr` into a GPT disk. Most attributes parameterize the terminal rules described above.
+
+Required attributes:
+
+- `package_manager` (target label): See "Declaring an image" above.
+- `ops` (operation list) and `tmpfiles` (list of tmpfiles.d lines): Build the root filesystem layer;
+  passed on to `image_layer`.
+- `definitions` (list of `partition()` records): Partition layout; `DEFAULT_ROOT_PARTITIONS`,
+  `DEFAULT_USR_VERITY_PARTITIONS`, and `DEFAULT_SIGNED_USR_VERITY_PARTITIONS` are reusable conventional
+  layouts; it must contain system and ESP partitions; passed on to `repart()`.
+
+Optional attributes:
+
+- `disk_seed` (string): Seeds stable partition UUIDs; passed on to `repart()`.
+- `verity_private_key` / `verity_certificate` (string): PEM files signing the verity signature
+  partition; passed on to `repart()`.
+- `initrd` (target label): A `CpioArchiveInfo` target replacing the default initrd package image.
+- `cmdline` (string list): Kernel command line arguments, default
+  `["root=tmpfs", "mount.usr=dissect", "rw"]`; passed on to `uki()`.
+- `profiles` (`uki_profile()` record list): Alternative sd-boot menu entries, passed on to `uki()`.
+- `entry` (string): Filename prefix for the generated UKIs, `<entry>-<kernel release>.efi`; default
+  `linux`; passed on to `uki()`.
+- `arch` (string): Architecture; only `x86_64` is supported right now; passed on to `uki()`.
+- `rpmdb` (boolean): Attach the `image_rpmdb` facet, exposed as the `[rpmdb]` subtarget.
+- `sbom` (boolean): Attach the `image_sbom` facet, exposed as the `[sbom]` subtarget.
+- `version` (string): Declared image version. Default `"0"`; passed on to `image_sbom` as the SBOM source
+  version.
+
+A final target may return several independent facets; one supplies the
 target's default output, and nested subtargets namespace all other views:
 
 ```text
