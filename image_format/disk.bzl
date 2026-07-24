@@ -39,6 +39,8 @@ def partition(
         name = type
     if not regex_match("^[a-zA-Z0-9._-]+$", name):
         fail("partition: invalid artifact name {!r}".format(name))
+    if label != None and len(label) > 36:
+        fail("partition: label {!r} exceeds GPT's limit of 36 characters".format(label))
     if minimize not in (None, "off", "best", "guess"):
         fail("partition: invalid minimize value {!r}".format(minimize))
     if verity not in (None, "data", "hash", "signature"):
