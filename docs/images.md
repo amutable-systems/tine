@@ -200,6 +200,12 @@ derived from it, so building the same target with a different `version` re-runs 
 that embed the version (`/usr` partition and verity, UKI, ESP, disk) while package installation and
 the caller's operations stay cached.
 
+The version carries a contract: systemd-sysupdate identifies an update *purely* by the version in the
+partition labels and the UKI filename, so every published build must carry a new, higher version. A
+rebuild under an unchanged version puts different content behind identical names, which sysupdate
+cannot distinguish from the release a device already installed, and so never applies. The release pipeline
+that publishes update artifacts must enforce version immutability by rejecting an already-published version.
+
 A final target may return several independent facets; one supplies the
 target's default output, and nested subtargets namespace all other views:
 
