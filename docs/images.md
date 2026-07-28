@@ -117,8 +117,7 @@ action and persists exactly one delta:
   mutate the same root.
 
 Operation lists are recursively flattened, allowing reusable helpers to return ordered groups of
-operations. Every `image_layer` exposes a `directory` subtarget which lazily materializes the complete
-logical image at that point.
+operations. Materialize a complete logical image explicitly with `image_directory`.
 
 `image_layer` also takes `install_langs`: keep translated files only for these languages, instead of all of
 them. Nothing matches a value that is not a language, so `install_langs = ["C.UTF-8"]` installs no
@@ -269,7 +268,6 @@ Representative builds are:
 tine/tools/buck build //packages/fedora/rawhide:zlib-ng
 tine/tools/buck build //examples/image:demo
 tine/tools/buck build //examples/image:layered-install
-tine/tools/buck build '//examples/image:layered-install.layer[directory]'
 tine/tools/buck build //examples/image:boot-demo
 tine/tools/buck build '//examples/image:boot-demo[bootable][uki]'
 tine/tools/buck build '//examples/image:boot-demo[disk][partitions][usr]'

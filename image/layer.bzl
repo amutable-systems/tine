@@ -1,7 +1,6 @@
 """Logical filesystem images built as ordered overlay deltas."""
 
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
-load("//image_format:actions.bzl", "archive_action")
 load("//package:install.bzl", "resolve_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
@@ -128,23 +127,6 @@ def _install_specs(
         fail("image install operation has invalid packages: {}".format(packages))
     return sorted(packages)
 
-def _directory_sub_targets(
-        ctx: AnalysisContext,
-        engine: Dependency,
-        layers: list[Artifact],
-        tmpfiles: list[str]) -> dict[str, list[Provider]]:
-    rootfs = ctx.actions.declare_output("image.rootfs", dir = True)
-    archive_action(
-        ctx,
-        engine,
-        layers,
-        tmpfiles,
-        ctx.attrs._archive_driver,
-        "directory",
-        rootfs.as_output(),
-    )
-    return {"directory": [DefaultInfo(default_output = rootfs)]}
-
 def _image_layer_impl(ctx: AnalysisContext) -> list[Provider]:
     if not ctx.attrs.ops and not ctx.attrs.tmpfiles:
         fail("image_layer: needs ops or tmpfiles")
@@ -167,9 +149,8 @@ def _image_layer_impl(ctx: AnalysisContext) -> list[Provider]:
 
     if not ctx.attrs.ops:
         tmpfiles = parent.tmpfiles + ctx.attrs.tmpfiles
-        sub_targets = _directory_sub_targets(ctx, parent.engine, parent.layers, tmpfiles)
         return [
-            DefaultInfo(default_output = parent.layers[-1], sub_targets = sub_targets) if parent.layers else DefaultInfo(sub_targets = sub_targets),
+            DefaultInfo(default_output = parent.layers[-1]) if parent.layers else DefaultInfo(),
             ImageInfo(
                 engine = parent.engine,
                 package_manager = parent.package_manager,
@@ -232,10 +213,7 @@ def _image_layer_impl(ctx: AnalysisContext) -> list[Provider]:
     tmpfiles = parent.tmpfiles + ctx.attrs.tmpfiles
 
     return [
-        DefaultInfo(
-            default_output = delta,
-            sub_targets = _directory_sub_targets(ctx, parent.engine, layers, tmpfiles),
-        ),
+        DefaultInfo(default_output = delta),
         ImageInfo(
             engine = parent.engine,
             package_manager = parent.package_manager,
@@ -308,7 +286,6 @@ _image_layer = rule(
             default = [],
             doc = "deferred tmpfiles.d lines for paths, modes, and xattrs; ownership is ignored",
         ),
-        "_archive_driver": attrs.dep(providers = [RunInfo], default = "tine//image_format:archive"),
         "_driver": attrs.dep(providers = [RunInfo], default = "tine//image:layer"),
     },
 )
