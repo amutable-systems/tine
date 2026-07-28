@@ -6,6 +6,8 @@ load(":rpmdb.bzl", "RpmdbInfo")
 load(":sbom.bzl", "SbomInfo")
 
 _EXT = {"tar": "tar", "cpio": "cpio"}
+COMPRESSIONS = ["none", "zstd"]
+_COMPRESSION_EXT = {"none": "", "zstd": ".zst"}
 
 DirectoryImageInfo = provider(
     doc = "A materialized directory view of a logical image.",
@@ -17,7 +19,7 @@ DirectoryImageInfo = provider(
 )
 
 CpioArchiveInfo = provider(
-    doc = "An uncompressed newc CPIO archive.",
+    doc = "A newc CPIO archive, compressed as declared.",
     fields = {
         "archive": provider_field(Artifact),
         "source": provider_field(Dependency),
@@ -26,7 +28,9 @@ CpioArchiveInfo = provider(
 
 def _image_archive_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
-    out = ctx.actions.declare_output("image." + _EXT[ctx.attrs.format])
+    out = ctx.actions.declare_output(
+        "image." + _EXT[ctx.attrs.format] + _COMPRESSION_EXT[ctx.attrs.compression],
+    )
     archive_action(
         ctx,
         image.engine,
@@ -35,6 +39,7 @@ def _image_archive_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.attrs._driver,
         ctx.attrs.format,
         out.as_output(),
+        ctx.attrs.compression,
     )
 
     # Supply-chain sidecars ride along on a normal build via other_outputs and stay reachable as
@@ -64,6 +69,7 @@ def _image_archive_impl(ctx: AnalysisContext) -> list[Provider]:
 image_archive = rule(
     impl = _image_archive_impl,
     attrs = {
+        "compression": attrs.enum(COMPRESSIONS, default = "none"),
         "format": attrs.enum(["tar", "cpio"], default = "tar"),
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image to archive"),
         "rpmdb": attrs.option(attrs.dep(providers = [RpmdbInfo]), default = None, doc = "rpmdb artifact to ride along"),

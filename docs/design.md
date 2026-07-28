@@ -444,7 +444,9 @@ archive entries use uid/gid zero.
 Tar uses deterministic PAX archives and stores Linux xattrs using `SCHILY.xattr.*` headers. The newc cpio
 format has no general xattr representation. Tar/cpio entries are ordered and mtimes are clamped to the fixed
 assembly epoch. The cpio reader/writer aligns regular-file payloads and uses `copy_file_range` when possible
-so large archives can share extents on reflink-capable filesystems.
+so large archives can share extents on reflink-capable filesystems. `compression = "zstd"` compresses the
+finished archive in the same action, so the uncompressed form never becomes a Buck artifact; zstd's
+multi-threaded output is byte-identical to its single-threaded output, so this stays reproducible.
 
 `repart` deliberately distinguishes `definitions` from `partitions`. Definitions describe new partitions
 to populate directly from `ImageInfo`: repart mounts the delta stack with a disposable overlay upper instead

@@ -125,8 +125,8 @@ logical image at that point.
 Logical images and terminal outputs are separate rule families. Terminal rules merge the layer stack only
 when needed:
 
-- `image_archive` writes deterministic tar or uncompressed newc cpio archives and provides
-  `CpioArchiveInfo` for the latter;
+- `image_archive` writes deterministic tar or newc cpio archives, optionally zstd-compressed
+  (`compression = "zstd"`), and provides `CpioArchiveInfo` for the latter;
 - `image_directory` materializes a Buck directory artifact and provides `DirectoryImageInfo`;
 - `uki` builds the unified kernel image for the image's single installed kernel from one or more
   `CpioArchiveInfo` dependencies, named `<image_id>_<version>_<arch>.efi` (defaults: target name and

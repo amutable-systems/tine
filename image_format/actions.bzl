@@ -16,7 +16,8 @@ def archive_action(
         tmpfiles: list[str],
         driver: Dependency,
         format: str,
-        out: OutputArtifact) -> None:
+        out: OutputArtifact,
+        compression: str = "none") -> None:
     """Materialize an image stack in an archive driver's output format."""
     cmd = cmd_args(
         chroot_run(engine = engine[EngineInfo], exe = driver),
@@ -25,6 +26,8 @@ def archive_action(
         "--format",
         format,
     )
+    if compression != "none":
+        cmd.add("--compression", compression)
     for lower in layers:
         cmd.add("--lower", lower)
     for snippet in tmpfiles:
