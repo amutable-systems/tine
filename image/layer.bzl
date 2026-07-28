@@ -28,52 +28,6 @@ LayerOperation = record(
 # buildifier: disable=name-conventions  (type alias, conventionally UpperCamelCase)
 LayerOperationTree = LayerOperation | list[typing.Any]
 
-def _image_impl(ctx: AnalysisContext) -> list[Provider]:
-    engine = ctx.attrs.engine
-    package_manager = ctx.attrs.package_manager
-    if package_manager != None:
-        manager_engine = package_manager[PackageManagerInfo].engine
-        if engine != None and engine.label != manager_engine.label:
-            fail("image engine {} does not match package manager engine {}".format(engine.label, manager_engine.label))
-        engine = manager_engine
-    if engine == None:
-        fail("image requires package_manager or engine")
-    return [
-        DefaultInfo(),
-        ImageInfo(
-            engine = engine,
-            package_manager = package_manager,
-            layers = [],
-            tmpfiles = [],
-            install_specs = [],
-        ),
-    ]
-
-_image = rule(
-    impl = _image_impl,
-    attrs = {
-        "engine": attrs.option(
-            attrs.dep(providers = [EngineInfo]),
-            default = None,
-            doc = "the execution environment fixed for this image and all derived artifacts",
-        ),
-        "package_manager": attrs.option(
-            attrs.dep(providers = [PackageManagerInfo]),
-            default = None,
-            doc = "the native package manager fixed for this image",
-        ),
-    },
-)
-
-def image(name: str, **kwargs) -> None:
-    """Start an empty image and fix its package manager or engine."""
-    if not name.endswith(".image"):
-        fail("image name must end with '.image': {}".format(name))
-    _image(
-        name = name,
-        **kwargs
-    )
-
 # Operations replayed by the layer driver.
 
 # buildifier: disable=name-conventions  (record type, conventionally UpperCamelCase)
@@ -140,25 +94,48 @@ def _install_specs(
         if operation[0] != "install_package_set":
             return None
         if package_sets == None:
-            fail("image_layer: install_package_set requires an image with a package manager")
+            fail("image: install_package_set requires an image with a package manager")
         name = operation[1]
         packages = package_sets.get(name)
         if packages == None:
-            fail("image_layer: unknown package set {!r}".format(name))
+            fail("image: unknown package set {!r}".format(name))
     else:
         packages = operation[1]
     if not packages:
         fail("image install operation has invalid packages: {}".format(packages))
     return sorted(packages)
 
-def _image_layer_impl(ctx: AnalysisContext) -> list[Provider]:
-    if not ctx.attrs.ops and not ctx.attrs.tmpfiles:
-        fail("image_layer: needs ops or tmpfiles")
+def _image_impl(ctx: AnalysisContext) -> list[Provider]:
+    parent = ctx.attrs.parent
+    if parent != None:
+        if ctx.attrs.engine != None or ctx.attrs.package_manager != None:
+            fail("image: parent cannot be combined with engine or package_manager")
+        parent = parent[ImageInfo]
+        engine = parent.engine
+        package_manager = parent.package_manager
+        layers = parent.layers
+        tmpfiles = parent.tmpfiles
+        parent_install_specs = parent.install_specs
+    else:
+        engine = ctx.attrs.engine
+        package_manager = ctx.attrs.package_manager
+        if package_manager != None:
+            manager_engine = package_manager[PackageManagerInfo].engine
+            if engine != None and engine.label != manager_engine.label:
+                fail("image engine {} does not match package manager engine {}".format(
+                    engine.label,
+                    manager_engine.label,
+                ))
+            engine = manager_engine
+        if engine == None:
+            fail("image requires parent, package_manager, or engine")
+        layers = []
+        tmpfiles = []
+        parent_install_specs = []
 
-    parent = ctx.attrs.parent[ImageInfo]
     package_sets = None
-    if parent.package_manager != None:
-        package_sets = parent.package_manager[PackageManagerInfo].package_sets
+    if package_manager != None:
+        package_sets = package_manager[PackageManagerInfo].package_sets
     install_specs = None
     operations = []
     for operation in ctx.attrs.ops:
@@ -167,45 +144,45 @@ def _image_layer_impl(ctx: AnalysisContext) -> list[Provider]:
             operations.append(operation)
             continue
         if install_specs != None:
-            fail("image_layer: at most one install operation is allowed per layer")
+            fail("image: at most one install operation is allowed per layer")
         install_specs = specs
         operations.append(("install", specs))
 
     if not ctx.attrs.ops:
-        tmpfiles = parent.tmpfiles + ctx.attrs.tmpfiles
+        tmpfiles = tmpfiles + ctx.attrs.tmpfiles
         return [
-            DefaultInfo(default_output = parent.layers[-1]) if parent.layers else DefaultInfo(),
+            DefaultInfo(default_output = layers[-1]) if layers else DefaultInfo(),
             ImageInfo(
-                engine = parent.engine,
-                package_manager = parent.package_manager,
-                layers = parent.layers,
+                engine = engine,
+                package_manager = package_manager,
+                layers = layers,
                 tmpfiles = tmpfiles,
-                install_specs = parent.install_specs,
+                install_specs = parent_install_specs,
             ),
         ]
 
     closure = None
     installer = None
     if install_specs != None:
-        if parent.package_manager == None:
-            fail("image_layer: install requires an image with a package manager")
-        package_manager = parent.package_manager[PackageManagerInfo]
+        if package_manager == None:
+            fail("image: install requires an image with a package manager")
+        package_manager_info = package_manager[PackageManagerInfo]
         closure = resolve_packages(
             ctx,
-            parent.package_manager,
+            package_manager,
             install_specs,
-            parent.layers,
-            local_seed = parent.install_specs + install_specs,
+            layers,
+            local_seed = parent_install_specs + install_specs,
         )
-        installer = package_manager.package_system[PackageSystemInfo].install
+        installer = package_manager_info.package_system[PackageSystemInfo].install
 
-    driver = chroot_run(engine = parent.engine[EngineInfo], exe = ctx.attrs._driver)
+    driver = chroot_run(engine = engine[EngineInfo], exe = ctx.attrs._driver)
     delta = ctx.actions.declare_output("delta", dir = True)
     cmd = cmd_args(driver, "--out", delta.as_output())
-    if parent.layers:
+    if layers:
         work = ctx.actions.declare_output("overlay.work", dir = True)
         cmd.add("--work", work.as_output())
-        for lower in parent.layers:
+        for lower in layers:
             cmd.add("--lower", lower)
     if installer != None:
         info = installer[DefaultInfo]
@@ -221,9 +198,9 @@ def _image_layer_impl(ctx: AnalysisContext) -> list[Provider]:
             cmd.add("--no-docs")
     else:
         if ctx.attrs.install_langs:
-            fail("image_layer: install_langs requires an install operation")
+            fail("image: install_langs requires an install operation")
         if not ctx.attrs.install_docs:
-            fail("image_layer: install_docs requires an install operation")
+            fail("image: install_docs requires an install operation")
     manifest = ctx.actions.write_json(
         "operations.json",
         operations,
@@ -231,19 +208,19 @@ def _image_layer_impl(ctx: AnalysisContext) -> list[Provider]:
         has_content_based_path = False,
     )
     cmd.add("--operations", manifest)
-    ctx.actions.run(cmd, category = "image_layer")
+    ctx.actions.run(cmd, category = "image")
 
-    layers = parent.layers + [delta]
-    tmpfiles = parent.tmpfiles + ctx.attrs.tmpfiles
+    layers = layers + [delta]
+    tmpfiles = tmpfiles + ctx.attrs.tmpfiles
 
     return [
         DefaultInfo(default_output = delta),
         ImageInfo(
-            engine = parent.engine,
-            package_manager = parent.package_manager,
+            engine = engine,
+            package_manager = package_manager,
             layers = layers,
             tmpfiles = tmpfiles,
-            install_specs = parent.install_specs + (install_specs if install_specs != None else []),
+            install_specs = parent_install_specs + (install_specs if install_specs != None else []),
         ),
     ]
 
@@ -290,10 +267,14 @@ _operation_attr = attrs.one_of(
     ),
 )
 
-_image_layer = rule(
-    impl = _image_layer_impl,
+_image = rule(
+    impl = _image_impl,
     attrs = {
-        "parent": attrs.dep(providers = [ImageInfo], doc = "the logical image to extend"),
+        "engine": attrs.option(
+            attrs.dep(providers = [EngineInfo]),
+            default = None,
+            doc = "the execution environment fixed for an initial image and all derived artifacts",
+        ),
         "install_docs": attrs.bool(
             default = True,
             doc = "keep documentation; licenses are kept either way (default: keep it)",
@@ -308,6 +289,16 @@ _image_layer = rule(
             default = [],
             doc = "ordered operations generated by the public helpers",
         ),
+        "package_manager": attrs.option(
+            attrs.dep(providers = [PackageManagerInfo]),
+            default = None,
+            doc = "the native package manager fixed for an initial image",
+        ),
+        "parent": attrs.option(
+            attrs.dep(providers = [ImageInfo]),
+            default = None,
+            doc = "the logical image to extend instead of starting an initial image",
+        ),
         "tmpfiles": attrs.list(
             attrs.string(),
             default = [],
@@ -317,12 +308,12 @@ _image_layer = rule(
     },
 )
 
-def image_layer(
+def image(
         name: str,
         ops: list[LayerOperationTree] = [],
         **kwargs) -> None:
-    """Apply ordered operations as one persisted image delta."""
-    _image_layer(
+    """Create an initial image or apply one delta to a parent image."""
+    _image(
         name = name,
         ops = [operation.value for operation in _flatten_operations(ops)],
         **kwargs
@@ -343,7 +334,7 @@ def image_cleanup(
         paths: list[str],
         visibility: list[str] | None = None) -> None:
     """Create an explicit layer that removes configured image paths."""
-    image_layer(
+    image(
         name = name,
         parent = parent,
         ops = [remove(path) for path in paths],

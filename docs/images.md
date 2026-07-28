@@ -60,10 +60,10 @@ is described in [design.md](design.md).
 
 ## Declaring an image
 
-An image normally fixes one package manager for its whole lifetime; every layer and terminal output
-inherits it and its engine. Take a catalog package manager, optionally extend it with project
-repositories, bootstrap the image, and apply layers. For example, a project can expose locally built
-packages without adding them to its OS release:
+An initial image fixes one package manager for its whole lifetime; every derived image and terminal output
+inherits it and its engine. Take a catalog package manager, optionally extend it with project repositories,
+and create the initial image. For example, a project can expose locally built packages without adding them
+to its OS release:
 
 ```python
 local_repository(
@@ -80,12 +80,13 @@ package_manager(
 image(
     name = "project.image",
     package_manager = ":project.package-manager",
+    ops = [install(["project"])],
 )
 
-image_layer(
-    name = "project.layer",
+image(
+    name = "project-configured.image",
     parent = ":project.image",
-    ops = [install(["project"])],
+    ops = [run(["/usr/bin/project", "configure"])],
 )
 ```
 
@@ -103,13 +104,14 @@ Each install then builds exactly the locally built packages in its runtime closu
 solver ahead of the upstream repositories; requested capabilities without a local provider continue to
 resolve upstream (details in [design.md](design.md)).
 
-## Layers and operations
+## Images and operations
 
-`image` bootstraps an empty logical image. `image_layer` applies one ordered operation sequence in one
-action and persists exactly one delta:
+`image` has two construction modes. An initial image supplies `package_manager` or `engine`; a derived image
+supplies `parent` and inherits that image's package manager and engine. A call with operations applies one
+ordered operation sequence in one action and persists exactly one delta:
 
 - `install([...])` installs native packages; `install_package_set("...")` resolves a symbolic package set
-  through the parent image's package manager. A layer may contain one install operation, at any position.
+  through the image's package manager. One operation sequence may contain one install, at any position.
 - `run([...])` executes a command with the image's own binaries in a chroot; `chroot = False` instead
   executes engine tooling with the image available at `/buildroot`. Its `env` argument overlays variables
   on the engine or image environment for that command.
@@ -119,10 +121,10 @@ action and persists exactly one delta:
 Operation lists are recursively flattened, allowing reusable helpers to return ordered groups of
 operations. Materialize a complete logical image explicitly with `image_directory`.
 
-`image_layer` also takes `install_langs`: keep translated files only for these languages, instead of all of
-them. Nothing matches a value that is not a language, so `install_langs = ["C.UTF-8"]` installs no
-translations at all. `install_docs = False` likewise installs no documentation, keeping the licenses that
-packages ship. The default initrd sets both.
+`image` also takes `install_langs`: keep translated files only for these languages, instead of all of them.
+Nothing matches a value that is not a language, so `install_langs = ["C.UTF-8"]` installs no translations
+at all. `install_docs = False` likewise installs no documentation, keeping the licenses that packages ship.
+The default initrd sets both.
 
 ## Terminal outputs
 
@@ -175,7 +177,7 @@ Required attributes:
 
 - `package_manager` (target label): See "Declaring an image" above.
 - `ops` (operation list) and `tmpfiles` (list of tmpfiles.d lines): Build the root filesystem layer;
-  passed on to `image_layer`.
+  passed on to `image`.
 - `definitions` (list of `partition()` records): Partition layout; `DEFAULT_ROOT_PARTITIONS`,
   `DEFAULT_USR_VERITY_PARTITIONS`, and `DEFAULT_SIGNED_USR_VERITY_PARTITIONS` are reusable conventional
   layouts; it must contain system and ESP partitions; passed on to `repart()`.

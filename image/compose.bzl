@@ -25,7 +25,6 @@ load(
     "LayerOperationTree",  # @unused Used as a type.
     "copy",
     "image",
-    "image_layer",
     "install_package_set",
     "merge_os_release",
     "remove",
@@ -44,12 +43,8 @@ def rootfs_archive(
         visibility: list[str] | None = None) -> None:
     """Build a root filesystem from ordered operations and archive it."""
     image(
-        name = name + ".image",
-        package_manager = package_manager,
-    )
-    image_layer(
         name = name + ".layer",
-        parent = ":" + name + ".image",
+        package_manager = package_manager,
         ops = ops,
         tmpfiles = tmpfiles,
         install_docs = install_docs,
@@ -95,19 +90,20 @@ def sysext_image(
         fail("sysext_image: exactly one of base and package_manager is required")
     if base == None:
         image(
-            name = name + ".image",
+            name = name + ".layer",
             package_manager = package_manager,
+            ops = ops,
+            tmpfiles = tmpfiles,
+            install_docs = install_docs,
         )
-        parent = ":" + name + ".image"
     else:
-        parent = base
-    image_layer(
-        name = name + ".layer",
-        parent = parent,
-        ops = ops,
-        tmpfiles = tmpfiles,
-        install_docs = install_docs,
-    )
+        image(
+            name = name + ".layer",
+            parent = base,
+            ops = ops,
+            tmpfiles = tmpfiles,
+            install_docs = install_docs,
+        )
     image_pkgdb(
         name = name + ".pkgdb",
         image = ":" + name + ".layer",
@@ -130,10 +126,10 @@ def sysext_image(
     )
 
 # buildifier: disable=function-docstring-args
-def _default_initrd(name: str, image: str) -> str:
-    image_layer(
+def _default_initrd(name: str, package_manager: str) -> str:
+    image(
         name = name + ".initrd.layer",
-        parent = image,
+        package_manager = package_manager,
         ops = [
             install_package_set("initrd"),
             symlink("/usr/lib/systemd/systemd", "/init"),
@@ -190,12 +186,8 @@ def bootable_disk_image(
     # sd-boot's boot-counting suffixes, "~" is systemd's pre-release separator.
     if not regex_match("^[a-zA-Z0-9._~-]+$", version):
         fail("bootable_disk_image: invalid version {!r}".format(version))
-    image(
-        name = name + ".image",
-        package_manager = package_manager,
-    )
     if initrd == None:
-        initrd = _default_initrd(name, ":" + name + ".image")
+        initrd = _default_initrd(name, package_manager)
 
     # The composition owns the cpio so that the supply-chain siblings can scan the initrd (see design.md).
     image_archive(
@@ -204,9 +196,9 @@ def bootable_disk_image(
         format = "cpio",
         compression = "zstd",
     )
-    image_layer(
+    image(
         name = name + ".layer",
-        parent = ":" + name + ".image",
+        package_manager = package_manager,
         ops = ops,
         tmpfiles = tmpfiles,
         install_docs = install_docs,
@@ -220,7 +212,7 @@ def bootable_disk_image(
     identity_ops = [merge_os_release({"IMAGE_ID": image_id, "IMAGE_VERSION": version})]
     if secure_boot_private_key != None:
         identity_ops += sign_systemd_boot(secure_boot_private_key, secure_boot_certificate, arch)
-    image_layer(
+    image(
         name = name + ".identity.layer",
         parent = ":" + name + ".layer",
         ops = identity_ops,
@@ -275,7 +267,7 @@ def bootable_disk_image(
             ))
         esp_ops.append(copy(source = source, destination = destination))
 
-    image_layer(
+    image(
         name = name + ".esp.layer",
         parent = ":" + name + ".identity.layer",
         ops = esp_ops,

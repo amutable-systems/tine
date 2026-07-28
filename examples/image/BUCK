@@ -2,7 +2,7 @@
 
 load("@tine//image:boot.bzl", "uki_profile")
 load("@tine//image:compose.bzl", "bootable_disk_image", "rootfs_archive", "sysext_image")
-load("@tine//image:layer.bzl", "image", "image_layer", "install", "mkdir", "remove", "run")
+load("@tine//image:layer.bzl", "image", "install", "mkdir", "remove", "run")
 load("@tine//image:vm.bzl", "image_vm")
 load("@tine//image_format:archive.bzl", "image_archive")
 load("@tine//image_format:disk.bzl", "DEFAULT_USR_VERITY_PARTITIONS")
@@ -35,23 +35,22 @@ rootfs_archive(
     format = "tar",
 )
 
-# Chained layers: the child adds one file and whiteouts another.
+# Chained images: the child adds one file and whiteouts another.
 image(
-    name = "chained.image",
-    package_manager = ":image.package-manager",
-)
-
-image_layer(
     name = "chained-base",
-    parent = ":chained.image",
+    package_manager = ":image.package-manager",
     ops = [
         install(["bash", "coreutils"]),
         mkdir("/etc/tine"),
-        run(["/usr/bin/bash", "-c", "echo base > /etc/tine/from-base-kept; echo base > /etc/tine/from-base-gone"]),
+        run([
+            "/usr/bin/bash",
+            "-c",
+            "echo base > /etc/tine/from-base-kept; echo base > /etc/tine/from-base-gone",
+        ]),
     ],
 )
 
-image_layer(
+image(
     name = "chained-child.layer",
     parent = ":chained-base",
     ops = [
@@ -68,20 +67,15 @@ image_archive(
 
 # Package installation and mutations sharing one physical delta.
 image(
-    name = "layered-install.image",
-    package_manager = ":image.package-manager",
-)
-
-image_layer(
     name = "layered-install-base",
-    parent = ":layered-install.image",
+    package_manager = ":image.package-manager",
     ops = [
         install(["bash"]),
         run(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"]),
     ],
 )
 
-image_layer(
+image(
     name = "layered-install.layer",
     parent = ":layered-install-base",
     ops = [
@@ -98,21 +92,20 @@ image_archive(
 
 # Round-trip an escaped name and an escaped whiteout through stored deltas.
 image(
-    name = "escaped.image",
-    package_manager = ":image.package-manager",
-)
-
-image_layer(
     name = "escaped-base",
-    parent = ":escaped.image",
+    package_manager = ":image.package-manager",
     ops = [
         install(["bash", "coreutils"]),
         mkdir("/etc/tine"),
-        run(["/usr/bin/bash", "-c", "echo kept > '/etc/tine/esc\\x2dkept'; echo gone > '/etc/tine/esc\\x2dgone'"]),
+        run([
+            "/usr/bin/bash",
+            "-c",
+            "echo kept > '/etc/tine/esc\\x2dkept'; echo gone > '/etc/tine/esc\\x2dgone'",
+        ]),
     ],
 )
 
-image_layer(
+image(
     name = "escaped-child.layer",
     parent = ":escaped-base",
     ops = [remove("/etc/tine/esc\\x2dgone")],
@@ -192,20 +185,15 @@ sysext_image(
 
 # Replacing a populated directory exercises the opaque-dir marker.
 image(
-    name = "opaque.image",
-    package_manager = ":image.package-manager",
-)
-
-image_layer(
     name = "opaque-base",
-    parent = ":opaque.image",
+    package_manager = ":image.package-manager",
     ops = [
         install(["bash", "coreutils"]),
         run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"]),
     ],
 )
 
-image_layer(
+image(
     name = "opaque-child.layer",
     parent = ":opaque-base",
     ops = [
