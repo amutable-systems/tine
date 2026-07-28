@@ -35,13 +35,14 @@ def _cell_root(buck: str, cell: str) -> Path:
 def _starlark_srcs(buck: str) -> list[Path]:
     # Check every loaded in-tree Starlark file; ignore dead files, external cells, and JSON.
     cells = json.loads(_buck_out(buck, "audit", "cell", "--json"))
+    aliases = json.loads(_buck_out(buck, "audit", "cell", "--json", "--aliases"))
     roots = {path: name for name, path in sorted(cells.items()) if name not in ("none", "prelude")}
     universe = " + ".join(sorted(f"{name}//..." for name in roots.values()))
     project = Path(_buck_out(buck, "root", "--kind", "project"))
     files = sorted(
         project / f for f in _buck_out(buck, "uquery", f"allbuildfiles({universe})").splitlines() if f
     )
-    return [f for f in files if f.is_relative_to(Path(cells["tine"])) and f.suffix != ".json"]
+    return [f for f in files if f.is_relative_to(Path(aliases["tine"])) and f.suffix != ".json"]
 
 
 def _lint(args: argparse.Namespace) -> None:
