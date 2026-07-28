@@ -27,6 +27,7 @@ load(
     "image_layer",
     "install_package_set",
     "merge_os_release",
+    "remove",
     "symlink",
 )
 load(":result.bzl", "image_result")
@@ -130,6 +131,14 @@ def _default_initrd(name: str, image: str) -> str:
             install_package_set("initrd"),
             symlink("/usr/lib/systemd/systemd", "/init"),
             symlink("/etc/os-release", "/etc/initrd-release"),
+            # udev reads its binary hardware database at run time, not the sources it was
+            # generated from during installation.
+            remove("/usr/lib/udev/hwdb.d"),
+            # A journal catalog only matters where a journal is read, and that is the booted system.
+            remove("/usr/lib/systemd/catalog"),
+            remove("/var/lib/systemd/catalog"),
+            # Nothing in an initrd resolves a service name.
+            remove("/etc/services"),
         ],
         # Nothing in an initrd is ever read by a human, so neither documentation nor translations
         # are worth carrying.
