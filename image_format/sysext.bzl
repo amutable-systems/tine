@@ -8,6 +8,8 @@ that image is packaged, and the extension-release pins the base's ID/VERSION_ID.
 
 load("//image:actions.bzl", "terminal_image_command")
 load("//image:layer.bzl", "ImageInfo")
+load("//package:manager.bzl", "PackageManagerInfo")
+load("//package:system.bzl", "PackageSystemInfo")
 
 SysextImageInfo = provider(
     doc = "A systemd system-extension DDI generated from a logical image.",
@@ -38,6 +40,13 @@ def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
         if len(base.layers) >= len(image.layers):
             fail("image_sysext: image must layer a delta on top of base")
         cmd.add("--base", str(len(base.layers)))
+
+    # A merged extension must not shadow the host's package database, so strip wherever the
+    # image's package system keeps it. An image without one installed no packages.
+    if image.package_manager != None:
+        system = image.package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
+        for path in system.database_paths:
+            cmd.add("--pkgdb-path", path)
     cmd.add("--identity", str(ctx.label))
     if ctx.attrs.seed != None:
         cmd.add("--seed", ctx.attrs.seed)

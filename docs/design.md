@@ -85,7 +85,8 @@ PackageSystemInfo (RPM drivers)
 The providers have deliberately narrow roles:
 
 - `PackageSystemInfo` bundles the drivers for one native binary-package ecosystem: snapshot, extract,
-  install, package database capture, `createrepo`, plan, and build. RPM is the only implementation today.
+  install, package database capture, `createrepo`, plan, and build, plus the paths that database occupies
+  in an installed root. RPM is the only implementation today.
 - `PackageRepositoryInfo` represents one repository and binds it to a package system. Its target name is
   the repository ID; remote declarations also expose their pinned directory and base URL. Priority is
   configuration policy, not an intrinsic repository property. A repository is not inherently owned by an
@@ -440,7 +441,8 @@ own driver, so the database keeps that system's shape; `image_pkgdb` only declar
 in.
 
 Terminal rules leave the package database and other package state intact — except `image_sysext`, which
-drops the database: a merged extension must not shadow the host's. Image cleanup is an explicit, configurable
+drops the database from the paths the image's package system declares: a merged extension must not shadow
+the host's. Image cleanup is an explicit, configurable
 layer so output formats do not silently alter image contents. Every terminal driver receives the same
 ordered layer stack and deferred tmpfiles snippets. It applies those snippets with
 `systemd-tmpfiles --root` before reading or emitting image content; a missing tool is an error whenever

@@ -110,11 +110,7 @@ def _apply_filesystem(operation: list[object]) -> None:
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.symlink_to(target)
         case ["remove", str(path)]:
-            dest = Path(path)
-            if dest.is_dir() and not dest.is_symlink():
-                shutil.rmtree(dest)
-            elif dest.is_symlink() or dest.exists():
-                dest.unlink()
+            util.remove_path(Path(path))
         case _:
             raise SystemExit(f"invalid image filesystem op: {operation!r}")
 

@@ -42,5 +42,7 @@ package_system(
     createrepo = ":createrepo",
     plan = ":plan",
     build = ":build",
+    # Keep in sync with install.py's DBPATH, which Starlark cannot read.
+    database_paths = ["usr/lib/sysimage/rpm"],
     visibility = ["PUBLIC"],
 )

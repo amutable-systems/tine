@@ -10,6 +10,7 @@ PackageSystemInfo = provider(
         "createrepo": provider_field(Dependency),
         "plan": provider_field(Dependency),
         "build": provider_field(Dependency),
+        "database_paths": provider_field(list[str]),
     },
 )
 
@@ -24,6 +25,7 @@ def _package_system_impl(ctx: AnalysisContext) -> list[Provider]:
             createrepo = ctx.attrs.createrepo,
             plan = ctx.attrs.plan,
             build = ctx.attrs.build,
+            database_paths = ctx.attrs.database_paths,
         ),
     ]
 
@@ -37,5 +39,9 @@ package_system = rule(
         "createrepo": attrs.dep(providers = [RunInfo], doc = "write repository metadata"),
         "plan": attrs.dep(providers = [RunInfo], doc = "resolve package transactions"),
         "build": attrs.dep(providers = [RunInfo], doc = "build a native package"),
+        "database_paths": attrs.list(
+            attrs.string(),
+            doc = "image-root-relative paths the installed package database occupies",
+        ),
     },
 )

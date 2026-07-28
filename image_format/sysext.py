@@ -4,11 +4,12 @@
 import argparse
 import hashlib
 import os
-import shutil
 import subprocess
 import sys
 import uuid
 from pathlib import Path
+
+import util
 
 import finalize
 import rootfs
@@ -63,6 +64,13 @@ def main(argv: list[str] | None = None) -> None:
         metavar="KEY=VALUE",
         help="extension-release field (repeatable, order preserved)",
     )
+    p.add_argument(
+        "--pkgdb-path",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="image path holding the package database, to strip from the DDI (repeatable)",
+    )
     p.add_argument("--out", required=True, help="output raw DDI")
     args = p.parse_args(argv)
 
@@ -93,14 +101,10 @@ def main(argv: list[str] | None = None) -> None:
         # A sysext identifies itself solely through its extension-release; the base os-release
         # must not ride along into the merged /usr.
         (tree / "usr/lib/os-release").unlink(missing_ok=True)
-        # The rpm database is a supply-chain artifact and must not shadow the host's on merge;
-        # `image_rpmdb` captures it separately.
-        rpmdb = tree / "usr/lib/sysimage/rpm"
-        if rpmdb.is_dir():
-            shutil.rmtree(rpmdb)
-        sysimage = tree / "usr/lib/sysimage"
-        if sysimage.is_dir() and not any(sysimage.iterdir()):
-            sysimage.rmdir()
+        # The package database is a supply-chain artifact and must not shadow the host's on
+        # merge; `image_pkgdb` captures it separately.
+        for relative in args.pkgdb_path:
+            util.remove_path(tree / relative, with_parents=True)
         # --make-ddi copies /usr and /opt; a delta may lack /opt entirely.
         (tree / "opt").mkdir(exist_ok=True)
         release_dir = tree / "usr/lib/extension-release.d"
