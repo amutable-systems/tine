@@ -141,8 +141,8 @@ when needed:
   GPT disk with `DiskImageInfo`, independent partition artifacts with `split = True`, or both;
 - `bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
-- `image_pkgdb` copies the image's package database out as a separate artifact (rpm's, trimmed to the
-  `Packages` table alone);
+- `image_pkgdb` copies the image's package database out into a separate directory artifact, holding
+  whatever files that database consists of (rpm's is one, trimmed to the `Packages` table alone);
 - `image_sbom` runs `syft` over the assembled tree in one scan, emitting SPDX and CycloneDX SBOMs;
 - `image_sysext` builds a systemd-sysext(8) DDI (unsigned for now) with `systemd-repart`, containing
   `/usr`, `/opt`, and `extension-release.<name>`, and provides `SysextImageInfo`; with `base`, only the

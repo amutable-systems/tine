@@ -2,7 +2,8 @@
 """Copy the rpm database out of a logical image as a separate, trimmed artifact.
 
 Useful as a basis for SBOM creation and security scanners. The database is not shipped in
-the image, so capture it as a separate artifact.
+the image, so capture it as a separate artifact. The output is the directory a package
+database occupies; rpm's is the single file this driver writes into it.
 
 The copy is trimmed to the ``Packages`` table alone: rpm's path/dependency lookup indexes
 (Basenames, Providename, ...) are used only by rpm itself, dropping them roughly halves
@@ -47,17 +48,19 @@ def _trim(db: Path) -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="rpmdb")
     finalize.add_arguments(parser)
-    parser.add_argument("--out", required=True, help="output rpmdb.sqlite")
+    parser.add_argument("--out", required=True, help="output directory for the database")
     args = parser.parse_args(argv)
 
     out = Path(args.out).resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    db = out / Path(DBPATH).name
     with finalize.image(args, program="rpmdb") as tree:
         src = tree / DBPATH
         if not src.exists():
             raise SystemExit(f"no rpmdb at {src}; the image has no installed packages")
-        shutil.copy2(src, out)
-    _trim(out)
-    print(f"rpmdb: captured Packages-only database -> {args.out}", file=sys.stderr)
+        shutil.copy2(src, db)
+    _trim(db)
+    print(f"rpmdb: captured Packages-only database -> {db}", file=sys.stderr)
 
 
 if __name__ == "__main__":

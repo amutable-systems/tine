@@ -10,7 +10,10 @@ load("//image:layer.bzl", "ImageInfo")
 
 def _image_pkgdb_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
-    out = ctx.actions.declare_output("rpmdb.sqlite")
+
+    # A package database is not one file everywhere: rpm keeps a single SQLite database, dpkg a
+    # status file plus per-package lists. The driver fills a directory with whatever its own is.
+    out = ctx.actions.declare_output("pkgdb", dir = True)
     cmd = terminal_image_command(image, ctx.attrs._driver)
     cmd.add("--out", out.as_output())
     ctx.actions.run(cmd, category = "image_pkgdb")
