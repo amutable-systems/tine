@@ -180,7 +180,7 @@ Optional attributes:
 - `verity_private_key` / `verity_certificate` (string): PEM files signing the verity signature
   partition; passed on to `repart()`.
 - `initrd` (target label): A logical image whose tree becomes the initrd, replacing the default
-  initrd package image. The composition archives it into the cpio itself.
+  initrd package image. The composition archives it into the zstd-compressed cpio itself.
 - `cmdline` (string list): Kernel command line arguments, default
   `["root=tmpfs", "mount.usr=dissect", "rw"]`; passed on to `uki()`.
 - `profiles` (`uki_profile()` record list): Alternative sd-boot menu entries, passed on to `uki()`.

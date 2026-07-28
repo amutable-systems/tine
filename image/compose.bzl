@@ -172,6 +172,7 @@ def bootable_disk_image(
         name = name + ".initrd",
         image = initrd,
         format = "cpio",
+        compression = "zstd",
     )
     image_layer(
         name = name + ".layer",

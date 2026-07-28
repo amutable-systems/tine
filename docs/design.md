@@ -446,7 +446,9 @@ format has no general xattr representation. Tar/cpio entries are ordered and mti
 assembly epoch. The cpio reader/writer aligns regular-file payloads and uses `copy_file_range` when possible
 so large archives can share extents on reflink-capable filesystems. `compression = "zstd"` compresses the
 finished archive in the same action, so the uncompressed form never becomes a Buck artifact; zstd's
-multi-threaded output is byte-identical to its single-threaded output, so this stays reproducible.
+multi-threaded output is byte-identical to its single-threaded output, so this stays reproducible. The initrd
+uses it, while the kernel-modules cpio that `uki.py` appends stays raw because Fedora already ships each
+module compressed; the kernel unpacks the concatenation as independently compressed segments.
 
 `repart` deliberately distinguishes `definitions` from `partitions`. Definitions describe new partitions
 to populate directly from `ImageInfo`: repart mounts the delta stack with a disposable overlay upper instead
@@ -476,7 +478,7 @@ partitions require an explicitly declared key and certificate.
 `bootable_disk_image()` composes:
 
 ```text
-base initrd package image (cpio)
+base initrd package image (zstd cpio)
               ├──────┐
 root filesystem layer ──> identity layer ──> split /usr + verity ──> hash ──> versioned UKIs
                                 │                                               │
