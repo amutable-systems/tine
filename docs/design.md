@@ -492,9 +492,10 @@ thin layer so that a per-commit version string invalidates only the version-embe
 never package installation.
 
 By default, the base initrd is a separate package image with `/init` pointing to systemd and
-`/etc/initrd-release` pointing to `/etc/os-release`. Callers can instead supply any `CpioArchiveInfo` target;
-`bootable_disk_image` then skips the default initrd image entirely. Otherwise the default layer installs the
-release's `initrd` package set, so family catalog policy supplies concrete native package names. `uki.py`
+`/etc/initrd-release` pointing to `/etc/os-release`, installing the release's `initrd` package set, so family
+catalog policy supplies concrete native package names. Callers can instead supply any logical image, and
+`bootable_disk_image` then skips the default initrd image entirely. The composition owns the cpio, since a
+macro cannot look through a `CpioArchiveInfo` target to the layer the supply-chain facets scan. `uki.py`
 appends the kernel-modules cpio and runs `ukify`; the UKI is named `<image_id>_<version>_<arch>.efi` from the
 image identity. For now an image holds exactly one kernel — the name (and sysupdate's matching of it) could
 not distinguish more. If several kernels per image ever become a requirement, add naming configuration to

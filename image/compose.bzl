@@ -126,12 +126,7 @@ def _default_initrd(name: str, image: str) -> str:
             symlink("/etc/os-release", "/etc/initrd-release"),
         ],
     )
-    image_archive(
-        name = name + ".initrd",
-        image = ":" + name + ".initrd.layer",
-        format = "cpio",
-    )
-    return ":" + name + ".initrd"
+    return ":" + name + ".initrd.layer"
 
 # buildifier: disable=function-docstring-args
 def bootable_disk_image(
@@ -169,6 +164,13 @@ def bootable_disk_image(
     )
     if initrd == None:
         initrd = _default_initrd(name, ":" + name + ".image")
+
+    # The composition owns the cpio so that the supply-chain facets can scan the initrd (see design.md).
+    image_archive(
+        name = name + ".initrd",
+        image = initrd,
+        format = "cpio",
+    )
     image_layer(
         name = name + ".layer",
         parent = ":" + name + ".image",
@@ -202,7 +204,7 @@ def bootable_disk_image(
     uki(
         name = name + ".uki",
         image = ":" + name + ".identity.layer",
-        initrds = [initrd],
+        initrds = [":" + name + ".initrd"],
         cmdline = cmdline,
         profiles = profiles,
         arch = arch,
