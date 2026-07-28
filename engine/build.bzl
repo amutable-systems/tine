@@ -75,7 +75,12 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # A predecessor installs the transaction directly. Only a root engine must bootstrap an
     # installer-capable chroot from package payloads before it can perform the authoritative install.
-    packages = select_package_artifacts(ctx, transaction, repositories = repositories)
+    packages = select_package_artifacts(
+        ctx,
+        transaction,
+        repositories = repositories,
+        suffix = system.package_suffix,
+    )
     installer_engine = resolver_engine
     if installer_engine == None:
         payloads = select_package_artifacts(
@@ -83,6 +88,7 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
             transaction,
             name = "extract.closure",
             repositories = repositories,
+            suffix = system.package_suffix,
             representation = "payload",
         )
         chroot1 = ctx.actions.declare_output("chroot1", dir = True)

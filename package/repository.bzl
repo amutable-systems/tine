@@ -278,7 +278,8 @@ def _select_package_artifacts_impl(
         output: OutputArtifact,
         local_packages: dict[str, list[Artifact]],
         pools: dict[str, ResolvedDynamicValue],
-        representation: str) -> list[Provider]:
+        representation: str,
+        suffix: str) -> list[Provider]:
     # Select already-owned artifacts; the transaction never creates new downloads.
     entries = tx.read_json()
     if type(entries) != type([]):
@@ -333,13 +334,13 @@ def _select_package_artifacts_impl(
                 len(parts) != 2 or
                 not parts[0] or
                 not _contains_only(parts[0], "0123456789") or
-                not parts[1].endswith(".rpm")
+                not parts[1].endswith(suffix)
             ):
                 fail("local transaction entry has invalid location: {}".format(entry))
             idx = int(parts[0])
             if idx >= len(package_dirs):
                 fail("local transaction entry refers to missing package directory: {}".format(entry))
-            output_name = _closure_name(parts[1], pkgid, ".rpm")
+            output_name = _closure_name(parts[1], pkgid, suffix)
             if output_name not in artifacts:
                 artifacts[output_name] = package_dirs[idx].project(parts[1])
             continue
@@ -359,7 +360,7 @@ def _select_package_artifacts_impl(
         package = by_repo[rid][pkgid]
         if representation == "installable":
             artifact = package.artifact
-            extension = ".rpm"
+            extension = suffix
         else:
             derived = package.representations.get(representation)
             if derived == None:
@@ -381,6 +382,7 @@ _select_package_artifacts_action = dynamic_actions(
         "local_packages": dynattrs.value(dict[str, list[Artifact]]),
         "pools": dynattrs.dict(str, dynattrs.dynamic_value()),
         "representation": dynattrs.value(str),
+        "suffix": dynattrs.value(str),
     },
 )
 
@@ -388,6 +390,7 @@ def select_package_artifacts(
         ctx: AnalysisContext,
         tx: Artifact,
         repositories: list[Dependency],
+        suffix: str,
         extra_packages: list[Artifact] = [],
         name: str = "install.closure",
         representation: str = "installable") -> Artifact:
@@ -411,5 +414,6 @@ def select_package_artifacts(
         local_packages = local_packages,
         pools = pools,
         representation = representation,
+        suffix = suffix,
     ))
     return output

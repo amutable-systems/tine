@@ -40,6 +40,7 @@ package_system(
     install = ":install",
     pkgdb = ":pkgdb",
     index = ":createrepo",
+    package_suffix = ".rpm",
     plan = ":plan",
     build = ":build",
     # Keep in sync with install.py's DBPATH, which Starlark cannot read.

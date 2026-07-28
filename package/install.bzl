@@ -80,7 +80,13 @@ def resolve_packages(
     )
     ctx.actions.run(plan, category = "plan")
 
-    return select_package_artifacts(ctx, tx, repositories = repositories, extra_packages = extra_packages)
+    return select_package_artifacts(
+        ctx,
+        tx,
+        repositories = repositories,
+        suffix = system.package_suffix,
+        extra_packages = extra_packages,
+    )
 
 def _install_actions(
         ctx: AnalysisContext,
