@@ -120,6 +120,10 @@ Operation lists are recursively flattened, allowing reusable helpers to return o
 operations. Every `image_layer` exposes a `directory` subtarget which lazily materializes the complete
 logical image at that point.
 
+`image_layer` also takes `install_langs`: keep translated files only for these languages, instead of all of
+them. Nothing matches a value that is not a language, so `install_langs = ["C.UTF-8"]` installs no
+translations at all, which is what the default initrd does.
+
 ## Terminal outputs
 
 Logical images and terminal outputs are separate rule families. Terminal rules merge the layer stack only

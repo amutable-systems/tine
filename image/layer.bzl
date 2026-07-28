@@ -210,6 +210,10 @@ def _image_layer_impl(ctx: AnalysisContext) -> list[Provider]:
             "--packages-dir",
             closure,
         )
+        for lang in ctx.attrs.install_langs:
+            cmd.add("--install-langs", lang)
+    elif ctx.attrs.install_langs:
+        fail("image_layer: install_langs requires an install operation")
     manifest = ctx.actions.write_json(
         "operations.json",
         operations,
@@ -280,6 +284,11 @@ _image_layer = rule(
     impl = _image_layer_impl,
     attrs = {
         "parent": attrs.dep(providers = [ImageInfo], doc = "the logical image to extend"),
+        "install_langs": attrs.list(
+            attrs.string(),
+            default = [],
+            doc = "keep translations only for these languages (default: keep all)",
+        ),
         "ops": attrs.list(
             _operation_attr,
             default = [],

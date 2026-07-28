@@ -124,6 +124,7 @@ def _apply(
     target: Path,
     installer: Path | None,
     packages_dir: Path | None,
+    install_langs: list[str],
 ) -> None:
     """Apply one operation with its requested view of the mounted root."""
     operation = _operation(value)
@@ -138,6 +139,8 @@ def _apply(
                 "--installroot",
                 str(target),
             ]
+            for lang in install_langs:
+                cmd += ["--install-langs", lang]
             rc = subprocess.run(cmd).returncode
             if rc != 0:
                 raise SystemExit(f"image package installation failed (rc={rc})")
@@ -167,6 +170,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--work", help="throwaway overlay workdir (required with --lower)")
     p.add_argument("--installer", help="native package installer executable")
     p.add_argument("--packages-dir", help="exact package closure consumed by --installer")
+    p.add_argument(
+        "--install-langs",
+        action="append",
+        default=[],
+        metavar="LANG",
+        help="keep only this language's translated files (repeatable)",
+    )
     p.add_argument("--operations", required=True, help="ordered operation manifest")
     args = p.parse_args(argv)
 
@@ -186,6 +196,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit("--installer and --packages-dir must be used together")
     if bool(install_count) != (args.installer is not None):
         raise SystemExit("image install operation requires --installer and --packages-dir")
+    if args.install_langs and not install_count:
+        raise SystemExit("--install-langs requires an install operation")
 
     installer = Path(args.installer).resolve() if args.installer else None
     packages_dir = Path(args.packages_dir).resolve() if args.packages_dir else None
@@ -206,7 +218,7 @@ def main(argv: list[str] | None = None) -> None:
 
     with mounted as target:
         for operation in operations:
-            _apply(operation, target, installer, packages_dir)
+            _apply(operation, target, installer, packages_dir, args.install_langs)
 
     if not args.lower:
         rootfs.capture(out)

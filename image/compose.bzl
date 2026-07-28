@@ -127,6 +127,8 @@ def _default_initrd(name: str, image: str) -> str:
             symlink("/usr/lib/systemd/systemd", "/init"),
             symlink("/etc/os-release", "/etc/initrd-release"),
         ],
+        # Nothing in an initrd is ever read by a human, so no translation is worth carrying.
+        install_langs = ["C.UTF-8"],
     )
     return ":" + name + ".initrd.layer"
 

@@ -6,9 +6,11 @@ layers. It parks the rpmdb and removes nondeterministic bookkeeping before captu
 """
 
 import argparse
+import os
 import shutil
 import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 
 import libdnf5
@@ -28,7 +30,30 @@ hosts: files dns
 """
 
 
-def install(rpms_dir: Path, installroot: Path, cachedir: Path, *, system: bool = False) -> None:
+def limit_langs(langs: list[str]) -> None:
+    """Restrict the `%lang()`-marked files rpm installs to the given languages.
+
+    libdnf5 exposes neither a macro API nor an equivalent option, so this has to arrive through
+    rpm's own macro path. XDG_CONFIG_HOME is the entry that keeps it inside this driver: writing
+    /etc/rpm/macros.* as mkosi does would need a bind mount arranged by the action, outside the
+    package system. The directory lives on the action's tmpfs and dies with it.
+    """
+    config = Path(tempfile.mkdtemp(prefix="rpmconfig.")) / "rpm"
+    config.mkdir()
+    (config / "macros").write_text("%_install_langs {}\n".format(":".join(langs)))
+    os.environ["XDG_CONFIG_HOME"] = str(config.parent)
+
+
+def install(
+    rpms_dir: Path,
+    installroot: Path,
+    cachedir: Path,
+    *,
+    system: bool = False,
+    langs: list[str] | None = None,
+) -> None:
+    if langs:
+        limit_langs(langs)
     base = libdnf5.base.Base()
     cfg = base.get_config()
     cfg.installroot = str(installroot)
@@ -117,6 +142,7 @@ def install_into_root(
     system: bool,
     park: bool,
     engine_config: bool,
+    langs: list[str] | None = None,
 ) -> None:
     # Leave a fresh root for systemd to initialize on first boot without resetting existing images.
     etc = installroot / "etc"
@@ -126,7 +152,7 @@ def install_into_root(
     if initialize_machine_id:
         machine_id.write_text("uninitialized\n")
 
-    install(packages_dir, installroot, cachedir, system=system)
+    install(packages_dir, installroot, cachedir, system=system, langs=langs)
     if initialize_machine_id:
         # Packages may replace the marker during the transaction.
         machine_id.write_text("uninitialized\n")
@@ -157,6 +183,13 @@ def main(argv: list[str] | None = None) -> None:
         help="materialize factory NSS and resolver configuration (engine root only)",
     )
     p.add_argument("--no-parkdb", action="store_true")
+    p.add_argument(
+        "--install-langs",
+        action="append",
+        default=[],
+        metavar="LANG",
+        help="install %%lang()-marked files only for this language (repeatable)",
+    )
     args = p.parse_args(argv)
 
     packages_dir = Path(args.packages_dir).resolve()
@@ -173,6 +206,7 @@ def main(argv: list[str] | None = None) -> None:
             system=(installroot / DBPATH / "rpmdb.sqlite").exists(),
             park=not args.no_parkdb,
             engine_config=args.engine_config,
+            langs=args.install_langs,
         )
         return
 
@@ -198,6 +232,7 @@ def main(argv: list[str] | None = None) -> None:
             system=incremental,
             park=not args.no_parkdb,
             engine_config=args.engine_config,
+            langs=args.install_langs,
         )
 
     if not incremental:
