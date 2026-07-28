@@ -136,11 +136,11 @@ Normal builds do not resolve against live network repositories. The catalog cont
 optional generated form:
 
 - `snapshot/repo/<name>.json` pins filtered `repomd.xml`, the primary/filelists/group streams needed by
-  libdnf5, and the complete primary-metadata package inventory keyed by SHA-256 `pkgid`;
+  libdnf5, and the complete primary-metadata package inventory keyed by SHA-256 checksum;
 - `snapshot/engine/<name>.json` optionally freezes an engine transaction. Remote records contain
-  `{source, repo, pkgid, nevra, url, size}`: `pkgid` verifies the bytes, while `url` and `size` record the
-  last known transport after rolling repository metadata stops advertising that package. The target's
-  `.repository` or `.engine` suffix is not repeated in the snapshot filename.
+  `{source, repo, pkg_checksum, package_id, url, size}`: the checksum verifies the bytes, while `url` and
+  `size` record the last known transport after rolling repository metadata stops advertising that package.
+  The target's `.repository` or `.engine` suffix is not repeated in the snapshot filename.
 
 An engine with `resolver_engine` and no committed transaction resolves through that predecessor as a normal
 cacheable build action. The generated transaction is an input to the existing dynamic package selectors,
@@ -197,7 +197,7 @@ Each `rpm_remote_repository()` target owns separate dynamic values for its pinne
 The pool expands the union of the current snapshot inventory and remote transports retained by committed
 engine locks into:
 
-- one digest-checked raw RPM artifact per `pkgid`;
+- one digest-checked raw RPM artifact per checksum;
 - one decompressed cpio payload representation per RPM.
 
 The raw RPM and derived payload are alternative representations of the same `PackageArtifactInfo` record. The
@@ -205,7 +205,7 @@ repository target is their canonical action owner, so engines, buildroots, and i
 and decompression actions. A package removed from the latest snapshot remains in the pool while a committed
 engine lock references its pinned URL and size.
 
-`select_package_artifacts()` reads a resolved transaction, looks up each `(repository, pkgid)` in the
+`select_package_artifacts()` reads a resolved transaction, looks up each `(repository, checksum)` in the
 authoritative pool, and creates a symlinked directory containing the requested representation. It never
 creates a second download. Buck materializes only artifacts selected by a consuming transaction, while every
 consumer shares their owning actions.

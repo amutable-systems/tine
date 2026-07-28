@@ -262,11 +262,11 @@ def _is_ascii(value: str) -> bool:
             return False
     return True
 
-def _closure_name(canonical_name: str, pkgid: str, suffix: str) -> str:
+def _closure_name(canonical_name: str, checksum: str, suffix: str) -> str:
     # Retain a readable prefix while the full digest prevents NAME_MAX collisions.
     if not _is_ascii(canonical_name) or not _is_ascii(suffix):
         fail("package representation names must be ASCII: {!r}, {!r}".format(canonical_name, suffix))
-    tail = "--" + pkgid + suffix
+    tail = "--" + checksum + suffix
     prefix_length = 255 - len(tail)
     if prefix_length <= 0:
         fail("package representation suffix is too long: {!r}".format(suffix))
@@ -296,7 +296,7 @@ def _select_package_artifacts_impl(
         source = entry.get("source")
         if source not in ("local", "repo"):
             fail("transaction entry has unknown source {!r}".format(source))
-        required = ("nevra", "pkgid", "repo", "source")
+        required = ("package_id", "pkg_checksum", "repo", "source")
         missing = [key for key in required if key not in entry]
         if missing:
             fail("transaction entry lacks {}: {}".format(missing, entry))
@@ -306,17 +306,17 @@ def _select_package_artifacts_impl(
             fail("transaction entry has unknown fields {}: {}".format(unknown, entry))
 
         rid = entry["repo"]
-        pkgid = entry["pkgid"]
-        nevra = entry["nevra"]
-        if type(rid) != type("") or not rid or type(nevra) != type("") or not nevra:
-            fail("transaction entry has invalid repo/nevra: {}".format(entry))
+        checksum = entry["pkg_checksum"]
+        package_id = entry["package_id"]
+        if type(rid) != type("") or not rid or type(package_id) != type("") or not package_id:
+            fail("transaction entry has invalid repo/package_id: {}".format(entry))
         if (
-            type(pkgid) != type("") or
-            len(pkgid) != 64 or
-            pkgid != pkgid.lower() or
-            not _contains_only(pkgid, "0123456789abcdef")
+            type(checksum) != type("") or
+            len(checksum) != 64 or
+            checksum != checksum.lower() or
+            not _contains_only(checksum, "0123456789abcdef")
         ):
-            fail("transaction entry has invalid pkgid: {}".format(entry))
+            fail("transaction entry has invalid pkg_checksum: {}".format(entry))
         if source == "local":
             if representation != "installable":
                 fail("local packages do not expose the {!r} representation".format(representation))
@@ -340,7 +340,7 @@ def _select_package_artifacts_impl(
             idx = int(parts[0])
             if idx >= len(package_dirs):
                 fail("local transaction entry refers to missing package directory: {}".format(entry))
-            output_name = _closure_name(parts[1], pkgid, suffix)
+            output_name = _closure_name(parts[1], checksum, suffix)
             if output_name not in artifacts:
                 artifacts[output_name] = package_dirs[idx].project(parts[1])
             continue
@@ -352,22 +352,22 @@ def _select_package_artifacts_impl(
         if type(size) != type(0) or size <= 0:
             fail("remote transaction entry has invalid size: {}".format(entry))
 
-        if rid not in by_repo or pkgid not in by_repo[rid]:
+        if rid not in by_repo or checksum not in by_repo[rid]:
             fail(
                 ("{} ({}/{}) is absent from the pinned repository package pool; " +
-                 "run refresh-catalog").format(nevra, rid, pkgid),
+                 "run refresh-catalog").format(package_id, rid, checksum),
             )
-        package = by_repo[rid][pkgid]
+        package = by_repo[rid][checksum]
         if representation == "installable":
             artifact = package.artifact
             extension = suffix
         else:
             derived = package.representations.get(representation)
             if derived == None:
-                fail("{} ({}/{}) has no {!r} representation".format(nevra, rid, pkgid, representation))
+                fail("{} ({}/{}) has no {!r} representation".format(package_id, rid, checksum, representation))
             artifact = derived.artifact
             extension = derived.suffix
-        output_name = _closure_name(package.name, pkgid, extension)
+        output_name = _closure_name(package.name, checksum, extension)
         if output_name not in artifacts:
             artifacts[output_name] = artifact
 

@@ -57,7 +57,7 @@ def _retained_packages(id: str, engine_locks: list[ArtifactValue]) -> dict[str, 
             if entry["source"] != "repo" or entry["repo"] != id:
                 continue
 
-            pkgid = entry["pkgid"]
+            pkgid = entry["pkg_checksum"]
             package = {"size": entry["size"], "url": entry["url"]}
             previous = retained.get(pkgid)
             if previous != None and previous["size"] != package["size"]:

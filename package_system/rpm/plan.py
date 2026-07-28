@@ -2,8 +2,8 @@
 """Resolve package transactions or prebuild libdnf5 repository caches.
 
 Solves against pinned metadata and optionally an existing lower stack. Remote
-packages are identified by repository and pkgid; local packages also record their
-input location. `make-cache` amortizes metadata parsing across solve actions.
+packages are identified by repository and content checksum; local packages also
+record their input location. `make-cache` amortizes metadata parsing across solve actions.
 """
 
 import argparse
@@ -32,9 +32,9 @@ class Repository(NamedTuple):
 
 
 class TransactionPackage(TypedDict):
-    nevra: str
+    package_id: str
     repo: str
-    pkgid: str
+    pkg_checksum: str
     source: Literal["local", "repo"]
     location: NotRequired[str]
     size: NotRequired[int]
@@ -160,13 +160,13 @@ def plan(
             raise SystemExit(f"expected sha256 repodata checksum for {pkg.get_nevra()}")
         rid = pkg.get_repo_id()
         repo = repositories[rid]
-        pkgid = chk.get_checksum().lower()
-        if len(pkgid) != 64 or any(character not in "0123456789abcdef" for character in pkgid):
-            raise SystemExit(f"invalid sha256 pkgid for {pkg.get_nevra()}: {pkgid!r}")
+        checksum = chk.get_checksum().lower()
+        if len(checksum) != 64 or any(character not in "0123456789abcdef" for character in checksum):
+            raise SystemExit(f"invalid sha256 checksum for {pkg.get_nevra()}: {checksum!r}")
         entry = TransactionPackage(
-            nevra=pkg.get_nevra(),
+            package_id=pkg.get_nevra(),
             repo=rid,
-            pkgid=pkgid,
+            pkg_checksum=checksum,
             source="local" if repo.baseurl is None else "repo",
         )
         if repo.baseurl is None:
@@ -182,8 +182,8 @@ def plan(
     resolved.sort(
         key=lambda entry: (
             entry["repo"],
-            entry["nevra"],
-            entry["pkgid"],
+            entry["package_id"],
+            entry["pkg_checksum"],
             entry.get("location", ""),
             entry.get("url", ""),
         )
