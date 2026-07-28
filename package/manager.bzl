@@ -20,14 +20,14 @@ _REMOTE_REPOSITORY_PRIORITY = 99
 def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     system = ctx.attrs.package_system[PackageSystemInfo]
     repo = ctx.actions.declare_output("repo", dir = True)
-    createrepo = cmd_args(
-        chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = system.createrepo),
+    index = cmd_args(
+        chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = system.index),
         "--out",
         repo.as_output(),
     )
     for package_dir in ctx.attrs.package_dirs:
-        createrepo.add("--packages-dir", package_dir)
-    ctx.actions.run(createrepo, category = "createrepo")
+        index.add("--packages-dir", package_dir)
+    ctx.actions.run(index, category = "repository_index")
     return [DefaultInfo(default_output = repo)]
 
 _materialize_local_repository = anon_rule(

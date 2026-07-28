@@ -85,8 +85,8 @@ PackageSystemInfo (RPM drivers)
 The providers have deliberately narrow roles:
 
 - `PackageSystemInfo` bundles the drivers for one native binary-package ecosystem: snapshot, extract,
-  install, package database capture, `createrepo`, plan, and build, plus the paths that database occupies
-  in an installed root. RPM is the only implementation today.
+  install, package database capture, repository indexing, plan, and build, plus the paths that database
+  occupies in an installed root. RPM is the only implementation today.
 - `PackageRepositoryInfo` represents one repository and binds it to a package system. Its target name is
   the repository ID; remote declarations also expose their pinned directory and base URL. Priority is
   configuration policy, not an intrinsic repository property. A repository is not inherently owned by an
@@ -288,7 +288,7 @@ Native package installation has three phases shared by buildroots and images:
    effective priority, and solver cache. Weak dependencies are disabled. Existing lower layers are mounted
    read-only so installed packages can satisfy an incremental request.
 2. **Select.** Use the resulting transaction to select raw RPMs from repository pools. A local repository is
-   materialized by an anonymous `createrepo` target using the consuming package manager's engine. The same
+   materialized by an anonymous indexing target using the consuming package manager's engine. The same
    path handles package-build inputs and lets the libdnf5 solve choose between local and upstream packages.
    Extra packages arrive on two mutually exclusive paths: a package build passes its explicit
    `buildroot_deps` outputs, while a package manager with attached `local_packages` computes the request's
