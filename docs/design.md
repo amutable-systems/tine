@@ -430,15 +430,15 @@ in are built; the universe target itself never forces a package build.
 
 Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
 needed. The catalog of terminal rules (`image_archive`, `image_directory`, `uki`, `repart`, `bootable`,
-`image_rpmdb`, `image_sbom`, `image_sysext`, and `image_vm`) and the
+`image_pkgdb`, `image_sbom`, `image_sysext`, and `image_vm`) and the
 `rootfs_archive()`/`sysext_image()` convenience compositions are documented in [images.md](images.md).
 
-The rpm database and SBOMs are supply-chain outputs read from the assembled image, never shipped in it.
-Scanning the whole tree, rather than only the rpm database, additionally catches packages rpm does not know
-about, such as Go modules bundled into ELF binaries.
+The package database and SBOMs are supply-chain outputs read from the assembled image, never shipped in
+it. Scanning the whole tree, rather than only the package database, additionally catches packages rpm does
+not know about, such as Go modules bundled into ELF binaries.
 
-Terminal rules leave the rpmdb and other package state intact — except `image_sysext`, which drops the
-rpm database: a merged extension must not shadow the host's. Image cleanup is an explicit, configurable
+Terminal rules leave the package database and other package state intact — except `image_sysext`, which
+drops the database: a merged extension must not shadow the host's. Image cleanup is an explicit, configurable
 layer so output formats do not silently alter image contents. Every terminal driver receives the same
 ordered layer stack and deferred tmpfiles snippets. It applies those snippets with
 `systemd-tmpfiles --root` before reading or emitting image content; a missing tool is an error whenever
@@ -540,9 +540,9 @@ sibling targets, without an aggregate rule that forwards unrelated outputs:
 //examples/image:boot-demo.directory
 //examples/image:boot-demo.qcow2
 //examples/image:boot-demo.raw.zst
-//examples/image:boot-demo.rpmdb
+//examples/image:boot-demo.pkgdb
 //examples/image:boot-demo.sbom
-//examples/image:boot-demo.initrd.rpmdb
+//examples/image:boot-demo.initrd.pkgdb
 //examples/image:boot-demo.initrd.sbom
 ```
 

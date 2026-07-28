@@ -9,7 +9,7 @@ load(
     "format_partition_labels",
     "repart",
 )
-load("//image_format:rpmdb.bzl", "image_rpmdb")
+load("//image_format:pkgdb.bzl", "image_pkgdb")
 load("//image_format:sbom.bzl", "image_sbom")
 load("//image_format:sysext.bzl", "image_sysext")
 load(
@@ -52,8 +52,8 @@ def rootfs_archive(
         tmpfiles = tmpfiles,
         install_docs = install_docs,
     )
-    image_rpmdb(
-        name = name + ".rpmdb",
+    image_pkgdb(
+        name = name + ".pkgdb",
         image = ":" + name + ".layer",
         visibility = visibility,
     )
@@ -106,8 +106,8 @@ def sysext_image(
         tmpfiles = tmpfiles,
         install_docs = install_docs,
     )
-    image_rpmdb(
-        name = name + ".rpmdb",
+    image_pkgdb(
+        name = name + ".pkgdb",
         image = ":" + name + ".layer",
         visibility = visibility,
     )
@@ -287,13 +287,13 @@ def bootable_disk_image(
 
     # The initrd resolves its own package closure, so keep its supply-chain outputs separate from
     # the root filesystem's. Every artifact is an explicit sibling terminal target.
-    image_rpmdb(
-        name = name + ".rpmdb",
+    image_pkgdb(
+        name = name + ".pkgdb",
         image = ":" + name + ".esp.layer",
         visibility = visibility,
     )
-    image_rpmdb(
-        name = name + ".initrd.rpmdb",
+    image_pkgdb(
+        name = name + ".initrd.pkgdb",
         image = initrd,
         visibility = visibility,
     )

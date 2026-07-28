@@ -141,8 +141,8 @@ when needed:
   GPT disk with `DiskImageInfo`, independent partition artifacts with `split = True`, or both;
 - `bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
-- `image_rpmdb` copies the image's rpm database out as a separate artifact, trimmed to the `Packages`
-  table alone;
+- `image_pkgdb` copies the image's package database out as a separate artifact (rpm's, trimmed to the
+  `Packages` table alone);
 - `image_sbom` runs `syft` over the assembled tree in one scan, emitting SPDX and CycloneDX SBOMs;
 - `image_sysext` builds a systemd-sysext(8) DDI (unsigned for now) with `systemd-repart`, containing
   `/usr`, `/opt`, and `extension-release.<name>`, and provides `SysextImageInfo`; with `base`, only the
@@ -158,7 +158,7 @@ an archive; `image_archive` remains the terminal rule for archiving an existing 
 `sysext_image()` is the equivalent composition for a system-extension DDI. Every composition takes
 `install_docs` and passes it to the layer it builds.
 
-Every composition declares the rpm database and SBOM as explicit `<name>.rpmdb`/`<name>.sbom` sibling
+Every composition declares the package database and SBOM as explicit `<name>.pkgdb`/`<name>.sbom` sibling
 targets; `bootable_disk_image` declares them for both the root filesystem and initrd. Buck builds a
 sibling only when it is requested, so the declarations cost nothing on a default build (a wildcard
 build like `//...` does build them all).
@@ -221,9 +221,9 @@ The requested target name is the raw disk. Other terminal views are explicit sib
 //examples/image:boot-demo.directory
 //examples/image:boot-demo.qcow2
 //examples/image:boot-demo.raw.zst
-//examples/image:boot-demo.rpmdb
+//examples/image:boot-demo.pkgdb
 //examples/image:boot-demo.sbom
-//examples/image:boot-demo.initrd.rpmdb
+//examples/image:boot-demo.initrd.pkgdb
 //examples/image:boot-demo.initrd.sbom
 ```
 

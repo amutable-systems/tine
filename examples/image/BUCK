@@ -125,7 +125,7 @@ image_archive(
 )
 
 # Bootable GPT image; `buck run :boot-demo-vm` starts it with the engine's vmspawn stack.
-# Supply-chain siblings such as `:boot-demo.rpmdb` and `:boot-demo.sbom` build on demand, and the raw
+# Supply-chain siblings such as `:boot-demo.pkgdb` and `:boot-demo.sbom` build on demand, and the raw
 # disk re-encodes on demand as `:boot-demo.qcow2` and `:boot-demo.raw.zst`.
 bootable_disk_image(
     name = "boot-demo",
