@@ -85,7 +85,7 @@ PackageSystemInfo (RPM drivers)
 The providers have deliberately narrow roles:
 
 - `PackageSystemInfo` bundles the drivers for one native binary-package ecosystem: snapshot, extract,
-  install, `createrepo`, plan, and build. RPM is the only implementation today.
+  install, package database capture, `createrepo`, plan, and build. RPM is the only implementation today.
 - `PackageRepositoryInfo` represents one repository and binds it to a package system. Its target name is
   the repository ID; remote declarations also expose their pinned directory and base URL. Priority is
   configuration policy, not an intrinsic repository property. A repository is not inherently owned by an
@@ -435,7 +435,9 @@ needed. The catalog of terminal rules (`image_archive`, `image_directory`, `uki`
 
 The package database and SBOMs are supply-chain outputs read from the assembled image, never shipped in
 it. Scanning the whole tree, rather than only the package database, additionally catches packages rpm does
-not know about, such as Go modules bundled into ELF binaries.
+not know about, such as Go modules bundled into ELF binaries. The capture itself is the package system's
+own driver, so the database keeps that system's shape; `image_pkgdb` only declares the directory it lands
+in.
 
 Terminal rules leave the package database and other package state intact — except `image_sysext`, which
 drops the database: a merged extension must not shadow the host's. Image cleanup is an explicit, configurable
@@ -803,7 +805,7 @@ Useful implementation entry points:
 
 - `tine/package/{system,repository,release,manager,solver,buildroot,install}.bzl`
 - `tine/package_system/rpm/rules.bzl` and
-  `tine/package_system/rpm/{snapshot,plan,install,createrepo,build,extract,decompress}.py`
+  `tine/package_system/rpm/{snapshot,plan,install,pkgdb,createrepo,build,extract,decompress}.py`
 - `tine/engine/{build,runtime}.bzl`, `tine/engine/sandbox.py`, and `tine/rootfs/rootfs.py`
 - `tine/image/{layer,uki,boot,compose,vm}.bzl` and `tine/image_format/{archive,disk,sysext}.bzl`
 - `tine/tools/catalog.py` and `tine/catalog/BUCK`

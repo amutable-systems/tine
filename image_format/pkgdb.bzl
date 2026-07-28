@@ -7,14 +7,19 @@ trimmed database. Compositions expose it as an explicit `<name>.pkgdb` sibling t
 
 load("//image:actions.bzl", "terminal_image_command")
 load("//image:layer.bzl", "ImageInfo")
+load("//package:manager.bzl", "PackageManagerInfo")
+load("//package:system.bzl", "PackageSystemInfo")
 
 def _image_pkgdb_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
+    if image.package_manager == None:
+        fail("image_pkgdb: {} installs no packages, so it has no database".format(ctx.attrs.image.label))
+    system = image.package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
 
     # A package database is not one file everywhere: rpm keeps a single SQLite database, dpkg a
     # status file plus per-package lists. The driver fills a directory with whatever its own is.
     out = ctx.actions.declare_output("pkgdb", dir = True)
-    cmd = terminal_image_command(image, ctx.attrs._driver)
+    cmd = terminal_image_command(image, system.pkgdb)
     cmd.add("--out", out.as_output())
     ctx.actions.run(cmd, category = "image_pkgdb")
     return [DefaultInfo(default_output = out)]
@@ -23,7 +28,5 @@ image_pkgdb = rule(
     impl = _image_pkgdb_impl,
     attrs = {
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image to capture from"),
-        # Only rpm has a driver so far; it belongs to the package system rather than here.
-        "_driver": attrs.dep(providers = [RunInfo], default = "tine//image_format:rpmdb"),
     },
 )

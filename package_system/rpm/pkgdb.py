@@ -21,7 +21,7 @@ from pathlib import Path
 
 import finalize
 
-# Matches package_system/rpm/install.py:DBPATH.
+# Matches install.py:DBPATH.
 DBPATH = "usr/lib/sysimage/rpm/rpmdb.sqlite"
 
 
@@ -46,7 +46,7 @@ def _trim(db: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="rpmdb")
+    parser = argparse.ArgumentParser(prog="pkgdb")
     finalize.add_arguments(parser)
     parser.add_argument("--out", required=True, help="output directory for the database")
     args = parser.parse_args(argv)
@@ -54,13 +54,13 @@ def main(argv: list[str] | None = None) -> None:
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     db = out / Path(DBPATH).name
-    with finalize.image(args, program="rpmdb") as tree:
+    with finalize.image(args, program="pkgdb") as tree:
         src = tree / DBPATH
         if not src.exists():
             raise SystemExit(f"no rpmdb at {src}; the image has no installed packages")
         shutil.copy2(src, db)
     _trim(db)
-    print(f"rpmdb: captured Packages-only database -> {db}", file=sys.stderr)
+    print(f"pkgdb: captured Packages-only database -> {db}", file=sys.stderr)
 
 
 if __name__ == "__main__":
