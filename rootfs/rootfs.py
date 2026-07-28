@@ -167,7 +167,7 @@ def _bind(src: str | Path, dst: str | Path) -> None:
 
 
 def _apivfs(stack: ExitStack, target: Path) -> None:
-    """Mount the API and temporary filesystems expected by scriptlets."""
+    """Mount the API and temporary filesystems expected by package scripts."""
     ttyname = os.ttyname(2) if os.isatty(2) else ""
     DevOperation(ttyname, str(target / "dev")).execute()
     stack.callback(umount2, str(target / "dev"), MNT_DETACH)

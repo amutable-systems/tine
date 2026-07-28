@@ -297,7 +297,7 @@ Native package installation has three phases shared by buildroots and images:
    runtime closure at analysis time from imported metadata and offers exactly the locally built packages
    in it. Buildroots reject managers with local packages, because buildroot contents must come from the
    explicit, cycle-checked self-hosting locks.
-3. **Install.** Run `PackageSystemInfo.install` over the exact RPM directory. `install_packages()` owns a
+3. **Install.** Run `PackageSystemInfo.install` over the exact package directory. `install_packages()` owns a
    fresh root or incremental buildroot delta. An image layer instead invokes the same installer against its
    already-mounted root so package and filesystem operations have one output owner.
 
@@ -437,10 +437,9 @@ needed. The catalog of terminal rules (`image_archive`, `image_directory`, `uki`
 `rootfs_archive()`/`sysext_image()` convenience compositions are documented in [images.md](images.md).
 
 The package database and SBOMs are supply-chain outputs read from the assembled image, never shipped in
-it. Scanning the whole tree, rather than only the package database, additionally catches packages rpm does
-not know about, such as Go modules bundled into ELF binaries. The capture itself is the package system's
-own driver, so the database keeps that system's shape; `image_pkgdb` only declares the directory it lands
-in.
+it. Scanning the whole tree, rather than only the package database, additionally catches packages no package
+manager knows about, such as Go modules bundled into ELF binaries. The capture itself is the package system's
+own driver, so the database keeps that system's shape; `image_pkgdb` only declares the directory it lands in.
 
 Terminal rules leave the package database and other package state intact — except `image_sysext`, which
 drops the database from the paths the image's package system declares: a merged extension must not shadow
@@ -552,8 +551,8 @@ sibling targets, without an aggregate rule that forwards unrelated outputs:
 //examples/image:boot-demo.initrd.sbom
 ```
 
-The disk, directory, rpm database, and SBOM siblings all derive from the same ESP layer. The initrd is a
-second filesystem with its own package closure, so its rpm database and SBOM are declared against that
+The disk, directory, package database, and SBOM siblings all derive from the same ESP layer. The initrd
+is a second filesystem with its own package closure, so its database and SBOM are declared against that
 logical image and remain separate from the root filesystem's artifacts.
 
 The standalone `bootable` rule extracts semantic boot artifacts lazily from a completed logical image
@@ -674,9 +673,9 @@ directories as regular files keeps those deltas compatible with Buck's artifact/
 
 ### Prefer exact transactions over package-manager network access
 
-Resolution uses pinned local repodata; installation consumes an exact directory of already selected RPMs.
+Resolution uses pinned local repodata; installation consumes an exact directory of already selected packages.
 This keeps network out of build actions, makes the transaction an inspectable early-cutoff boundary, and
-separates “which packages?” from “apply these packages and scriptlets.” Weak dependencies are disabled to
+separates “which packages?” from “apply these packages and their scripts.” Weak dependencies are disabled to
 match buildroot policy and avoid unreviewed closure growth.
 
 ### Build each source package once and expose subpackages

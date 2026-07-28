@@ -171,7 +171,7 @@ def main(argv: list[str] | None = None) -> NoReturn:
         out += ["--bind", cwd, cwd]
         chdir = chdir or cwd
 
-    # RPM scriptlets require writable API and temporary filesystems.
+    # Package scripts require writable API and temporary filesystems.
     out += ["--bind", "/proc", "/proc"]
     if not args.relaxed:
         out += ["--dev", "/dev"]

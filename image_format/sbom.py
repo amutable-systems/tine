@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Generate SPDX and CycloneDX SBOMs from a logical image with syft.
 
-Scanning the whole assembled tree (not just the rpm database) also catches packages rpm does
+Scanning the whole assembled tree (not just the package database) also catches packages no
 not know about, e.g. Go modules bundled into ELF binaries. Two formats come from one scan:
   spdx-json:      ISO/IEC 5962 standard, authoritative/compliance SBOM
   cyclonedx-json: modern standard, consumed by grype/trivy, basis for native VEX
@@ -70,8 +70,8 @@ def main(argv: list[str] | None = None) -> None:
     ):
         env = os.environ | {
             # Drop the per-.ko "pkg:generic" module entries (~90% of the SBOM). They carry no
-            # CPE/PURL any vulnerability feed keys on; the kernel-core rpm still represents the
-            # kernel. Revisit if a kernel is ever installed by other means than an rpm.
+            # CPE/PURL any vulnerability feed keys on; the kernel package still represents the
+            # kernel. Revisit if a kernel is ever installed by other means than a package.
             "SYFT_LINUX_KERNEL_CATALOG_MODULES": "false",
             # The sandbox has no network; keep syft from reaching out.
             "SYFT_CHECK_FOR_APP_UPDATE": "false",

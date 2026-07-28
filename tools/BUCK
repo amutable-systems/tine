@@ -36,7 +36,7 @@ http_tool(
 )
 
 # SBOM generator (static release binary; not packaged in Fedora). Scans an image tree for the
-# rpmdb, ELF-bundled modules, etc. Used by the image_sbom rule against an assembled image.
+# package database, ELF-bundled modules, etc. Used by the image_sbom rule against an assembled image.
 http_tool(
     name = "syft",
     path = "syft",

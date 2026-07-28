@@ -125,7 +125,7 @@ def read(buf: Buffer, start: int = 0) -> Iterator[Entry]:
 
 
 def _relpath(name: str) -> str:
-    """Normalize a trusted RPM payload path beneath the destination."""
+    """Normalize a trusted archive entry path beneath the destination."""
     return "/".join(p for p in name.split("/") if p not in ("", ".", ".."))
 
 
