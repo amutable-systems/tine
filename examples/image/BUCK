@@ -188,7 +188,7 @@ command_alias(
 sysext_image(
     name = "demo-ext",
     base = ":boot-demo.layer",
-    ops = [install(["bash-doc"])],
+    ops = [install(["zsh"])],
     rpmdb = True,
 )
 
