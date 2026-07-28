@@ -398,11 +398,11 @@ at `/buildroot`. Its `env` argument overlays variables on the engine or image en
 Package installation and copying always run outside the chroot. Operation lists are recursively flattened,
 allowing reusable helpers to return ordered groups of operations.
 
-`install_langs` narrows the install to the translated files of the named languages, so unwanted translations
-never enter the tree and the package database records them as not installed rather than claiming files that
-are absent. It belongs to the layer rather than to the image because layers of one image differ in whether
-they are read by a human: an initrd needs no translations while the root filesystem it boots may. Each
-package system implements it in its own driver.
+`install_langs` narrows the install to the translated files of the named languages, and `install_docs`
+drops documentation while keeping licenses. Neither ever enters the tree, so the package database records
+them as not installed rather than claiming files that are absent. They belong to the layer, not the image:
+an initrd needs neither, while the root filesystem it boots may want both. Each package system implements
+them in its own driver.
 
 Every `image_layer` exposes a `directory` subtarget which lazily materializes the complete logical image at
 that point. The layer's default output remains its persisted delta, and downstream image rules continue to

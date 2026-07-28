@@ -156,6 +156,8 @@ bootable_disk_image(
     # Example for manually handled sysext DDI shipped via the ESP, in a systemd `.v/` versioned directory
     # (systemd.v(7)) for handling with systemd-sysupdate
     esp_files = {"/boot/extensions/demo-ext.raw.v/demo-ext_0_x86-64.raw": ":demo-ext"},
+    # A shipped appliance has no terminal to read a man page on.
+    install_docs = False,
     rpmdb = True,
     sbom = True,
 )
@@ -189,6 +191,7 @@ sysext_image(
     name = "demo-ext",
     base = ":boot-demo.layer",
     ops = [install(["zsh"])],
+    install_docs = False,
     rpmdb = True,
 )
 

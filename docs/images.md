@@ -122,7 +122,8 @@ logical image at that point.
 
 `image_layer` also takes `install_langs`: keep translated files only for these languages, instead of all of
 them. Nothing matches a value that is not a language, so `install_langs = ["C.UTF-8"]` installs no
-translations at all, which is what the default initrd does.
+translations at all. `install_docs = False` likewise installs no documentation, keeping the licenses that
+packages ship. The default initrd sets both.
 
 ## Terminal outputs
 
@@ -157,7 +158,8 @@ when needed:
 
 `rootfs_archive()` is the convenience composition for building a single layer from operations and emitting
 an archive; `image_archive` remains the terminal rule for archiving an existing logical image.
-`sysext_image()` is the equivalent composition for a system-extension DDI.
+`sysext_image()` is the equivalent composition for a system-extension DDI. Every composition takes
+`install_docs` and passes it to the layer it builds.
 
 The rpm database and SBOM facets can also ride along on a normal build: `image_archive` (and
 `rootfs_archive`) accept `rpmdb`/`sbom` flags that fold the artifacts into `other_outputs`,
@@ -191,6 +193,8 @@ Optional attributes:
 - `arch` (string): Architecture; only `x86_64` is supported right now; passed on to `uki()`.
 - `esp_files` (dict): Map from an absolute image path (under `/boot` or `/efi`, the trees the ESP
   partition carries) to a source target copied onto the ESP.
+- `install_docs` (boolean): Passed to the root filesystem layer; the default initrd never installs
+  documentation regardless.
 - `rpmdb` (boolean): Attach the `image_rpmdb` facets, exposed as the `[rpmdb]` and `[initrd.rpmdb]`
   subtargets.
 - `sbom` (boolean): Attach the `image_sbom` facets, exposed as the `[sbom]` and `[initrd.sbom]`

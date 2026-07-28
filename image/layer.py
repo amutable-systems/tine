@@ -125,6 +125,7 @@ def _apply(
     installer: Path | None,
     packages_dir: Path | None,
     install_langs: list[str],
+    install_docs: bool,
 ) -> None:
     """Apply one operation with its requested view of the mounted root."""
     operation = _operation(value)
@@ -141,6 +142,8 @@ def _apply(
             ]
             for lang in install_langs:
                 cmd += ["--install-langs", lang]
+            if not install_docs:
+                cmd.append("--no-docs")
             rc = subprocess.run(cmd).returncode
             if rc != 0:
                 raise SystemExit(f"image package installation failed (rc={rc})")
@@ -177,6 +180,7 @@ def main(argv: list[str] | None = None) -> None:
         metavar="LANG",
         help="keep only this language's translated files (repeatable)",
     )
+    p.add_argument("--no-docs", action="store_true", help="skip documentation files")
     p.add_argument("--operations", required=True, help="ordered operation manifest")
     args = p.parse_args(argv)
 
@@ -198,6 +202,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit("image install operation requires --installer and --packages-dir")
     if args.install_langs and not install_count:
         raise SystemExit("--install-langs requires an install operation")
+    if args.no_docs and not install_count:
+        raise SystemExit("--no-docs requires an install operation")
 
     installer = Path(args.installer).resolve() if args.installer else None
     packages_dir = Path(args.packages_dir).resolve() if args.packages_dir else None
@@ -218,7 +224,7 @@ def main(argv: list[str] | None = None) -> None:
 
     with mounted as target:
         for operation in operations:
-            _apply(operation, target, installer, packages_dir, args.install_langs)
+            _apply(operation, target, installer, packages_dir, args.install_langs, not args.no_docs)
 
     if not args.lower:
         rootfs.capture(out)

@@ -51,6 +51,7 @@ def install(
     *,
     system: bool = False,
     langs: list[str] | None = None,
+    docs: bool = True,
 ) -> None:
     if langs:
         limit_langs(langs)
@@ -59,6 +60,9 @@ def install(
     cfg.installroot = str(installroot)
     cfg.cachedir = str(cachedir)
     cfg.install_weak_deps = False
+    if not docs:
+        # This skips %doc only; the licenses packages ship stay installed.
+        cfg.tsflags = ["nodocs"]
     # Package digests are already pinned; disable both checks used by Transaction.run().
     cfg.pkg_gpgcheck = False
     cfg.localpkg_gpgcheck = False
@@ -143,6 +147,7 @@ def install_into_root(
     park: bool,
     engine_config: bool,
     langs: list[str] | None = None,
+    docs: bool = True,
 ) -> None:
     # Leave a fresh root for systemd to initialize on first boot without resetting existing images.
     etc = installroot / "etc"
@@ -152,7 +157,7 @@ def install_into_root(
     if initialize_machine_id:
         machine_id.write_text("uninitialized\n")
 
-    install(packages_dir, installroot, cachedir, system=system, langs=langs)
+    install(packages_dir, installroot, cachedir, system=system, langs=langs, docs=docs)
     if initialize_machine_id:
         # Packages may replace the marker during the transaction.
         machine_id.write_text("uninitialized\n")
@@ -190,6 +195,7 @@ def main(argv: list[str] | None = None) -> None:
         metavar="LANG",
         help="install %%lang()-marked files only for this language (repeatable)",
     )
+    p.add_argument("--no-docs", action="store_true", help="skip documentation files")
     args = p.parse_args(argv)
 
     packages_dir = Path(args.packages_dir).resolve()
@@ -207,6 +213,7 @@ def main(argv: list[str] | None = None) -> None:
             park=not args.no_parkdb,
             engine_config=args.engine_config,
             langs=args.install_langs,
+            docs=not args.no_docs,
         )
         return
 
@@ -233,6 +240,7 @@ def main(argv: list[str] | None = None) -> None:
             park=not args.no_parkdb,
             engine_config=args.engine_config,
             langs=args.install_langs,
+            docs=not args.no_docs,
         )
 
     if not incremental:

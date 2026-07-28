@@ -38,6 +38,7 @@ def rootfs_archive(
         tmpfiles: list[str] = [],
         format: str = "tar",
         compression: str = "none",
+        install_docs: bool = True,
         rpmdb: bool = False,
         sbom: bool = False,
         version: str = "0",
@@ -52,6 +53,7 @@ def rootfs_archive(
         parent = ":" + name + ".image",
         ops = ops,
         tmpfiles = tmpfiles,
+        install_docs = install_docs,
     )
     rpmdb_facet = None
     if rpmdb:
@@ -79,6 +81,7 @@ def sysext_image(
         tmpfiles: list[str] = [],
         release: dict[str, str] = {},
         seed: str | None = None,
+        install_docs: bool = True,
         rpmdb: bool = False,
         visibility: list[str] | None = None) -> None:
     """Build a systemd system-extension DDI from ordered operations.
@@ -102,6 +105,7 @@ def sysext_image(
         parent = parent,
         ops = ops,
         tmpfiles = tmpfiles,
+        install_docs = install_docs,
     )
     rpmdb_facet = None
     if rpmdb:
@@ -127,7 +131,9 @@ def _default_initrd(name: str, image: str) -> str:
             symlink("/usr/lib/systemd/systemd", "/init"),
             symlink("/etc/os-release", "/etc/initrd-release"),
         ],
-        # Nothing in an initrd is ever read by a human, so no translation is worth carrying.
+        # Nothing in an initrd is ever read by a human, so neither documentation nor translations
+        # are worth carrying.
+        install_docs = False,
         install_langs = ["C.UTF-8"],
     )
     return ":" + name + ".initrd.layer"
@@ -147,6 +153,7 @@ def bootable_disk_image(
         verity_private_key: str | None = None,
         verity_certificate: str | None = None,
         esp_files: dict[str, str] = {},
+        install_docs: bool = True,
         rpmdb: bool = False,
         sbom: bool = False,
         image_id: str | None = None,
@@ -181,6 +188,7 @@ def bootable_disk_image(
         parent = ":" + name + ".image",
         ops = ops,
         tmpfiles = tmpfiles,
+        install_docs = install_docs,
     )
 
     # The identity stamp lives in its own thin layer so that a changing version only re-runs
