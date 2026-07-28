@@ -55,22 +55,26 @@ def _image_result_impl(ctx: AnalysisContext) -> list[Provider]:
         sub_targets[info.format] = [conversion[DefaultInfo], info]
 
     # Supply-chain outputs are never the default facet, but ride along on a normal build via
-    # other_outputs (and stay individually reachable as subtargets).
+    # other_outputs (and stay individually reachable as subtargets). The initrd is a separate logical
+    # image with a separate package closure, so its facets describe `initrd` rather than `image`, and
+    # only its subtarget carries them: a target returns at most one provider of each type, and the
+    # top-level RpmdbInfo/SbomInfo describe the image itself.
     ride_along = []
-    if ctx.attrs.rpmdb != None:
-        dep = ctx.attrs.rpmdb
-        info = dep[RpmdbInfo]
-        _check_source("rpmdb", info.source, image)
-        providers.append(info)
-        sub_targets["rpmdb"] = [dep[DefaultInfo], info]
-        ride_along.extend(dep[DefaultInfo].default_outputs)
-
-    if ctx.attrs.sbom != None:
-        dep = ctx.attrs.sbom
-        info = dep[SbomInfo]
-        _check_source("sbom", info.source, image)
-        providers.append(info)
-        sub_targets["sbom"] = [dep[DefaultInfo], info]
+    for subtarget, dep, provider, described, forward in (
+        ("rpmdb", ctx.attrs.rpmdb, RpmdbInfo, image, True),
+        ("sbom", ctx.attrs.sbom, SbomInfo, image, True),
+        ("initrd.rpmdb", ctx.attrs.initrd_rpmdb, RpmdbInfo, ctx.attrs.initrd, False),
+        ("initrd.sbom", ctx.attrs.initrd_sbom, SbomInfo, ctx.attrs.initrd, False),
+    ):
+        if dep == None:
+            continue
+        if described == None:
+            fail("image result {} facet needs the image it describes".format(subtarget))
+        info = dep[provider]
+        _check_source(subtarget, info.source, described)
+        if forward:
+            providers.append(info)
+        sub_targets[subtarget] = [dep[DefaultInfo], info]
         ride_along.extend(dep[DefaultInfo].default_outputs)
 
     default = facets.get(ctx.attrs.default_facet)
@@ -98,6 +102,13 @@ image_result = rule(
         "directory": attrs.option(attrs.dep(providers = [DirectoryImageInfo]), default = None),
         "disk": attrs.option(attrs.dep(providers = [DiskImageInfo]), default = None),
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image shared by every facet"),
+        "initrd": attrs.option(
+            attrs.dep(providers = [ImageInfo]),
+            default = None,
+            doc = "the initrd's logical image, which the initrd facets describe",
+        ),
+        "initrd_rpmdb": attrs.option(attrs.dep(providers = [RpmdbInfo]), default = None),
+        "initrd_sbom": attrs.option(attrs.dep(providers = [SbomInfo]), default = None),
         "rpmdb": attrs.option(attrs.dep(providers = [RpmdbInfo]), default = None),
         "sbom": attrs.option(attrs.dep(providers = [SbomInfo]), default = None),
     },

@@ -521,8 +521,18 @@ rather than default outputs.
 Bootability and output format are independent capabilities. A final target may return any combination of
 `BootableImageInfo`, `DiskImageInfo`, `DirectoryImageInfo`, `RpmdbInfo`, and `SbomInfo`, while continuing to
 return the underlying `ImageInfo`. Each facet records its source dependency, and `image_result` rejects
-facets derived from different logical images. One facet supplies the target's default output; nested
-subtargets namespace all other views (the subtarget listing is shown in [images.md](images.md)).
+facets that do not describe the image they are attached to. One facet supplies the target's default output;
+nested subtargets namespace all other views (the subtarget listing is shown in [images.md](images.md)).
+
+Every facet but one is a different rendering of a single filesystem. `:boot-demo[bootable]`, `[disk]`,
+`[directory]`, `[rpmdb]`, and `[sbom]` all derive from the same ESP layer: the disk is that tree written into
+GPT partitions, the directory is that tree materialized, the rpm database is that tree's package database.
+They cannot disagree about which packages exist, and comparing source labels is what enforces it. The initrd
+is a second filesystem. It is a separate layer resolving its own package set, so it may contain packages that
+the root filesystem does not install, and its rpm database and SBOM describe different content. They are
+therefore declared against the initrd rather than the image, and stay reachable only through their
+subtargets: a target returns at most one provider of each type, and the top-level `RpmdbInfo`/`SbomInfo` are
+the root filesystem's.
 
 The bootable facet extracts semantic artifacts lazily from the completed logical image rather than
 forwarding whichever intermediate target created them. A shared selection manifest chooses the newest

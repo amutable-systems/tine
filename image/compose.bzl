@@ -263,14 +263,23 @@ def bootable_disk_image(
         conversions.append(":{}.disk.{}".format(name, format))
 
     # Supply-chain facets scan the same layer image_result aggregates, so their source labels match.
+    # The initrd is scanned too, under the same flags: it resolves its own package closure, so it can
+    # ship packages the root filesystem does not.
     rpmdb_facet = None
+    initrd_rpmdb_facet = None
     if rpmdb:
         image_rpmdb(
             name = name + ".rpmdb",
             image = ":" + name + ".esp.layer",
         )
         rpmdb_facet = ":" + name + ".rpmdb"
+        image_rpmdb(
+            name = name + ".initrd.rpmdb",
+            image = initrd,
+        )
+        initrd_rpmdb_facet = ":" + name + ".initrd.rpmdb"
     sbom_facet = None
+    initrd_sbom_facet = None
     if sbom:
         image_sbom(
             name = name + ".sbom",
@@ -280,6 +289,15 @@ def bootable_disk_image(
         )
         sbom_facet = ":" + name + ".sbom"
 
+        # A distinct source name keeps the two documents apart, including their normalized ids.
+        image_sbom(
+            name = name + ".initrd.sbom",
+            image = initrd,
+            source_name = name + ".initrd",
+            version = version,
+        )
+        initrd_sbom_facet = ":" + name + ".initrd.sbom"
+
     image_result(
         name = name,
         image = ":" + name + ".esp.layer",
@@ -287,6 +305,9 @@ def bootable_disk_image(
         conversions = conversions,
         directory = ":" + name + ".directory",
         disk = ":" + name + ".disk",
+        initrd = initrd,
+        initrd_rpmdb = initrd_rpmdb_facet,
+        initrd_sbom = initrd_sbom_facet,
         rpmdb = rpmdb_facet,
         sbom = sbom_facet,
         default_facet = "disk",

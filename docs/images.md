@@ -157,7 +157,8 @@ an archive; `image_archive` remains the terminal rule for archiving an existing 
 
 The rpm database and SBOM facets can also ride along on a normal build: `image_archive` (and
 `rootfs_archive`) accept `rpmdb`/`sbom` flags that fold the artifacts into `other_outputs`,
-`sysext_image` likewise accepts `rpmdb`, and `bootable_disk_image` exposes both as `image_result` facets.
+`sysext_image` likewise accepts `rpmdb`, and `bootable_disk_image` exposes both as `image_result` facets,
+for the root filesystem and the initrd each.
 
 ### bootable_disk_image
 
@@ -186,8 +187,10 @@ Optional attributes:
 - `arch` (string): Architecture; only `x86_64` is supported right now; passed on to `uki()`.
 - `esp_files` (dict): Map from an absolute image path (under `/boot` or `/efi`, the trees the ESP
   partition carries) to a source target copied onto the ESP.
-- `rpmdb` (boolean): Attach the `image_rpmdb` facet, exposed as the `[rpmdb]` subtarget.
-- `sbom` (boolean): Attach the `image_sbom` facet, exposed as the `[sbom]` subtarget.
+- `rpmdb` (boolean): Attach the `image_rpmdb` facets, exposed as the `[rpmdb]` and `[initrd.rpmdb]`
+  subtargets.
+- `sbom` (boolean): Attach the `image_sbom` facets, exposed as the `[sbom]` and `[initrd.sbom]`
+  subtargets.
 - `image_id` (string): The image identity, stamped into the image's os-release as `IMAGE_ID`.
   Defaults to the target name; a product should set it explicitly so that renaming a Buck target
   cannot re-identify the installed OS (systemd-sysupdate matches partitions and UKIs by this
@@ -222,10 +225,20 @@ target's default output, and nested subtargets namespace all other views:
 //examples/image:boot-demo[raw.zst]
 //examples/image:boot-demo[rpmdb]
 //examples/image:boot-demo[sbom]
+//examples/image:boot-demo[initrd.rpmdb]
+//examples/image:boot-demo[initrd.sbom]
 ```
 
 The `[qcow2]` and `[raw.zst]` subtargets re-encode the raw disk into a compact qcow2 or a compressed raw on
 demand; Buck only runs the conversion actually requested, so they add nothing to a default build.
+
+The `initrd.*` subtargets describe the initrd, which resolves its own package closure and may therefore
+contain packages that the root filesystem does not install. Nothing scans the initrd once it is a cpio inside
+the UKI's PE, so it carries its own artifacts rather than being folded into the root filesystem's. Keeping
+them separate also preserves the distinction a vulnerability triage needs: a package reachable only during
+early boot is not exposed the way the same package in the running system is. The union of the two accounts
+for everything in the UKI, provided the image keeps the kernel rpm installed in its own tree, which is where
+the UKI's kernel and modules come from.
 
 ## Running the image in a VM
 
