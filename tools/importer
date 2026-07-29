@@ -1136,24 +1136,28 @@ def regenerate_buck(branchdir: Path) -> None:
     Loads are sorted, so an add/remove touches one line and rebases re-resolve by regenerating.
     """
     distro, branch = branchdir.parts[-2], branchdir.parts[-1]
-    props = branch_properties(branchdir)
-    buildroot = props.get('buildroot', f'//buildroots/{distro}:{branch}')
     # Sort by the filename (with .json) to match buildifier order
     pkgs = [p.stem for p in sorted(branchdir.glob('*.json'), key=lambda p: p.name)
             if is_package_entry(p)]
-    lines = ['# @generated -- do not edit (regenerated on import/update).',
-             'load("@tine//package_system/rpm:generated.bzl", "rpm_branch")']
-    lines += [f'load(":{p}.json", {_load_symbol(p)} = "value")' for p in pkgs]
-    lines += ['', f'BUILDROOT = "{buildroot}"', '', 'PACKAGES = {']
+
+    # all loads have to come first in Starlark
+    loads = ['load("@tine//package_system/rpm:generated.bzl", "rpm_branch")']
+    loads += [f'load(":{p}.json", {_load_symbol(p)} = "value")' for p in pkgs]
+    # Add a stub for branches without _properties.json to keep the rest of the file
+    # in the same shape
+    loads += [f'load(":{BRANCH_PROPERTIES}", _properties = "value")'
+              if (branchdir / BRANCH_PROPERTIES).exists()
+              else '_properties = {}']
+
+    lines = ['# @generated -- do not edit (regenerated on import/update).', *loads, '', 'PACKAGES = {']
     lines += [f'    "{p}": {_load_symbol(p)},' for p in pkgs]
-    # pass branch-level curation from _properties.json
-    brp = props.get('buildroot_only_packages', [])
-    seed = props.get('seed_only_packages', [])
-    options = props.get('rpmbuild_options', {})
-    extra = f', rpmbuild_options = {json.dumps(options)}' if options else ''
-    lines += ['}', '', (f'rpm_branch(buildroot = BUILDROOT, packages = PACKAGES, '
-                        f'buildroot_only_packages = {json.dumps(brp)}, '
-                        f'seed_only_packages = {json.dumps(seed)}{extra})')]
+    lines += ['}', '', 'rpm_branch(',
+              '    packages = PACKAGES,',
+              f'    buildroot = _properties.get("buildroot", "//buildroots/{distro}:{branch}"),',
+              '    buildroot_only_packages = _properties.get("buildroot_only_packages", []),',
+              '    seed_only_packages = _properties.get("seed_only_packages", []),',
+              '    rpmbuild_options = _properties.get("rpmbuild_options", {}),',
+              ')']
     (branchdir / 'BUCK').write_text('\n'.join(lines) + '\n')
 
 

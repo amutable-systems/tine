@@ -1421,11 +1421,12 @@ class Check(PackagesTestCase):
 
 
 class RegenerateBuck(unittest.TestCase):
-    """The generated per-branch BUCK reflects the .json package set and _properties.json curation.
+    """The generated per-branch BUCK reflects the .json package set and loads the branch curation.
 
-    regenerate_buck() emits a load + PACKAGES entry per <pkg>.json and folds the branch's
-    _properties.json curation into the rpm_branch() call, without ever treating _properties.json
-    itself as a package. Pure text generation -- no rpm build pipeline needed.
+    regenerate_buck() emits a load + PACKAGES entry per <pkg>.json, and has the generated file read
+    _properties.json itself rather than copying its values in -- so a curation edit takes effect
+    without regenerating. _properties.json is never treated as a package. Pure text generation --
+    no rpm build pipeline needed.
     """
 
     @override
@@ -1442,68 +1443,51 @@ class RegenerateBuck(unittest.TestCase):
         self.tool.regenerate_buck(self.branchdir)
         return (self.branchdir / "BUCK").read_text()
 
-    def test_no_properties(self) -> None:
+    CURATION = {
+        "buildroot": "//buildroots/myos:base",
+        "buildroot_only_packages": ["glibc32"],
+        "seed_only_packages": ["gcc"],
+        "rpmbuild_options": {"gcc": ["--with=basic"]},
+    }
+
+    def curate(self) -> None:
+        (self.branchdir / "_properties.json").write_text(json.dumps(self.CURATION))
+
+    def test_package_set(self) -> None:
         buck = self.buck()
-        self.assertIn(
-            "rpm_branch(buildroot = BUILDROOT, packages = PACKAGES, "
-            "buildroot_only_packages = [], seed_only_packages = [])\n",
-            buck,
-        )
-
-    def test_default_buildroot(self) -> None:
-        # Absent an override, the buildroot label is derived from the branch's <distro>/<branch> path.
-        self.assertIn('BUILDROOT = "//buildroots/fedora:rawhide"\n', self.buck())
-
-    def test_buildroot_override(self) -> None:
-        # An overlay branch builds against another branch's buildroot (our packages over Fedora).
-        # The override target differs from this branch's path-derived default, so a passing
-        # assertion proves the override is honored rather than coinciding with the default.
-        (self.branchdir / "_properties.json").write_text(json.dumps({"buildroot": "//buildroots/myos:base"}))
-        buck = self.buck()
-        self.assertIn('BUILDROOT = "//buildroots/myos:base"\n', buck)
-        self.assertNotIn("//buildroots/fedora:rawhide", buck)  # the default is not emitted
-        # the override is not mistaken for a package
-        self.assertNotIn('"_properties"', buck)
-
-    def test_buildroot_only_packages(self) -> None:
-        (self.branchdir / "_properties.json").write_text(
-            json.dumps({"buildroot_only_packages": ["glibc32"]})
-        )
-        buck = self.buck()
-        self.assertIn(
-            "rpm_branch(buildroot = BUILDROOT, packages = PACKAGES, "
-            'buildroot_only_packages = ["glibc32"], seed_only_packages = [])\n',
-            buck,
-        )
-
         # real packages are loaded and listed...
         self.assertIn('load(":gcc.json", _gcc = "value")', buck)
         self.assertIn('    "glibc": _glibc,', buck)
-        # ...but the curation file is neither loaded nor a PACKAGES entry.
-        self.assertNotIn('"_properties"', buck)
+        # ...but the curation file is never a PACKAGES entry.
+        self.curate()
+        self.assertNotIn('"_properties": _properties,', self.buck())
 
-    def test_seed_only_packages(self) -> None:
-        (self.branchdir / "_properties.json").write_text(json.dumps({"seed_only_packages": ["gcc"]}))
+    def test_no_properties(self) -> None:
+        # Without curation the load has nothing to bind, so the branch supplies an empty dict and
+        # every property falls back to its default.
         buck = self.buck()
-        self.assertIn(
-            "rpm_branch(buildroot = BUILDROOT, packages = PACKAGES, "
-            'buildroot_only_packages = [], seed_only_packages = ["gcc"])\n',
-            buck,
-        )
+        self.assertNotIn('load(":_properties.json"', buck)
+        self.assertIn("_properties = {}\n", buck)
 
-    def test_rpmbuild_options(self) -> None:
-        (self.branchdir / "_properties.json").write_text(
-            json.dumps(
-                {"buildroot_only_packages": ["glibc32"], "rpmbuild_options": {"gcc": ["--with=basic"]}}
-            )
-        )
+    def test_curation_is_loaded_not_embedded(self) -> None:
+        # The whole point: buck2 reads _properties.json itself, so editing it takes effect without
+        # regenerating. Every curated value must therefore be absent from the generated file.
+        self.curate()
         buck = self.buck()
-        self.assertIn(
-            "rpm_branch(buildroot = BUILDROOT, packages = PACKAGES, "
-            'buildroot_only_packages = ["glibc32"], seed_only_packages = [], '
-            'rpmbuild_options = {"gcc": ["--with=basic"]})\n',
-            buck,
-        )
+        self.assertIn('load(":_properties.json", _properties = "value")', buck)
+        for key in self.CURATION:
+            self.assertIn(f'_properties.get("{key}"', buck)
+        for value in ("//buildroots/myos:base", "glibc32", "--with=basic"):
+            self.assertNotIn(value, buck)
+
+    def test_default_buildroot(self) -> None:
+        # Absent an override, the buildroot label is derived from the branch's <distro>/<branch>
+        # path -- the one default that must be generated, since buck cannot know the branch's
+        # distro. It stays the fallback even when the branch overrides it.
+        default = '_properties.get("buildroot", "//buildroots/fedora:rawhide")'
+        self.assertIn(default, self.buck())
+        self.curate()
+        self.assertIn(default, self.buck())
 
 
 class TestCLI(unittest.TestCase):
