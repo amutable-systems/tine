@@ -14,6 +14,7 @@ load("//image_format:sbom.bzl", "image_sbom")
 load("//image_format:sysext.bzl", "image_sysext")
 load(
     ":boot.bzl",
+    "ARCHES",
     "UkiProfile",  # @unused Used as a type.
     "install_systemd_boot",
     "uki",
@@ -260,11 +261,16 @@ def bootable_disk_image(
         parent = ":" + name + ".identity.layer",
         ops = esp_ops,
     )
+
+    # The disk file leaves the build as an update or installation medium, so it carries the image
+    # identity in its name, exactly like the UKI.
+    basename = "{}_{}_{}".format(image_id, version, ARCHES[arch].systemd)
     repart(
         name = name,
         image = ":" + name + ".esp.layer",
         definitions = boot_definitions,
         partitions = [":" + name + ".partitions"],
+        basename = basename,
         split = True,
         seed = disk_seed,
         visibility = visibility,
@@ -281,6 +287,7 @@ def bootable_disk_image(
         disk_convert(
             name = "{}.{}".format(name, format),
             disk = ":" + name,
+            basename = basename,
             format = format,
             visibility = visibility,
         )

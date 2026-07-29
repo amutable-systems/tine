@@ -286,7 +286,7 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
 
     out = None
     if ctx.attrs.disk:
-        out = ctx.actions.declare_output("image.raw")
+        out = ctx.actions.declare_output(ctx.attrs.basename + ".raw")
         cmd.add("--out", out.as_output())
 
     extra_providers = []
@@ -339,6 +339,7 @@ _repart = rule(
     impl = _repart_impl,
     attrs = {
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image used to populate new partitions"),
+        "basename": attrs.string(default = "image", doc = "file name of the composed disk, without extension"),
         "definitions": attrs.list(attrs.string(), doc = "serialized partition definitions"),
         "disk": attrs.bool(default = True, doc = "emit a composed raw disk image"),
         "partitions": attrs.list(
@@ -402,7 +403,7 @@ DISK_FORMATS = ["qcow2", "raw.zst"]
 
 def _disk_convert_impl(ctx: AnalysisContext) -> list[Provider]:
     disk = ctx.attrs.disk[DiskImageInfo]
-    out = ctx.actions.declare_output("image." + ctx.attrs.format)
+    out = ctx.actions.declare_output(ctx.attrs.basename + "." + ctx.attrs.format)
     cmd = cmd_args(
         chroot_run(engine = disk.engine[EngineInfo], exe = ctx.attrs._driver),
         "--format",
@@ -419,6 +420,7 @@ disk_convert = rule(
     impl = _disk_convert_impl,
     attrs = {
         "disk": attrs.dep(providers = [DiskImageInfo], doc = "the composed raw disk to re-encode"),
+        "basename": attrs.string(default = "image", doc = "file name of the re-encoded disk, without extension"),
         "format": attrs.enum(DISK_FORMATS),
         "_driver": attrs.dep(providers = [RunInfo], default = "tine//image_format:convert"),
     },

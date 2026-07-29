@@ -229,7 +229,9 @@ The requested target name is the raw disk. Other terminal views are explicit sib
 ```
 
 The `.qcow2` and `.raw.zst` sibling targets re-encode the raw disk into a compact qcow2 or a compressed raw
-on demand; Buck only runs the conversion actually requested, so they add nothing to a default build.
+on demand; Buck only runs the conversion actually requested, so they add nothing to a default build. The
+disk and its re-encodings are files named `<image_id>_<version>_<arch>.<ext>`, so they keep the image
+identity when copied out of the build, exactly matching the UKI's `<image_id>_<version>_<arch>.efi`.
 
 The `.initrd.*` siblings describe the initrd, which resolves its own package closure and may therefore
 contain packages that the root filesystem does not install. Nothing scans the initrd once it is a cpio inside
