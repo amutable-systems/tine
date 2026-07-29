@@ -507,6 +507,16 @@ The identity layer stamps `IMAGE_ID` and `IMAGE_VERSION` into the image's os-rel
 thin layer so that a per-commit version string invalidates only the version-embedding artifacts below it,
 never package installation.
 
+With Secure Boot key material, the identity layer also signs the systemd-boot binary in place, as a
+`.signed` sibling under `/usr/lib/systemd/boot/efi`. The signed binary must live in the image's own
+`/usr`, covered by the verity root hash, not just on the ESP: the booted system's `bootctl update`
+(`systemd-boot-update.service`) reinstalls the bootloader from that path after an OS update, and an
+unsigned binary there would fail Secure Boot verification on the next reboot. `bootctl` prefers the
+`.signed` sibling when populating the ESP. Only the UKI is built and signed outside the tree: its
+command line embeds the root hash, so it can only exist after `/usr` is sealed, and it lives solely on
+the ESP. The verity partition itself stays unsigned in this scheme: the signed UKI command line pins the
+verity root hash, so its trust derives from the Secure Boot signature.
+
 By default, the base initrd is a separate package image with `/init` pointing to systemd and
 `/etc/initrd-release` pointing to `/etc/os-release`, installing the release's `initrd` package set, so family
 catalog policy supplies concrete native package names. Callers can instead supply any logical image, and
@@ -724,8 +734,8 @@ These are properties of the implementation today, not merely ideas for future op
 - Directory image output cannot represent backslashes in names; archive outputs should be used instead.
 - The default `/usr`-only disk has a volatile root. Package and authored state outside `/usr` is not yet
   translated into factory defaults or another persistent partition.
-- Bootable images currently disable SELinux. Verity signing accepts declared development key material, but
-  production signing boundaries and Secure Boot signing are not implemented.
+- Bootable images currently disable SELinux. Verity and Secure Boot/expected-PCR signing accept declared
+  development key material, but production signing boundaries are not implemented.
 - Remote execution, Barrage integration, release publishing, and systematic reproducibility audits are not
   wired into CI.
 
@@ -777,7 +787,7 @@ Near-term image gaps are:
 
 - offline SELinux labeling instead of `selinux=0`;
 - deterministic ext4/FAT byte-level validation and any required normalization;
-- measured boot, production verity signing, per-profile expected-PCR signing, and Secure Boot integration;
+- production verity, Secure Boot, and expected-PCR signing through a restricted key boundary;
 - OCI, confext, ESP, and other terminal formats as real consumers require them;
 - sysext verity signing;
 - richer ordered operations for setting file metadata directly;

@@ -7,6 +7,7 @@ load(
     ":layer.bzl",
     "ImageInfo",
     "LayerOperation",  # @unused Used as a type.
+    "artifact",
     "mkdir",
     "remove",
     "run",
@@ -17,8 +18,50 @@ load(
 # on its command line, so this table is the single source; extend it to enable more architectures.
 ARCHES = {"x86_64": struct(efi = "x64", systemd = "x86-64")}
 
-def install_systemd_boot() -> list[LayerOperation]:
-    """Return operations that install systemd-boot into the image ESP staging paths."""
+def sign_systemd_boot(private_key: str, certificate: str, arch: str) -> list[LayerOperation]:
+    """Return operations that sign the image's systemd-boot binary as a `.signed` sibling.
+
+    Sign before anything seals /usr, e.g. a verity partition; design.md explains why the signed
+    binary must live in the image's own /usr. The key material never enters the image.
+    """
+    binary = "/buildroot/usr/lib/systemd/boot/efi/systemd-boot{}.efi".format(ARCHES[arch].efi)
+    return [
+        # systemd-sbsign lives outside PATH in the engine.
+        run(
+            [
+                "/usr/lib/systemd/systemd-sbsign",
+                "sign",
+                "--private-key",
+                artifact(private_key),
+                "--certificate",
+                artifact(certificate),
+                "--output=" + binary + ".signed",
+                binary,
+            ],
+            chroot = False,
+        ),
+    ]
+
+def install_systemd_boot(
+        private_key: str | None = None,
+        certificate: str | None = None) -> list[LayerOperation]:
+    """Return operations that install systemd-boot into the image ESP staging paths.
+
+    With signing credentials, bootctl prefers the `.signed` binaries (see sign_systemd_boot) and
+    writes loader/keys/auto enrollment variables, which sd-boot enrolls on firmware in
+    setup mode. The key material never enters the image.
+    """
+    if (private_key == None) != (certificate == None):
+        fail("install_systemd_boot: private_key and certificate must be specified together")
+    enroll = []
+    if private_key != None:
+        enroll = [
+            "--secure-boot-auto-enroll=yes",
+            "--certificate",
+            artifact(certificate),
+            "--private-key",
+            artifact(private_key),
+        ]
     return [
         mkdir("/efi"),
         run(
@@ -29,7 +72,7 @@ def install_systemd_boot() -> list[LayerOperation]:
                 "--install-source=image",
                 "--all-architectures",
                 "--no-variables",
-            ],
+            ] + enroll,
             chroot = False,
             env = {
                 "SYSTEMD_ESP_PATH": "/efi",
@@ -44,12 +87,17 @@ UkiProfile = record(
     id = str,
     title = str,
     cmdline = list[str],
+    sign_expected_pcr = bool,
 )
 
 # buildifier: disable=function-docstring-args
 # buildifier: disable=function-docstring-return
-def uki_profile(id: str, title: str, cmdline: list[str]) -> UkiProfile:
-    """Describe one alternative boot profile embedded in a UKI."""
+def uki_profile(id: str, title: str, cmdline: list[str], sign_expected_pcr: bool = True) -> UkiProfile:
+    """Describe one alternative boot profile embedded in a UKI.
+
+    Profiles whose boot state is not sealed against (e.g. installers or factory reset) can opt
+    out of the expected-PCR policy with sign_expected_pcr = False.
+    """
 
     # sd-boot derives entry identifiers from the id, so keep it filename- and env-file-safe.
     if not regex_match("^[a-z0-9._-]+$", id):
@@ -59,7 +107,7 @@ def uki_profile(id: str, title: str, cmdline: list[str]) -> UkiProfile:
     for argument in cmdline:
         if not argument:
             fail("uki_profile: cmdline arguments cannot be empty")
-    return UkiProfile(id = id, title = title, cmdline = cmdline)
+    return UkiProfile(id = id, title = title, cmdline = cmdline, sign_expected_pcr = sign_expected_pcr)
 
 def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
@@ -84,6 +132,9 @@ def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
         cmd.add("--cmdline", argument)
     for profile in ctx.attrs.profiles:
         cmd.add("--profile", profile)
+    if ctx.attrs.secure_boot_private_key != None:
+        cmd.add("--secure-boot-private-key", ctx.attrs.secure_boot_private_key)
+        cmd.add("--secure-boot-certificate", ctx.attrs.secure_boot_certificate)
     if ctx.attrs.root_hash != None:
         root_hash = ctx.attrs.root_hash[RootHashInfo]
         cmd.add("--root-hash", root_hash.hash, "--root-hash-kind", root_hash.kind)
@@ -123,6 +174,16 @@ _uki = rule(
             default = None,
             doc = "verity hash to add to the embedded kernel command line",
         ),
+        "secure_boot_private_key": attrs.option(
+            attrs.source(),
+            default = None,
+            doc = "PEM key for Secure Boot and expected-PCR signing",
+        ),
+        "secure_boot_certificate": attrs.option(
+            attrs.source(),
+            default = None,
+            doc = "PEM certificate for Secure Boot signing",
+        ),
         "_driver": attrs.dep(providers = [RunInfo], default = "tine//image:uki"),
     },
 )
@@ -131,8 +192,12 @@ def uki(name: str, profiles: list[UkiProfile] = [], **kwargs) -> None:
     """Build UKIs, with each profile added as an alternative sd-boot menu entry.
 
     A profile's cmdline is appended to the base cmdline (kernel arguments are last-wins, so
-    profiles can also override it).
+    profiles can also override it). With secure_boot_private_key/_certificate, the UKI and its
+    embedded kernel are signed for Secure Boot and a signed expected-PCR policy covers every
+    profile that does not opt out.
     """
+    if (kwargs.get("secure_boot_private_key") == None) != (kwargs.get("secure_boot_certificate") == None):
+        fail("uki: secure_boot_private_key and secure_boot_certificate must be specified together")
     ids = {}
     for profile in profiles:
         if profile.id in ids:
@@ -141,7 +206,12 @@ def uki(name: str, profiles: list[UkiProfile] = [], **kwargs) -> None:
     _uki(
         name = name,
         profiles = [
-            json.encode({"id": profile.id, "title": profile.title, "cmdline": profile.cmdline})
+            json.encode({
+                "id": profile.id,
+                "title": profile.title,
+                "cmdline": profile.cmdline,
+                "sign_expected_pcr": profile.sign_expected_pcr,
+            })
             for profile in profiles
         ],
         **kwargs

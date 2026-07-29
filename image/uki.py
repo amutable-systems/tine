@@ -16,7 +16,7 @@ from pathlib import Path
 import cpio
 import finalize
 
-# Ukify lives outside PATH in the engine.
+# ukify lives outside PATH in the engine.
 UKIFY = "/usr/lib/systemd/ukify"
 
 
@@ -70,15 +70,21 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument("--image-id", required=True, help="name the UKI <image-id>_<version>_<arch>.efi")
     p.add_argument("--version", required=True, help="image version in the UKI name")
+    p.add_argument("--secure-boot-private-key", help="PEM key for Secure Boot and expected-PCR signing")
+    p.add_argument("--secure-boot-certificate", help="PEM certificate for Secure Boot signing")
     args = p.parse_args(argv)
 
     if bool(args.root_hash) != bool(args.root_hash_kind):
         p.error("--root-hash and --root-hash-kind must be specified together")
+    if bool(args.secure_boot_private_key) != bool(args.secure_boot_certificate):
+        p.error("--secure-boot-private-key and --secure-boot-certificate must be specified together")
 
     out = Path(args.out).resolve()
     out.mkdir(parents=True)
     initrds = [Path(i).resolve() for i in args.initrd]
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
+    key = str(Path(args.secure_boot_private_key).resolve()) if args.secure_boot_private_key else None
+    certificate = str(Path(args.secure_boot_certificate).resolve()) if args.secure_boot_certificate else None
 
     with (
         finalize.image(args, program="uki") as tree,
@@ -112,12 +118,12 @@ def main(argv: list[str] | None = None) -> None:
 
         # Each profile becomes a small PE of .profile and .cmdline sections, joined into every
         # UKI below; the profile arguments extend the shared base cmdline.
+        profiles = [json.loads(value) for value in args.profile]
         profile_pes = []
         addon_stub = tree / "usr/lib/systemd/boot/efi" / f"addon{args.efi_arch}.efi.stub"
-        if args.profile and not addon_stub.exists():
+        if profiles and not addon_stub.exists():
             raise SystemExit("uki: the image ships no addon stub — install systemd-boot-unsigned")
-        for value in args.profile:
-            profile = json.loads(value)
+        for profile in profiles:
             section = scratch / f"{profile['id']}.profile"
             section.write_text(f"ID={profile['id']}\nTITLE={profile['title']}\n")
             profile_cmdline = scratch / f"{profile['id']}.cmdline"
@@ -133,6 +139,27 @@ def main(argv: list[str] | None = None) -> None:
             ]  # fmt: skip
             subprocess.run(cmd, check=True)
             profile_pes.append(pe)
+
+        # Secure Boot signing also seals the expected PCR 11 policy: ukify measures and signs the
+        # base and each joined profile separately. All profiles are signed by default; the
+        # explicit --sign-profile list is only needed when one opts out. The public key section
+        # (.pcrpkey) derives from the private key, so no --pcr-certificate is needed.
+        signing = []
+        if key:
+            assert certificate is not None  # the argument parser pairs the key and certificate
+            signing = [
+                "--signtool", "systemd-sbsign",
+                "--secureboot-private-key", key,
+                "--secureboot-certificate", certificate,
+                "--sign-kernel",
+                "--pcr-banks", "sha256",
+                "--pcr-private-key", key,
+            ]  # fmt: skip
+            if not all(profile["sign_expected_pcr"] for profile in profiles):
+                signing += ["--sign-profile", "main"]
+                for profile in profiles:
+                    if profile["sign_expected_pcr"]:
+                        signing += ["--sign-profile", profile["id"]]
 
         modules = scratch / f"modules-{kver}.cpio"
         prefix = f"usr/lib/modules/{kver}"
@@ -153,6 +180,7 @@ def main(argv: list[str] | None = None) -> None:
             "--uname", kver,
             "--stub", str(stub),
             "--efi-arch", args.efi_arch,
+            *signing,
             "--output", str(output),
         ]  # fmt: skip
         subprocess.run(cmd, check=True)

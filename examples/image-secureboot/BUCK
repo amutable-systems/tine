@@ -1,0 +1,73 @@
+"""Bootable image signed for Secure Boot with development keys.
+
+The signing key is generated at build time by the `:signing` target and lives only in buck-out, so
+nothing secret is committed.
+"""
+
+load("@tine//image:compose.bzl", "bootable_disk_image")
+load("@tine//image:layer.bzl", "install")
+load("@tine//image:sign.bzl", "signing_key")
+load("@tine//image:vm.bzl", "image_vm")
+load("@tine//image_format:disk.bzl", "DEFAULT_USR_VERITY_PARTITIONS")
+load("@tine//package:manager.bzl", "package_manager")
+
+package_manager(
+    name = "image.package-manager",
+    base = "tine//catalog:fedora.rawhide.package-manager",
+)
+
+signing_key(name = "signing")
+
+bootable_disk_image(
+    name = "image",
+    package_manager = ":image.package-manager",
+    definitions = DEFAULT_USR_VERITY_PARTITIONS,
+    ops = [
+        install([
+            "kernel-core",
+            "systemd",
+            "systemd-udev",
+            "systemd-boot-unsigned",
+            "fedora-release",
+            "bash",
+            "coreutils",
+            "util-linux",
+            "dbus-broker",
+        ]),
+    ],
+    # The key signs the UKIs (with a signed expected-PCR policy) and systemd-boot, and put
+    # auto-enrollment files onto the ESP. These also accept committed static PEM files, which
+    # cache better; see "Secure Boot signing" in images.md.
+    secure_boot_certificate = ":signing[cert]",
+    secure_boot_private_key = ":signing[key]",
+)
+
+image_vm(
+    name = "vm",
+    autologin = "root",
+    credentials = {
+        "firstboot.locale": "C.UTF-8",
+        "firstboot.timezone": "UTC",
+    },
+    image = ":image",
+    # select setup-mode firmware, so sd-boot enrolls the keys from the ESP on first
+    # boot; VM then enforces Secure Boot.
+    secure_boot = True,
+)
+
+# Boot smoke test: enrolls keys on first boot, settles under Secure Boot with a vTPM, then powers
+# off. Reuses the shared tine driver; `buck run :vm-smoke` runs it locally and in CI.
+command_alias(
+    name = "vm-smoke",
+    args = [
+        "--check", "bootctl | grep -F 'Secure Boot: enabled (user)'",
+        "--check", "bootctl | grep -F 'Measured UKI: yes'",
+        "--check", "bootctl | grep -F 'Measured OS: yes'",
+        # The booted /usr must carry the signed bootloader: bootctl update (and thus
+        # systemd-boot-update.service after an OS update) reinstalls from there, and an unsigned
+        # binary would fail Secure Boot verification on the next reboot.
+        "--check", "test -e /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed",
+        "$(exe_target :vm)",
+    ],
+    exe = "tine//tests:boot-smoke",
+)

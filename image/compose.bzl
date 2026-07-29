@@ -17,6 +17,7 @@ load(
     "ARCHES",
     "UkiProfile",  # @unused Used as a type.
     "install_systemd_boot",
+    "sign_systemd_boot",
     "uki",
 )
 load(
@@ -167,12 +168,19 @@ def bootable_disk_image(
         disk_seed: str | None = None,
         verity_private_key: str | None = None,
         verity_certificate: str | None = None,
+        secure_boot_private_key: str | None = None,
+        secure_boot_certificate: str | None = None,
         esp_files: dict[str, str] = {},
         install_docs: bool = True,
         image_id: str | None = None,
         version: str = "0",
         visibility: list[str] | None = None) -> None:
-    """Build a UKI-based, systemd-boot GPT disk image."""
+    """Build a UKI-based, systemd-boot GPT disk image.
+
+    With secure_boot_private_key/_certificate, the UKIs and systemd-boot are signed for Secure
+    Boot, the UKIs carry a signed expected-PCR policy, and the ESP receives key auto-enrollment
+    files for firmware in setup mode.
+    """
     if image_id == None:
         image_id = name
     if not regex_match("^[a-zA-Z0-9._-]+$", image_id):
@@ -206,10 +214,16 @@ def bootable_disk_image(
 
     # The identity stamp lives in its own thin layer so that a changing version only re-runs
     # the artifacts that embed it, never package installation or the caller's operations.
+    # systemd-boot signing joins it for the same reason (a key change must not re-run the
+    # caller's operations): it must precede the verity partitions below so that the booted
+    # /usr carries the signed binary (see sign_systemd_boot).
+    identity_ops = [merge_os_release({"IMAGE_ID": image_id, "IMAGE_VERSION": version})]
+    if secure_boot_private_key != None:
+        identity_ops += sign_systemd_boot(secure_boot_private_key, secure_boot_certificate, arch)
     image_layer(
         name = name + ".identity.layer",
         parent = ":" + name + ".layer",
-        ops = [merge_os_release({"IMAGE_ID": image_id, "IMAGE_VERSION": version})],
+        ops = identity_ops,
     )
     definitions = format_partition_labels(definitions, image_id, version)
     system_definitions = [definition for definition in definitions if definition.type != "esp"]
@@ -237,6 +251,8 @@ def bootable_disk_image(
         image_id = image_id,
         version = version,
         root_hash = ":" + name + ".partitions" if verity else None,
+        secure_boot_private_key = secure_boot_private_key,
+        secure_boot_certificate = secure_boot_certificate,
         visibility = visibility,
     )
     esp_ops = [
@@ -244,7 +260,10 @@ def bootable_disk_image(
             source = ":" + name + ".uki",
             destination = "/boot/EFI/Linux",
         ),
-        install_systemd_boot(),
+        install_systemd_boot(
+            private_key = secure_boot_private_key,
+            certificate = secure_boot_certificate,
+        ),
     ]
 
     # Copy caller-provided artifacts onto the ESP. The ESP partition's `copy_files = ["/boot:/", "/efi:/"]`
