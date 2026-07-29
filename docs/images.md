@@ -95,7 +95,7 @@ image(
 image(
     name = "project-configured.image",
     parent = ":project.image",
-    ops = [run(["/usr/bin/project", "configure"])],
+    ops = [chroot(["/usr/bin/project", "configure"])],
 )
 ```
 
@@ -121,11 +121,12 @@ ordered operation sequence in one action and persists exactly one delta:
 
 - `install([...])` installs native packages; `install_package_set("...")` resolves a symbolic package set
   through the image's package manager. One operation sequence may contain one install, at any position.
-- `run([...])` executes a command with the image's own binaries in a chroot; `chroot = False` instead
-  executes engine tooling with the image available at `/buildroot`. Its `env` argument overlays variables
-  on the engine or image environment for that command, and an `artifact(...)` argument is replaced with a
-  declared artifact's path (only under `chroot = False`, since build outputs are not visible inside the
-  image).
+- `chroot([...])` executes a command with the image's own binaries, chrooted into it; `run([...])`
+  executes engine tooling with the image available at `/buildroot`. Both take an `env` argument that
+  overlays variables on that command's environment. Only `run` can name a build artifact, since build
+  outputs are not visible inside the image: pass a declared artifact from a rule, or write
+  `$(location //target)` in a BUCK file. `chroot` takes plain strings, so a shell substitution spelled
+  `$(...)` reaches the shell rather than Buck's macro parser.
 - `copy` introduces a declared Buck artifact at an absolute image path; `mkdir`, `symlink`, and `remove`
   mutate the same root.
 

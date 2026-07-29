@@ -22,29 +22,18 @@ def _operation(value: object) -> list[object]:
     return cast(list[object], value)
 
 
-def _resolve_argument(argument: object, use_chroot: object) -> object:
-    """Replace an ["input", path] run argument with the artifact's absolute path."""
-    match argument:
-        case ["input", str(path)]:
-            if use_chroot:
-                raise SystemExit("image op 'run' cannot see artifact inputs inside the chroot")
-            return str(Path(path).absolute())
-        case _:
-            return argument
-
-
-def _run(raw_cmd: object, raw_env: object) -> None:
+def _run(tag: str, raw_cmd: object, raw_env: object) -> None:
     if not isinstance(raw_cmd, list) or not raw_cmd or not all(isinstance(arg, str) for arg in raw_cmd):
-        raise SystemExit(f"image op 'run' has invalid cmd: {raw_cmd!r}")
+        raise SystemExit(f"image op {tag!r} has invalid cmd: {raw_cmd!r}")
     if not isinstance(raw_env, dict) or not all(
         isinstance(key, str) and isinstance(value, str) for key, value in raw_env.items()
     ):
-        raise SystemExit(f"image op 'run' has invalid env: {raw_env!r}")
+        raise SystemExit(f"image op {tag!r} has invalid env: {raw_env!r}")
     cmd = cast(list[str], raw_cmd)
     env = cast(dict[str, str], raw_env)
     rc = subprocess.run(cmd, env=os.environ | env).returncode
     if rc != 0:
-        raise SystemExit(f"image op `run {cmd}` failed (rc={rc})")
+        raise SystemExit(f"image op `{tag} {cmd}` failed (rc={rc})")
 
 
 def _destination(tree: Path, value: str) -> Path:
@@ -154,14 +143,11 @@ def _apply(
             rc = subprocess.run(cmd).returncode
             if rc != 0:
                 raise SystemExit(f"image package installation failed (rc={rc})")
-        case ["run", raw_cmd, use_chroot, raw_env]:
-            if not isinstance(use_chroot, bool):
-                raise SystemExit(f"image op 'run' has invalid chroot: {use_chroot!r}")
-            if use_chroot:
-                with rootfs.chroot(target):
-                    _run(raw_cmd, raw_env)
-            else:
-                _run(raw_cmd, raw_env)
+        case ["run", raw_cmd, raw_env]:
+            _run("run", raw_cmd, raw_env)
+        case ["chroot", raw_cmd, raw_env]:
+            with rootfs.chroot(target):
+                _run("chroot", raw_cmd, raw_env)
         case ["copy", str(source), str(destination)]:
             _copy(Path(source), _destination(target, destination))
         case ["os_release", raw_fields]:
@@ -200,8 +186,6 @@ def main(argv: list[str] | None = None) -> None:
     for operation in operations:
         if operation[0] == "copy" and len(operation) == 3 and isinstance(operation[1], str):
             operation[1] = str(Path(operation[1]).absolute())
-        elif operation[0] == "run" and len(operation) == 4 and isinstance(operation[1], list):
-            operation[1] = [_resolve_argument(argument, operation[2]) for argument in operation[1]]
     install_count = sum(operation[0] == "install" for operation in operations)
     if install_count > 1:
         raise SystemExit("image layer allows at most one install operation")

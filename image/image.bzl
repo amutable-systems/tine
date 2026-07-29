@@ -170,36 +170,31 @@ ARCHES = {"x86_64": struct(efi = "x64", systemd = "x86-64")}
 
 # Operations replayed by the layer driver.
 
-# buildifier: disable=name-conventions  (record type, conventionally UpperCamelCase)
-ArtifactRef = record(
-    source = str | Artifact,
-)
+def run(cmd: list[str | Artifact], env: dict[str, str] = {}) -> LayerOperation:
+    """Run `cmd` with the engine's own tooling and the image mounted at /buildroot.
 
-def artifact(source: str | Artifact) -> ArtifactRef:
-    """Reference a declared artifact as a run() command argument.
-
-    The argument is replaced with the materialized artifact's path. Only chroot = False
-    commands can use this: build outputs are not visible inside the image.
+    An argument names a build artifact by being one, or by spelling `$(location //target)`
+    in a BUCK file.
     """
-    return ArtifactRef(source = source)
+    return ("run", cmd, _environment(env))
 
-def run(
-        cmd: list[str | ArtifactRef],
-        chroot: bool = True,
-        env: dict[str, str] = {}) -> LayerOperation:
-    """Run `cmd` in the image, or in the engine with the image at /buildroot.
+def chroot(cmd: list[str], env: dict[str, str] = {}) -> LayerOperation:
+    """Run `cmd` with the image's own binaries, chrooted into it.
 
-    Command arguments are strings, or artifact() references to declared artifacts.
+    Build outputs are not visible inside the image, so use run() for anything that needs one.
     """
-    arguments = []
     for argument in cmd:
-        if type(argument) == "string":
-            arguments.append(argument)
-        else:
-            if chroot:
-                fail("run: artifact() arguments require chroot = False")
-            arguments.append(("input", argument.source))
-    return ("run", arguments, chroot, {name: env[name] for name in sorted(env)})
+        if type(argument) != "string":
+            fail("chroot: artifact arguments require run()")
+
+        # A chrooted command is coerced as a plain string, so Buck would leave this macro
+        # verbatim for the shell. Other `$(...)` text is a shell substitution and stays.
+        if "$(location" in argument:
+            fail("chroot: $(location) arguments require run()")
+    return ("chroot", cmd, _environment(env))
+
+def _environment(env: dict[str, str]) -> dict[str, str]:
+    return {name: env[name] for name in sorted(env)}
 
 def install(packages: list[str]) -> LayerOperation:
     """Install native packages using the layer's package manager."""
@@ -234,8 +229,8 @@ def merge_os_release(fields: dict[str, str]) -> LayerOperation:
     return ("os_release", fields)
 
 def sign_systemd_boot(
-        private_key: str | Artifact,
-        certificate: str | Artifact,
+        private_key: Artifact,
+        certificate: Artifact,
         arch: str) -> list[LayerOperation]:
     """Return operations that sign the image's systemd-boot binary as a `.signed` sibling.
 
@@ -250,19 +245,18 @@ def sign_systemd_boot(
                 "/usr/lib/systemd/systemd-sbsign",
                 "sign",
                 "--private-key",
-                artifact(private_key),
+                private_key,
                 "--certificate",
-                artifact(certificate),
+                certificate,
                 "--output=" + binary + ".signed",
                 binary,
             ],
-            chroot = False,
         ),
     ]
 
 def install_systemd_boot(
-        private_key: str | Artifact | None = None,
-        certificate: str | Artifact | None = None) -> list[LayerOperation]:
+        private_key: Artifact | None = None,
+        certificate: Artifact | None = None) -> list[LayerOperation]:
     """Return operations that install systemd-boot into the image ESP staging paths.
 
     With signing credentials, bootctl prefers the `.signed` binaries (see sign_systemd_boot) and
@@ -276,9 +270,9 @@ def install_systemd_boot(
         enroll = [
             "--secure-boot-auto-enroll=yes",
             "--certificate",
-            artifact(certificate),
+            certificate,
             "--private-key",
-            artifact(private_key),
+            private_key,
         ]
     return [
         mkdir("/efi"),
@@ -291,7 +285,6 @@ def install_systemd_boot(
                 "--all-architectures",
                 "--no-variables",
             ] + enroll,
-            chroot = False,
             env = {
                 "SYSTEMD_ESP_PATH": "/efi",
                 "SYSTEMD_XBOOTLDR_PATH": "/boot",
@@ -299,6 +292,15 @@ def install_systemd_boot(
         ),
         remove("/efi/loader/random-seed"),
     ]
+
+def _encode_operation(operation: LayerOperation) -> LayerOperation:
+    if operation[0] != "run":
+        return operation
+
+    # An engine argument is a plain string, an artifact, or a resolved $(location) macro, and
+    # write_json renders the last as a list unless it is concatenated into a single argument.
+    arguments = [cmd_args(argument, delimiter = "") for argument in operation[1]]
+    return (operation[0], arguments, operation[2])
 
 def _install_specs(
         operation: tuple,
@@ -449,7 +451,7 @@ def declare_image(
                 cmd.add("--no-docs")
         manifest = ctx.actions.write_json(
             _path(identifier, "operations.json"),
-            operations,
+            [_encode_operation(operation) for operation in operations],
             with_inputs = True,
             has_content_based_path = False,
         )
@@ -490,13 +492,16 @@ def declare_image(
     )
 
 IMAGE_OPERATION_ATTR = attrs.one_of(
+    # Only the engine command takes attrs.arg(), so a chrooted command is free to spell shell
+    # substitutions as `$(...)` without escaping them away from Buck's macro parser.
     attrs.tuple(
         attrs.enum(["run"]),
-        attrs.list(attrs.one_of(
-            attrs.tuple(attrs.enum(["input"]), attrs.source(allow_directory = True)),
-            attrs.string(),
-        )),
-        attrs.bool(),
+        attrs.list(attrs.arg()),
+        attrs.dict(attrs.string(), attrs.string()),
+    ),
+    attrs.tuple(
+        attrs.enum(["chroot"]),
+        attrs.list(attrs.string()),
         attrs.dict(attrs.string(), attrs.string()),
     ),
     attrs.tuple(

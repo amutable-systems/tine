@@ -4,6 +4,8 @@ load(
     "@tine//image:defs.bzl",
     "DEFAULT_USR_VERITY_PARTITIONS",
     "bootable_disk_image",
+    "chroot",
+    "copy",
     "image",
     "image_archive",
     "image_vm",
@@ -23,14 +25,23 @@ package_manager(
     base = "tine//catalog:fedora.rawhide.package-manager",
 )
 
+# A build artifact an engine command names through $(location).
+export_file(
+    name = "marker.txt",
+    src = "marker.txt",
+)
+
 # Minimal install + ordered-ops demo. `:demo` is both the tar result and a logical image.
 rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
     ops = [
-        run(["/usr/bin/mkdir", "-p", "/buildroot/etc/tine"], chroot = False),
+        run(["/usr/bin/mkdir", "-p", "/buildroot/etc/tine"]),
+        run(["/usr/bin/cp", "$(location :marker.txt)", "/buildroot/etc/tine/from-location"]),
+        # copy() takes a source directly, so it needs no $(location) around the label.
+        copy(":marker.txt", "/etc/tine/from-copy"),
         install(["bash", "coreutils"]),
-        run(["/usr/bin/bash", "-c", "echo built-by-tine > /etc/tine/marker"]),
+        chroot(["/usr/bin/bash", "-c", "echo built-by-$(echo tine) > /etc/tine/marker"]),
     ],
     format = "tar",
 )
@@ -50,7 +61,7 @@ image(
     ops = [
         install(["bash", "coreutils"]),
         mkdir("/etc/tine"),
-        run([
+        chroot([
             "/usr/bin/bash",
             "-c",
             "echo base > /etc/tine/from-base-kept; echo base > /etc/tine/from-base-gone",
@@ -62,7 +73,7 @@ image(
     name = "chained-child.layer",
     parent = ":chained-base",
     ops = [
-        run(["/usr/bin/bash", "-c", "echo child > /etc/tine/from-child"]),
+        chroot(["/usr/bin/bash", "-c", "echo child > /etc/tine/from-child"]),
         remove("/etc/tine/from-base-gone"),
     ],
 )
@@ -79,7 +90,7 @@ image(
     package_manager = ":image.package-manager",
     ops = [
         install(["bash"]),
-        run(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"]),
+        chroot(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"]),
     ],
 )
 
@@ -88,7 +99,7 @@ image(
     parent = ":layered-install-base",
     ops = [
         install(["coreutils"]),
-        run(["/usr/bin/bash", "-c", "ls /usr/bin/ls > /etc/from-child-install"]),
+        chroot(["/usr/bin/bash", "-c", "ls /usr/bin/ls > /etc/from-child-install"]),
     ],
 )
 
@@ -105,7 +116,7 @@ image(
     ops = [
         install(["bash", "coreutils"]),
         mkdir("/etc/tine"),
-        run([
+        chroot([
             "/usr/bin/bash",
             "-c",
             "echo kept > '/etc/tine/esc\\x2dkept'; echo gone > '/etc/tine/esc\\x2dgone'",
@@ -196,7 +207,7 @@ image(
     package_manager = ":image.package-manager",
     ops = [
         install(["bash", "coreutils"]),
-        run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"]),
+        chroot(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"]),
     ],
 )
 
@@ -205,7 +216,7 @@ image(
     parent = ":opaque-base",
     ops = [
         remove("/etc/tine/sub"),
-        run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo new > /etc/tine/sub/fresh"]),
+        chroot(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo new > /etc/tine/sub/fresh"]),
     ],
 )
 
