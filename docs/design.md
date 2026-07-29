@@ -85,7 +85,9 @@ PackageSystemInfo (RPM drivers)
 The providers have deliberately narrow roles:
 
 - `PackageSystemInfo` bundles the drivers for one native binary-package ecosystem: snapshot, extract,
-  install, `createrepo`, plan, and build. RPM is the only implementation today.
+  install, package database capture, repository indexing, plan, and build, plus the paths that database
+  occupies in an installed root and the file suffix of an installable package. RPM is the only
+  implementation today.
 - `PackageRepositoryInfo` represents one repository and binds it to a package system. Its target name is
   the repository ID; remote declarations also expose their pinned directory and base URL. Priority is
   configuration policy, not an intrinsic repository property. A repository is not inherently owned by an
@@ -134,11 +136,11 @@ Normal builds do not resolve against live network repositories. The catalog cont
 optional generated form:
 
 - `snapshot/repo/<name>.json` pins filtered `repomd.xml`, the primary/filelists/group streams needed by
-  libdnf5, and the complete primary-metadata package inventory keyed by SHA-256 `pkgid`;
+  libdnf5, and the complete primary-metadata package inventory keyed by SHA-256 checksum;
 - `snapshot/engine/<name>.json` optionally freezes an engine transaction. Remote records contain
-  `{source, repo, pkgid, nevra, url, size}`: `pkgid` verifies the bytes, while `url` and `size` record the
-  last known transport after rolling repository metadata stops advertising that package. The target's
-  `.repository` or `.engine` suffix is not repeated in the snapshot filename.
+  `{source, repo, pkg_checksum, package_id, url, size}`: the checksum verifies the bytes, while `url` and
+  `size` record the last known transport after rolling repository metadata stops advertising that package.
+  The target's `.repository` or `.engine` suffix is not repeated in the snapshot filename.
 
 An engine with `resolver_engine` and no committed transaction resolves through that predecessor as a normal
 cacheable build action. The generated transaction is an input to the existing dynamic package selectors,
@@ -195,7 +197,7 @@ Each `rpm_remote_repository()` target owns separate dynamic values for its pinne
 The pool expands the union of the current snapshot inventory and remote transports retained by committed
 engine locks into:
 
-- one digest-checked raw RPM artifact per `pkgid`;
+- one digest-checked raw RPM artifact per checksum;
 - one decompressed cpio payload representation per RPM.
 
 The raw RPM and derived payload are alternative representations of the same `PackageArtifactInfo` record. The
@@ -203,7 +205,7 @@ repository target is their canonical action owner, so engines, buildroots, and i
 and decompression actions. A package removed from the latest snapshot remains in the pool while a committed
 engine lock references its pinned URL and size.
 
-`select_package_artifacts()` reads a resolved transaction, looks up each `(repository, pkgid)` in the
+`select_package_artifacts()` reads a resolved transaction, looks up each `(repository, checksum)` in the
 authoritative pool, and creates a symlinked directory containing the requested representation. It never
 creates a second download. Buck materializes only artifacts selected by a consuming transaction, while every
 consumer shares their owning actions.
@@ -286,15 +288,16 @@ Native package installation has three phases shared by buildroots and images:
 1. **Plan.** Run `PackageSystemInfo.plan` against each configured repository's materialized directory,
    effective priority, and solver cache. Weak dependencies are disabled. Existing lower layers are mounted
    read-only so installed packages can satisfy an incremental request.
-2. **Select.** Use the resulting transaction to select raw RPMs from repository pools. A local repository is
-   materialized by an anonymous `createrepo` target using the consuming package manager's engine. The same
-   path handles package-build inputs and lets the libdnf5 solve choose between local and upstream packages.
+2. **Select.** Use the resulting transaction to select raw package files from repository pools, named with
+   the package system's declared suffix so its installer finds them. A local repository is materialized by
+   an anonymous indexing target using the consuming package manager's engine. The same path handles
+   package-build inputs and lets the libdnf5 solve choose between local and upstream packages.
    Extra packages arrive on two mutually exclusive paths: a package build passes its explicit
    `buildroot_deps` outputs, while a package manager with attached `local_packages` computes the request's
    runtime closure at analysis time from imported metadata and offers exactly the locally built packages
    in it. Buildroots reject managers with local packages, because buildroot contents must come from the
    explicit, cycle-checked self-hosting locks.
-3. **Install.** Run `PackageSystemInfo.install` over the exact RPM directory. `install_packages()` owns a
+3. **Install.** Run `PackageSystemInfo.install` over the exact package directory. `install_packages()` owns a
    fresh root or incremental buildroot delta. An image layer instead invokes the same installer against its
    already-mounted root so package and filesystem operations have one output owner.
 
@@ -454,9 +457,10 @@ system captures its database in its native shape. SBOM scanning of the whole tre
 packages no package manager knows about, such as Go modules bundled into ELF binaries.
 
 Terminal rules leave the package database and other package state intact — except `image_sysext`, which
-drops the database: a merged extension must not shadow the host's. Image cleanup is an explicit, configurable
-layer so output formats do not silently alter image contents. Every terminal driver receives the same
-ordered layer stack and deferred tmpfiles snippets. It applies those snippets with
+drops the database from the paths the image's package system declares: a merged extension must not shadow
+the host's. Image cleanup is an explicit, configurable layer so output formats do not silently alter image
+contents. Every terminal driver receives the same ordered layer stack and deferred tmpfiles snippets. It
+applies those snippets with
 `systemd-tmpfiles --root` before reading or emitting image content; a missing tool is an error whenever
 finalization is needed. The directives
 run against a disposable overlay upper and can create paths or restore modes and xattrs. Image-shipped
@@ -879,7 +883,7 @@ Useful implementation entry points:
 
 - `tine/package/{system,repository,release,manager,solver,buildroot,install}.bzl`
 - `tine/package_system/rpm/rules.bzl` and
-  `tine/package_system/rpm/{snapshot,plan,install,createrepo,build,extract,decompress}.py`
+  `tine/package_system/rpm/{snapshot,plan,install,pkgdb,createrepo,build,extract,decompress}.py`
 - `tine/engine/{build,runtime}.bzl`, `tine/engine/sandbox.py`, and `tine/rootfs/rootfs.py`
 - `tine/image/{layer,uki,boot,compose,vm}.bzl` and `tine/image_format/{archive,disk,sysext}.bzl`
 - `tine/tools/catalog.py` and `tine/catalog/BUCK`
