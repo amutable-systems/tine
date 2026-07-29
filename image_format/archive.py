@@ -14,6 +14,8 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+import util
+
 import cpio
 import finalize
 
@@ -120,11 +122,22 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--out", required=True, help="output archive or directory")
     parser.add_argument("--format", required=True, choices=("tar", "cpio", "directory"))
     parser.add_argument("--compression", default="none", choices=("none", "zstd"))
+    parser.add_argument(
+        "--pkgdb-path",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="image path holding the package database, to strip from the archive (repeatable)",
+    )
     args = parser.parse_args(argv)
 
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
     out = Path(args.out).resolve()
     with finalize.image(args, program="archive") as tree:
+        # The package database is a supply-chain artifact that the image's `[pkgdb]` subtarget
+        # captures separately, so an archive nothing resolves packages in can drop it.
+        for relative in args.pkgdb_path:
+            util.remove_path(tree / relative, with_parents=True)
         _archive(tree, out, args.format, epoch, args.compression)
     print(f"archive: wrote {args.format} (epoch={epoch}) -> {args.out}", file=sys.stderr)
 

@@ -239,6 +239,8 @@ Optional attributes:
 - `initrd` (target label providing `ImageInfo`): A logical image whose tree becomes the initrd, replacing
   the default initrd package image. The rule consumes the resolved provider, archives it into the
   zstd-compressed cpio itself, and republishes the package database and SBOM that image already carries.
+  The cpio removes the package database, since nothing in an initrd reads it; `[initrd][pkgdb]` still
+  captures it from the image's own tree.
 - `cmdline` (string list): Kernel command line arguments, default
   `["root=tmpfs", "mount.usr=dissect", "rw"]`; passed on to `uki()`.
 - `profiles` (`uki_profile()` descriptor list): Alternative sd-boot menu entries, passed on to `uki()`.

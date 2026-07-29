@@ -230,12 +230,16 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         seed = ctx.attrs.disk_seed,
         split = True,
     )
+
+    # An initrd never resolves a dependency or verifies a package, and the kernel unpacks the whole
+    # cpio into tmpfs, so the package database only costs boot memory here.
     initrd_archive = declare_image_archive(
         ctx,
         compression = "zstd",
         format = "cpio",
         identifier = "initrd",
         image = initrd,
+        strip_pkgdb = True,
     )
     uki = declare_uki(
         ctx,

@@ -8,6 +8,8 @@ load(
     "declare_out",
     "terminal_image_command",
 )
+load("//package:manager.bzl", "PackageManagerInfo")
+load("//package:system.bzl", "PackageSystemInfo")
 
 _EXT = {"cpio": "cpio", "tar": "tar"}
 COMPRESSIONS = ["none", "zstd"]
@@ -36,8 +38,14 @@ def declare_image_archive(
         image: ImageInfo,
         format: str,
         compression: str,
+        strip_pkgdb: bool = False,
         identifier: str | None = None) -> ImageArchiveInfo:
-    """Declare an archive action from a resolved logical image."""
+    """Declare an archive action from a resolved logical image.
+
+    With strip_pkgdb, the archive omits the package database wherever the image's package system
+    keeps it, for a root nothing ever resolves packages in. The image's `[pkgdb]` subtarget still
+    captures the database from the tree itself.
+    """
     out = declare_out(
         ctx,
         identifier,
@@ -47,6 +55,12 @@ def declare_image_archive(
     cmd.add("--out", out.as_output(), "--format", format)
     if compression != "none":
         cmd.add("--compression", compression)
+
+    # An image without a package manager installed no packages, so it has no database to strip.
+    if strip_pkgdb and image.package_manager != None:
+        system = image.package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
+        for path in system.database_paths:
+            cmd.add("--pkgdb-path", path)
     ctx.actions.run(cmd, category = "image_" + format, identifier = identifier or format)
     return ImageArchiveInfo(archive = out, format = format)
 

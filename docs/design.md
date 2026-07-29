@@ -539,9 +539,13 @@ catalog policy supplies concrete native package names. Callers can instead suppl
 `ImageInfo`; the rule consumes the resolved provider and skips the default initrd image entirely. It does
 not require `InitrdInfo` as an input or infer cpio, SBOM, or pkgdb target names. Instead, it terminalizes the
 supplied logical image itself: it creates the zstd cpio consumed by the UKI and republishes the package
-database and SBOM that same `ImageInfo` already carries. It then combines that image and the derived
-`ImageArchiveInfo` into `InitrdInfo`. The composition returns this provider directly and publishes the
-same instance from `[initrd]`, so both interfaces describe exactly the same initrd.
+database and SBOM that same `ImageInfo` already carries. That cpio omits the database from the paths the
+image's package system declares: nothing in an initrd resolves a dependency or verifies a package, and the
+kernel unpacks the whole cpio into tmpfs, so shipping it would only cost boot memory. The `[pkgdb]` and
+`[sbom]` views read the tree rather than the archive, so they still describe the complete installed set.
+It then combines that image and the derived `ImageArchiveInfo` into `InitrdInfo`. The composition returns
+this provider directly and publishes the same instance from `[initrd]`, so both interfaces describe exactly
+the same initrd.
 
 `uki.py` appends the kernel-modules cpio and runs `ukify`; the UKI is named
 `<image_id>_<version>_<arch>.efi` from the image identity. For now an image holds exactly one kernel — the
