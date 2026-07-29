@@ -1369,7 +1369,11 @@ def check_commit(c: str) -> list[str]:
     upstream = commit_trailer(c, 'X-Upstream-Commit')
     rebuild = commit_trailer(c, 'X-Rebuild')
     autorel = uses_autorelease(spec_at(c, rel))
-    json_only = all(p.endswith('.json') for p in names)
+    # Whether the commit only refreshes generated metadata, as opposed to changing a build input.
+    # The branch's hand-authored _properties.json is such an input (its rpmbuild_options change
+    # what a package builds), so a commit touching it is not metadata-only despite being all json.
+    json_only = all(p.endswith('.json') for p in names) \
+        and not any(p.endswith(f'/{BRANCH_PROPERTIES}') for p in names)
     # Whether the commit touched the package's sources, as opposed to only json metadata
     dir_changed = any(p.startswith(f'{rel}/') for p in names)
 

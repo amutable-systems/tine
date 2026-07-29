@@ -1282,23 +1282,32 @@ class Check(PackagesTestCase):
         self.assertEqual(files, ["packages/fedora/rawhide/arp.json"])
         self.assertEqual(self.tool.check(), [])
 
+    def curate(self, pkg: str, options: list[str]) -> None:
+        """Commit an rpmbuild_options change for `pkg` plus the metadata refresh it causes.
+
+        This is the entire fallout of a curation edit: the hand-authored _properties.json and the
+        package's generated <pkg>.json. The package's own spec/sources stay untouched, and the
+        branch BUCK loads _properties.json at parse time instead of embedding it.
+        """
+        branch = self.monorepo / "packages/fedora/rawhide"
+        (branch / "_properties.json").write_text(json.dumps({"rpmbuild_options": {pkg: options}}))
+        # stand-in for the rpm-metadata recompute: only the file set matters here
+        (branch / f"{pkg}.json").write_text((branch / f"{pkg}.json").read_text() + "\n")
+        git("add", "packages", cwd=self.monorepo)  # not -A: the .upstream-rpm worktree lives here
+        git("commit", "--quiet", "-m", f"{pkg}: disable docs", cwd=self.monorepo)
+
     def test_config_refresh_without_dir_change_is_accepted(self) -> None:
         """A metadata-only refresh from a branch config change needs no Release bump.
 
         Disabling docs via a branch rpmbuild_options rebuilds the same release with a different
-        binary set: the generated <pkg>.json (and the regenerated BUCK) change, but the package's
-        own spec/sources don't -- so a static-Release package needs neither a bump nor %autorelease.
+        binary set: the generated <pkg>.json changes, but the package's own spec/sources don't --
+        so a static-Release package needs neither a bump nor %autorelease.
         """
         self.seed("testpkg")  # static-Release package
         self.tool.import_("testpkg", None, None)
         good = git("rev-parse", "HEAD", cwd=self.monorepo)
 
-        branch = self.monorepo / "packages/fedora/rawhide"
-        # rpmbuild_options fallout: refresh the sibling json and regenerate BUCK, leave the dir.
-        (branch / "testpkg.json").write_text((branch / "testpkg.json").read_text() + "\n")
-        (branch / "BUCK").write_text((branch / "BUCK").read_text() + "\n# --without=docs\n")
-        git("add", "packages", cwd=self.monorepo)  # not -A: the .upstream-rpm worktree lives here
-        git("commit", "--quiet", "-m", "testpkg: disable docs", cwd=self.monorepo)
+        self.curate("testpkg", ["--without=docs"])
 
         self.assertEqual(self.tool.check(good), [])
 
