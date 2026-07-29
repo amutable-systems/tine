@@ -1448,7 +1448,10 @@ def check_commit(c: str) -> list[str]:
             if anchor and git('ls-tree', anchor, '--', jrel, cwd=ROOT).strip():
                 am = cast(SrcpkgMetadata, json.loads(git('show', f'{anchor}:{jrel}', cwd=ROOT)))
                 base = build_release(am, (build_dist(am) or '.') + NATIVE_DIST)
-            want = f'{base}.{local_bump(rel, c)}'
+            # No local commit counted (a curation change is not one, see above): the release is
+            # still the import's, unsuffixed -- `.N` starts at `.1` (bumped_release).
+            bump = local_bump(rel, c)
+            want = f'{base}.{bump}' if bump else base
             if got != want:
                 bad(f'%autorelease is {got!r} in Provides but git history implies {want!r}')
     # Arch buckets are refreshed by independent per-arch builds; they must agree on the NEVR.

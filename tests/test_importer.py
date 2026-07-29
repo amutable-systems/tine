@@ -1311,6 +1311,24 @@ class Check(PackagesTestCase):
 
         self.assertEqual(self.tool.check(good), [])
 
+    def test_config_refresh_keeps_the_autorelease_unsuffixed(self) -> None:
+        """A curation refresh of an %autorelease package keeps the import's bare release.
+
+        It counts as no local commit, so there is no `.N` minor bump to append -- the release
+        stays the imported `1`, not `1.0` (a bump starts at `.1`).
+        """
+        c1 = self.commit("arp", "rawhide", "1.0", "1", "Initial 1.0", autorelease=True)
+        self.build_koji("arp", "1.0", "1", c1, autorelease=True)
+        self.tool.import_upstream("fedora", "rawhide", "arp", c1)
+        self.tool.import_("arp", None, None)
+        good = git("rev-parse", "HEAD", cwd=self.monorepo)
+
+        self.curate("arp", ["--without=docs"])
+
+        meta = json.loads((self.monorepo / "packages/fedora/rawhide/arp.json").read_text())
+        self.assertIn(f"arp = 1.0-1{NDIST}", meta["binaries"]["x86_64"]["arp"]["Provides"])
+        self.assertEqual(self.tool.check(good), [])
+
     def test_removing_a_package_is_accepted(self) -> None:
         """Unimporting a package -- removing its dir and json -- passes check.
 
