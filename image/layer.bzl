@@ -76,9 +76,33 @@ def image(name: str, **kwargs) -> None:
 
 # Operations replayed by the layer driver.
 
-def run(cmd: list[str], chroot: bool = True, env: dict[str, str] = {}) -> LayerOperation:
-    """Run `cmd` in the image, or in the engine with the image at /buildroot."""
-    return LayerOperation(value = ("run", cmd, chroot, {name: env[name] for name in sorted(env)}))
+# buildifier: disable=name-conventions  (record type, conventionally UpperCamelCase)
+ArtifactRef = record(
+    source = str,
+)
+
+def artifact(source: str) -> ArtifactRef:
+    """Reference a declared artifact as a run() command argument.
+
+    The argument is replaced with the materialized artifact's path. Only chroot = False
+    commands can use this: build outputs are not visible inside the image.
+    """
+    return ArtifactRef(source = source)
+
+def run(cmd: list[str | ArtifactRef], chroot: bool = True, env: dict[str, str] = {}) -> LayerOperation:
+    """Run `cmd` in the image, or in the engine with the image at /buildroot.
+
+    Command arguments are strings, or artifact() references to declared artifacts.
+    """
+    arguments = []
+    for argument in cmd:
+        if type(argument) == "string":
+            arguments.append(argument)
+        else:
+            if chroot:
+                fail("run: artifact() arguments require chroot = False")
+            arguments.append(("input", argument.source))
+    return LayerOperation(value = ("run", arguments, chroot, {name: env[name] for name in sorted(env)}))
 
 def install(packages: list[str]) -> LayerOperation:
     """Install native packages using the layer's package manager."""
@@ -226,7 +250,10 @@ def _image_layer_impl(ctx: AnalysisContext) -> list[Provider]:
 _operation_attr = attrs.one_of(
     attrs.tuple(
         attrs.enum(["run"]),
-        attrs.list(attrs.string()),
+        attrs.list(attrs.one_of(
+            attrs.tuple(attrs.enum(["input"]), attrs.source(allow_directory = True)),
+            attrs.string(),
+        )),
         attrs.bool(),
         attrs.dict(attrs.string(), attrs.string()),
     ),

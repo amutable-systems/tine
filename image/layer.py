@@ -22,6 +22,17 @@ def _operation(value: object) -> list[object]:
     return cast(list[object], value)
 
 
+def _resolve_argument(argument: object, use_chroot: object) -> object:
+    """Replace an ["input", path] run argument with the artifact's absolute path."""
+    match argument:
+        case ["input", str(path)]:
+            if use_chroot:
+                raise SystemExit("image op 'run' cannot see artifact inputs inside the chroot")
+            return str(Path(path).absolute())
+        case _:
+            return argument
+
+
 def _run(raw_cmd: object, raw_env: object) -> None:
     if not isinstance(raw_cmd, list) or not raw_cmd or not all(isinstance(arg, str) for arg in raw_cmd):
         raise SystemExit(f"image op 'run' has invalid cmd: {raw_cmd!r}")
@@ -189,6 +200,8 @@ def main(argv: list[str] | None = None) -> None:
     for operation in operations:
         if operation[0] == "copy" and len(operation) == 3 and isinstance(operation[1], str):
             operation[1] = str(Path(operation[1]).absolute())
+        elif operation[0] == "run" and len(operation) == 4 and isinstance(operation[1], list):
+            operation[1] = [_resolve_argument(argument, operation[2]) for argument in operation[1]]
     install_count = sum(operation[0] == "install" for operation in operations)
     if install_count > 1:
         raise SystemExit("image layer allows at most one install operation")
