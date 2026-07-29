@@ -311,8 +311,8 @@ packages that the root filesystem does not install. Nothing scans the initrd onc
 UKI's PE, so it carries its own artifacts rather than being folded into the root filesystem's. Keeping them
 separate also preserves the distinction a vulnerability triage needs: a package reachable only during early
 boot is not exposed the way the same package in the running system is. The union of the two accounts for
-everything in the UKI, provided the image keeps the kernel rpm installed in its own tree, which is where the
-UKI's kernel and modules come from.
+everything in the UKI, provided the image keeps the kernel package installed in its own tree, which is where
+the UKI's kernel and modules come from.
 
 ### Image versioning
 
