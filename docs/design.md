@@ -885,7 +885,7 @@ Useful implementation entry points:
 - `tine/package_system/rpm/rules.bzl` and
   `tine/package_system/rpm/{snapshot,plan,install,pkgdb,createrepo,build,extract,decompress}.py`
 - `tine/engine/{build,runtime}.bzl`, `tine/engine/sandbox.py`, and `tine/rootfs/rootfs.py`
-- `tine/image/{layer,uki,boot,compose,vm}.bzl` and `tine/image_format/{archive,disk,sysext}.bzl`
+- `tine/image/{image,compose,defs,sign,vm}.bzl` and `tine/image_format/{archive,boot,disk,sysext,uki}.bzl`
 - `tine/tools/catalog.py` and `tine/catalog/BUCK`
 - the generated `packages/*/*/BUCK` and `tine/package_system/rpm/generated.bzl`
 
