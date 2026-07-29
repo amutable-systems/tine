@@ -28,11 +28,11 @@ load("//package:manager.bzl", "PackageManagerInfo")
 load(
     ":image.bzl",
     "ARCHES",
-    "FILENAME_PATTERN",
     "IMAGE_ATTRS",
     "ImageInfo",
     "LayerOperation",  # @unused Used as a type.
     "LayerOperationTree",  # @unused Used as a type.
+    "VERSION_PATTERN",
     "check_name",
     "copy",
     "declare_image",
@@ -155,7 +155,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     )
 
     # The version lands in partition labels and the UKI filename.
-    version = check_name("bootable_disk_image version", ctx.attrs.version, FILENAME_PATTERN)
+    version = check_name("bootable_disk_image version", ctx.attrs.version, VERSION_PATTERN)
 
     if ctx.attrs.initrd != None:
         initrd = ctx.attrs.initrd[ImageInfo]

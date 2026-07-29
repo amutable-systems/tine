@@ -56,6 +56,9 @@ NAME_PATTERN = "^[a-zA-Z0-9._-]+$"
 # separator, so filename components accept the latter but never the former.
 FILENAME_PATTERN = "^[a-zA-Z0-9._~-]+$"
 
+# Versions additionally accept "^", systemd's post-release separator.
+VERSION_PATTERN = "^[a-zA-Z0-9._~^-]+$"
+
 def check_name(what: str, value: str, pattern: str = NAME_PATTERN) -> str:
     """Reject a name that cannot survive the path, label, or filename it ends up in."""
     if not regex_match(pattern, value):

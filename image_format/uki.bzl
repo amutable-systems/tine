@@ -7,6 +7,7 @@ load(
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
     "ImageToolsInfo",
+    "VERSION_PATTERN",
     "check_name",
     "declare_out",
     "terminal_image_command",
@@ -94,7 +95,7 @@ def declare_uki(
         ARCHES[arch].systemd,
     )
     check_name("uki image_id", image_id, FILENAME_PATTERN)
-    check_name("uki version", version, FILENAME_PATTERN)
+    check_name("uki version", version, VERSION_PATTERN)
     cmd.add("--image-id", image_id, "--version", version)
     for argument in cmdline:
         cmd.add("--cmdline", argument)
