@@ -102,7 +102,7 @@ def main(argv: list[str] | None = None) -> None:
         # must not ride along into the merged /usr.
         (tree / "usr/lib/os-release").unlink(missing_ok=True)
         # The package database is a supply-chain artifact and must not shadow the host's on
-        # merge; the image's `[pkgdb]` facet captures it separately.
+        # merge; the image's `[pkgdb]` subtarget captures it separately.
         for relative in args.pkgdb_path:
             util.remove_path(tree / relative, with_parents=True)
         # --make-ddi copies /usr and /opt; a delta may lack /opt entirely.
