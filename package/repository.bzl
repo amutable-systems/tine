@@ -169,22 +169,21 @@ def select_repositories(
         candidates.extend(info.optional_repository_groups[name])
     return merge_repositories(info.package_system, candidates)
 
-def write_repository_manifest(
-        ctx: AnalysisContext,
-        name: str,
-        repositories: list[ConfiguredPackageRepositoryInfo]):
-    """Serialize configured repositories while retaining their artifact inputs."""
+def encode_repositories(
+        repositories: list[ConfiguredPackageRepositoryInfo]) -> list[dict[str, typing.Any]]:
+    """Describe configured repositories for a driver spec.
 
-    # Dependency is analysis-only and cannot be serialized, so strip it through the planner tuple.
-    return ctx.actions.write_json(
-        name,
-        [
-            (repository.id, repository.directory, repository.priority, repository.baseurl)
-            for repository in repositories
-        ],
-        with_inputs = True,
-        has_content_based_path = False,
-    )
+    Dependency is analysis-only and cannot be serialized, so it stays out of the encoding.
+    """
+    return [
+        {
+            "baseurl": repository.baseurl,
+            "directory": repository.directory,
+            "id": repository.id,
+            "priority": repository.priority,
+        }
+        for repository in repositories
+    ]
 
 def _repository_universe_impl(ctx: AnalysisContext) -> list[Provider]:
     candidates = list(ctx.attrs.required_repositories)
@@ -236,10 +235,14 @@ def remote_repository_base(ctx: AnalysisContext, repo_dir: Artifact) -> list[Pro
     """Register the package-system-neutral interface to a remote repository."""
     rid = ctx.label.name
     system = ctx.attrs.package_system[PackageSystemInfo]
-    manifest = ctx.actions.write("manifest.json", json.encode({"baseurl": ctx.attrs.baseurl, "id": rid}))
+    spec = ctx.actions.write_json(
+        "snapshot.spec.json",
+        {"baseurl": ctx.attrs.baseurl, "id": rid},
+        has_content_based_path = False,
+    )
     sub_targets = {
-        "manifest": [DefaultInfo(default_output = manifest)],
-        "snapshot": [DefaultInfo(), RunInfo(args = cmd_args(system.snapshot[RunInfo], "--manifest", manifest))],
+        "manifest": [DefaultInfo(default_output = spec)],
+        "snapshot": [DefaultInfo(), RunInfo(args = cmd_args(system.snapshot[RunInfo], "--spec", spec))],
     }
     return [
         DefaultInfo(default_output = repo_dir, sub_targets = sub_targets),

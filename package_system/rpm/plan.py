@@ -16,6 +16,7 @@ from typing import Literal, NamedTuple, NotRequired, TypedDict
 import libdnf5
 import libdnf5.comps
 import libdnf5.conf
+import specs
 from util import atomic_text_writer
 
 import rootfs
@@ -23,12 +24,33 @@ import rootfs
 # A multilib package in a pinned-arch transaction indicates a bad solve.
 MULTILIB_ARCHES = ("i686", "i386", "i586")
 
+CACHEDIR = Path("/var/tmp/plan-cache")
+
 
 class Repository(NamedTuple):
     id: str
     path: Path
     priority: int
     baseurl: str | None
+
+
+class RepositorySpec(TypedDict):
+    id: str
+    directory: str
+    priority: int
+    baseurl: str | None
+
+
+class Spec(TypedDict):
+    arch: str
+    repositories: list[RepositorySpec]
+
+
+class SolveSpec(Spec):
+    install: list[str]
+    lower: list[str]
+    # Prebuilt repository caches (make-cache outputs) seeding this solve.
+    cache: list[str]
 
 
 class TransactionPackage(TypedDict):
@@ -41,27 +63,17 @@ class TransactionPackage(TypedDict):
     url: NotRequired[str]
 
 
-def load_repositories(path: Path) -> list[Repository]:
-    """Load repository tuples written by Buck's `write_json()`."""
-    data: object = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, list):
-        raise SystemExit(f"{path}: repository manifest must be a list")
-    repositories = []
-    for index, value in enumerate(data):
-        if not isinstance(value, list) or len(value) != 4:
-            raise SystemExit(f"{path}: repository {index} must be [id, path, priority, baseurl]")
-        rid, directory, priority, baseurl = value
-        if (
-            not isinstance(rid, str)
-            or not rid
-            or not isinstance(directory, str)
-            or not directory
-            or type(priority) is not int
-            or not isinstance(baseurl, str | None)
-        ):
-            raise SystemExit(f"{path}: repository {index} has invalid fields")
-        repositories.append(Repository(rid, Path(directory).resolve(), priority, baseurl))
-    return repositories
+def load_repositories(spec: Spec) -> list[Repository]:
+    """Read the configured repositories a solve or cache build runs against."""
+    return [
+        Repository(
+            repository["id"],
+            Path(repository["directory"]).resolve(),
+            repository["priority"],
+            repository["baseurl"],
+        )
+        for repository in spec["repositories"]
+    ]
 
 
 def write_transaction(path: Path, transaction: list[TransactionPackage]) -> None:
@@ -193,66 +205,49 @@ def plan(
 
 
 def main(argv: list[str] | None = None) -> None:
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument(
-        "--repositories",
-        required=True,
-        help="JSON repository tuples: [id, pinned metadata directory, priority, remote base URL or null]",
-    )
-    common.add_argument("--arch", default="x86_64", help="the resolution arch")
-
     p = argparse.ArgumentParser(prog="plan")
     sub = p.add_subparsers(dest="command", required=True)
 
-    solve = sub.add_parser("solve", parents=[common], help="resolve the closure, writing the transaction")
-    solve.add_argument(
-        "--install", action="append", default=[], required=True, help="package/cap to install"
-    )
-    solve.add_argument(
-        "--lower",
-        action="append",
-        default=[],
-        help="installed-tree delta (bottom..top); resolve against the merge instead of empty",
-    )
-    solve.add_argument(
-        "--cache",
-        action="append",
-        default=[],
-        help="a prebuilt repo cache dir (a make-cache output) to seed the solve from; repeatable",
-    )
-    solve.add_argument("--cachedir", default="/var/tmp/plan-cache")
+    solve = sub.add_parser("solve", help="resolve the closure, writing the transaction")
+    specs.add_argument(solve)
     solve.add_argument(
         "--out",
         required=True,
         help="output transaction JSON (remote adds url/size; local adds location)",
     )
 
-    cache = sub.add_parser("make-cache", parents=[common], help="just load the repos (no solve)")
-    cache.add_argument("--out", required=True, help="output cache dir, reusable via `solve --cache`")
+    cache = sub.add_parser("make-cache", help="just load the repos (no solve)")
+    specs.add_argument(cache)
+    cache.add_argument("--out", required=True, help="output cache dir, reusable via a solve cache")
 
     args = p.parse_args(argv)
-    repos = load_repositories(Path(args.repositories))
 
     if args.command == "make-cache":
+        spec: Spec = specs.load(args.spec, prog="plan")
+        repos = load_repositories(spec)
         out = Path(args.out).resolve()
         out.mkdir(parents=True, exist_ok=True)
-        load_base(repos, out, None, args.arch)
+        load_base(repos, out, None, spec["arch"])
         print(f"plan: cached {len(repos)} repo(s)", file=sys.stderr)
         return
 
-    seeds = [Path(c).resolve() for c in args.cache]
+    solve_spec: SolveSpec = specs.load(args.spec, prog="plan")
+    if not solve_spec["install"]:
+        raise SystemExit("plan: a solve needs at least one install spec")
+    repos = load_repositories(solve_spec)
+    seeds = [Path(cache_dir).resolve() for cache_dir in solve_spec["cache"]]
 
     with ExitStack() as stack:
         installroot = None
-        if args.lower:
+        if solve_spec["lower"]:
             # An ephemeral upper keeps the lower stack unchanged.
-            installroot = stack.enter_context(rootfs.rootfs("/installroot", lowers=args.lower))
+            installroot = stack.enter_context(rootfs.rootfs("/installroot", lowers=solve_spec["lower"]))
         tx = plan(
             repos,
-            args.install,
-            Path(args.cachedir),
+            solve_spec["install"],
+            CACHEDIR,
             installroot,
-            args.arch,
+            solve_spec["arch"],
             seeds,
         )
     write_transaction(Path(args.out), tx)

@@ -1,5 +1,6 @@
 """Logical filesystem images built as ordered overlay deltas."""
 
+load("//:specs.bzl", "executable", "spec_args", "spec_argument")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//package:install.bzl", "resolve_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
@@ -76,6 +77,10 @@ def declare_out(
     """Declare an output, scoped to `identifier` when one composition declares several."""
     return ctx.actions.declare_output(_path(identifier, name), dir = dir)
 
+def spec_path(identifier: str | None, driver: str) -> str:
+    """Name a driver's spec, scoped like the outputs of the same composition step."""
+    return _path(identifier, driver + ".spec.json")
+
 ImageSbomInfo = provider(
     doc = "SPDX and CycloneDX SBOMs generated from one logical image.",
     fields = {
@@ -102,20 +107,48 @@ ImageInfo = provider(
 )
 
 def _image_command(
+        ctx: AnalysisContext,
+        *,
         engine: Dependency,
         layers: list[Artifact],
         tmpfiles: list[str],
-        exe: Dependency) -> cmd_args:
-    cmd = cmd_args(chroot_run(engine = engine[EngineInfo], exe = exe))
-    for lower in layers:
-        cmd.add("--lower", lower)
-    for snippet in tmpfiles:
-        cmd.add("--tmpfiles", snippet)
-    return cmd
+        exe: Dependency,
+        driver: str,
+        identifier: str | None,
+        spec: dict[str, typing.Any]) -> cmd_args:
+    return cmd_args(
+        chroot_run(engine = engine[EngineInfo], exe = exe),
+        spec_args(
+            ctx,
+            spec_path(identifier, driver),
+            {"lower": layers, "tmpfiles": tmpfiles} | spec,
+        ),
+    )
 
-def terminal_image_command(image: ImageInfo, exe: Dependency) -> cmd_args:
-    """Run a terminal driver against one finalized logical-image stack."""
-    return _image_command(image.engine, image.layers, image.tmpfiles, exe)
+# buildifier: disable=function-docstring-args
+# buildifier: disable=function-docstring-return
+def terminal_image_command(
+        ctx: AnalysisContext,
+        *,
+        image: ImageInfo,
+        exe: Dependency,
+        driver: str,
+        spec: dict[str, typing.Any],
+        identifier: str | None = None) -> cmd_args:
+    """Run a terminal driver against one finalized logical-image stack.
+
+    The stack and its deferred tmpfiles join the driver's own fields in one spec.
+    """
+    return _image_command(
+        ctx,
+        driver = driver,
+        engine = image.engine,
+        exe = exe,
+        identifier = identifier,
+        layers = image.layers,
+        spec = spec,
+        tmpfiles = image.tmpfiles,
+    )
 
 # buildifier: disable=function-docstring-args
 # buildifier: disable=function-docstring-return
@@ -167,8 +200,8 @@ LayerOperation = tuple
 LayerOperationTree = LayerOperation | list[typing.Any]
 
 # Each architecture's EFI spelling (ukify's --efi-arch, which also names the boot stubs) and
-# systemd spelling (systemd's %a specifier), which names boot artifacts. The uki driver takes both
-# on its command line, so this table is the single source; extend it to enable more architectures.
+# systemd spelling (systemd's %a specifier), which names boot artifacts. The uki driver reads both from
+# its spec, so this table is the single source; extend it to enable more architectures.
 ARCHES = {"x86_64": struct(efi = "x64", systemd = "x86-64")}
 
 # Operations replayed by the layer driver.
@@ -300,10 +333,8 @@ def _encode_operation(operation: LayerOperation) -> LayerOperation:
     if operation[0] != "run":
         return operation
 
-    # An engine argument is a plain string, an artifact, or a resolved $(location) macro, and
-    # write_json renders the last as a list unless it is concatenated into a single argument.
-    arguments = [cmd_args(argument, delimiter = "") for argument in operation[1]]
-    return (operation[0], arguments, operation[2])
+    # An engine argument is a plain string, an artifact, or a resolved $(location) macro.
+    return (operation[0], [spec_argument(argument) for argument in operation[1]], operation[2])
 
 def _install_specs(
         operation: tuple,
@@ -333,8 +364,16 @@ def _declare_pkgdb(
         identifier: str | None) -> Artifact:
     system = package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
     out = declare_out(ctx, identifier, "pkgdb", dir = True)
-    cmd = _image_command(engine, layers, tmpfiles, system.pkgdb)
-    cmd.add("--out", out.as_output())
+    cmd = _image_command(
+        ctx,
+        driver = "pkgdb",
+        engine = engine,
+        exe = system.pkgdb,
+        identifier = identifier,
+        layers = layers,
+        spec = {"out": out.as_output()},
+        tmpfiles = tmpfiles,
+    )
     ctx.actions.run(cmd, category = "image_pkgdb", identifier = identifier or "pkgdb")
     return out
 
@@ -350,12 +389,22 @@ def _declare_sbom(
     tools = ctx.attrs._tools[ImageToolsInfo]
     spdx = declare_out(ctx, identifier, "sbom.spdx.json")
     cdx = declare_out(ctx, identifier, "sbom.cdx.json")
-    cmd = _image_command(engine, layers, tmpfiles, tools.sbom)
-    cmd.add("--syft", tools.syft[DefaultInfo].default_outputs[0])
-    cmd.add("--source-name", source_name)
-    cmd.add("--source-version", version)
-    cmd.add("--spdx", spdx.as_output())
-    cmd.add("--cdx", cdx.as_output())
+    cmd = _image_command(
+        ctx,
+        driver = "sbom",
+        engine = engine,
+        exe = tools.sbom,
+        identifier = identifier,
+        layers = layers,
+        spec = {
+            "cdx": cdx.as_output(),
+            "source_name": source_name,
+            "source_version": version,
+            "spdx": spdx.as_output(),
+            "syft": executable(tools.syft),
+        },
+        tmpfiles = tmpfiles,
+    )
     ctx.actions.run(cmd, category = "image_sbom", identifier = identifier or "sbom")
 
     # One syft run emits both formats; selecting either format still executes the shared action.
@@ -432,33 +481,26 @@ def declare_image(
             )
             installer = package_manager_info.package_system[PackageSystemInfo].install
 
-        command = chroot_run(engine = engine[EngineInfo], exe = tools.layer)
         delta = declare_out(ctx, identifier, "delta", dir = True)
-        cmd = cmd_args(command, "--out", delta.as_output())
-        if layers:
-            work = declare_out(ctx, identifier, "overlay.work", dir = True)
-            cmd.add("--work", work.as_output())
-            for lower in layers:
-                cmd.add("--lower", lower)
+        work = declare_out(ctx, identifier, "overlay.work", dir = True) if layers else None
+        spec = {
+            "install": None,
+            "lower": layers,
+            "operations": [_encode_operation(operation) for operation in operations],
+            "out": delta.as_output(),
+            "work": work.as_output() if work != None else None,
+        }
         if installer != None:
-            info = installer[DefaultInfo]
-            cmd.add(
-                "--installer",
-                cmd_args(info.default_outputs[0], hidden = info.other_outputs),
-                "--packages-dir",
-                closure,
-            )
-            for lang in install_langs:
-                cmd.add("--install-langs", lang)
-            if not install_docs:
-                cmd.add("--no-docs")
-        manifest = ctx.actions.write_json(
-            _path(identifier, "operations.json"),
-            [_encode_operation(operation) for operation in operations],
-            with_inputs = True,
-            has_content_based_path = False,
+            spec["install"] = {
+                "docs": install_docs,
+                "installer": executable(installer),
+                "langs": install_langs,
+                "packages_dir": closure,
+            }
+        cmd = cmd_args(
+            chroot_run(engine = engine[EngineInfo], exe = tools.layer),
+            spec_args(ctx, spec_path(identifier, "layer"), spec),
         )
-        cmd.add("--operations", manifest)
         ctx.actions.run(cmd, category = "image", identifier = identifier or "layer")
 
         layers = layers + [delta]

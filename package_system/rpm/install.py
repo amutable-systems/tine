@@ -5,15 +5,16 @@ The same driver bootstraps engines, assembles buildroots, and extends image
 layers. It parks the rpmdb and removes nondeterministic bookkeeping before capture.
 """
 
-import argparse
 import os
 import shutil
 import sqlite3
 import sys
 import tempfile
 from pathlib import Path
+from typing import TypedDict
 
 import libdnf5
+import specs
 
 import rootfs
 
@@ -21,6 +22,21 @@ DBPATH = "usr/lib/sysimage/rpm"
 
 # A fixed install path avoids embedding Buck hashes and supports scriptlet chroots.
 BUILDROOT = "/buildroot"
+
+CACHEDIR = Path("/var/tmp/install-cache")
+
+
+class Spec(TypedDict):
+    packages_dir: str
+    # Either an output root, bound at /buildroot to install into, or a root the caller mounted.
+    target: str | None
+    installroot: str | None
+    lower: list[str]
+    work: str | None
+    engine_config: bool
+    langs: list[str]
+    docs: bool
+
 
 MINIMAL_NSSWITCH = """\
 passwd: files
@@ -141,10 +157,8 @@ def configure_engine(installroot: Path) -> None:
 def install_into_root(
     packages_dir: Path,
     installroot: Path,
-    cachedir: Path,
     *,
     system: bool,
-    park: bool,
     engine_config: bool,
     langs: list[str] | None = None,
     docs: bool = True,
@@ -157,76 +171,51 @@ def install_into_root(
     if initialize_machine_id:
         machine_id.write_text("uninitialized\n")
 
-    install(packages_dir, installroot, cachedir, system=system, langs=langs, docs=docs)
+    install(packages_dir, installroot, CACHEDIR, system=system, langs=langs, docs=docs)
     if initialize_machine_id:
         # Packages may replace the marker during the transaction.
         machine_id.write_text("uninitialized\n")
-    if park:
-        parkdb(installroot)
+    parkdb(installroot)
     scrub(installroot)
     if engine_config:
         configure_engine(installroot)
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="install")
-    p.add_argument("--packages-dir", required=True, help="the complete set of packages to install")
-    root = p.add_mutually_exclusive_group(required=True)
-    root.add_argument("--target", help="output root dir; bound at /buildroot to install into")
-    root.add_argument("--installroot", help="an already-mounted root owned by the calling action")
-    p.add_argument(
-        "--lower",
-        action="append",
-        default=[],
-        help="existing-tree delta (bottom..top); --target becomes the install's overlay upper",
-    )
-    p.add_argument("--work", help="throwaway overlay workdir (required with --lower)")
-    p.add_argument("--cachedir", default="/var/tmp/install-cache")
-    p.add_argument(
-        "--engine-config",
-        action="store_true",
-        help="materialize factory NSS and resolver configuration (engine root only)",
-    )
-    p.add_argument("--no-parkdb", action="store_true")
-    p.add_argument(
-        "--install-langs",
-        action="append",
-        default=[],
-        metavar="LANG",
-        help="install %%lang()-marked files only for this language (repeatable)",
-    )
-    p.add_argument("--no-docs", action="store_true", help="skip documentation files")
-    args = p.parse_args(argv)
+    spec: Spec = specs.parse("install", argv)
+    packages_dir = Path(spec["packages_dir"]).resolve()
 
-    packages_dir = Path(args.packages_dir).resolve()
-    cachedir = Path(args.cachedir)
-
-    if args.installroot is not None:
-        if args.lower or args.work is not None:
-            raise SystemExit("--installroot cannot be combined with --lower or --work")
-        installroot = Path(args.installroot).resolve()
+    if spec["installroot"] is not None:
+        if spec["target"] is not None or spec["lower"] or spec["work"] is not None:
+            raise SystemExit("install: installroot excludes target, lower, and work")
+        installroot = Path(spec["installroot"]).resolve()
         install_into_root(
             packages_dir,
             installroot,
-            cachedir,
             system=(installroot / DBPATH / "rpmdb.sqlite").exists(),
-            park=not args.no_parkdb,
-            engine_config=args.engine_config,
-            langs=args.install_langs,
-            docs=not args.no_docs,
+            engine_config=spec["engine_config"],
+            langs=spec["langs"],
+            docs=spec["docs"],
         )
         return
 
+    if spec["target"] is None:
+        raise SystemExit("install: one of target and installroot is required")
+
     # libdnf5 needs absolute paths, and bind sources must exist.
-    target = Path(args.target).resolve()
+    target = Path(spec["target"]).resolve()
     target.mkdir(parents=True, exist_ok=True)
 
-    incremental = bool(args.lower)
+    incremental = bool(spec["lower"])
     if incremental:
-        if args.work is None:
-            raise SystemExit("--lower needs a --work overlay workdir")
+        if spec["work"] is None:
+            raise SystemExit("install: lower needs a work overlay directory")
         root = rootfs.rootfs(
-            BUILDROOT, lowers=args.lower, upperdir=target, workdir=Path(args.work).resolve(), apivfs=True
+            BUILDROOT,
+            lowers=spec["lower"],
+            upperdir=target,
+            workdir=Path(spec["work"]).resolve(),
+            apivfs=True,
         )
     else:
         root = rootfs.rootfs(BUILDROOT, bind=target, apivfs=True)
@@ -235,12 +224,10 @@ def main(argv: list[str] | None = None) -> None:
         install_into_root(
             packages_dir,
             Path(BUILDROOT),
-            cachedir,
             system=incremental,
-            park=not args.no_parkdb,
-            engine_config=args.engine_config,
-            langs=args.install_langs,
-            docs=not args.no_docs,
+            engine_config=spec["engine_config"],
+            langs=spec["langs"],
+            docs=spec["docs"],
         )
 
     if not incremental:

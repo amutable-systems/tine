@@ -1,5 +1,6 @@
 """Build reusable execution environments."""
 
+load("//:specs.bzl", "spec_args")
 load("//package:release.bzl", "OsReleaseInfo")
 load(
     "//package:repository.bzl",
@@ -93,7 +94,13 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
         )
         chroot1 = ctx.actions.declare_output("chroot1", dir = True)
         ctx.actions.run(
-            cmd_args(system.extract[RunInfo], chroot1.as_output(), payloads),
+            cmd_args(
+                system.extract[RunInfo],
+                spec_args(ctx, "extract.spec.json", {
+                    "out": chroot1.as_output(),
+                    "packages": [payloads],
+                }),
+            ),
             category = "extract",
         )
         installer_engine = EngineInfo(
@@ -110,11 +117,16 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
                 engine = installer_engine,
                 exe = system.install,
             ),
-            "--packages-dir",
-            packages,
-            "--target",
-            chroot2.as_output(),
-            "--engine-config",
+            spec_args(ctx, "install.spec.json", {
+                "docs": True,
+                "engine_config": True,
+                "installroot": None,
+                "langs": [],
+                "lower": [],
+                "packages_dir": packages,
+                "target": chroot2.as_output(),
+                "work": None,
+            }),
         ),
         category = "engine",
     )

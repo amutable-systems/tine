@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 """Create independent partitions or a composed GPT image with systemd-repart."""
 
-import argparse
 import hashlib
 import json
 import shutil
@@ -11,11 +10,39 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Self, TypedDict
+
+import specs
 
 import finalize
 
 _SEED_NAMESPACE = uuid.UUID("5af2de99-4f9f-4e0b-a04b-bde36b068c4f")
+
+
+class ImportedPartitionSpec(TypedDict):
+    definition: dict[str, Any]
+    blocks: str
+    metadata: str
+
+
+class SplitOutputSpec(TypedDict):
+    name: str
+    blocks: str
+    metadata: str
+
+
+class Spec(finalize.ImageSpec):
+    out: str | None
+    # Stable target identity the seed derives from, unless one is given outright.
+    identity: str
+    seed: str | None
+    private_key: str | None
+    certificate: str | None
+    definitions: list[dict[str, Any]]
+    # Independent partitions copied into the result, and the new ones written out.
+    partitions: list[ImportedPartitionSpec]
+    split_outputs: list[SplitOutputSpec]
+    root_hash_out: str | None
 
 
 @dataclass(frozen=True)
@@ -33,8 +60,7 @@ class Definition:
     verity_match_key: str | None
 
     @classmethod
-    def parse(cls, raw: str) -> Self:
-        value: dict[str, Any] = json.loads(raw)
+    def parse(cls, value: dict[str, Any]) -> Self:
         return cls(
             name=value["name"],
             type=value["type"],
@@ -102,13 +128,18 @@ def _setting(lines: list[str], name: str, value: object | None) -> None:
 
 def _derived_seed(
     identity: str,
-    definitions: list[str],
+    definitions: list[dict[str, Any]],
     partitions: list[ImportedPartition],
 ) -> uuid.UUID:
-    """Derive UUIDs from logical configuration, not action-local CopyBlocks paths."""
+    """Derive UUIDs from logical configuration, not action-local CopyBlocks paths.
+
+    A definition is re-encoded exactly as the rule spelled it, key order included (see
+    disk.bzl:partition): any other encoding re-identifies every partition of every
+    unchanged image.
+    """
     digest = hashlib.sha256(identity.encode())
     for definition in definitions:
-        digest.update(b"\0definition\0" + definition.encode())
+        digest.update(b"\0definition\0" + json.dumps(definition, separators=(",", ":")).encode())
     for partition in partitions:
         digest.update(b"\0partition\0" + partition.definition.name.encode() + b"\0")
         digest.update(partition.metadata.read_bytes())
@@ -179,46 +210,29 @@ def _write_root_hash(rows: list[dict[str, Any]], output: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="repart")
-    finalize.add_arguments(p)
-    p.add_argument("--out", help="output raw disk image")
-    p.add_argument("--identity", required=True, help="stable target identity used to derive the seed")
-    p.add_argument("--seed", help="explicit GPT/partition UUID seed")
-    p.add_argument("--private-key", help="PEM private key for verity signing")
-    p.add_argument("--certificate", help="PEM certificate for verity signing")
-    p.add_argument("--definition", action="append", default=[], help="serialized partition definition")
-    p.add_argument(
-        "--partition",
-        action="append",
-        nargs=3,
-        default=[],
-        metavar=("DEFINITION", "BLOCKS", "METADATA"),
-        help="an independent partition to copy into the result",
-    )
-    p.add_argument(
-        "--split-output",
-        action="append",
-        nargs=3,
-        default=[],
-        metavar=("NAME", "BLOCKS", "METADATA"),
-        help="declared output paths for one new split partition",
-    )
-    p.add_argument("--root-hash-out", help="write the generated verity root hash here")
-    args = p.parse_args(argv)
+    spec: Spec = specs.parse("repart", argv)
 
-    if not args.out and not args.split_output:
-        p.error("specify --out, at least one --split-output, or both")
-    if not args.definition and not args.partition:
-        p.error("specify at least one definition or imported partition")
-    raw_definitions: list[str] = args.definition
-    definitions = [Definition.parse(raw) for raw in raw_definitions]
+    if not spec["out"] and not spec["split_outputs"]:
+        raise SystemExit("repart: specify a disk output, split outputs, or both")
+    if not spec["definitions"] and not spec["partitions"]:
+        raise SystemExit("repart: specify at least one definition or imported partition")
+    raw_definitions = spec["definitions"]
+    definitions = [Definition.parse(value) for value in raw_definitions]
     partitions = [
-        ImportedPartition(Definition.parse(raw), Path(blocks).resolve(), Path(metadata).resolve())
-        for raw, blocks, metadata in args.partition
+        ImportedPartition(
+            Definition.parse(partition["definition"]),
+            Path(partition["blocks"]).resolve(),
+            Path(partition["metadata"]).resolve(),
+        )
+        for partition in spec["partitions"]
     ]
     outputs = [
-        SplitOutput(name, Path(blocks).resolve(), Path(metadata).resolve())
-        for name, blocks, metadata in args.split_output
+        SplitOutput(
+            output["name"],
+            Path(output["blocks"]).resolve(),
+            Path(output["metadata"]).resolve(),
+        )
+        for output in spec["split_outputs"]
     ]
 
     binds: list[tuple[str | Path, str | Path]] = [
@@ -226,7 +240,7 @@ def main(argv: list[str] | None = None) -> None:
         for index, partition in enumerate(partitions, start=len(definitions))
     ]
     with (
-        finalize.image(args, program="repart", binds=binds) as tree,
+        finalize.image(spec, program="repart", binds=binds) as tree,
         tempfile.TemporaryDirectory(prefix="repart.") as scratch_dir,
     ):
         scratch = Path(scratch_dir)
@@ -240,9 +254,13 @@ def main(argv: list[str] | None = None) -> None:
         )
 
         seed = (
-            uuid.UUID(args.seed) if args.seed else _derived_seed(args.identity, raw_definitions, partitions)
+            uuid.UUID(spec["seed"])
+            if spec["seed"]
+            else _derived_seed(spec["identity"], raw_definitions, partitions)
         )
-        disk = scratch / "image.raw" if outputs else Path(args.out).resolve()
+        out = Path(spec["out"]).resolve() if spec["out"] else None
+        disk = scratch / "image.raw" if outputs else out
+        assert disk is not None  # one of a disk output and split outputs is required
         cmd = [
             "systemd-repart",
             "--empty=create",
@@ -259,23 +277,23 @@ def main(argv: list[str] | None = None) -> None:
         ]
         if outputs:
             cmd.append("--split=yes")
-        if args.private_key:
-            cmd += ["--private-key", str(Path(args.private_key).resolve())]
-        if args.certificate:
-            cmd += ["--certificate", str(Path(args.certificate).resolve())]
+        if spec["private_key"]:
+            cmd += ["--private-key", str(Path(spec["private_key"]).resolve())]
+        if spec["certificate"]:
+            cmd += ["--certificate", str(Path(spec["certificate"]).resolve())]
         result = subprocess.run([*cmd, str(disk)], check=True, stdout=subprocess.PIPE, text=True)
         rows: list[dict[str, Any]] = json.loads(result.stdout)
 
         for output in outputs:
             _copy_partition(_partition_row(rows, files[output.name]), output)
-        if args.root_hash_out:
-            _write_root_hash(rows, Path(args.root_hash_out).resolve())
-        if args.out and outputs:
-            shutil.copyfile(disk, Path(args.out).resolve())
+        if spec["root_hash_out"]:
+            _write_root_hash(rows, Path(spec["root_hash_out"]).resolve())
+        if out and outputs:
+            shutil.copyfile(disk, out)
 
     artifacts = []
-    if args.out:
-        artifacts.append(Path(args.out).name)
+    if out:
+        artifacts.append(out.name)
     if outputs:
         artifacts.append(f"{len(outputs)} partitions")
     mode = " and ".join(artifacts)

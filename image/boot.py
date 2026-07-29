@@ -1,14 +1,19 @@
 #!/usr/bin/python3
 """Select boot artifacts from a logical image."""
 
-import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
 
+import specs
+
 import artifacts
 import finalize
 from mkosi.versioncomp import GenericVersion
+
+
+class Spec(finalize.ImageSpec):
+    out: str
 
 
 @dataclass(frozen=True)
@@ -143,13 +148,10 @@ def _write_selection(selection: Selection, out: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="boot")
-    finalize.add_arguments(parser)
-    parser.add_argument("--out", required=True)
-    args = parser.parse_args(argv)
+    spec: Spec = specs.parse("boot", argv)
 
-    with finalize.image(args, program="boot") as tree:
-        _write_selection(_select(tree), Path(args.out).resolve())
+    with finalize.image(spec, program="boot") as tree:
+        _write_selection(_select(tree), Path(spec["out"]).resolve())
 
 
 if __name__ == "__main__":

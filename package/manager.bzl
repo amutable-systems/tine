@@ -1,5 +1,6 @@
 """Configured native package managers."""
 
+load("//:specs.bzl", "spec_args")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load(":local_packages.bzl", "LocalPackageUniverseInfo")
 load(":release.bzl", "OsReleaseInfo")
@@ -22,11 +23,12 @@ def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     repo = ctx.actions.declare_output("repo", dir = True)
     index = cmd_args(
         chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = system.index),
-        "--out",
-        repo.as_output(),
+        spec_args(ctx, "index.spec.json", {
+            "out": repo.as_output(),
+            "packages": [],
+            "packages_dirs": ctx.attrs.package_dirs,
+        }),
     )
-    for package_dir in ctx.attrs.package_dirs:
-        index.add("--packages-dir", package_dir)
     ctx.actions.run(index, category = "repository_index")
     return [DefaultInfo(default_output = repo)]
 

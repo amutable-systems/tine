@@ -1,5 +1,6 @@
 """RPM repositories and package-build rules."""
 
+load("//:specs.bzl", "spec_args")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//package:buildroot.bzl", "BuildrootInfo")
 load("//package:install.bzl", "install_packages")
@@ -226,26 +227,19 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
 
     build = cmd_args(
         chroot_run(engine = package_manager.engine[EngineInfo], exe = system.build),
-        "--spec",
-        ctx.attrs.spec,
-        "--dist",
-        ctx.attrs.dist,
-        "--release",
-        ctx.attrs.release,
-        "--source-date-epoch",
-        str(ctx.attrs.source_date_epoch),
-        "--out",
-        rpms.as_output(),
+        spec_args(ctx, "build.spec.json", {
+            "dist": ctx.attrs.dist,
+            # bottom..top: the base lowerdir, then this package's BuildRequires delta
+            "lower": buildroot,
+            "out": rpms.as_output(),
+            "release": ctx.attrs.release,
+            "rpmbuild_options": ctx.attrs.rpmbuild_options,
+            "source_date_epoch": ctx.attrs.source_date_epoch,
+            "sources": ctx.attrs.srcs,
+            "spec_file": ctx.attrs.spec,
+            "subpackages": {name: out.as_output() for name, out in sub_outputs.items()},
+        }),
     )
-    for layer in buildroot:  # bottom..top: the base lowerdir, then this package's BR delta
-        build.add("--lower", layer)
-    for src in ctx.attrs.srcs:
-        build.add(cmd_args("--source", src))
-    for s, out in sub_outputs.items():
-        build.add("--subpackage", cmd_args(out.as_output(), format = s + "={}"))
-    for opt in ctx.attrs.rpmbuild_options:
-        # argparse rejects an option value that itself starts with '-', so don't use space separator
-        build.add("--rpmbuild-option=" + opt)
     ctx.actions.run(build, category = "rpmbuild")
 
     sub_targets = {s: [DefaultInfo(default_output = out)] for s, out in sub_outputs.items()}

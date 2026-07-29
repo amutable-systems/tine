@@ -9,7 +9,7 @@ import os
 import shutil
 import stat
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from enum import Enum, auto
 from pathlib import Path
@@ -190,11 +190,11 @@ def rootfs(
     target: str | Path,
     *,
     bind: str | Path | None = None,
-    lowers: list[str | Path] | None = None,
+    lowers: Sequence[str | Path] | None = None,
     upperdir: str | Path | None = None,
     workdir: str | Path | None = None,
     apivfs: bool = False,
-    binds: list[tuple[str | Path, str | Path]] | None = None,
+    binds: Sequence[tuple[str | Path, str | Path]] | None = None,
     chroot: bool = False,
 ) -> Iterator[Path]:
     """Mount a bind or overlay root, optionally chrooting and persisting an upper delta."""

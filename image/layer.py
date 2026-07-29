@@ -1,19 +1,34 @@
 #!/usr/bin/python3
 """Apply ordered operations against one mounted root and capture its overlay delta."""
 
-import argparse
-import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path, PurePosixPath
-from typing import cast
+from typing import TypedDict, cast
 
+import specs
 import util
 
 import rootfs
+
+
+class InstallSpec(TypedDict):
+    installer: str
+    packages_dir: str
+    langs: list[str]
+    docs: bool
+
+
+class Spec(TypedDict):
+    lower: list[str]
+    out: str
+    work: str | None
+    install: InstallSpec | None
+    operations: list[object]
 
 
 def _operation(value: object) -> list[object]:
@@ -115,34 +130,39 @@ def _apply_filesystem(operation: list[object]) -> None:
             raise SystemExit(f"invalid image filesystem op: {operation!r}")
 
 
+def _install(install: InstallSpec, target: Path, scratch: Path) -> None:
+    """Install the layer's package closure into the mounted root."""
+    spec = specs.write(
+        scratch / "install.spec.json",
+        {
+            "packages_dir": str(Path(install["packages_dir"]).resolve()),
+            "target": None,
+            "installroot": str(target),
+            "lower": [],
+            "work": None,
+            "engine_config": False,
+            "langs": install["langs"],
+            "docs": install["docs"],
+        },
+    )
+    rc = subprocess.run([str(Path(install["installer"]).resolve()), "--spec", str(spec)]).returncode
+    if rc != 0:
+        raise SystemExit(f"image package installation failed (rc={rc})")
+
+
 def _apply(
     value: object,
     target: Path,
-    installer: Path | None,
-    packages_dir: Path | None,
-    install_langs: list[str],
-    install_docs: bool,
+    install: InstallSpec | None,
+    scratch: Path,
 ) -> None:
     """Apply one operation with its requested view of the mounted root."""
     operation = _operation(value)
     match operation:
         case ["install", _packages]:
-            if installer is None or packages_dir is None:
+            if install is None:
                 raise SystemExit("image install operation has no package installer")
-            cmd = [
-                str(installer),
-                "--packages-dir",
-                str(packages_dir),
-                "--installroot",
-                str(target),
-            ]
-            for lang in install_langs:
-                cmd += ["--install-langs", lang]
-            if not install_docs:
-                cmd.append("--no-docs")
-            rc = subprocess.run(cmd).returncode
-            if rc != 0:
-                raise SystemExit(f"image package installation failed (rc={rc})")
+            _install(install, target, scratch)
         case ["run", raw_cmd, raw_env]:
             _run("run", raw_cmd, raw_env)
         case ["chroot", raw_cmd, raw_env]:
@@ -160,68 +180,44 @@ def _apply(
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="image")
-    p.add_argument("--lower", action="append", default=[], help="ancestor delta (bottom..top)")
-    p.add_argument("--out", required=True, help="this layer's delta (overlay upper)")
-    p.add_argument("--work", help="throwaway overlay workdir (required with --lower)")
-    p.add_argument("--installer", help="native package installer executable")
-    p.add_argument("--packages-dir", help="exact package closure consumed by --installer")
-    p.add_argument(
-        "--install-langs",
-        action="append",
-        default=[],
-        metavar="LANG",
-        help="keep only this language's translated files (repeatable)",
-    )
-    p.add_argument("--no-docs", action="store_true", help="skip documentation files")
-    p.add_argument("--operations", required=True, help="ordered operation manifest")
-    args = p.parse_args(argv)
+    spec: Spec = specs.parse("image", argv)
 
-    out = Path(args.out).resolve()
+    out = Path(spec["out"]).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    raw_operations = json.loads(Path(args.operations).read_text(encoding="utf-8"))
-    if not isinstance(raw_operations, list):
-        raise SystemExit("image operation manifest is not a list")
-    operations = [_operation(operation) for operation in raw_operations]
+    operations = [_operation(operation) for operation in spec["operations"]]
     for operation in operations:
         if operation[0] == "copy" and len(operation) == 3 and isinstance(operation[1], str):
             operation[1] = str(Path(operation[1]).absolute())
+    install = spec["install"]
     install_count = sum(operation[0] == "install" for operation in operations)
     if install_count > 1:
         raise SystemExit("image layer allows at most one install operation")
-    if (args.installer is None) != (args.packages_dir is None):
-        raise SystemExit("--installer and --packages-dir must be used together")
-    if bool(install_count) != (args.installer is not None):
-        raise SystemExit("image install operation requires --installer and --packages-dir")
-    if args.install_langs and not install_count:
-        raise SystemExit("--install-langs requires an install operation")
-    if args.no_docs and not install_count:
-        raise SystemExit("--no-docs requires an install operation")
+    if bool(install_count) != (install is not None):
+        raise SystemExit("image install operation and package installer require each other")
 
-    installer = Path(args.installer).resolve() if args.installer else None
-    packages_dir = Path(args.packages_dir).resolve() if args.packages_dir else None
-    if args.lower:
-        if args.work is None:
-            raise SystemExit("--lower needs a --work overlay directory")
+    lower = spec["lower"]
+    if lower:
+        if spec["work"] is None:
+            raise SystemExit("image lower stack needs a work overlay directory")
         mounted = rootfs.rootfs(
             "/buildroot",
-            lowers=args.lower,
+            lowers=lower,
             upperdir=out,
-            workdir=Path(args.work).resolve(),
+            workdir=Path(spec["work"]).resolve(),
             apivfs=True,
         )
     else:
-        if args.work is not None:
-            raise SystemExit("--work requires --lower")
+        if spec["work"] is not None:
+            raise SystemExit("image work overlay directory requires a lower stack")
         mounted = rootfs.rootfs("/buildroot", bind=out, apivfs=True)
 
-    with mounted as target:
+    with mounted as target, tempfile.TemporaryDirectory(prefix="layer.") as scratch:
         for operation in operations:
-            _apply(operation, target, installer, packages_dir, args.install_langs, not args.no_docs)
+            _apply(operation, target, install, Path(scratch))
 
-    if not args.lower:
+    if not lower:
         rootfs.capture(out)
-    print(f"image: applied {len(operations)} ops over {len(args.lower)} lower(s) -> {out}", file=sys.stderr)
+    print(f"image: applied {len(operations)} ops over {len(lower)} lower(s) -> {out}", file=sys.stderr)
 
 
 if __name__ == "__main__":

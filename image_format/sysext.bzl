@@ -47,25 +47,35 @@ def declare_image_sysext(
     release_fields["EXTENSION_RELOAD_MANAGER"] = "1"
     release_fields.update(release)
 
-    cmd = terminal_image_command(image, ctx.attrs._tools[ImageToolsInfo].sysext)
+    layers = 0
     if base != None:
         if len(base.layers) >= len(image.layers):
             fail("image_sysext: image must layer a delta on top of base")
-        cmd.add("--base", str(len(base.layers)))
+        layers = len(base.layers)
 
     # A merged extension must not shadow the host's package database, so strip wherever the
     # image's package system keeps it. An image without one installed no packages.
+    pkgdb_paths = []
     if image.package_manager != None:
         system = image.package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
-        for path in system.database_paths:
-            cmd.add("--pkgdb-path", path)
-    cmd.add("--identity", str(ctx.label))
-    if seed != None:
-        cmd.add("--seed", seed)
-    cmd.add("--name", extension)
-    for key in sorted(release_fields):
-        cmd.add("--release", "{}={}".format(key, release_fields[key]))
-    cmd.add("--out", out.as_output())
+        pkgdb_paths = system.database_paths
+
+    cmd = terminal_image_command(
+        ctx,
+        # The DDI is named after the extension, so one composition can declare several.
+        driver = "sysext-" + extension,
+        exe = ctx.attrs._tools[ImageToolsInfo].sysext,
+        image = image,
+        spec = {
+            "base": layers,
+            "identity": str(ctx.label),
+            "name": extension,
+            "out": out.as_output(),
+            "pkgdb_paths": pkgdb_paths,
+            "release": {key: release_fields[key] for key in sorted(release_fields)},
+            "seed": seed,
+        },
+    )
     ctx.actions.run(cmd, category = "image_sysext")
 
     return SysextImageInfo(engine = image.engine, extension = extension, image = out)

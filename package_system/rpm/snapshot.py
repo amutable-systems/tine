@@ -25,6 +25,7 @@ from pathlib import Path, PurePosixPath
 from typing import Protocol, TypedDict
 from urllib.parse import unquote, urlsplit
 
+import specs
 from util import atomic_text_writer
 
 _REPOMD_NS = "http://linux.duke.edu/metadata/repo"
@@ -54,7 +55,7 @@ class RepositorySnapshot(TypedDict):
     streams: list[RepositoryStream]
 
 
-class RepositoryManifest(TypedDict):
+class Spec(TypedDict):
     id: str
     baseurl: str
 
@@ -347,11 +348,7 @@ def _write_snapshot(path: Path, snapshot: RepositorySnapshot) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="snapshot")
-    parser.add_argument(
-        "--manifest",
-        required=True,
-        help="the repository's manifest ({id, baseurl} JSON, from its [manifest] sub-target)",
-    )
+    specs.add_argument(parser)
     parser.add_argument(
         "--out",
         required=True,
@@ -359,9 +356,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
-    manifest: RepositoryManifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
-    print(f"{manifest['id']}: snapshotting repodata…", file=sys.stderr)
-    snapshot = snapshot_repodata(manifest["id"], manifest["baseurl"])
+    spec: Spec = specs.load(args.spec, prog="snapshot")
+    print(f"{spec['id']}: snapshotting repodata…", file=sys.stderr)
+    snapshot = snapshot_repodata(spec["id"], spec["baseurl"])
     out = Path(args.out)
     _write_snapshot(out, snapshot)
     print(f"wrote {out} ({len(snapshot['packages'])} packages)", file=sys.stderr)

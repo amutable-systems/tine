@@ -1,15 +1,22 @@
 #!/usr/bin/python3
 """Extract named artifacts from a logical image."""
 
-import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 import pefile
+import specs
 import util
 
 import finalize
+
+
+class Spec(finalize.ImageSpec):
+    # The boot driver's selection manifest and the artifact selected from it.
+    manifest: str
+    artifact: str
+    out: str
 
 
 @dataclass(frozen=True)
@@ -108,16 +115,11 @@ def _extract(tree: Path, source: Source, out: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="artifacts")
-    finalize.add_arguments(parser)
-    parser.add_argument("--out", required=True)
-    parser.add_argument("--manifest", required=True)
-    parser.add_argument("--artifact", required=True)
-    args = parser.parse_args(argv)
+    spec: Spec = specs.parse("artifacts", argv)
 
-    source = _read_source(Path(args.manifest).resolve(), args.artifact)
-    with finalize.image(args, program="artifacts") as tree:
-        _extract(tree, source, Path(args.out).resolve())
+    source = _read_source(Path(spec["manifest"]).resolve(), spec["artifact"])
+    with finalize.image(spec, program="artifacts") as tree:
+        _extract(tree, source, Path(spec["out"]).resolve())
 
 
 if __name__ == "__main__":

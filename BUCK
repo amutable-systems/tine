@@ -5,3 +5,9 @@ python_bootstrap_library(
     srcs = ["util.py"],
     visibility = ["PUBLIC"],
 )
+
+python_bootstrap_library(
+    name = "specs",
+    srcs = ["specs.py"],
+    visibility = ["PUBLIC"],
+)

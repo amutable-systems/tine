@@ -18,21 +18,30 @@ def _bootable_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
     tools = ctx.attrs._tools[ImageToolsInfo]
     selection = ctx.actions.declare_output("boot-artifacts.json")
-    select = terminal_image_command(image, tools.boot)
-    select.add("--out", selection.as_output())
+    select = terminal_image_command(
+        ctx,
+        driver = "boot",
+        exe = tools.boot,
+        image = image,
+        spec = {"out": selection.as_output()},
+    )
     ctx.actions.run(select, category = "boot_artifact_select")
 
     artifacts = {}
     for kind in sorted(_ARTIFACTS):
         out = ctx.actions.declare_output(_ARTIFACTS[kind])
-        extract = terminal_image_command(image, tools.artifacts)
-        extract.add(
-            "--manifest",
-            selection,
-            "--artifact",
-            kind,
-            "--out",
-            out.as_output(),
+        extract = terminal_image_command(
+            ctx,
+            # The extracted artifacts are named after their kind, so scope the spec by name
+            # rather than by identifier, whose directory would collide with them.
+            driver = "artifacts-" + kind,
+            exe = tools.artifacts,
+            image = image,
+            spec = {
+                "artifact": kind,
+                "manifest": selection,
+                "out": out.as_output(),
+            },
         )
         ctx.actions.run(extract, category = "boot_artifact_" + kind)
         artifacts[kind] = out

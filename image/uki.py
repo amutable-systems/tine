@@ -5,19 +5,52 @@ Engine tools operate on the mounted image without chrooting. A kernel-modules cp
 extends the supplied base initrds.
 """
 
-import argparse
-import json
 import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import TypedDict
+
+import specs
 
 import cpio
 import finalize
 
 # ukify lives outside PATH in the engine.
 UKIFY = "/usr/lib/systemd/ukify"
+
+
+class Profile(TypedDict):
+    id: str
+    title: str
+    cmdline: list[str]
+    sign_expected_pcr: bool
+
+
+class RootHash(TypedDict):
+    path: str
+    kind: str
+
+
+class SecureBoot(TypedDict):
+    private_key: str
+    certificate: str
+
+
+class Spec(finalize.ImageSpec):
+    out: str
+    # Base initrd cpios, in load order.
+    initrds: list[str]
+    cmdline: list[str]
+    profiles: list[Profile]
+    root_hash: RootHash | None
+    # ukify's EFI architecture (e.g. x64) and systemd's spelling in the UKI name (e.g. x86-64).
+    efi_arch: str
+    systemd_arch: str
+    image_id: str
+    version: str
+    secure_boot: SecureBoot | None
 
 
 def _kvers(tree: Path) -> list[str]:
@@ -42,52 +75,19 @@ def _cmdline(arguments: list[str], root_hash: Path | None, kind: str | None) -> 
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="uki")
-    finalize.add_arguments(p)
-    p.add_argument("--out", required=True, help="the output unified kernel image directory")
-    p.add_argument(
-        "--initrd", action="append", default=[], help="base initrd cpio, in load order (repeatable)"
-    )
-    p.add_argument(
-        "--cmdline",
-        action="append",
-        default=[],
-        metavar="ARGUMENT",
-        help="kernel command-line argument embedded in the UKI (repeatable)",
-    )
-    p.add_argument(
-        "--profile",
-        action="append",
-        default=[],
-        metavar="PROFILE",
-        help="alternative boot profile as JSON with id, title, and cmdline fields (repeatable)",
-    )
-    p.add_argument("--root-hash", help="file containing a generated verity root hash")
-    p.add_argument("--root-hash-kind", choices=("root", "usr"))
-    p.add_argument("--efi-arch", required=True, help="EFI architecture as understood by ukify, e.g. x64")
-    p.add_argument(
-        "--systemd-arch", required=True, help="systemd architecture spelling in the UKI name, e.g. x86-64"
-    )
-    p.add_argument("--image-id", required=True, help="name the UKI <image-id>_<version>_<arch>.efi")
-    p.add_argument("--version", required=True, help="image version in the UKI name")
-    p.add_argument("--secure-boot-private-key", help="PEM key for Secure Boot and expected-PCR signing")
-    p.add_argument("--secure-boot-certificate", help="PEM certificate for Secure Boot signing")
-    args = p.parse_args(argv)
+    spec: Spec = specs.parse("uki", argv)
 
-    if bool(args.root_hash) != bool(args.root_hash_kind):
-        p.error("--root-hash and --root-hash-kind must be specified together")
-    if bool(args.secure_boot_private_key) != bool(args.secure_boot_certificate):
-        p.error("--secure-boot-private-key and --secure-boot-certificate must be specified together")
-
-    out = Path(args.out).resolve()
+    efi_arch = spec["efi_arch"]
+    out = Path(spec["out"]).resolve()
     out.mkdir(parents=True)
-    initrds = [Path(i).resolve() for i in args.initrd]
+    initrds = [Path(initrd).resolve() for initrd in spec["initrds"]]
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
-    key = str(Path(args.secure_boot_private_key).resolve()) if args.secure_boot_private_key else None
-    certificate = str(Path(args.secure_boot_certificate).resolve()) if args.secure_boot_certificate else None
+    secure_boot = spec["secure_boot"]
+    key = str(Path(secure_boot["private_key"]).resolve()) if secure_boot else None
+    certificate = str(Path(secure_boot["certificate"]).resolve()) if secure_boot else None
 
     with (
-        finalize.image(args, program="uki") as tree,
+        finalize.image(spec, program="uki") as tree,
         tempfile.TemporaryDirectory(prefix="boot.") as scratch_dir,
     ):
         scratch = Path(scratch_dir)
@@ -104,23 +104,24 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(
                 "uki: the image ships no /usr/lib/os-release (ukify needs it) — install a release package"
             )
-        stub = tree / "usr/lib/systemd/boot/efi" / f"linux{args.efi_arch}.efi.stub"
+        stub = tree / "usr/lib/systemd/boot/efi" / f"linux{efi_arch}.efi.stub"
         if not stub.exists():
             raise SystemExit("uki: the image ships no systemd-boot stub — install systemd-boot-unsigned")
 
+        root_hash = spec["root_hash"]
         base = _cmdline(
-            args.cmdline,
-            Path(args.root_hash).resolve() if args.root_hash else None,
-            args.root_hash_kind,
+            spec["cmdline"],
+            Path(root_hash["path"]).resolve() if root_hash else None,
+            root_hash["kind"] if root_hash else None,
         )
         cmdline = scratch / "cmdline"
         cmdline.write_text(base + "\x00")
 
         # Each profile becomes a small PE of .profile and .cmdline sections, joined into every
         # UKI below; the profile arguments extend the shared base cmdline.
-        profiles = [json.loads(value) for value in args.profile]
+        profiles = spec["profiles"]
         profile_pes = []
-        addon_stub = tree / "usr/lib/systemd/boot/efi" / f"addon{args.efi_arch}.efi.stub"
+        addon_stub = tree / "usr/lib/systemd/boot/efi" / f"addon{efi_arch}.efi.stub"
         if profiles and not addon_stub.exists():
             raise SystemExit("uki: the image ships no addon stub — install systemd-boot-unsigned")
         for profile in profiles:
@@ -134,7 +135,7 @@ def main(argv: list[str] | None = None) -> None:
                 "--profile", f"@{section}",
                 "--cmdline", f"@{profile_cmdline}",
                 "--stub", str(addon_stub),
-                "--efi-arch", args.efi_arch,
+                "--efi-arch", efi_arch,
                 "--output", str(pe),
             ]  # fmt: skip
             subprocess.run(cmd, check=True)
@@ -146,7 +147,7 @@ def main(argv: list[str] | None = None) -> None:
         # (.pcrpkey) derives from the private key, so no --pcr-certificate is needed.
         signing = []
         if key:
-            assert certificate is not None  # the argument parser pairs the key and certificate
+            assert certificate is not None  # the spec pairs the key and the certificate
             signing = [
                 "--signtool", "systemd-sbsign",
                 "--secureboot-private-key", key,
@@ -169,7 +170,7 @@ def main(argv: list[str] | None = None) -> None:
             exclude=(f"{prefix}/vmlinuz*", f"{prefix}/vmlinux*", f"{prefix}/System.map"),
         )  # fmt: skip
 
-        output = out / f"{args.image_id}_{args.version}_{args.systemd_arch}.efi"
+        output = out / f"{spec['image_id']}_{spec['version']}_{spec['systemd_arch']}.efi"
         cmd = [UKIFY, "build", "--linux", str(tree / prefix / "vmlinuz")]
         for initrd in [*initrds, modules]:
             cmd += ["--initrd", str(initrd)]
@@ -179,7 +180,7 @@ def main(argv: list[str] | None = None) -> None:
             "--os-release", f"@{os_release}",
             "--uname", kver,
             "--stub", str(stub),
-            "--efi-arch", args.efi_arch,
+            "--efi-arch", efi_arch,
             *signing,
             "--output", str(output),
         ]  # fmt: skip

@@ -5,51 +5,38 @@ Sources and the spec are staged in action scratch space, while only the produced
 RPMs persist. The engine sandbox already supplies isolation around the chroot.
 """
 
-import argparse
 import os
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import TypedDict
 
+import specs
 import util
 
 import rootfs
 
 
+class Spec(TypedDict):
+    # A buildroot overlay layer stack (bottom..top); the merged stack is the buildroot.
+    lower: list[str]
+    spec_file: str
+    sources: list[str]
+    dist: str
+    source_date_epoch: int
+    release: str
+    out: str
+    # Declared binary subpackage -> its own output rpm path.
+    subpackages: dict[str, str]
+    rpmbuild_options: list[str]
+
+
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="build_rpm")
-    p.add_argument(
-        "--lower",
-        action="append",
-        default=[],
-        required=True,
-        metavar="LAYER",
-        help="a buildroot overlay layer (bottom..top); the merged stack is the buildroot",
-    )
-    p.add_argument("--spec", required=True)
-    p.add_argument("--source", action="append", default=[], help="source/patch file")
-    p.add_argument("--dist", default=".aos")
-    p.add_argument("--source-date-epoch", type=int, required=True)
-    p.add_argument("--out", required=True, help="output dir to collect rpms into")
-    p.add_argument("--release", required=True, help="dist-stripped Release base; freezes %autorelease")
-    p.add_argument(
-        "--subpackage",
-        action="append",
-        default=[],
-        metavar="NAME=PATH",
-        help="declared binary subpackage -> per-subpackage output rpm path",
-    )
-    p.add_argument(
-        "--rpmbuild-option",
-        action="append",
-        default=[],
-        dest="rpmbuild_options",
-        metavar="OPTION",
-        help="extra rpmbuild CLI option (--with=..., --without=..., --define=...)",
-    )
-    args = p.parse_args(argv)
+    spec: Spec = specs.parse("build_rpm", argv)
+    if not spec["lower"]:
+        raise SystemExit("build_rpm: the buildroot stack cannot be empty")
 
     # Use action scratch space and discard leftovers from a failed prior run.
     scratch = os.environ.get("BUCK_SCRATCH_PATH")
@@ -60,29 +47,29 @@ def main(argv: list[str] | None = None) -> int:
         shutil.rmtree(topdir)
     for d in ("SOURCES", "SPECS", "BUILD", "BUILDROOT", "RPMS", "SRPMS"):
         (topdir / d).mkdir(parents=True, exist_ok=True)
-    spec = Path(args.spec)
+    spec_file = Path(spec["spec_file"])
     # Freeze rpmautospec macros so builds need neither Git nor rpmautospec.
     frozen = (
-        f"%global autorelease {args.release}%{{?dist}}\n%global autochangelog %{{nil}}\n"
-    ) + spec.read_text()
-    (topdir / "SPECS" / spec.name).write_text(frozen)
-    for src in args.source:
+        f"%global autorelease {spec['release']}%{{?dist}}\n%global autochangelog %{{nil}}\n"
+    ) + spec_file.read_text()
+    (topdir / "SPECS" / spec_file.name).write_text(frozen)
+    for src in spec["sources"]:
         s = Path(src)
         # A spec may modify SOURCES, so it must not share the source artifact's inode.
         util.clone_file(s, topdir / "SOURCES" / s.name)
 
     # The ephemeral upper discards buildroot writes; use the package-specific epoch.
-    env = os.environ | {"HOME": "/build", "SOURCE_DATE_EPOCH": str(args.source_date_epoch)}
+    env = os.environ | {"HOME": "/build", "SOURCE_DATE_EPOCH": str(spec["source_date_epoch"])}
     with rootfs.rootfs(
         "/buildroot",
-        lowers=args.lower,
+        lowers=spec["lower"],
         binds=[(topdir, "/build")],
         apivfs=True,
         chroot=True,
     ):
         defines = [
             "--define", "_topdir /build",
-            "--define", f"dist {args.dist}",
+            "--define", f"dist {spec['dist']}",
             "--define", "_buildhost reproducible",
             # rpm otherwise ignores SOURCE_DATE_EPOCH for the BUILDTIME header.
             "--define", "use_source_date_epoch_as_buildtime 1",
@@ -91,11 +78,11 @@ def main(argv: list[str] | None = None) -> int:
             [
                 "/usr/bin/rpmbuild",
                 *defines,
-                *args.rpmbuild_options,
+                *spec["rpmbuild_options"],
                 "-ba",
                 "--nocheck",
                 "--noclean",
-                f"/build/SPECS/{spec.name}",
+                f"/build/SPECS/{spec_file.name}",
             ],
             env=env,
         ).returncode
@@ -103,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         return rc
 
     # Collect binary packages and the source package.
-    out = Path(args.out)
+    out = Path(spec["out"])
     out.mkdir(parents=True, exist_ok=True)
     produced: dict[str, Path] = {}  # basename -> path of each binary rpm
     for sub in ("RPMS", "SRPMS"):
@@ -113,17 +100,16 @@ def main(argv: list[str] | None = None) -> int:
                 produced[f.name] = f
     print(f"collected {len(produced)} binary rpms + srpm into {out}", file=sys.stderr)
 
-    if args.subpackage:
-        _emit_subpackages(args.subpackage, produced)
+    if spec["subpackages"]:
+        _emit_subpackages(spec["subpackages"], produced)
 
     # Preserve failed trees for diagnosis; remove successful ones.
     shutil.rmtree(topdir)
     return 0
 
 
-def _emit_subpackages(pairs: list[str], produced: dict[str, Path]) -> None:
+def _emit_subpackages(declared: dict[str, str], produced: dict[str, Path]) -> None:
     """Match declared subpackages to output NVRA names and verify the exact set."""
-    declared = dict(p.split("=", 1) for p in pairs)
     names_by_len = sorted(declared, key=len, reverse=True)
     patterns = {name: re.compile(rf"^{re.escape(name)}-[^-]+-[^-]+\.[^.]+\.rpm$") for name in declared}
 

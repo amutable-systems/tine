@@ -13,16 +13,21 @@ The in-image database is already journal-parked at install time (install.py:park
 re-parks the copy so DROP/VACUUM leaves no -wal/-shm sidecar beside the declared output.
 """
 
-import argparse
 import shutil
 import sqlite3
 import sys
 from pathlib import Path
 
+import specs
+
 import finalize
 
 # Matches install.py:DBPATH.
 DBPATH = "usr/lib/sysimage/rpm/rpmdb.sqlite"
+
+
+class Spec(finalize.ImageSpec):
+    out: str
 
 
 def _trim(db: Path) -> None:
@@ -46,15 +51,12 @@ def _trim(db: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="pkgdb")
-    finalize.add_arguments(parser)
-    parser.add_argument("--out", required=True, help="output directory for the database")
-    args = parser.parse_args(argv)
+    spec: Spec = specs.parse("pkgdb", argv)
 
-    out = Path(args.out).resolve()
+    out = Path(spec["out"]).resolve()
     out.mkdir(parents=True, exist_ok=True)
     db = out / Path(DBPATH).name
-    with finalize.image(args, program="pkgdb") as tree:
+    with finalize.image(spec, program="pkgdb") as tree:
         src = tree / DBPATH
         if not src.exists():
             raise SystemExit(f"no rpmdb at {src}; the image has no installed packages")

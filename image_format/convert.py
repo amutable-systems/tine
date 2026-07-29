@@ -1,21 +1,27 @@
 #!/usr/bin/python3
 """Convert a composed raw disk image into a distributable output format."""
 
-import argparse
 import subprocess
 from pathlib import Path
+from typing import TypedDict
+
+import specs
+
+
+class Spec(TypedDict):
+    format: str
+    input: str
+    out: str
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="convert")
-    p.add_argument("--format", required=True, choices=["qcow2", "raw.zst"])
-    p.add_argument("--input", required=True, help="source raw disk image")
-    p.add_argument("--out", required=True, help="converted output path")
-    args = p.parse_args(argv)
+    spec: Spec = specs.parse("convert", argv)
 
-    source = Path(args.input).resolve()
-    out = Path(args.out).resolve()
-    if args.format == "qcow2":
+    source = Path(spec["input"]).resolve()
+    out = Path(spec["out"]).resolve()
+    if spec["format"] not in ("qcow2", "raw.zst"):
+        raise SystemExit(f"convert: unknown format {spec['format']!r}")
+    if spec["format"] == "qcow2":
         # convert drops zero clusters, so the qcow2 stays compact regardless of the raw size.
         cmd = ["qemu-img", "convert", "-f", "raw", "-O", "qcow2", str(source), str(out)]
     else:

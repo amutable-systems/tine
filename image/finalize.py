@@ -1,34 +1,35 @@
 """Shared terminal-image preparation that cannot be persisted in Buck layers."""
 
-import argparse
 import contextlib
 import shutil
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
+from typing import TypedDict
 
 import rootfs
 
 
-def add_arguments(parser: argparse.ArgumentParser) -> None:
-    """Declare the driver half of the terminal_image_command contract."""
-    parser.add_argument("--lower", action="append", default=[], help="image delta (bottom..top)")
-    parser.add_argument(
-        "--tmpfiles", action="append", default=[], help="authored tmpfiles.d snippet (repeatable)"
-    )
+class ImageSpec(TypedDict):
+    """The half of a terminal driver's spec that names the image itself."""
+
+    lower: list[str]
+    tmpfiles: list[str]
 
 
 @contextlib.contextmanager
 def image(
-    args: argparse.Namespace,
+    spec: ImageSpec,
     *,
     program: str,
-    lowers: list[str | Path] | None = None,
-    binds: list[tuple[str | Path, str | Path]] | None = None,
+    lowers: Sequence[str | Path] | None = None,
+    binds: Sequence[tuple[str | Path, str | Path]] | None = None,
 ) -> Iterator[Path]:
-    """Mount the image stack from `add_arguments` options and yield the finalized tree."""
-    with rootfs.rootfs("/buildroot", lowers=args.lower if lowers is None else lowers, binds=binds) as tree:
-        apply_tmpfiles(tree, args.tmpfiles, program=program)
+    """Mount the image stack the spec names and yield the finalized tree."""
+    with rootfs.rootfs(
+        "/buildroot", lowers=spec["lower"] if lowers is None else lowers, binds=binds
+    ) as tree:
+        apply_tmpfiles(tree, spec["tmpfiles"], program=program)
         yield tree
 
 

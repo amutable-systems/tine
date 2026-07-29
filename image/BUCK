@@ -22,6 +22,7 @@ python_bootstrap_binary(
     name = "layer",
     main = "layer.py",
     deps = [
+        "//:specs",
         "//:util",
         "//rootfs:rootfs",
     ],
@@ -33,6 +34,7 @@ python_bootstrap_binary(
     main = "uki.py",
     deps = [
         ":finalize",
+        "//:specs",
         "//archive:cpio",
     ],
     visibility = ["PUBLIC"],
@@ -41,7 +43,10 @@ python_bootstrap_binary(
 python_bootstrap_binary(
     name = "sbom",
     main = "sbom.py",
-    deps = [":finalize"],
+    deps = [
+        ":finalize",
+        "//:specs",
+    ],
     visibility = ["PUBLIC"],
 )
 
@@ -57,6 +62,7 @@ python_bootstrap_library(
     srcs = ["artifacts.py"],
     deps = [
         ":finalize",
+        "//:specs",
         "//:util",
     ],
 )
@@ -66,6 +72,7 @@ python_bootstrap_binary(
     main = "artifacts.py",
     deps = [
         ":finalize",
+        "//:specs",
         "//:util",
     ],
     visibility = ["PUBLIC"],
@@ -77,6 +84,7 @@ python_bootstrap_binary(
     deps = [
         ":artifacts-lib",
         ":finalize",
+        "//:specs",
         "//vendor:mkosi",
     ],
     visibility = ["PUBLIC"],

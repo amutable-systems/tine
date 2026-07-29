@@ -9,7 +9,7 @@ python_bootstrap_library(name = "rpmfile", srcs = ["rpmfile.py"])
 python_bootstrap_binary(
     name = "extract",
     main = "extract.py",
-    deps = ["//archive:cpio", "//rootfs:rootfs", ":rpmfile"],
+    deps = ["//:specs", "//archive:cpio", "//rootfs:rootfs", ":rpmfile"],
 )
 
 python_bootstrap_binary(
@@ -19,17 +19,17 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-python_bootstrap_binary(name = "install", main = "install.py", deps = ["//rootfs:rootfs"])
+python_bootstrap_binary(name = "install", main = "install.py", deps = ["//:specs", "//rootfs:rootfs"])
 
 # The capture driver implements the terminal-image contract, so it takes that library.
-python_bootstrap_binary(name = "pkgdb", main = "pkgdb.py", deps = ["//image:finalize"])
-python_bootstrap_binary(name = "createrepo", main = "createrepo.py")
-python_bootstrap_binary(name = "plan", main = "plan.py", deps = ["//:util", "//rootfs:rootfs"])
-python_bootstrap_binary(name = "build", main = "build.py", deps = ["//:util", "//rootfs:rootfs"])
+python_bootstrap_binary(name = "pkgdb", main = "pkgdb.py", deps = ["//:specs", "//image:finalize"])
+python_bootstrap_binary(name = "createrepo", main = "createrepo.py", deps = ["//:specs"])
+python_bootstrap_binary(name = "plan", main = "plan.py", deps = ["//:specs", "//:util", "//rootfs:rootfs"])
+python_bootstrap_binary(name = "build", main = "build.py", deps = ["//:specs", "//:util", "//rootfs:rootfs"])
 
 python_bootstrap_binary(
     name = "snapshot",
-    deps = ["//:util"],
+    deps = ["//:specs", "//:util"],
     main = "snapshot.py",
 )
 

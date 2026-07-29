@@ -1,7 +1,8 @@
 """Construct package-solver commands and reusable repository caches."""
 
+load("//:specs.bzl", "spec_args")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
-load(":repository.bzl", "ConfiguredPackageRepositoryInfo", "write_repository_manifest")
+load(":repository.bzl", "ConfiguredPackageRepositoryInfo", "encode_repositories")
 load(":system.bzl", "PackageSystemInfo")
 
 # buildifier: disable=function-docstring-args
@@ -16,23 +17,25 @@ def solve_command(
         output: OutputArtifact | None = None,
         solver_caches: list[Artifact] = [],
         lowers: list[Artifact] = [],
-        manifest_name: str = "repositories.json") -> cmd_args:
-    """Construct a package solve command for one configured solver context."""
+        spec_name: str = "solve.spec.json") -> cmd_args:
+    """Construct a package solve command for one configured solver context.
+
+    The transaction destination stays on the command line: the same command is published as a
+    run target, where the caller names the transaction it wants written.
+    """
     command = cmd_args(
         chroot_run(engine = engine, exe = system.plan),
         "solve",
-        "--arch",
-        arch,
+        spec_args(ctx, spec_name, {
+            "arch": arch,
+            "cache": solver_caches,
+            "install": install,
+            "lower": lowers,
+            "repositories": encode_repositories(repositories),
+        }),
     )
     if output != None:
         command.add("--out", output)
-    for cache in solver_caches:
-        command.add("--cache", cache)
-    command.add("--repositories", write_repository_manifest(ctx, manifest_name, repositories))
-    for lower in lowers:
-        command.add("--lower", lower)
-    for package in install:
-        command.add("--install", package)
     return command
 
 def _solver_cache_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -45,15 +48,14 @@ def _solver_cache_impl(ctx: AnalysisContext) -> list[Provider]:
         baseurl = ctx.attrs.baseurl,
     )
     cache = ctx.actions.declare_output("cache", dir = True)
-    manifest = write_repository_manifest(ctx, "repositories.json", [repository])
     ctx.actions.run(
         cmd_args(
             chroot_run(engine = engine, exe = system.plan),
             "make-cache",
-            "--arch",
-            ctx.attrs.arch,
-            "--repositories",
-            manifest,
+            spec_args(ctx, "make-cache.spec.json", {
+                "arch": ctx.attrs.arch,
+                "repositories": encode_repositories([repository]),
+            }),
             "--out",
             cache.as_output(),
         ),

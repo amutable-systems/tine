@@ -8,10 +8,19 @@ import mmap
 import sys
 import tempfile
 from pathlib import Path
+from typing import TypedDict
+
+import specs
 
 import cpio
 import rootfs
 import rpmfile
+
+
+class Spec(TypedDict):
+    out: str
+    # Raw rpms, uncompressed payloads, or directories of either.
+    packages: list[str]
 
 
 def extract(rpm_path: Path, dest: Path) -> int:
@@ -40,10 +49,11 @@ def _expand(paths: list[Path]) -> list[Path]:
 
 
 def main(argv: list[str] | None = None) -> None:
-    args = sys.argv[1:] if argv is None else argv
-    if len(args) < 2:
-        raise SystemExit("usage: rpm-extract.py DEST RPM|DIR [RPM|DIR...]")
-    dest, rpms = Path(args[0]), _expand([Path(p) for p in args[1:]])
+    spec: Spec = specs.parse("extract", argv)
+    dest = Path(spec["out"])
+    rpms = _expand([Path(package) for package in spec["packages"]])
+    if not rpms:
+        raise SystemExit("extract: no packages to extract")
     total = 0
     for package in rpms:
         total += extract_payload(package, dest) if package.suffix == ".cpio" else extract(package, dest)

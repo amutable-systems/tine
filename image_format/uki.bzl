@@ -85,31 +85,40 @@ def declare_uki(
     if (secure_boot_private_key == None) != (secure_boot_certificate == None):
         fail("uki: secure_boot_private_key and secure_boot_certificate must be specified together")
     out = declare_out(ctx, identifier, "ukis", dir = True)
-    cmd = terminal_image_command(image, ctx.attrs._tools[ImageToolsInfo].uki)
-    cmd.add(
-        "--out",
-        out.as_output(),
-        "--efi-arch",
-        ARCHES[arch].efi,
-        "--systemd-arch",
-        ARCHES[arch].systemd,
-    )
     check_name("uki image_id", image_id, FILENAME_PATTERN)
     check_name("uki version", version, VERSION_PATTERN)
-    cmd.add("--image-id", image_id, "--version", version)
-    for argument in cmdline:
-        cmd.add("--cmdline", argument)
-    for profile in profiles:
-        cmd.add("--profile", profile)
-    if secure_boot_private_key != None:
-        cmd.add("--secure-boot-private-key", secure_boot_private_key)
-        cmd.add("--secure-boot-certificate", secure_boot_certificate)
-    if root_hash != None:
-        cmd.add("--root-hash", root_hash.hash, "--root-hash-kind", root_hash.kind)
     for initrd in initrds:
         if initrd.format != "cpio":
             fail("uki: initrd must be a cpio archive, got {!r}".format(initrd.format))
-        cmd.add("--initrd", initrd.archive)
+
+    secure_boot = None
+    if secure_boot_private_key != None:
+        secure_boot = {
+            "certificate": secure_boot_certificate,
+            "private_key": secure_boot_private_key,
+        }
+    cmd = terminal_image_command(
+        ctx,
+        driver = "uki",
+        exe = ctx.attrs._tools[ImageToolsInfo].uki,
+        identifier = identifier,
+        image = image,
+        spec = {
+            "cmdline": cmdline,
+            "efi_arch": ARCHES[arch].efi,
+            "image_id": image_id,
+            "initrds": [initrd.archive for initrd in initrds],
+            "out": out.as_output(),
+            "profiles": [json.decode(profile) for profile in profiles],
+            "root_hash": {
+                "kind": root_hash.kind,
+                "path": root_hash.hash,
+            } if root_hash != None else None,
+            "secure_boot": secure_boot,
+            "systemd_arch": ARCHES[arch].systemd,
+            "version": version,
+        },
+    )
     ctx.actions.run(cmd, category = "uki", identifier = identifier or "uki")
     return UkiInfo(ukis = out)
 

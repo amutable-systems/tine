@@ -1,5 +1,6 @@
 """Resolve and install native packages into filesystem roots."""
 
+load("//:specs.bzl", "spec_args")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load(":local_packages.bzl", "LocalPackageUniverseInfo", "select_local_packages")
 load(":manager.bzl", "PackageManagerInfo", "materialize_local_repository")
@@ -81,7 +82,7 @@ def resolve_packages(
         output = tx.as_output(),
         solver_caches = package_manager.solver_caches,
         lowers = stack,
-        manifest_name = prefix + "repositories.json",
+        spec_name = prefix + "solve.spec.json",
     )
     ctx.actions.run(plan, category = "plan", identifier = identifier or "install")
 
@@ -104,17 +105,20 @@ def _install_actions(
     system = package_manager.package_system[PackageSystemInfo]
     closure = resolve_packages(ctx, package_manager_dep, install, stack, extra_packages)
     out = ctx.actions.declare_output("install.delta" if stack else "root", dir = True)
+    work = ctx.actions.declare_output("install.work", dir = True) if stack else None
     cmd = cmd_args(
         chroot_run(engine = package_manager.engine[EngineInfo], exe = system.install),
-        "--packages-dir",
-        closure,
-        "--target",
-        out.as_output(),
+        spec_args(ctx, "install.spec.json", {
+            "docs": True,
+            "engine_config": False,
+            "installroot": None,
+            "langs": [],
+            "lower": stack,
+            "packages_dir": closure,
+            "target": out.as_output(),
+            "work": work.as_output() if work != None else None,
+        }),
     )
-    if stack:
-        cmd.add("--work", ctx.actions.declare_output("install.work", dir = True).as_output())
-    for lower in stack:
-        cmd.add("--lower", lower)
     ctx.actions.run(cmd, category = "install")
     return out
 

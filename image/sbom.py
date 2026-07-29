@@ -12,7 +12,6 @@ syft ignores SOURCE_DATE_EPOCH and stamps each SBOM with the wall-clock time and
 document UUID. Both are overwritten afterwards so identical inputs produce identical bytes.
 """
 
-import argparse
 import json
 import os
 import re
@@ -23,7 +22,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
+import specs
+
 import finalize
+
+
+class Spec(finalize.ImageSpec):
+    syft: str
+    source_name: str
+    source_version: str
+    spdx: str
+    cdx: str
+
 
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
@@ -51,22 +61,17 @@ def _normalize(spdx: Path, cdx: Path, source_name: str, source_version: str, epo
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="sbom")
-    finalize.add_arguments(parser)
-    parser.add_argument("--syft", required=True, help="syft binary")
-    parser.add_argument("--source-name", required=True, help="SBOM source name")
-    parser.add_argument("--source-version", required=True, help="SBOM source version")
-    parser.add_argument("--spdx", required=True, help="output spdx-json path")
-    parser.add_argument("--cdx", required=True, help="output cyclonedx-json path")
-    args = parser.parse_args(argv)
+    spec: Spec = specs.parse("sbom", argv)
 
-    syft = Path(args.syft).resolve()
-    spdx = Path(args.spdx).resolve()
-    cdx = Path(args.cdx).resolve()
+    syft = Path(spec["syft"]).resolve()
+    source_name = spec["source_name"]
+    source_version = spec["source_version"]
+    spdx = Path(spec["spdx"]).resolve()
+    cdx = Path(spec["cdx"]).resolve()
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
 
     with (
-        finalize.image(args, program="sbom") as tree,
+        finalize.image(spec, program="sbom") as tree,
         tempfile.TemporaryDirectory(prefix="syft.") as home,
     ):
         env = os.environ | {
@@ -86,9 +91,9 @@ def main(argv: list[str] | None = None) -> None:
                 "scan",
                 f"dir:{tree}",
                 "--source-name",
-                args.source_name,
+                source_name,
                 "--source-version",
-                args.source_version,
+                source_version,
                 "-o",
                 f"spdx-json={spdx}",
                 "-o",
@@ -98,8 +103,8 @@ def main(argv: list[str] | None = None) -> None:
             env=env,
         )
 
-    _normalize(spdx, cdx, args.source_name, args.source_version, epoch)
-    print(f"sbom: wrote SPDX -> {args.spdx} and CycloneDX -> {args.cdx}", file=sys.stderr)
+    _normalize(spdx, cdx, source_name, source_version, epoch)
+    print(f"sbom: wrote SPDX -> {spdx} and CycloneDX -> {cdx}", file=sys.stderr)
 
 
 if __name__ == "__main__":

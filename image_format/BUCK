@@ -4,6 +4,7 @@ python_bootstrap_binary(
     name = "archive",
     main = "archive.py",
     deps = [
+        "//:specs",
         "//:util",
         "//archive:cpio",
         "//image:finalize",
@@ -14,13 +15,17 @@ python_bootstrap_binary(
 python_bootstrap_binary(
     name = "disk",
     main = "disk.py",
-    deps = ["//image:finalize"],
+    deps = [
+        "//:specs",
+        "//image:finalize",
+    ],
     visibility = ["PUBLIC"],
 )
 
 python_bootstrap_binary(
     name = "convert",
     main = "convert.py",
+    deps = ["//:specs"],
     visibility = ["PUBLIC"],
 )
 
@@ -28,6 +33,7 @@ python_bootstrap_binary(
     name = "sysext",
     main = "sysext.py",
     deps = [
+        "//:specs",
         "//:util",
         "//image:finalize",
         "//rootfs:rootfs",

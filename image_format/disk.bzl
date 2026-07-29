@@ -1,5 +1,6 @@
 """Partition and raw-disk assembly with systemd-repart."""
 
+load("//:specs.bzl", "spec_args")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load(
     "//image:image.bzl",
@@ -8,6 +9,7 @@ load(
     "ImageToolsInfo",
     "check_name",
     "declare_out",
+    "spec_path",
     "terminal_image_command",
 )
 
@@ -265,23 +267,24 @@ def declare_repart(
     if len(names) != len({name: True for name in names}):
         fail("repart: new and imported partition names must be unique")
 
-    cmd = terminal_image_command(image, ctx.attrs._tools[ImageToolsInfo].disk)
-    cmd.add("--identity", "{}[{}]".format(ctx.label, identifier or "repart"))
-    if seed != None:
-        cmd.add("--seed", seed)
-    if private_key != None:
-        cmd.add("--private-key", private_key)
-    if certificate != None:
-        cmd.add("--certificate", certificate)
-    for definition in definitions:
-        cmd.add("--definition", definition)
-    for value in imported_partitions:
-        cmd.add(
-            "--partition",
-            json.encode(value.definition),
-            value.blocks,
-            value.metadata,
-        )
+    spec = {
+        "certificate": certificate,
+        "definitions": decoded,
+        "identity": "{}[{}]".format(ctx.label, identifier or "repart"),
+        "out": None,
+        "partitions": [
+            {
+                "blocks": value.blocks,
+                "definition": value.definition,
+                "metadata": value.metadata,
+            }
+            for value in imported_partitions
+        ],
+        "private_key": private_key,
+        "root_hash_out": None,
+        "seed": seed,
+        "split_outputs": [],
+    }
 
     outputs = []
     new_partitions = []
@@ -290,7 +293,11 @@ def declare_repart(
             name = definition["name"]
             blocks = declare_out(ctx, identifier, "partitions/{}.raw".format(name))
             metadata = declare_out(ctx, identifier, "partitions/{}.json".format(name))
-            cmd.add("--split-output", name, blocks.as_output(), metadata.as_output())
+            spec["split_outputs"].append({
+                "blocks": blocks.as_output(),
+                "metadata": metadata.as_output(),
+                "name": name,
+            })
             outputs.append(blocks)
             new_partitions.append(PartitionInfo(
                 definition = definition,
@@ -301,7 +308,7 @@ def declare_repart(
     out = None
     if disk:
         out = declare_out(ctx, identifier, basename + ".raw")
-        cmd.add("--out", out.as_output())
+        spec["out"] = out.as_output()
 
     kind = _verity_kind(decoded)
     if kind != None and imported_root_hash != None:
@@ -309,7 +316,7 @@ def declare_repart(
     root_hash = imported_root_hash
     if kind != None:
         hash_output = declare_out(ctx, identifier, "{}hash".format(kind))
-        cmd.add("--root-hash-out", hash_output.as_output())
+        spec["root_hash_out"] = hash_output.as_output()
         root_hash = RootHashInfo(hash = hash_output, kind = kind)
 
     available_partitions = imported_partitions + new_partitions
@@ -335,7 +342,14 @@ def declare_repart(
     else:
         sub_targets.update(_partition_sub_targets(new_partitions))
     ctx.actions.run(
-        cmd,
+        terminal_image_command(
+            ctx,
+            driver = "repart",
+            exe = ctx.attrs._tools[ImageToolsInfo].disk,
+            identifier = identifier,
+            image = image,
+            spec = spec,
+        ),
         category = "repart_split" if split else "repart",
         identifier = identifier or "repart",
     )
@@ -453,12 +467,11 @@ def declare_disk_conversion(
     out = declare_out(ctx, identifier, basename + "." + format)
     cmd = cmd_args(
         chroot_run(engine = engine[EngineInfo], exe = ctx.attrs._tools[ImageToolsInfo].convert),
-        "--format",
-        format,
-        "--input",
-        disk.disk,
-        "--out",
-        out.as_output(),
+        spec_args(ctx, spec_path(identifier, "convert"), {
+            "format": format,
+            "input": disk.disk,
+            "out": out.as_output(),
+        }),
     )
     ctx.actions.run(cmd, category = "disk_convert", identifier = identifier or format)
     return DiskConversionInfo(format = format, image = out)

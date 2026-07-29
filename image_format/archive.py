@@ -5,7 +5,6 @@ Archive ownership is normalized to uid/gid 0. Tar stores extended attributes as 
 headers; the newc cpio format has no general extended-attribute representation.
 """
 
-import argparse
 import os
 import subprocess
 import sys
@@ -14,10 +13,19 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+import specs
 import util
 
 import cpio
 import finalize
+
+
+class Spec(finalize.ImageSpec):
+    out: str
+    format: str
+    compression: str
+    # Image paths holding the package database, stripped from the archive.
+    pkgdb_paths: list[str]
 
 
 def _xattrs(path: Path) -> dict[str, str]:
@@ -106,6 +114,8 @@ def _archive(tree: Path, out: Path, fmt: str, epoch: int, compression: str) -> N
         _clamp_mtimes(out, epoch)
     elif compression == "none":
         _pack(tree, out, fmt, epoch)
+    elif compression != "zstd":
+        raise SystemExit(f"archive: unknown compression {compression!r}")
     else:
         # zstd needs the finished archive, so pack it beside the output rather than in TMPDIR: the
         # shared filesystem keeps the packer's reflink cloning working, and Buck only ever sees the
@@ -117,29 +127,17 @@ def _archive(tree: Path, out: Path, fmt: str, epoch: int, compression: str) -> N
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="archive")
-    finalize.add_arguments(parser)
-    parser.add_argument("--out", required=True, help="output archive or directory")
-    parser.add_argument("--format", required=True, choices=("tar", "cpio", "directory"))
-    parser.add_argument("--compression", default="none", choices=("none", "zstd"))
-    parser.add_argument(
-        "--pkgdb-path",
-        action="append",
-        default=[],
-        metavar="PATH",
-        help="image path holding the package database, to strip from the archive (repeatable)",
-    )
-    args = parser.parse_args(argv)
+    spec: Spec = specs.parse("archive", argv)
 
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
-    out = Path(args.out).resolve()
-    with finalize.image(args, program="archive") as tree:
+    out = Path(spec["out"]).resolve()
+    with finalize.image(spec, program="archive") as tree:
         # The package database is a supply-chain artifact that the image's `[pkgdb]` subtarget
         # captures separately, so an archive nothing resolves packages in can drop it.
-        for relative in args.pkgdb_path:
+        for relative in spec["pkgdb_paths"]:
             util.remove_path(tree / relative, with_parents=True)
-        _archive(tree, out, args.format, epoch, args.compression)
-    print(f"archive: wrote {args.format} (epoch={epoch}) -> {args.out}", file=sys.stderr)
+        _archive(tree, out, spec["format"], epoch, spec["compression"])
+    print(f"archive: wrote {spec['format']} (epoch={epoch}) -> {out}", file=sys.stderr)
 
 
 if __name__ == "__main__":

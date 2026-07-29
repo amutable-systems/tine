@@ -51,16 +51,27 @@ def declare_image_archive(
         identifier,
         "image." + _EXT[format] + _COMPRESSION_EXT[compression],
     )
-    cmd = terminal_image_command(image, ctx.attrs._tools[ImageToolsInfo].archive)
-    cmd.add("--out", out.as_output(), "--format", format)
-    if compression != "none":
-        cmd.add("--compression", compression)
 
     # An image without a package manager installed no packages, so it has no database to strip.
+    pkgdb_paths = []
     if strip_pkgdb and image.package_manager != None:
         system = image.package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
-        for path in system.database_paths:
-            cmd.add("--pkgdb-path", path)
+        pkgdb_paths = system.database_paths
+
+    cmd = terminal_image_command(
+        ctx,
+        # One image can be archived in several formats, so the spec is named like the output.
+        driver = "archive-" + format,
+        exe = ctx.attrs._tools[ImageToolsInfo].archive,
+        identifier = identifier,
+        image = image,
+        spec = {
+            "compression": compression,
+            "format": format,
+            "out": out.as_output(),
+            "pkgdb_paths": pkgdb_paths,
+        },
+    )
     ctx.actions.run(cmd, category = "image_" + format, identifier = identifier or format)
     return ImageArchiveInfo(archive = out, format = format)
 
@@ -94,8 +105,19 @@ def declare_image_directory(
         identifier: str | None = None) -> ImageDirectoryInfo:
     """Declare a directory materialization from a resolved logical image."""
     out = declare_out(ctx, identifier, "image.rootfs", dir = True)
-    cmd = terminal_image_command(image, ctx.attrs._tools[ImageToolsInfo].archive)
-    cmd.add("--out", out.as_output(), "--format", "directory")
+    cmd = terminal_image_command(
+        ctx,
+        driver = "directory",
+        exe = ctx.attrs._tools[ImageToolsInfo].archive,
+        identifier = identifier,
+        image = image,
+        spec = {
+            "compression": "none",
+            "format": "directory",
+            "out": out.as_output(),
+            "pkgdb_paths": [],
+        },
+    )
     ctx.actions.run(cmd, category = "image_directory", identifier = identifier or "directory")
     return ImageDirectoryInfo(directory = out)
 

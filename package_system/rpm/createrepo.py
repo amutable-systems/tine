@@ -4,13 +4,23 @@
 Runs inside the engine so the pinned createrepo_c produces the metadata.
 """
 
-import argparse
 import os
 import shutil
 import sys
 from pathlib import Path
+from typing import TypedDict
 
 import createrepo_c as cr
+import specs
+
+
+class Spec(TypedDict):
+    # Individual rpms are published under their own name; a directory's *.rpm (excluding
+    # .src.rpm) are published under <dir-index>/ so consumers can map them back to inputs.
+    packages: list[str]
+    packages_dirs: list[str]
+    out: str
+
 
 # The three metadata streams every repo carries, paired with their writer class.
 _STREAMS = (
@@ -69,27 +79,17 @@ def createrepo(entries: list[tuple[str, Path]], out: Path, revision: str) -> Non
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="createrepo")
-    p.add_argument("--package", action="append", default=[], help="an rpm to publish; repeatable")
-    p.add_argument(
-        "--packages-dir",
-        action="append",
-        default=[],
-        help="a dir whose *.rpm (excluding .src.rpm) are published under <dir-index>/; repeatable",
-    )
-    p.add_argument("--out", required=True, help="output repo dir (rpms + repodata/)")
-    args = p.parse_args(argv)
-    entries = [(Path(p).name, Path(p).resolve()) for p in args.package]
-    # Directory indices let consumers map locations back to Buck inputs.
-    for i, d in enumerate(args.packages_dir):
+    spec: Spec = specs.parse("createrepo", argv)
+    entries = [(Path(package).name, Path(package).resolve()) for package in spec["packages"]]
+    for index, directory in enumerate(spec["packages_dirs"]):
         entries += [
-            (f"{i}/{p.name}", p)
-            for p in sorted(Path(d).resolve().glob("*.rpm"))
-            if not p.name.endswith(".src.rpm")
+            (f"{index}/{package.name}", package)
+            for package in sorted(Path(directory).resolve().glob("*.rpm"))
+            if not package.name.endswith(".src.rpm")
         ]
     # The fallback keeps standalone use possible.
     revision = os.environ.get("SOURCE_DATE_EPOCH", "0")
-    createrepo(entries, Path(args.out).resolve(), revision)
+    createrepo(entries, Path(spec["out"]).resolve(), revision)
 
 
 if __name__ == "__main__":

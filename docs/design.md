@@ -302,12 +302,12 @@ Native package installation has three phases shared by buildroots and images:
    already-mounted root so package and filesystem operations have one output owner.
 
 The package manager assigns default priorities when it configures repositories: local repositories use 50
-and remote repositories use 99, with target-specific overrides applied by `package_manager()`. Planner
-actions receive an artifact-aware JSON manifest containing `[id, directory, priority, baseurl]` tuples.
-`write_repository_manifest()` projects those tuples from `ConfiguredPackageRepositoryInfo`; the record's
-`dependency` is deliberately stripped because Buck dependencies are analysis-only and not JSON-serializable.
-`plan.py` parses each tuple into its `Repository` named tuple. The directory selects pinned local repodata,
-while the base URL records the transport for remote packages selected into a transaction.
+and remote repositories use 99, with target-specific overrides applied by `package_manager()`. A planner
+action carries its repositories as `{id, directory, priority, baseurl}` objects in its spec.
+`encode_repositories()` projects them from `ConfiguredPackageRepositoryInfo`; the record's `dependency` is
+deliberately stripped because Buck dependencies are analysis-only and not JSON-serializable. `plan.py`
+reads each object into its `Repository` named tuple. The directory selects pinned local repodata, while the
+base URL records the transport for remote packages selected into a transaction.
 
 Package-specific `buildroot_deps` use the same representation. Their ordered RPM directories are
 materialized as an anonymous repository with ID `extra`, local priority, no base URL, and no declaration
@@ -743,6 +743,23 @@ The engine userspace must be pinned, the host environment must not leak into bui
 need unprivileged fakeroot semantics. Vendored mkosi-sandbox supplies those properties without host RPM,
 mock, bwrap, or a second nested sandbox. Drivers mount their own target roots because install, build, image,
 pack, and disk actions need different layouts.
+
+### Pass drivers one JSON spec
+
+A rule describes an action to its driver as a single JSON spec written with `write_json`, invoked as
+`<driver> --spec <spec.json>`, rather than as a command line. Buck resolves artifact paths inside the spec,
+so declared outputs are named there exactly like inputs and neither has to be flattened into repeated
+options or positional triples. Structured configuration (layer operations, partition definitions, boot
+profiles, repository selections, subpackage outputs) stays structured, and a driver reads the schema its
+rule owns instead of revalidating an argument grammar. A driver that invokes another driver does the same:
+the image layer driver writes an install spec for the package installer.
+
+Three exceptions are deliberate. The planner keeps its `solve`/`make-cache` verb on the command line, since
+each verb has its own spec schema. Both it and the snapshot driver keep `--out` there too: their `[resolve]`
+and `[snapshot]` run targets let a caller name the file to write, and one calling convention per driver
+beats splitting the destination by verb. The RPM payload decompressor keeps its two positional paths: it is
+declared once per package in a repository pool, where a spec file per package would double that part of the
+graph for a driver that has no configuration at all.
 
 ### Store image layers as deltas
 
