@@ -20,12 +20,6 @@ import finalize
 UKIFY = "/usr/lib/systemd/ukify"
 
 
-# EFI architecture, stub name, and systemd architecture (as in systemd's %a specifier).
-_ARCH = {
-    "x86_64": ("x64", "linuxx64.efi.stub", "x86-64"),
-}
-
-
 def _kvers(tree: Path) -> list[str]:
     modules = tree / "usr/lib/modules"
     kvers = sorted(p.name for p in modules.iterdir() if (p / "vmlinuz").exists()) if modules.is_dir() else []
@@ -70,7 +64,10 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument("--root-hash", help="file containing a generated verity root hash")
     p.add_argument("--root-hash-kind", choices=("root", "usr"))
-    p.add_argument("--arch", required=True, choices=tuple(_ARCH))
+    p.add_argument("--efi-arch", required=True, help="EFI architecture as understood by ukify, e.g. x64")
+    p.add_argument(
+        "--systemd-arch", required=True, help="systemd architecture spelling in the UKI name, e.g. x86-64"
+    )
     p.add_argument("--image-id", required=True, help="name the UKI <image-id>_<version>_<arch>.efi")
     p.add_argument("--version", required=True, help="image version in the UKI name")
     args = p.parse_args(argv)
@@ -101,8 +98,7 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(
                 "uki: the image ships no /usr/lib/os-release (ukify needs it) — install a release package"
             )
-        efi_arch, stub_name, systemd_arch = _ARCH[args.arch]
-        stub = tree / "usr/lib/systemd/boot/efi" / stub_name
+        stub = tree / "usr/lib/systemd/boot/efi" / f"linux{args.efi_arch}.efi.stub"
         if not stub.exists():
             raise SystemExit("uki: the image ships no systemd-boot stub — install systemd-boot-unsigned")
 
@@ -117,7 +113,7 @@ def main(argv: list[str] | None = None) -> None:
         # Each profile becomes a small PE of .profile and .cmdline sections, joined into every
         # UKI below; the profile arguments extend the shared base cmdline.
         profile_pes = []
-        addon_stub = tree / "usr/lib/systemd/boot/efi" / f"addon{efi_arch}.efi.stub"
+        addon_stub = tree / "usr/lib/systemd/boot/efi" / f"addon{args.efi_arch}.efi.stub"
         if args.profile and not addon_stub.exists():
             raise SystemExit("uki: the image ships no addon stub — install systemd-boot-unsigned")
         for value in args.profile:
@@ -132,7 +128,7 @@ def main(argv: list[str] | None = None) -> None:
                 "--profile", f"@{section}",
                 "--cmdline", f"@{profile_cmdline}",
                 "--stub", str(addon_stub),
-                "--efi-arch", efi_arch,
+                "--efi-arch", args.efi_arch,
                 "--output", str(pe),
             ]  # fmt: skip
             subprocess.run(cmd, check=True)
@@ -146,7 +142,7 @@ def main(argv: list[str] | None = None) -> None:
             exclude=(f"{prefix}/vmlinuz*", f"{prefix}/vmlinux*", f"{prefix}/System.map"),
         )  # fmt: skip
 
-        output = out / f"{args.image_id}_{args.version}_{systemd_arch}.efi"
+        output = out / f"{args.image_id}_{args.version}_{args.systemd_arch}.efi"
         cmd = [UKIFY, "build", "--linux", str(tree / prefix / "vmlinuz")]
         for initrd in [*initrds, modules]:
             cmd += ["--initrd", str(initrd)]
@@ -156,11 +152,11 @@ def main(argv: list[str] | None = None) -> None:
             "--os-release", f"@{os_release}",
             "--uname", kver,
             "--stub", str(stub),
-            "--efi-arch", efi_arch,
+            "--efi-arch", args.efi_arch,
             "--output", str(output),
         ]  # fmt: skip
         subprocess.run(cmd, check=True)
-    print(f"uki: built {output.name} (arch={args.arch}) -> {out}", file=sys.stderr)
+    print(f"uki: built {output.name} -> {out}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,11 @@ load(
     "run",
 )
 
+# Each architecture's EFI spelling (ukify's --efi-arch, which also names the boot stubs) and
+# systemd spelling (systemd's %a specifier), which names boot artifacts. The uki driver takes both
+# on its command line, so this table is the single source; extend it to enable more architectures.
+ARCHES = {"x86_64": struct(efi = "x64", systemd = "x86-64")}
+
 def install_systemd_boot() -> list[LayerOperation]:
     """Return operations that install systemd-boot into the image ESP staging paths."""
     return [
@@ -60,11 +65,14 @@ def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
     image = ctx.attrs.image[ImageInfo]
     out = ctx.actions.declare_output("ukis", dir = True)
     cmd = terminal_image_command(image, ctx.attrs._driver)
+    arch = ARCHES[ctx.attrs.arch]
     cmd.add(
         "--out",
         out.as_output(),
-        "--arch",
-        ctx.attrs.arch,
+        "--efi-arch",
+        arch.efi,
+        "--systemd-arch",
+        arch.systemd,
     )
     image_id = ctx.attrs.image_id if ctx.attrs.image_id != None else ctx.label.name
     version = ctx.attrs.version if ctx.attrs.version != None else "0"
@@ -103,7 +111,7 @@ _uki = rule(
             default = [],
             doc = "serialized alternative boot profiles",
         ),
-        "arch": attrs.enum(["x86_64"], default = "x86_64"),
+        "arch": attrs.enum(ARCHES.keys(), default = "x86_64"),
         "image_id": attrs.option(
             attrs.string(),
             default = None,
