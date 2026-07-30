@@ -8,6 +8,17 @@ python_bootstrap_binary(
     deps = ["//:specs"],
 )
 
+# Runs inside the engine: the source tree and its vendored crates in, the declared binaries out.
+python_bootstrap_binary(
+    name = "build",
+    main = "build.py",
+    visibility = ["PUBLIC"],
+    deps = [
+        "//:specs",
+        "//:util",
+    ],
+)
+
 # Driver and lock-reader sources for the unit-test tree (tine//tests:unit-test).
 export_file(
     name = "lock-src",
@@ -18,5 +29,11 @@ export_file(
 export_file(
     name = "vendor-src",
     src = "vendor.py",
+    visibility = ["tine//tests:unit-test"],
+)
+
+export_file(
+    name = "build-src",
+    src = "build.py",
     visibility = ["tine//tests:unit-test"],
 )

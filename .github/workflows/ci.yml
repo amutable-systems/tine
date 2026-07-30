@@ -59,6 +59,13 @@ jobs:
       - name: Boot-test boot-demo
         run: tools/buck run //examples/image:boot-demo-vm-smoke
 
+      # Rust build and crates SBOM
+      - name: Build a Rust project from source
+        run: tools/buck build '//examples/image-rust-project:demo[sbom][cyclonedx]' --out sbom.cdx.json
+
+      - name: Check the crate graph reaches the SBOM
+        run: grep -q 'pkg:cargo/serde_json@' sbom.cdx.json
+
       - name: Build Secure Boot image
         run: tools/buck build //examples/image-secureboot:image
 
