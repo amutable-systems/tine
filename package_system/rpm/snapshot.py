@@ -9,24 +9,19 @@ import bz2
 import compression.zstd
 import gzip
 import hashlib
-import http.client
 import json
 import lzma
 import string
 import sys
 import tempfile
-import time
-import urllib.error
-import urllib.request
 import xml.etree.ElementTree as ET
-from collections.abc import Callable
 from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
 from typing import Protocol, TypedDict
 from urllib.parse import unquote, urlsplit
 
 import specs
-from util import atomic_text_writer
+from util import atomic_text_writer, urlopen, with_retries
 
 _REPOMD_NS = "http://linux.duke.edu/metadata/repo"
 _PRIMARY_NS = "http://linux.duke.edu/metadata/common"
@@ -35,6 +30,7 @@ _XML_NS = "http://www.w3.org/XML/1998/namespace"
 _REQUIRED_STREAMS = ("primary", "filelists")
 _OPTIONAL_STREAMS = ("group",)
 _KEPT_STREAMS = frozenset(_REQUIRED_STREAMS + _OPTIONAL_STREAMS)
+_AGENT = "tine-snapshot"
 
 
 class PackageEntry(TypedDict):
@@ -62,31 +58,6 @@ class Spec(TypedDict):
 
 class BinaryReader(Protocol):
     def read(self, size: int = -1, /) -> bytes: ...
-
-
-def _urlopen(url: str) -> http.client.HTTPResponse:
-    # CDN bot filters (e.g. Cloudflare's) reject Python's default Python-urllib agent.
-    return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "tine-snapshot"}))
-
-
-_TRANSIENT_HTTP_STATUS = frozenset((408, 429, 500, 502, 503, 504))
-_FETCH_ATTEMPTS = 4
-
-
-def _with_retries[T](what: str, operation: Callable[[], T]) -> T:
-    """Run one network operation, retrying transient connection failures and HTTP errors."""
-    for attempt in range(1, _FETCH_ATTEMPTS + 1):
-        try:
-            return operation()
-        except (urllib.error.URLError, ConnectionError, TimeoutError) as error:
-            permanent = (
-                isinstance(error, urllib.error.HTTPError) and error.code not in _TRANSIENT_HTTP_STATUS
-            )
-            if permanent or attempt == _FETCH_ATTEMPTS:
-                raise
-            print(f"{what}: {error}; retrying…", file=sys.stderr)
-            time.sleep(2**attempt)
-    raise AssertionError("unreachable")
 
 
 def _relative_href(rid: str, what: str, href: str | None) -> str:
@@ -208,7 +179,7 @@ def _load_package_index(rid: str, stream: RepositoryStream) -> dict[str, Package
             compressed.truncate()
             digest = hashlib.sha256()
             total = 0
-            with _urlopen(str(stream["url"])) as response:
+            with urlopen(str(stream["url"]), agent=_AGENT) as response:
                 while chunk := response.read(1024 * 1024):
                     total += len(chunk)
                     # Stop before writing unbounded data from a stale or malicious endpoint.
@@ -225,7 +196,7 @@ def _load_package_index(rid: str, stream: RepositoryStream) -> dict[str, Package
             if digest.hexdigest() != stream["sha256"]:
                 raise SystemExit(f"{rid}: primary stream checksum does not match repomd")
 
-        _with_retries(f"{rid}: {stream['out']}", download)
+        with_retries(f"{rid}: {stream['out']}", download)
 
         compressed.seek(0)
         magic = compressed.read(6)
@@ -282,10 +253,10 @@ def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
     base = baseurl.rstrip("/") + "/"
 
     def download_repomd() -> bytes:
-        with _urlopen(base + "repodata/repomd.xml") as f:
+        with urlopen(base + "repodata/repomd.xml", agent=_AGENT) as f:
             return f.read()
 
-    repomd = _with_retries(f"{rid}: repomd.xml", download_repomd)
+    repomd = with_retries(f"{rid}: repomd.xml", download_repomd)
 
     ET.register_namespace("", _REPOMD_NS)  # Preserve the default namespace.
     root = ET.fromstring(repomd)

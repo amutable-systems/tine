@@ -2,12 +2,16 @@
 
 import errno
 import fcntl
+import http.client
 import os
 import shutil
 import stat
 import sys
 import tempfile
-from collections.abc import Iterator
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TextIO, cast
@@ -15,6 +19,33 @@ from typing import TextIO, cast
 # Fall back only when the filesystem does not support cloning or linking.
 _CLONE_FALLBACK_ERRNOS = frozenset({errno.ENOTTY, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV})
 _LINK_FALLBACK_ERRNOS = frozenset({errno.EMLINK, errno.EOPNOTSUPP, errno.EXDEV})
+
+_TRANSIENT_HTTP_STATUS = frozenset((408, 429, 500, 502, 503, 504))
+_FETCH_ATTEMPTS = 4
+
+
+def urlopen(url: str, *, agent: str) -> http.client.HTTPResponse:
+    """Open one URL, naming the tool that asks.
+
+    CDN bot filters (e.g. Cloudflare's) reject Python's default Python-urllib agent.
+    """
+    return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": agent}))
+
+
+def with_retries[T](what: str, operation: Callable[[], T]) -> T:
+    """Run one network operation, retrying transient connection failures and HTTP errors."""
+    for attempt in range(1, _FETCH_ATTEMPTS + 1):
+        try:
+            return operation()
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as error:
+            permanent = (
+                isinstance(error, urllib.error.HTTPError) and error.code not in _TRANSIENT_HTTP_STATUS
+            )
+            if permanent or attempt == _FETCH_ATTEMPTS:
+                raise
+            print(f"{what}: {error}; retrying…", file=sys.stderr)
+            time.sleep(2**attempt)
+    raise AssertionError("unreachable")
 
 
 def terminal_is_dumb() -> bool:

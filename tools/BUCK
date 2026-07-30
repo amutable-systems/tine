@@ -63,6 +63,7 @@ python_bootstrap_binary(
 python_bootstrap_binary(
     name = "catalog",
     main = "catalog.py",
+    deps = ["//:util"],
 )
 
 python_bootstrap_binary(
