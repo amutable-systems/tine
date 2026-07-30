@@ -23,8 +23,9 @@ target_platform_detector_spec = target:tine//...->prelude//platforms:default
 execution_platforms = prelude//platforms:default
 
 [project]
-# VCS state must not invalidate Buck's file watcher.
-ignore = .git, .jj, **/.git, **/.jj, **/buck-out
+# VCS state and local build trees must not invalidate Buck's file watcher. `**/target` covers any
+# directory of that name, the case that motivates it being a cargo build run by hand in a checkout.
+ignore = .git, .jj, **/.git, **/.jj, **/buck-out, **/target
 
 [buck2]
 materializations = deferred

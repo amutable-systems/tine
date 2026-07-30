@@ -6,6 +6,9 @@
 /.buckconfig.local
 .claude/settings.local.json
 
+# Build output of a cargo build run by hand inside a checked-out Rust project
+target/
+
 # Python tooling caches (ruff/ty pinned in tools/)
 .ruff_cache/
 .ty_cache/

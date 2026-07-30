@@ -1,0 +1,7 @@
+[package]
+name = "nodeps"
+version = "0.1.0"
+edition = "2024"
+
+# No dependencies at all, and therefore no Cargo.lock to commit: cargo would refuse to write one
+# under --locked, and there would be nothing in it to pin.

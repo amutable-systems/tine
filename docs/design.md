@@ -43,6 +43,7 @@ tine//engine/             engine bootstrap and sandbox command construction
 tine//rootfs/             bind/overlay mounting and stored-delta translation
 tine//image/              layers, boot artifacts, composition macros, and VM runners
 tine//image_format/       archive, directory, and raw-disk output rules and drivers
+tine//cargo/              vendored crate trees and offline Rust source builds
 tine//catalog/            default repositories, locks, releases, package managers, and buildroots
 tine//tools/              pinned development and catalog-refresh commands
 ```
@@ -365,6 +366,43 @@ discarded; failed scratch remains available for diagnosis.
 packages use one native package system and remains an engine-independent declaration. The consuming package
 manager materializes deterministic repodata with its own engine; anonymous materializations with the same
 engine, package system, and ordered package directories share one action.
+
+### Rust source builds
+
+A consuming repository can build a Rust project it has checked out instead of packaging it first.
+`cargo_package()` takes the project's files as ordinary sources, so a clone needs nothing added to it, and
+the single `Cargo.lock` among them identifies the workspace root; the same lock, additionally passed as
+parse-time loaded data, declares what the build fetches. A project that resolves nothing carries
+no lock, because cargo will not create one under `--locked` and there would be nothing in it to pin; its
+sole manifest identifies the root, `--locked` is dropped, and the empty vendored source plus the unshared
+network are what keep the build from resolving anything. The declaration contract is in
+[cargo.md](cargo.md).
+
+The loaded lock declares every download at parse time. A lock entry's `checksum` is the SHA-256 of its
+crates.io tarball and `static.crates.io` serves that tarball under a URL derived from name and version, so
+each registry crate becomes one hash-verified `download_file`, the same treatment as repository packages,
+and deriving them needs no network or pin file; a lock older than version 3 records no checksums and is
+rejected. Sources other than crates.io are rejected with the package named.
+
+A build is then two actions:
+
+1. `cargo_vendor` unpacks the downloaded crates into `vendor/<name>-<version>/` with the
+   `.cargo-checksum.json` cargo expects.
+2. `cargo_build` runs cargo offline in the consumer's engine with the network unshared, against the
+   vendored tree alone. A cargo configuration file inside the checkout would outrank the one the driver
+   writes, redirecting its sources, so the build refuses it. The declared binaries come out of
+   `target/release`.
+
+A vendored directory is not cargo's only offline mode (a pre-populated `cargo fetch` cache builds offline
+too), but it is the only one buck can assemble from individually hash-verified downloads, and the cache
+layout is cargo's private business. `--locked` then makes the build fail rather than resolve differently
+from the committed lock the downloads were derived from. `cargo-auditable` embeds the crate graph in each
+binary, which syft catalogs as `pkg:cargo` components, so a from-source binary reports its dependencies in
+the image SBOM the way an installed package does.
+
+The unit of caching is the project: one action rebuilds every crate whenever any source changes. Splitting
+it would require the crate dependency graph rather than just the lock, and is deliberately not attempted
+until iteration speed demands it.
 
 ### Filesystem layer representation
 
@@ -813,6 +851,13 @@ These are properties of the implementation today, not merely ideas for future op
   an upstream intermediate silently resolves upstream, and there is still no per-package source/prebuilt
   choice under one shared version pin.
 - RPM builds use `--nocheck`; package test policy is not implemented.
+- Rust source builds cover crates.io dependencies only. A git dependency carries no checksum in
+  `Cargo.lock`, so it cannot be pinned from the lock and is rejected. One `cargo_package` is also one cache
+  unit: any source change rebuilds its whole crate graph.
+- `cargo-auditable` is a pinned upstream release binary rather than a source-built one, so the Rust build
+  path is not itself part of the source-trust chain.
+- Crate downloads carry no recorded size, so Buck learns it from an HTTP HEAD whenever a download action
+  executes. A cold daemon therefore needs the network even when every crate is already cached.
 - Debuginfo/debugsource outputs are not first-class declared sub-targets.
 - Upstream package signatures are not verified. SHA-256 pinning gives integrity after refresh, not
   authenticity at refresh time.
@@ -896,8 +941,9 @@ unnecessary unless real composition requirements appear.
 - Add leaf-selected OS/package-manager transitions when consumers need one target graph to build against
   multiple releases. The transition must select existing provider boundaries rather than reintroduce a
   monolithic distribution object.
-- Add native language toolchains backed by package/image roots only when in-repository C/C++/Go/Rust builds
-  need them.
+- Extend Rust source builds to git dependencies, which need a committed pin of their own, and replace the
+  pinned `cargo-auditable` binary with a source-built one once that no longer depends on itself existing.
+  Add C/C++/Go equivalents only when in-repository builds need them.
 - Define the upstream-update workflow: import Fedora changes, rebase local patches, refresh snapshots and
   generated metadata, and verify that version skew has not invalidated source/upstream interchangeability.
 
@@ -910,6 +956,7 @@ Useful implementation entry points:
   `package_system/rpm/{snapshot,plan,install,pkgdb,createrepo,build,extract,decompress}.py`
 - `engine/{build,runtime}.bzl`, `engine/sandbox.py`, and `rootfs/rootfs.py`
 - `image/{image,compose,defs,sign,vm}.bzl` and `image_format/{archive,boot,disk,sysext,uki}.bzl`
+- `cargo/{rules,lock,vendor}.bzl` and `cargo/{vendor,build}.py`
 - `tools/catalog.py` and `catalog/BUCK`
 - the generated `packages/*/*/BUCK` and `package_system/rpm/generated.bzl`
 

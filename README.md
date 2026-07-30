@@ -106,6 +106,8 @@ User guides:
 
 - [Building images](docs/images.md): host requirements, declaring images and layers, output formats, the
   VM runner
+- [Building Rust projects](docs/cargo.md): building a checked-out Rust project offline, with its
+  crate graph in the executables and image SBOM
 - [Maintaining packages](docs/importer.md): importing and updating packages from upstream distributions,
   local modifications, branch curation
 - [Development boxes](docs/box.md): pinned interactive development environments

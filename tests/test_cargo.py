@@ -1,4 +1,4 @@
-"""Tests for the Cargo.lock reader and the vendored crate tree.
+"""Tests for the Cargo.lock reader, the vendored crate tree, and the build driver's checks.
 
     python3 -m unittest discover -s tine/tests -t tine -v
 
@@ -46,10 +46,30 @@ def _load(name: str) -> ModuleType:
 
 
 lock_bzl = _load_bzl("lock")
+build = _load("build")
 vendor = _load("vendor")
 
 ANYHOW_SHA = "a" * 64
 LIBC_SHA = "b" * 64
+
+MANIFEST = """\
+[package]
+name = "hello"
+version = "0.1.0"
+
+[dependencies]
+libc = "0.2"
+"""
+
+DEPLESS_MANIFEST = """\
+[package]
+name = "console-info-generator"
+version = "0.1.0"
+
+[[bin]]
+name = "console-info-generator"
+path = "src/main.rs"
+"""
 
 LOCK = f"""\
 version = 4
@@ -124,6 +144,44 @@ class TestCrateDownloads(unittest.TestCase):
     def test_rejects_a_value_that_is_not_a_lock(self) -> None:
         with self.assertRaisesRegex(StarlarkFailure, r"no \[\[package\]\] list"):
             lock_bzl.crate_downloads("hello", {"value": "something else"})
+
+
+class TestBuild(unittest.TestCase):
+    def _workspace(self, manifest: str) -> Path:
+        tmp = tempfile.TemporaryDirectory(prefix="cargo-build-test.")
+        self.addCleanup(tmp.cleanup)
+        (Path(tmp.name) / "Cargo.toml").write_text(manifest, encoding="utf-8")
+        return Path(tmp.name)
+
+    def test_a_manifest_with_nothing_to_resolve_needs_no_lock(self) -> None:
+        build._reject_unlocked_dependencies(self._workspace(DEPLESS_MANIFEST))
+
+    def test_rejects_a_missing_lock_when_dependencies_are_declared(self) -> None:
+        with self.assertRaises(SystemExit) as caught:
+            build._reject_unlocked_dependencies(self._workspace(MANIFEST))
+        self.assertEqual(
+            str(caught.exception),
+            "cargo-build: [dependencies] without a Cargo.lock; commit the lock cargo writes",
+        )
+
+    def test_cargo_config(self) -> None:
+        self.assertEqual(
+            build._cargo_config(Path("/vendor")),
+            '[source.crates-io]\nreplace-with = "vendored-sources"\n'
+            "\n"
+            '[source.vendored-sources]\ndirectory = "/vendor"\n',
+        )
+
+    def test_rejects_a_binary_the_build_did_not_produce(self) -> None:
+        built = self._workspace(DEPLESS_MANIFEST)
+        (built / "hello-cli").write_text("elf", encoding="utf-8")
+        (built / "hello-cli").chmod(0o755)
+        with self.assertRaises(SystemExit) as caught:
+            build._take_binaries(built, {"hello": str(built / "out")})
+        self.assertEqual(
+            str(caught.exception),
+            "cargo-build: no hello in target/release; the build produced: hello-cli",
+        )
 
 
 class TestVendor(unittest.TestCase):
