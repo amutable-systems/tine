@@ -22,7 +22,7 @@ under `packages/` (built as `//packages/...`).
 
 ## Commands
 
-The pinned `buck` lives in `tools/`,; invoke it by path. Everything else (python3, ruff, ty, buildifier)
+The pinned `buck` lives in `tools/`,; invoke it by path. Everything else (python3, ruff, ty, starlark_fmt)
 is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck run` targets.
 
 - **buck (whole project):** `buck build //...`.
@@ -40,6 +40,16 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
 - **Inspect a failed action's stderr:** `tools/buck log what-ran --failed --show-std-err` prints the
   full stderr of the actions that failed in the last build — buck truncates it in the build output,
   but this recovers it in full (no need to re-run or redirect anything).
+
+## Starlark formatting
+
+`starlark_fmt` (pinned alongside buck2, whose fork publishes it) owns the layout of every `.bzl` and
+`BUCK` file; it wraps at 160 columns and reflows anything a magic trailing comma does not pin open.
+
+- To keep a signature or call broken across lines, leave a trailing comma after its last argument.
+- It sorts dict keys unconditionally. When a dict's key order is a contract (`disk.bzl:partition`
+  feeds partition UUIDs), mark it `# @unsorted-dict-items`.
+- It drops load symbols it cannot see used; annotate type-only imports `# @unused`.
 
 ## Architecture
 

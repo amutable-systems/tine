@@ -44,8 +44,8 @@ def _starlark_srcs(buck: str) -> list[Path]:
     )
     # Keep the tine cell's own files, plus those of cells nested inside it (standalone, tine is the
     # root cell and owns a nested `toolchains`). Reject by owning cell rather than by path prefix,
-    # because nested `none`/`prelude` are not on disk and buildifier skips unreadable files without
-    # failing, so a prefix test silently checks nothing.
+    # because nested `none`/`prelude` are not on disk, so a prefix test would hand the formatter
+    # paths that do not exist.
     cell_roots = sorted(
         ((Path(path), name) for name, path in cells.items()),
         key=lambda item: len(item[0].parts),
@@ -61,6 +61,19 @@ def _starlark_srcs(buck: str) -> list[Path]:
         for f in files
         if f.is_relative_to(tine) and owner(f) not in (None, "none", "prelude") and f.suffix != ".json"
     ]
+
+
+def _starlark_fmt(args: argparse.Namespace, *arguments: str | Path) -> list[str | Path]:
+    return [args.starlark_fmt, "--config", args.starlark_fmt_config, *arguments]
+
+
+def _fmt_diff(args: argparse.Namespace, src: Path) -> str:
+    """The rewrite starlark_fmt would apply to one file, empty when it is already formatted."""
+    proc = subprocess.run(_starlark_fmt(args, "diff", src), capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(proc.stderr, end="", file=sys.stderr, flush=True)
+        raise SystemExit(proc.returncode)
+    return proc.stdout
 
 
 def _lint(args: argparse.Namespace) -> None:
@@ -81,17 +94,11 @@ def _lint(args: argparse.Namespace) -> None:
             Path(args.engine) / "usr",
         ]
     )
-    _bold("buildifier")
-    # Do not require repetitive argument and return sections in docstrings.
-    _run(
-        [
-            args.buildifier,
-            "-mode=check",
-            "-lint=warn",
-            "-warnings=-function-docstring-args,-function-docstring-return",
-            *srcs,
-        ]
-    )
+    _bold("starlark_fmt")
+    # starlark_fmt has no check mode, so diff each file and fail on the first rewrite it would make.
+    if diffs := [diff for src in srcs if (diff := _fmt_diff(args, src))]:
+        print("".join(diffs), end="")
+        raise SystemExit(1)
     # Pass the files rather than the cell directory: standalone, the tine cell is the project root,
     # which Buck normalizes to an empty path and rejects.
     _bold("starlark lint")
@@ -106,8 +113,8 @@ def _fmt(args: argparse.Namespace) -> None:
     _bold("ruff")
     _run([args.ruff, "format", cell])
     _run([args.ruff, "check", "--fix", cell])
-    _bold("buildifier")
-    _run([args.buildifier, *_starlark_srcs(args.buck)])
+    _bold("starlark_fmt")
+    _run(_starlark_fmt(args, "fmt", *_starlark_srcs(args.buck)))
 
 
 def _write_dot(path: Path, intra: dict[str, list[str]], rev: dict[str, list[str]]) -> None:
@@ -180,18 +187,20 @@ def main(argv: list[str] | None = None) -> None:
     common.add_argument(
         "--buck", default="buck", help="buck binary to nest (aliases pass the pinned one; default: PATH)"
     )
+    starlark = argparse.ArgumentParser(add_help=False)
+    starlark.add_argument("--starlark-fmt", required=True)
+    starlark.add_argument("--starlark-fmt-config", required=True, help="starlark_fmt --config tables")
     p = argparse.ArgumentParser(prog="dev")
     sub = p.add_subparsers(dest="command", required=True)
 
-    lint = sub.add_parser("lint", parents=[common], help="run the source lints (fmt fixes)")
-    for tool in ("buildifier", "ruff", "ty"):
+    lint = sub.add_parser("lint", parents=[common, starlark], help="run the source lints (fmt fixes)")
+    for tool in ("ruff", "ty"):
         lint.add_argument(f"--{tool}", required=True)
     lint.add_argument("--engine", required=True, help="engine root for ty --python")
     lint.set_defaults(func=_lint)
 
-    fmt = sub.add_parser("fmt", parents=[common], help="auto-format and auto-fix lints")
-    for tool in ("buildifier", "ruff"):
-        fmt.add_argument(f"--{tool}", required=True)
+    fmt = sub.add_parser("fmt", parents=[common, starlark], help="auto-format and auto-fix lints")
+    fmt.add_argument("--ruff", required=True)
     fmt.set_defaults(func=_fmt)
 
     scc = sub.add_parser("scc", parents=[common], help="analyze a branch's BuildRequires cycles")

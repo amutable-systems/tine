@@ -10,9 +10,17 @@ _CPU_SETTING = {
 }
 
 def _tool_impl(ctx: AnalysisContext) -> list[Provider]:
+    src = ctx.attrs.src
+    if ctx.attrs.unzstd != None:
+        out = ctx.actions.declare_output(ctx.label.name)
+        ctx.actions.run(
+            cmd_args(ctx.attrs.unzstd[RunInfo], src, out.as_output()),
+            category = "unzstd",
+        )
+        src = out
     return [
-        DefaultInfo(default_output = ctx.attrs.src),
-        RunInfo(args = cmd_args(ctx.attrs.src, ctx.attrs.args)),
+        DefaultInfo(default_output = src),
+        RunInfo(args = cmd_args(src, ctx.attrs.args)),
     ]
 
 _tool = rule(
@@ -20,20 +28,26 @@ _tool = rule(
     attrs = {
         "args": attrs.list(attrs.string(), default = []),
         "src": attrs.source(),
+        # Only set for compressed downloads: an unconditional dep would cycle, since the decompressor
+        # is a python_bootstrap_binary and the bootstrap interpreter is itself an http_tool.
+        "unzstd": attrs.option(attrs.exec_dep(providers = [RunInfo]), default = None),
     },
 )
 
-# buildifier: disable=function-docstring-args
 def http_tool(
-        name: str,
-        spec: dict,
-        args: list[str] | None = None,
-        path: str | None = None,
-        visibility: list[str] | None = None) -> None:
+    name: str,
+    spec: dict,
+    args: list[str] | None = None,
+    path: str | None = None,
+    compressed: bool = False,
+    visibility: list[str] | None = None,
+) -> None:
     """Pin a raw binary or archive member for each supported CPU.
 
     `spec` is the tools.json entry: a `repository`, a `release` tag, and per-CPU `artifact` + `sha256`
-    (+ optional `strip_prefix`). The download URL is derived from these.
+    (+ optional `strip_prefix`). The download URL is derived from these. `path` selects a member of an
+    archive; `compressed` decompresses a bare zstd-compressed binary, which Buck's http rules cannot
+    unpack themselves.
     """
     base = "https://github.com/{}/releases/download/{}".format(spec["repository"], spec["release"])
     platforms = spec["platforms"]
@@ -56,4 +70,10 @@ def http_tool(
             urls = urls,
         )
         src = ":{}-download[{}]".format(name, path)
-    _tool(name = name, args = args or [], src = src, visibility = visibility)
+    _tool(
+        name = name,
+        args = args or [],
+        src = src,
+        unzstd = "tine//tools:unzstd" if compressed else None,
+        visibility = visibility,
+    )

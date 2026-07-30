@@ -13,23 +13,21 @@ load(
     "terminal_image_command",
 )
 
-# buildifier: disable=name-conventions  (type alias, conventionally UpperCamelCase)
 Partition = dict[str, typing.Any]
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def partition(
-        type: str,
-        name: str | None = None,
-        label: str | None = None,
-        filesystem: str | None = None,
-        copy_files: list[str] = [],
-        size_min: str | int | None = None,
-        size_max: str | int | None = None,
-        minimize: str | None = None,
-        compression: str | None = None,
-        verity: str | None = None,
-        verity_match_key: str | None = None) -> Partition:
+    type: str,
+    name: str | None = None,
+    label: str | None = None,
+    filesystem: str | None = None,
+    copy_files: list[str] = [],
+    size_min: str | int | None = None,
+    size_max: str | int | None = None,
+    minimize: str | None = None,
+    compression: str | None = None,
+    verity: str | None = None,
+    verity_match_key: str | None = None,
+) -> Partition:
     """Describe one partition without exposing a repart definition file."""
     if not type:
         fail("partition: type cannot be empty")
@@ -50,6 +48,7 @@ def partition(
 
     # The driver derives partition UUIDs from these bytes, so the key order is part of the
     # contract: changing it re-identifies every partition of every unchanged image.
+    # @unsorted-dict-items
     return {
         "name": name,
         "type": type,
@@ -109,24 +108,21 @@ def _usr_verity_partitions(signed: bool) -> list[Partition]:
         ),
     ]
     if signed:
-        definitions.append(partition(
-            name = "usr-verity-sig",
-            type = "usr-verity-sig",
-            label = label + "_verity_sig",
-            verity = "signature",
-            verity_match_key = "usr",
-        ))
+        definitions.append(
+            partition(
+                name = "usr-verity-sig",
+                type = "usr-verity-sig",
+                label = label + "_verity_sig",
+                verity = "signature",
+                verity_match_key = "usr",
+            )
+        )
     return definitions + [_ESP_PARTITION]
 
 DEFAULT_USR_VERITY_PARTITIONS = _usr_verity_partitions(signed = False)
 DEFAULT_SIGNED_USR_VERITY_PARTITIONS = _usr_verity_partitions(signed = True)
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
-def format_partition_labels(
-        definitions: list[Partition],
-        image_id: str,
-        version: str) -> list[Partition]:
+def format_partition_labels(definitions: list[Partition], image_id: str, version: str) -> list[Partition]:
     """Render {image_id} and {version} placeholders in partition labels."""
     formatted = []
     for definition in definitions:
@@ -134,26 +130,32 @@ def format_partition_labels(
         if label == None or "{" not in label:
             formatted.append(definition)
             continue
-        formatted.append(definition | {
-            "label": label.format(image_id = image_id, version = version),
-        })
+        formatted.append(
+            definition
+            | {
+                "label": label.format(image_id = image_id, version = version),
+            }
+        )
 
     # Rendering can only lengthen a label, so re-check GPT's limit on the final value.
     for definition in formatted:
         if definition["label"] != None and len(definition["label"]) > 36:
-            fail("partition: label {!r} exceeds GPT's limit of 36 characters".format(
-                definition["label"],
-            ))
+            fail(
+                "partition: label {!r} exceeds GPT's limit of 36 characters".format(
+                    definition["label"],
+                )
+            )
     return formatted
 
 def encode_definitions(
-        definitions: list[Partition],
-        *,
-        imports: bool,
-        disk: bool,
-        split: bool,
-        signed: bool,
-        rendered: bool = True) -> list[str]:
+    definitions: list[Partition],
+    *,
+    imports: bool,
+    disk: bool,
+    split: bool,
+    signed: bool,
+    rendered: bool = True,
+) -> list[str]:
     """Validate a partition layout and serialize it for an attribute.
 
     `rendered = False` accepts label placeholders for a caller that renders them itself.
@@ -198,7 +200,6 @@ RepartInfo = provider(
     },
 )
 
-# buildifier: disable=name-conventions  (record type, conventionally UpperCamelCase)
 RepartOutput = record(
     info = RepartInfo,
     outputs = list[Artifact],
@@ -228,22 +229,21 @@ def _partition_sub_targets(partitions: list[PartitionInfo]) -> dict[str, list[Pr
         for partition in partitions
     }
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def declare_repart(
-        ctx: AnalysisContext,
-        *,
-        image: ImageInfo,
-        definitions: list[str],
-        disk: bool = True,
-        split: bool = False,
-        imported: list[RepartInfo] = [],
-        imported_root_hash: RootHashInfo | None = None,
-        seed: str | None = None,
-        private_key: Artifact | None = None,
-        certificate: Artifact | None = None,
-        basename: str = "image",
-        identifier: str | None = None) -> RepartOutput:
+    ctx: AnalysisContext,
+    *,
+    image: ImageInfo,
+    definitions: list[str],
+    disk: bool = True,
+    split: bool = False,
+    imported: list[RepartInfo] = [],
+    imported_root_hash: RootHashInfo | None = None,
+    seed: str | None = None,
+    private_key: Artifact | None = None,
+    certificate: Artifact | None = None,
+    basename: str = "image",
+    identifier: str | None = None,
+) -> RepartOutput:
     """Declare repart actions from resolved image and partition providers."""
     decoded = [json.decode(value) for value in definitions]
     encode_definitions(
@@ -260,10 +260,7 @@ def declare_repart(
     for info in imported:
         imported_partitions.extend(info.partitions)
 
-    names = [definition["name"] for definition in decoded] + [
-        partition.definition["name"]
-        for partition in imported_partitions
-    ]
+    names = [definition["name"] for definition in decoded] + [partition.definition["name"] for partition in imported_partitions]
     if len(names) != len({name: True for name in names}):
         fail("repart: new and imported partition names must be unique")
 
@@ -299,11 +296,13 @@ def declare_repart(
                 "name": name,
             })
             outputs.append(blocks)
-            new_partitions.append(PartitionInfo(
-                definition = definition,
-                blocks = blocks,
-                metadata = metadata,
-            ))
+            new_partitions.append(
+                PartitionInfo(
+                    definition = definition,
+                    blocks = blocks,
+                    metadata = metadata,
+                )
+            )
 
     out = None
     if disk:
@@ -398,7 +397,8 @@ REPART_ATTRS = {
 
 _repart = rule(
     impl = _repart_impl,
-    attrs = REPART_ATTRS | {
+    attrs = REPART_ATTRS
+    | {
         "disk": attrs.bool(default = True, doc = "emit a composed raw disk image"),
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image used to populate new partitions"),
         "partitions": attrs.list(
@@ -407,19 +407,20 @@ _repart = rule(
             doc = "split repart targets whose partitions should be copied into the result",
         ),
         "split": attrs.bool(default = False, doc = "also emit independent artifacts for new partitions"),
-    } | IMAGE_TOOLS_ATTR,
+    }
+    | IMAGE_TOOLS_ATTR,
 )
 
-# buildifier: disable=function-docstring-args
 def repart(
-        name: str,
-        definitions: list[Partition],
-        partitions: list[str] = [],
-        disk: bool = True,
-        split: bool = False,
-        private_key: str | None = None,
-        certificate: str | None = None,
-        **kwargs) -> None:
+    name: str,
+    definitions: list[Partition],
+    partitions: list[str] = [],
+    disk: bool = True,
+    split: bool = False,
+    private_key: str | None = None,
+    certificate: str | None = None,
+    **kwargs,
+) -> None:
     """Create a disk, independent partitions, or both."""
     if (private_key == None) != (certificate == None):
         fail("repart: private_key and certificate must be specified together")
@@ -437,7 +438,7 @@ def repart(
         split = split,
         private_key = private_key,
         certificate = certificate,
-        **kwargs
+        **kwargs,
     )
 
 # The disk conversion output formats, doubling as each artifact's extension.
@@ -451,27 +452,30 @@ DiskConversionInfo = provider(
     },
 )
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def declare_disk_conversion(
-        ctx: AnalysisContext,
-        *,
-        disk: RepartInfo,
-        engine: Dependency,
-        format: str,
-        basename: str = "image",
-        identifier: str | None = None) -> DiskConversionInfo:
+    ctx: AnalysisContext,
+    *,
+    disk: RepartInfo,
+    engine: Dependency,
+    format: str,
+    basename: str = "image",
+    identifier: str | None = None,
+) -> DiskConversionInfo:
     """Declare a disk format conversion from a resolved raw disk provider."""
     if disk.disk == None:
         fail("disk_convert: RepartInfo does not contain a composed disk")
     out = declare_out(ctx, identifier, basename + "." + format)
     cmd = cmd_args(
         chroot_run(engine = engine[EngineInfo], exe = ctx.attrs._tools[ImageToolsInfo].convert),
-        spec_args(ctx, spec_path(identifier, "convert"), {
-            "format": format,
-            "input": disk.disk,
-            "out": out.as_output(),
-        }),
+        spec_args(
+            ctx,
+            spec_path(identifier, "convert"),
+            {
+                "format": format,
+                "input": disk.disk,
+                "out": out.as_output(),
+            },
+        ),
     )
     ctx.actions.run(cmd, category = "disk_convert", identifier = identifier or format)
     return DiskConversionInfo(format = format, image = out)
@@ -493,5 +497,6 @@ disk_convert = rule(
         "disk": attrs.dep(providers = [RepartInfo], doc = "the composed raw disk to re-encode"),
         "engine": attrs.dep(providers = [EngineInfo], doc = "execution environment supplying conversion tools"),
         "format": attrs.enum(DISK_FORMATS),
-    } | IMAGE_TOOLS_ATTR,
+    }
+    | IMAGE_TOOLS_ATTR,
 )

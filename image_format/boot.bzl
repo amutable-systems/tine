@@ -51,10 +51,7 @@ def _bootable_impl(ctx: AnalysisContext) -> list[Provider]:
     return [
         DefaultInfo(
             default_outputs = [artifacts["kernel"], artifacts["initrd"]],
-            sub_targets = {
-                kind: [DefaultInfo(default_output = artifacts[kind])]
-                for kind in artifacts
-            },
+            sub_targets = {kind: [DefaultInfo(default_output = artifacts[kind])] for kind in artifacts},
         ),
     ]
 
@@ -65,5 +62,6 @@ bootable = rule(
             providers = [ImageInfo],
             doc = "the completed logical image from which to select boot artifacts",
         ),
-    } | IMAGE_TOOLS_ATTR,
+    }
+    | IMAGE_TOOLS_ATTR,
 )

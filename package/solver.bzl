@@ -5,19 +5,18 @@ load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load(":repository.bzl", "ConfiguredPackageRepositoryInfo", "encode_repositories")
 load(":system.bzl", "PackageSystemInfo")
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def solve_command(
-        ctx: AnalysisContext,
-        engine: EngineInfo,
-        system: PackageSystemInfo,
-        repositories: list[ConfiguredPackageRepositoryInfo],
-        install: list[str],
-        arch: str,
-        output: OutputArtifact | None = None,
-        solver_caches: list[Artifact] = [],
-        lowers: list[Artifact] = [],
-        spec_name: str = "solve.spec.json") -> cmd_args:
+    ctx: AnalysisContext,
+    engine: EngineInfo,
+    system: PackageSystemInfo,
+    repositories: list[ConfiguredPackageRepositoryInfo],
+    install: list[str],
+    arch: str,
+    output: OutputArtifact | None = None,
+    solver_caches: list[Artifact] = [],
+    lowers: list[Artifact] = [],
+    spec_name: str = "solve.spec.json",
+) -> cmd_args:
     """Construct a package solve command for one configured solver context.
 
     The transaction destination stays on the command line: the same command is published as a
@@ -26,13 +25,17 @@ def solve_command(
     command = cmd_args(
         chroot_run(engine = engine, exe = system.plan),
         "solve",
-        spec_args(ctx, spec_name, {
-            "arch": arch,
-            "cache": solver_caches,
-            "install": install,
-            "lower": lowers,
-            "repositories": encode_repositories(repositories),
-        }),
+        spec_args(
+            ctx,
+            spec_name,
+            {
+                "arch": arch,
+                "cache": solver_caches,
+                "install": install,
+                "lower": lowers,
+                "repositories": encode_repositories(repositories),
+            },
+        ),
     )
     if output != None:
         command.add("--out", output)
@@ -52,10 +55,14 @@ def _solver_cache_impl(ctx: AnalysisContext) -> list[Provider]:
         cmd_args(
             chroot_run(engine = engine, exe = system.plan),
             "make-cache",
-            spec_args(ctx, "make-cache.spec.json", {
-                "arch": ctx.attrs.arch,
-                "repositories": encode_repositories([repository]),
-            }),
+            spec_args(
+                ctx,
+                "make-cache.spec.json",
+                {
+                    "arch": ctx.attrs.arch,
+                    "repositories": encode_repositories([repository]),
+                },
+            ),
             "--out",
             cache.as_output(),
         ),
@@ -81,18 +88,22 @@ _solver_cache = anon_rule(
 )
 
 def solver_cache(
-        ctx: AnalysisContext,
-        engine: Dependency,
-        package_system: Dependency,
-        repository: ConfiguredPackageRepositoryInfo,
-        arch: str) -> Artifact:
+    ctx: AnalysisContext,
+    engine: Dependency,
+    package_system: Dependency,
+    repository: ConfiguredPackageRepositoryInfo,
+    arch: str,
+) -> Artifact:
     """Reuse parsed repository metadata for an identical solver context."""
-    return ctx.actions.anon_target(_solver_cache, {
-        "arch": arch,
-        "baseurl": repository.baseurl,
-        "engine": engine,
-        "package_system": package_system,
-        "priority": repository.priority,
-        "repository_dir": repository.directory,
-        "repository_id": repository.id,
-    }).artifact("cache")
+    return ctx.actions.anon_target(
+        _solver_cache,
+        {
+            "arch": arch,
+            "baseurl": repository.baseurl,
+            "engine": engine,
+            "package_system": package_system,
+            "priority": repository.priority,
+            "repository_dir": repository.directory,
+            "repository_id": repository.id,
+        },
+    ).artifact("cache")

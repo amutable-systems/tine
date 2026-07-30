@@ -64,7 +64,7 @@ def _composed_image(ctx: AnalysisContext, **kwargs) -> ImageInfo:
         ops = ctx.attrs.ops,
         tmpfiles = ctx.attrs.tmpfiles,
         version = ctx.attrs.version,
-        **kwargs
+        **kwargs,
     )
 
 def _rootfs_archive_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -83,7 +83,9 @@ def _rootfs_archive_impl(ctx: AnalysisContext) -> list[Provider]:
 
 _rootfs_archive = rule(
     impl = _rootfs_archive_impl,
-    attrs = IMAGE_ATTRS | ARCHIVE_ATTRS | {
+    attrs = IMAGE_ATTRS
+    | ARCHIVE_ATTRS
+    | {
         "package_manager": attrs.dep(providers = [PackageManagerInfo]),
     },
 )
@@ -114,7 +116,9 @@ def _sysext_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
 _sysext_image = rule(
     impl = _sysext_image_impl,
-    attrs = IMAGE_ATTRS | SYSEXT_ATTRS | {
+    attrs = IMAGE_ATTRS
+    | SYSEXT_ATTRS
+    | {
         "base": attrs.option(attrs.dep(providers = [ImageInfo]), default = None),
         "package_manager": attrs.option(
             attrs.dep(providers = [PackageManagerInfo]),
@@ -142,9 +146,11 @@ def _esp_operations(ctx: AnalysisContext, ukis: Artifact) -> list[LayerOperation
     )
     for destination in sorted(ctx.attrs.esp_files):
         if not (destination.startswith("/boot/") or destination.startswith("/efi/")):
-            fail("bootable_disk_image: esp_files destination must be under /boot or /efi, got {!r}".format(
-                destination,
-            ))
+            fail(
+                "bootable_disk_image: esp_files destination must be under /boot or /efi, got {!r}".format(
+                    destination,
+                )
+            )
         operations.append(copy(ctx.attrs.esp_files[destination], destination))
     return operations
 
@@ -321,7 +327,9 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
 _bootable_disk_image = rule(
     impl = _bootable_disk_image_impl,
-    attrs = IMAGE_ATTRS | UKI_ATTRS | {
+    attrs = IMAGE_ATTRS
+    | UKI_ATTRS
+    | {
         "cmdline": attrs.list(
             attrs.string(),
             default = ["root=tmpfs", "mount.usr=dissect", "rw"],
@@ -337,10 +345,7 @@ _bootable_disk_image = rule(
         "initrd": attrs.option(
             attrs.dep(providers = [ImageInfo]),
             default = None,
-            doc = (
-                "logical image to archive and use as the initrd; " +
-                "defaults to the release initrd package set"
-            ),
+            doc = ("logical image to archive and use as the initrd; " + "defaults to the release initrd package set"),
         ),
         "package_manager": attrs.dep(providers = [PackageManagerInfo]),
         "verity_certificate": attrs.option(attrs.source(), default = None),
@@ -350,31 +355,23 @@ _bootable_disk_image = rule(
 
 def rootfs_archive(name: str, ops: list[LayerOperationTree] = [], **kwargs) -> None:
     """Build one logical image from operations and emit it as an archive."""
-    _rootfs_archive(
-        name = name,
-        ops = flatten_operations(ops),
-        **kwargs
-    )
+    _rootfs_archive(name = name, ops = flatten_operations(ops), **kwargs)
 
 def sysext_image(name: str, ops: list[LayerOperationTree] = [], **kwargs) -> None:
     """Build one logical image from operations and package it as a system-extension DDI."""
-    _sysext_image(
-        name = name,
-        ops = flatten_operations(ops),
-        **kwargs
-    )
+    _sysext_image(name = name, ops = flatten_operations(ops), **kwargs)
 
-# buildifier: disable=function-docstring-args
 def bootable_disk_image(
-        name: str,
-        definitions: list[Partition],
-        ops: list[LayerOperationTree] = [],
-        profiles: list[UkiProfile] = [],
-        verity_private_key: str | None = None,
-        verity_certificate: str | None = None,
-        secure_boot_private_key: str | None = None,
-        secure_boot_certificate: str | None = None,
-        **kwargs) -> None:
+    name: str,
+    definitions: list[Partition],
+    ops: list[LayerOperationTree] = [],
+    profiles: list[UkiProfile] = [],
+    verity_private_key: str | None = None,
+    verity_certificate: str | None = None,
+    secure_boot_private_key: str | None = None,
+    secure_boot_certificate: str | None = None,
+    **kwargs,
+) -> None:
     """Compose the default initrd, versioned UKIs, the ESP, and system partitions into a disk.
 
     With secure_boot_private_key/_certificate, the UKIs and systemd-boot are signed for Secure
@@ -402,5 +399,5 @@ def bootable_disk_image(
         secure_boot_private_key = secure_boot_private_key,
         verity_certificate = verity_certificate,
         verity_private_key = verity_private_key,
-        **kwargs
+        **kwargs,
     )

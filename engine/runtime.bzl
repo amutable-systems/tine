@@ -12,13 +12,12 @@ EngineInfo = provider(
     },
 )
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def chroot_run(
-        engine: EngineInfo,
-        exe: Dependency | str | None = None,
-        network: bool = False,
-        relaxed: bool = False) -> RunInfo:
+    engine: EngineInfo,
+    exe: Dependency | str | None = None,
+    network: bool = False,
+    relaxed: bool = False,
+) -> RunInfo:
     """Enter an engine, optionally running a command or interactive relaxed leaf."""
     run = cmd_args(
         engine.sandbox[RunInfo],

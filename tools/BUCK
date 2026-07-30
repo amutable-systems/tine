@@ -17,10 +17,18 @@ http_tool(
     visibility = ["PUBLIC"],
 )
 
-# Raw static binary, so no archive path is needed.
+# Starlark formatter, published as a bare zstd-compressed binary alongside Buck itself; keep its pin
+# in step with buck2's so both come from the same release.
 http_tool(
-    name = "buildifier",
-    spec = _pins["buildifier"],
+    name = "starlark-fmt",
+    compressed = True,
+    spec = _pins["starlark-fmt"],
+)
+
+# Decompressor for the above; the pinned CPython is new enough to have zstd in its standard library.
+python_bootstrap_binary(
+    name = "unzstd",
+    main = "unzstd.py",
 )
 
 # Python formatter + linter (static musl builds).
@@ -93,8 +101,10 @@ command_alias(
         "lint",
         "--buck",
         "$(source buck)",
-        "--buildifier",
-        "$(location :buildifier)",
+        "--starlark-fmt",
+        "$(location :starlark-fmt)",
+        "--starlark-fmt-config",
+        "$(source starlark-fmt.json)",
         "--ruff",
         "$(location :ruff)",
         "--ty",
@@ -144,8 +154,10 @@ command_alias(
         "fmt",
         "--buck",
         "$(source buck)",
-        "--buildifier",
-        "$(location :buildifier)",
+        "--starlark-fmt",
+        "$(location :starlark-fmt)",
+        "--starlark-fmt-config",
+        "$(source starlark-fmt.json)",
         "--ruff",
         "$(location :ruff)",
     ],

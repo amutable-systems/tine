@@ -42,8 +42,9 @@ _CENTOS_STREAM_PACKAGE_SETS = {
 }
 
 def _merge_package_sets(
-        defaults: dict[str, list[str]],
-        overrides: dict[str, list[str]]) -> dict[str, list[str]]:
+    defaults: dict[str, list[str]],
+    overrides: dict[str, list[str]],
+) -> dict[str, list[str]]:
     package_sets = dict(defaults)
     package_sets.update(overrides)
     return package_sets
@@ -53,18 +54,18 @@ def _check_name(name: str, family: str, version: str) -> None:
     if name != expected:
         fail("{} release name must be {!r}".format(family, expected))
 
-# buildifier: disable=function-docstring-args
 def fedora_release(
-        name: str,
-        version: str,
-        engine: str,
-        baseurl: str | None = None,
-        rpmrepo_mirror: str | None = None,
-        rpmrepo_snapshot: str | None = None,
-        package_set_overrides: dict[str, list[str]] = {},
-        additional_repositories: list[str] = [],
-        repository_priorities: dict[str, int] = {},
-        visibility: list[str] | None = None) -> None:
+    name: str,
+    version: str,
+    engine: str,
+    baseurl: str | None = None,
+    rpmrepo_mirror: str | None = None,
+    rpmrepo_snapshot: str | None = None,
+    package_set_overrides: dict[str, list[str]] = {},
+    additional_repositories: list[str] = [],
+    repository_priorities: dict[str, int] = {},
+    visibility: list[str] | None = None,
+) -> None:
     """Declare the conventional Fedora release target bundle."""
     _check_name(name, "fedora", version)
     if (rpmrepo_mirror == None) != (rpmrepo_snapshot == None):
@@ -114,23 +115,23 @@ def fedora_release(
         visibility = visibility,
     )
 
-# buildifier: disable=function-docstring-args
 def centos_stream_release(
-        name: str,
-        version: str,
-        engine: str,
-        repository_urls: dict[str, str] = {},
-        package_set_overrides: dict[str, list[str]] = {},
-        enable_repository_groups: list[str] = ["crb"],
-        disable_repository_groups: list[str] = [],
-        additional_repositories: list[str] = [],
-        repository_priorities: dict[str, int] = {},
-        visibility: list[str] | None = None) -> None:
+    name: str,
+    version: str,
+    engine: str,
+    repository_urls: dict[str, str] = {},
+    package_set_overrides: dict[str, list[str]] = {},
+    enable_repository_groups: list[str] = ["crb"],
+    disable_repository_groups: list[str] = [],
+    additional_repositories: list[str] = [],
+    repository_priorities: dict[str, int] = {},
+    visibility: list[str] | None = None,
+) -> None:
     """Declare the conventional CentOS Stream release target bundle."""
     _check_name(name, "centos", version)
     components = {
-        "baseos": "BaseOS",
         "appstream": "AppStream",
+        "baseos": "BaseOS",
         "crb": "CRB",
     }
     unknown = [component for component in repository_urls if component not in components]

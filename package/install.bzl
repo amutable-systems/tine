@@ -20,16 +20,15 @@ _RootInfo = provider(
     fields = {"root": provider_field(Artifact)},
 )
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def resolve_packages(
-        ctx: AnalysisContext,
-        package_manager_dep: Dependency,
-        install: list[str],
-        stack: list[Artifact],
-        extra_packages: list[Artifact] = [],
-        local_seed: list[str] | None = None,
-        identifier: str | None = None) -> Artifact:
+    ctx: AnalysisContext,
+    package_manager_dep: Dependency,
+    install: list[str],
+    stack: list[Artifact],
+    extra_packages: list[Artifact] = [],
+    local_seed: list[str] | None = None,
+    identifier: str | None = None,
+) -> Artifact:
     """Plan an install and select its exact package artifacts.
 
     A manager with local packages offers the seed's runtime closure of locally built packages to
@@ -64,11 +63,13 @@ def resolve_packages(
 
     plan_repositories = []
     if extra_repo != None:
-        plan_repositories.append(ConfiguredPackageRepositoryInfo(
-            id = "extra",
-            directory = extra_repo,
-            priority = _EXTRA_REPO_PRIORITY,
-        ))
+        plan_repositories.append(
+            ConfiguredPackageRepositoryInfo(
+                id = "extra",
+                directory = extra_repo,
+                priority = _EXTRA_REPO_PRIORITY,
+            )
+        )
     plan_repositories.extend(configured_repositories)
     prefix = identifier + "/" if identifier != None else ""
     tx = ctx.actions.declare_output(prefix + "transaction.json")
@@ -96,11 +97,12 @@ def resolve_packages(
     )
 
 def _install_actions(
-        ctx: AnalysisContext,
-        package_manager_dep: Dependency,
-        install: list[str],
-        stack: list[Artifact],
-        extra_packages: list[Artifact]) -> Artifact:
+    ctx: AnalysisContext,
+    package_manager_dep: Dependency,
+    install: list[str],
+    stack: list[Artifact],
+    extra_packages: list[Artifact],
+) -> Artifact:
     package_manager = package_manager_dep[PackageManagerInfo]
     system = package_manager.package_system[PackageSystemInfo]
     closure = resolve_packages(ctx, package_manager_dep, install, stack, extra_packages)
@@ -108,16 +110,20 @@ def _install_actions(
     work = ctx.actions.declare_output("install.work", dir = True) if stack else None
     cmd = cmd_args(
         chroot_run(engine = package_manager.engine[EngineInfo], exe = system.install),
-        spec_args(ctx, "install.spec.json", {
-            "docs": True,
-            "engine_config": False,
-            "installroot": None,
-            "langs": [],
-            "lower": stack,
-            "packages_dir": closure,
-            "target": out.as_output(),
-            "work": work.as_output() if work != None else None,
-        }),
+        spec_args(
+            ctx,
+            "install.spec.json",
+            {
+                "docs": True,
+                "engine_config": False,
+                "installroot": None,
+                "langs": [],
+                "lower": stack,
+                "packages_dir": closure,
+                "target": out.as_output(),
+                "work": work.as_output() if work != None else None,
+            },
+        ),
     )
     ctx.actions.run(cmd, category = "install")
     return out
@@ -129,9 +135,9 @@ def _install_packages_impl(ctx: AnalysisContext) -> list[Provider]:
 _install_packages = anon_rule(
     impl = _install_packages_impl,
     attrs = {
-        "package_manager": attrs.dep(providers = [PackageManagerInfo]),
-        "install": attrs.list(attrs.string()),
         "extra_packages": attrs.list(attrs.source(), default = []),
+        "install": attrs.list(attrs.string()),
+        "package_manager": attrs.dep(providers = [PackageManagerInfo]),
     },
     artifact_promise_mappings = {
         "root": lambda p: p[_RootInfo].root,
@@ -139,17 +145,21 @@ _install_packages = anon_rule(
 )
 
 def install_packages(
-        ctx: AnalysisContext,
-        package_manager: Dependency,
-        install: list[str],
-        stack: list[Artifact] = [],
-        extra_packages: list[Artifact] = []) -> Artifact:
+    ctx: AnalysisContext,
+    package_manager: Dependency,
+    install: list[str],
+    stack: list[Artifact] = [],
+    extra_packages: list[Artifact] = [],
+) -> Artifact:
     if not stack:
-        root = ctx.actions.anon_target(_install_packages, {
-            "name": "//install-packages:{}".format(package_manager.label.name),
-            "package_manager": package_manager,
-            "install": sorted(install),
-            "extra_packages": extra_packages,
-        }).artifact("root")
+        root = ctx.actions.anon_target(
+            _install_packages,
+            {
+                "extra_packages": extra_packages,
+                "install": sorted(install),
+                "name": "//install-packages:{}".format(package_manager.label.name),
+                "package_manager": package_manager,
+            },
+        ).artifact("root")
         return ctx.actions.assert_short_path(root, short_path = "root")
     return _install_actions(ctx, package_manager, install, stack, extra_packages)

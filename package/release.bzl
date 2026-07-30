@@ -44,7 +44,4 @@ _os_release = rule(
 def os_release(name: str, **kwargs) -> None:
     if not name.endswith(".release"):
         fail("os_release name must end with '.release': {}".format(name))
-    _os_release(
-        name = name,
-        **kwargs
-    )
+    _os_release(name = name, **kwargs)

@@ -69,11 +69,7 @@ def check_name(what: str, value: str, pattern: str = NAME_PATTERN) -> str:
 def _path(identifier: str | None, name: str) -> str:
     return identifier + "/" + name if identifier != None else name
 
-def declare_out(
-        ctx: AnalysisContext,
-        identifier: str | None,
-        name: str,
-        dir: bool = False) -> Artifact:
+def declare_out(ctx: AnalysisContext, identifier: str | None, name: str, dir: bool = False) -> Artifact:
     """Declare an output, scoped to `identifier` when one composition declares several."""
     return ctx.actions.declare_output(_path(identifier, name), dir = dir)
 
@@ -93,29 +89,30 @@ ImageInfo = provider(
     doc = "A logical filesystem image represented by an ordered delta stack and lazy metadata.",
     fields = {
         "engine": provider_field(Dependency),
-        "package_manager": provider_field(Dependency | None, default = None),
-        "layers": provider_field(list[Artifact]),
-        # Ownership is deliberately not represented: image outputs use uid/gid 0.
-        "tmpfiles": provider_field(list[str]),
         # Accumulated install specs; they seed the local-packages closure of every derived layer
         # so lower-layer packages keep their local backing in later solves.
         "install_specs": provider_field(list[str], default = []),
-        "sbom": provider_field(ImageSbomInfo),
+        "layers": provider_field(list[Artifact]),
+        "package_manager": provider_field(Dependency | None, default = None),
         # Absent only when the image installs no packages and so has no package system.
         "pkgdb": provider_field(Artifact | None, default = None),
+        "sbom": provider_field(ImageSbomInfo),
+        # Ownership is deliberately not represented: image outputs use uid/gid 0.
+        "tmpfiles": provider_field(list[str]),
     },
 )
 
 def _image_command(
-        ctx: AnalysisContext,
-        *,
-        engine: Dependency,
-        layers: list[Artifact],
-        tmpfiles: list[str],
-        exe: Dependency,
-        driver: str,
-        identifier: str | None,
-        spec: dict[str, typing.Any]) -> cmd_args:
+    ctx: AnalysisContext,
+    *,
+    engine: Dependency,
+    layers: list[Artifact],
+    tmpfiles: list[str],
+    exe: Dependency,
+    driver: str,
+    identifier: str | None,
+    spec: dict[str, typing.Any],
+) -> cmd_args:
     return cmd_args(
         chroot_run(engine = engine[EngineInfo], exe = exe),
         spec_args(
@@ -125,16 +122,15 @@ def _image_command(
         ),
     )
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def terminal_image_command(
-        ctx: AnalysisContext,
-        *,
-        image: ImageInfo,
-        exe: Dependency,
-        driver: str,
-        spec: dict[str, typing.Any],
-        identifier: str | None = None) -> cmd_args:
+    ctx: AnalysisContext,
+    *,
+    image: ImageInfo,
+    exe: Dependency,
+    driver: str,
+    spec: dict[str, typing.Any],
+    identifier: str | None = None,
+) -> cmd_args:
     """Run a terminal driver against one finalized logical-image stack.
 
     The stack and its deferred tmpfiles join the driver's own fields in one spec.
@@ -150,8 +146,6 @@ def terminal_image_command(
         tmpfiles = image.tmpfiles,
     )
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def image_metadata_subtargets(image: ImageInfo) -> dict[str, list[Provider]]:
     """Expose the canonical metadata carried by a logical image."""
     sub_targets = {
@@ -170,15 +164,14 @@ def image_metadata_subtargets(image: ImageInfo) -> dict[str, list[Provider]]:
         sub_targets["pkgdb"] = [DefaultInfo(default_output = image.pkgdb)]
     return sub_targets
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def image_providers(
-        *,
-        image: ImageInfo,
-        default_outputs: list[Artifact] = [],
-        other_outputs: list[Artifact] = [],
-        sub_targets: dict[str, list[Provider]] = {},
-        extra: list[Provider] = []) -> list[Provider]:
+    *,
+    image: ImageInfo,
+    default_outputs: list[Artifact] = [],
+    other_outputs: list[Artifact] = [],
+    sub_targets: dict[str, list[Provider]] = {},
+    extra: list[Provider] = [],
+) -> list[Provider]:
     """Publish a terminal result together with its logical image and lazy metadata views."""
     merged = dict(sub_targets)
     merged.update(image_metadata_subtargets(image))
@@ -192,11 +185,9 @@ def image_providers(
         image.sbom,
     ] + extra
 
-# buildifier: disable=name-conventions  (type alias, conventionally UpperCamelCase)
 LayerOperation = tuple
 
 # Recursive type aliases are unavailable, so nested lists become dynamic at this boundary.
-# buildifier: disable=name-conventions  (type alias, conventionally UpperCamelCase)
 LayerOperationTree = LayerOperation | list[typing.Any]
 
 # Each architecture's EFI spelling (ukify's --efi-arch, which also names the boot stubs) and
@@ -264,10 +255,7 @@ def merge_os_release(fields: dict[str, str]) -> LayerOperation:
     """Merge quoted KEY="value" assignments into the image's /usr/lib/os-release."""
     return ("os_release", fields)
 
-def sign_systemd_boot(
-        private_key: Artifact,
-        certificate: Artifact,
-        arch: str) -> list[LayerOperation]:
+def sign_systemd_boot(private_key: Artifact, certificate: Artifact, arch: str) -> list[LayerOperation]:
     """Return operations that sign the image's systemd-boot binary as a `.signed` sibling.
 
     Sign before anything seals /usr, e.g. a verity partition; design.md explains why the signed
@@ -291,8 +279,9 @@ def sign_systemd_boot(
     ]
 
 def install_systemd_boot(
-        private_key: Artifact | None = None,
-        certificate: Artifact | None = None) -> list[LayerOperation]:
+    private_key: Artifact | None = None,
+    certificate: Artifact | None = None,
+) -> list[LayerOperation]:
     """Return operations that install systemd-boot into the image ESP staging paths.
 
     With signing credentials, bootctl prefers the `.signed` binaries (see sign_systemd_boot) and
@@ -320,7 +309,8 @@ def install_systemd_boot(
                 "--install-source=image",
                 "--all-architectures",
                 "--no-variables",
-            ] + enroll,
+            ]
+            + enroll,
             env = {
                 "SYSTEMD_ESP_PATH": "/efi",
                 "SYSTEMD_XBOOTLDR_PATH": "/boot",
@@ -336,9 +326,7 @@ def _encode_operation(operation: LayerOperation) -> LayerOperation:
     # An engine argument is a plain string, an artifact, or a resolved $(location) macro.
     return (operation[0], [spec_argument(argument) for argument in operation[1]], operation[2])
 
-def _install_specs(
-        operation: tuple,
-        package_sets: dict[str, list[str]] | None) -> list[str] | None:
+def _install_specs(operation: tuple, package_sets: dict[str, list[str]] | None) -> list[str] | None:
     if operation[0] != "install":
         if operation[0] != "install_package_set":
             return None
@@ -355,13 +343,14 @@ def _install_specs(
     return sorted(packages)
 
 def _declare_pkgdb(
-        ctx: AnalysisContext,
-        *,
-        engine: Dependency,
-        layers: list[Artifact],
-        tmpfiles: list[str],
-        package_manager: Dependency,
-        identifier: str | None) -> Artifact:
+    ctx: AnalysisContext,
+    *,
+    engine: Dependency,
+    layers: list[Artifact],
+    tmpfiles: list[str],
+    package_manager: Dependency,
+    identifier: str | None,
+) -> Artifact:
     system = package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
     out = declare_out(ctx, identifier, "pkgdb", dir = True)
     cmd = _image_command(
@@ -378,14 +367,15 @@ def _declare_pkgdb(
     return out
 
 def _declare_sbom(
-        ctx: AnalysisContext,
-        *,
-        engine: Dependency,
-        layers: list[Artifact],
-        tmpfiles: list[str],
-        source_name: str,
-        version: str,
-        identifier: str | None) -> ImageSbomInfo:
+    ctx: AnalysisContext,
+    *,
+    engine: Dependency,
+    layers: list[Artifact],
+    tmpfiles: list[str],
+    source_name: str,
+    version: str,
+    identifier: str | None,
+) -> ImageSbomInfo:
     tools = ctx.attrs._tools[ImageToolsInfo]
     spdx = declare_out(ctx, identifier, "sbom.spdx.json")
     cdx = declare_out(ctx, identifier, "sbom.cdx.json")
@@ -410,21 +400,20 @@ def _declare_sbom(
     # One syft run emits both formats; selecting either format still executes the shared action.
     return ImageSbomInfo(cyclonedx = cdx, spdx = spdx)
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def declare_image(
-        ctx: AnalysisContext,
-        *,
-        ops: list[LayerOperation],
-        identifier: str | None = None,
-        parent: ImageInfo | None = None,
-        engine: Dependency | None = None,
-        package_manager: Dependency | None = None,
-        tmpfiles: list[str] = [],
-        install_docs: bool = True,
-        install_langs: list[str] = [],
-        source_name: str | None = None,
-        version: str = "0") -> ImageInfo:
+    ctx: AnalysisContext,
+    *,
+    ops: list[LayerOperation],
+    identifier: str | None = None,
+    parent: ImageInfo | None = None,
+    engine: Dependency | None = None,
+    package_manager: Dependency | None = None,
+    tmpfiles: list[str] = [],
+    install_docs: bool = True,
+    install_langs: list[str] = [],
+    source_name: str | None = None,
+    version: str = "0",
+) -> ImageInfo:
     """Declare one logical image layer from resolved providers and operations."""
     tools = ctx.attrs._tools[ImageToolsInfo]
     if parent != None:
@@ -439,10 +428,12 @@ def declare_image(
         if package_manager != None:
             manager_engine = package_manager[PackageManagerInfo].engine
             if engine != None and engine.label != manager_engine.label:
-                fail("image engine {} does not match package manager engine {}".format(
-                    engine.label,
-                    manager_engine.label,
-                ))
+                fail(
+                    "image engine {} does not match package manager engine {}".format(
+                        engine.label,
+                        manager_engine.label,
+                    )
+                )
             engine = manager_engine
         if engine == None:
             fail("image requires parent, package_manager, or engine")
@@ -625,7 +616,8 @@ def _image_impl(ctx: AnalysisContext) -> list[Provider]:
 
 _image = rule(
     impl = _image_impl,
-    attrs = IMAGE_ATTRS | {
+    attrs = IMAGE_ATTRS
+    | {
         "engine": attrs.option(
             attrs.dep(providers = [EngineInfo]),
             default = None,
@@ -654,13 +646,6 @@ def flatten_operations(ops: list[LayerOperationTree]) -> list[LayerOperation]:
             flattened.append(operation)
     return flattened
 
-def image(
-        name: str,
-        ops: list[LayerOperationTree] = [],
-        **kwargs) -> None:
+def image(name: str, ops: list[LayerOperationTree] = [], **kwargs) -> None:
     """Create an initial image or apply one delta to a parent image."""
-    _image(
-        name = name,
-        ops = flatten_operations(ops),
-        **kwargs
-    )
+    _image(name = name, ops = flatten_operations(ops), **kwargs)

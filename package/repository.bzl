@@ -96,26 +96,24 @@ def local_repository(name: str, **kwargs) -> None:
     """Declare locally built packages as a repository for install operations."""
     if not name.endswith(".repository"):
         fail("local_repository name must end with '.repository': {}".format(name))
-    _local_repository(
-        name = name,
-        **kwargs
-    )
+    _local_repository(name = name, **kwargs)
 
 RepositoryUniverseInfo = provider(
     doc = "A homogeneous repository universe and its default selection policy.",
     fields = {
+        "default_repository_groups": provider_field(list[str]),
+        "optional_repository_groups": provider_field(dict[str, list[Dependency]]),
         "package_system": provider_field(Dependency),
         "required_repositories": provider_field(list[Dependency]),
-        "optional_repository_groups": provider_field(dict[str, list[Dependency]]),
-        "default_repository_groups": provider_field(list[str]),
     },
 )
 
 def _add_repository(
-        package_system: Dependency,
-        repository: Dependency,
-        repositories: list[Dependency],
-        by_id: dict[str, Dependency]) -> None:
+    package_system: Dependency,
+    repository: Dependency,
+    repositories: list[Dependency],
+    by_id: dict[str, Dependency],
+) -> None:
     repo = repository[PackageRepositoryInfo]
     rid = repository.label.name
     if repo.package_system.label != package_system.label:
@@ -134,9 +132,7 @@ def _add_repository(
     by_id[rid] = repository
     repositories.append(repository)
 
-def merge_repositories(
-        package_system: Dependency,
-        candidates: list[Dependency]) -> list[Dependency]:
+def merge_repositories(package_system: Dependency, candidates: list[Dependency]) -> list[Dependency]:
     """Validate and de-duplicate repositories while preserving declaration order."""
     repositories = []
     by_id = {}
@@ -147,9 +143,10 @@ def merge_repositories(
     return repositories
 
 def select_repositories(
-        universe: Dependency,
-        enable_repository_groups: list[str],
-        disable_repository_groups: list[str]) -> list[Dependency]:
+    universe: Dependency,
+    enable_repository_groups: list[str],
+    disable_repository_groups: list[str],
+) -> list[Dependency]:
     """Resolve a repository universe's required, default, and requested groups."""
     info = universe[RepositoryUniverseInfo]
     disabled = {name: True for name in disable_repository_groups}
@@ -169,8 +166,7 @@ def select_repositories(
         candidates.extend(info.optional_repository_groups[name])
     return merge_repositories(info.package_system, candidates)
 
-def encode_repositories(
-        repositories: list[ConfiguredPackageRepositoryInfo]) -> list[dict[str, typing.Any]]:
+def encode_repositories(repositories: list[ConfiguredPackageRepositoryInfo]) -> list[dict[str, typing.Any]]:
     """Describe configured repositories for a driver spec.
 
     Dependency is analysis-only and cannot be serialized, so it stays out of the encoding.
@@ -212,24 +208,21 @@ def _repository_universe_impl(ctx: AnalysisContext) -> list[Provider]:
 _repository_universe = rule(
     impl = _repository_universe_impl,
     attrs = {
-        "package_system": attrs.dep(providers = [PackageSystemInfo]),
-        "required_repositories": attrs.list(attrs.dep(providers = [PackageRepositoryInfo])),
+        "default_repository_groups": attrs.list(attrs.string(), default = []),
         "optional_repository_groups": attrs.dict(
             attrs.string(),
             attrs.list(attrs.dep(providers = [PackageRepositoryInfo])),
             default = {},
         ),
-        "default_repository_groups": attrs.list(attrs.string(), default = []),
+        "package_system": attrs.dep(providers = [PackageSystemInfo]),
+        "required_repositories": attrs.list(attrs.dep(providers = [PackageRepositoryInfo])),
     },
 )
 
 def repository_universe(name: str, **kwargs) -> None:
     if not name.endswith(".repositories"):
         fail("repository_universe name must end with '.repositories': {}".format(name))
-    _repository_universe(
-        name = name,
-        **kwargs
-    )
+    _repository_universe(name = name, **kwargs)
 
 def remote_repository_base(ctx: AnalysisContext, repo_dir: Artifact) -> list[Provider]:
     """Register the package-system-neutral interface to a remote repository."""
@@ -276,22 +269,20 @@ def _closure_name(canonical_name: str, checksum: str, suffix: str) -> str:
     return canonical_name[:prefix_length] + tail
 
 def _select_package_artifacts_impl(
-        actions: AnalysisActions,
-        tx: ArtifactValue,
-        output: OutputArtifact,
-        local_packages: dict[str, list[Artifact]],
-        pools: dict[str, ResolvedDynamicValue],
-        representation: str,
-        suffix: str) -> list[Provider]:
+    actions: AnalysisActions,
+    tx: ArtifactValue,
+    output: OutputArtifact,
+    local_packages: dict[str, list[Artifact]],
+    pools: dict[str, ResolvedDynamicValue],
+    representation: str,
+    suffix: str,
+) -> list[Provider]:
     # Select already-owned artifacts; the transaction never creates new downloads.
     entries = tx.read_json()
     if type(entries) != type([]):
         fail("transaction is not a list (a frozen transaction still seeded `{}`?); resolve or remove it")
 
-    by_repo = {
-        rid: pool.providers[PackagePoolValueInfo].packages
-        for rid, pool in pools.items()
-    }
+    by_repo = {rid: pool.providers[PackagePoolValueInfo].packages for rid, pool in pools.items()}
     artifacts = {}
     for entry in entries:
         if type(entry) != type({}):
@@ -313,12 +304,7 @@ def _select_package_artifacts_impl(
         package_id = entry["package_id"]
         if type(rid) != type("") or not rid or type(package_id) != type("") or not package_id:
             fail("transaction entry has invalid repo/package_id: {}".format(entry))
-        if (
-            type(checksum) != type("") or
-            len(checksum) != 64 or
-            checksum != checksum.lower() or
-            not _contains_only(checksum, "0123456789abcdef")
-        ):
+        if type(checksum) != type("") or len(checksum) != 64 or checksum != checksum.lower() or not _contains_only(checksum, "0123456789abcdef"):
             fail("transaction entry has invalid pkg_checksum: {}".format(entry))
         if source == "local":
             if representation != "installable":
@@ -333,12 +319,7 @@ def _select_package_artifacts_impl(
             if type(location) != type(""):
                 fail("local transaction entry lacks a location: {}".format(entry))
             parts = location.split("/")
-            if (
-                len(parts) != 2 or
-                not parts[0] or
-                not _contains_only(parts[0], "0123456789") or
-                not parts[1].endswith(suffix)
-            ):
+            if len(parts) != 2 or not parts[0] or not _contains_only(parts[0], "0123456789") or not parts[1].endswith(suffix):
                 fail("local transaction entry has invalid location: {}".format(entry))
             idx = int(parts[0])
             if idx >= len(package_dirs):
@@ -357,8 +338,7 @@ def _select_package_artifacts_impl(
 
         if rid not in by_repo or checksum not in by_repo[rid]:
             fail(
-                ("{} ({}/{}) is absent from the pinned repository package pool; " +
-                 "run refresh-catalog").format(package_id, rid, checksum),
+                ("{} ({}/{}) is absent from the pinned repository package pool; " + "run refresh-catalog").format(package_id, rid, checksum),
             )
         package = by_repo[rid][checksum]
         if representation == "installable":
@@ -380,30 +360,27 @@ def _select_package_artifacts_impl(
 _select_package_artifacts_action = dynamic_actions(
     impl = _select_package_artifacts_impl,
     attrs = {
-        "tx": dynattrs.artifact_value(),
-        "output": dynattrs.output(),
         "local_packages": dynattrs.value(dict[str, list[Artifact]]),
+        "output": dynattrs.output(),
         "pools": dynattrs.dict(str, dynattrs.dynamic_value()),
         "representation": dynattrs.value(str),
         "suffix": dynattrs.value(str),
+        "tx": dynattrs.artifact_value(),
     },
 )
 
 def select_package_artifacts(
-        ctx: AnalysisContext,
-        tx: Artifact,
-        repositories: list[Dependency],
-        suffix: str,
-        extra_packages: list[Artifact] = [],
-        name: str = "install.closure",
-        representation: str = "installable") -> Artifact:
+    ctx: AnalysisContext,
+    tx: Artifact,
+    repositories: list[Dependency],
+    suffix: str,
+    extra_packages: list[Artifact] = [],
+    name: str = "install.closure",
+    representation: str = "installable",
+) -> Artifact:
     """Select one representation of each transaction package into a directory."""
     output = ctx.actions.declare_output(name, dir = True)
-    pools = {
-        repository.label.name: repository[PackagePoolInfo].value
-        for repository in repositories
-        if repository.get(PackagePoolInfo) != None
-    }
+    pools = {repository.label.name: repository[PackagePoolInfo].value for repository in repositories if repository.get(PackagePoolInfo) != None}
     local_packages = {
         repository.label.name: repository[LocalPackageRepositoryInfo].package_dirs
         for repository in repositories
@@ -411,12 +388,14 @@ def select_package_artifacts(
     }
     if extra_packages:
         local_packages["extra"] = extra_packages
-    ctx.actions.dynamic_output_new(_select_package_artifacts_action(
-        tx = tx,
-        output = output.as_output(),
-        local_packages = local_packages,
-        pools = pools,
-        representation = representation,
-        suffix = suffix,
-    ))
+    ctx.actions.dynamic_output_new(
+        _select_package_artifacts_action(
+            tx = tx,
+            output = output.as_output(),
+            local_packages = local_packages,
+            pools = pools,
+            representation = representation,
+            suffix = suffix,
+        )
+    )
     return output

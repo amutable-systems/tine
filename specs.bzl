@@ -1,9 +1,6 @@
 """Hand a driver its whole invocation as one JSON spec."""
 
-def spec_args(
-        ctx: AnalysisContext,
-        name: str,
-        spec: dict[str, typing.Any]) -> cmd_args:
+def spec_args(ctx: AnalysisContext, name: str, spec: dict[str, typing.Any]) -> cmd_args:
     """Serialize one action's inputs, outputs, and configuration for its driver.
 
     Artifacts survive as their action paths, so a spec names declared outputs as readily as

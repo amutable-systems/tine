@@ -23,11 +23,15 @@ def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     repo = ctx.actions.declare_output("repo", dir = True)
     index = cmd_args(
         chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = system.index),
-        spec_args(ctx, "index.spec.json", {
-            "out": repo.as_output(),
-            "packages": [],
-            "packages_dirs": ctx.attrs.package_dirs,
-        }),
+        spec_args(
+            ctx,
+            "index.spec.json",
+            {
+                "out": repo.as_output(),
+                "packages": [],
+                "packages_dirs": ctx.attrs.package_dirs,
+            },
+        ),
     )
     ctx.actions.run(index, category = "repository_index")
     return [DefaultInfo(default_output = repo)]
@@ -36,8 +40,8 @@ _materialize_local_repository = anon_rule(
     impl = _materialize_local_repository_impl,
     attrs = {
         "engine": attrs.dep(providers = [EngineInfo]),
-        "package_system": attrs.dep(providers = [PackageSystemInfo]),
         "package_dirs": attrs.list(attrs.source()),
+        "package_system": attrs.dep(providers = [PackageSystemInfo]),
     },
     artifact_promise_mappings = {
         "repo": lambda p: p[DefaultInfo].default_outputs[0],
@@ -45,27 +49,31 @@ _materialize_local_repository = anon_rule(
 )
 
 def materialize_local_repository(
-        ctx: AnalysisContext,
-        engine: Dependency,
-        package_system: Dependency,
-        package_dirs: list[Artifact]) -> Artifact:
+    ctx: AnalysisContext,
+    engine: Dependency,
+    package_system: Dependency,
+    package_dirs: list[Artifact],
+) -> Artifact:
     """Materialize local package directories in their consumer's execution context."""
-    return ctx.actions.anon_target(_materialize_local_repository, {
-        "name": "//local-repository:materialize",
-        "engine": engine,
-        "package_system": package_system,
-        "package_dirs": package_dirs,
-    }).artifact("repo")
+    return ctx.actions.anon_target(
+        _materialize_local_repository,
+        {
+            "engine": engine,
+            "name": "//local-repository:materialize",
+            "package_dirs": package_dirs,
+            "package_system": package_system,
+        },
+    ).artifact("repo")
 
 PackageManagerInfo = provider(
     doc = "The engine and repository selection used for native package operations.",
     fields = {
         "engine": provider_field(Dependency),
+        "local_packages": provider_field(Dependency | None, default = None),
         "package_sets": provider_field(dict[str, list[str]]),
         "package_system": provider_field(Dependency),
         "repositories": provider_field(list[ConfiguredPackageRepositoryInfo]),
         "solver_caches": provider_field(list[Artifact]),
-        "local_packages": provider_field(Dependency | None, default = None),
     },
 )
 
@@ -151,13 +159,15 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
             baseurl = baseurl,
         )
         if rid not in configured_by_id:
-            solver_caches.append(solver_cache(
-                ctx,
-                engine_dep,
-                package_system,
-                configured,
-                engine.arch,
-            ))
+            solver_caches.append(
+                solver_cache(
+                    ctx,
+                    engine_dep,
+                    package_system,
+                    configured,
+                    engine.arch,
+                )
+            )
         configured_repositories.append(configured)
 
     return [
@@ -175,28 +185,25 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
 _package_manager = rule(
     impl = _package_manager_impl,
     attrs = {
-        "base": attrs.option(attrs.dep(providers = [PackageManagerInfo]), default = None),
-        "release": attrs.option(attrs.dep(providers = [OsReleaseInfo]), default = None),
-        "engine": attrs.option(attrs.dep(providers = [EngineInfo]), default = None),
-        "enable_repository_groups": attrs.list(attrs.string(), default = []),
-        "disable_repository_groups": attrs.list(attrs.string(), default = []),
         "additional_repositories": attrs.list(
             attrs.dep(providers = [PackageRepositoryInfo]),
             default = [],
         ),
-        "repository_priorities": attrs.dict(attrs.string(), attrs.int(), default = {}),
+        "base": attrs.option(attrs.dep(providers = [PackageManagerInfo]), default = None),
+        "disable_repository_groups": attrs.list(attrs.string(), default = []),
+        "enable_repository_groups": attrs.list(attrs.string(), default = []),
+        "engine": attrs.option(attrs.dep(providers = [EngineInfo]), default = None),
         "local_packages": attrs.option(
             attrs.dep(providers = [LocalPackageUniverseInfo]),
             default = None,
             doc = "locally built packages preferred over repository packages during installs",
         ),
+        "release": attrs.option(attrs.dep(providers = [OsReleaseInfo]), default = None),
+        "repository_priorities": attrs.dict(attrs.string(), attrs.int(), default = {}),
     },
 )
 
 def package_manager(name: str, **kwargs) -> None:
     if not name.endswith(".package-manager"):
         fail("package_manager name must end with '.package-manager': {}".format(name))
-    _package_manager(
-        name = name,
-        **kwargs
-    )
+    _package_manager(name = name, **kwargs)

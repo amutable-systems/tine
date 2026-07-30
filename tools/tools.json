@@ -17,6 +17,20 @@
       }
     }
   },
+  "starlark-fmt": {
+    "repository": "daandemeyer/buck2",
+    "release": "2026-07-31-09.50.04",
+    "platforms": {
+      "aarch64": {
+        "artifact": "starlark_fmt-aarch64-unknown-linux-musl.zst",
+        "sha256": "4454fca4cd00b73a0d1a857ef2f6b40a5b9554ae0085af93bf133c4a559a631a"
+      },
+      "x86_64": {
+        "artifact": "starlark_fmt-x86_64-unknown-linux-musl.zst",
+        "sha256": "0897fc55ec26e2d6aa9ab9f7c2398ac20058a531524b181e0a9298d2b610253a"
+      }
+    }
+  },
   "python3": {
     "repository": "astral-sh/python-build-standalone",
     "release": "20260728",
@@ -30,20 +44,6 @@
         "artifact": "cpython-3.14.6+20260728-x86_64-unknown-linux-gnu-install_only.tar.gz",
         "sha256": "b1ff3bb3ca58e2af9f1cb2be63cd9ef00a6f60ed50bba77bab189a9a3df13675",
         "strip_prefix": "python"
-      }
-    }
-  },
-  "buildifier": {
-    "repository": "bazelbuild/buildtools",
-    "release": "v8.5.1",
-    "platforms": {
-      "aarch64": {
-        "artifact": "buildifier-linux-arm64",
-        "sha256": "947bf6700d708026b2057b09bea09abbc3cafc15d9ecea35bb3885c4b09ccd04"
-      },
-      "x86_64": {
-        "artifact": "buildifier-linux-amd64",
-        "sha256": "887377fc64d23a850f4d18a077b5db05b19913f4b99b270d193f3c7334b5a9a7"
       }
     }
   },

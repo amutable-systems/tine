@@ -420,7 +420,7 @@ an image from those packages. Neither target exists in this repository.
 
 `bump` refreshes the pinned tool releases against their upstream GitHub releases.
 
-Update one or more pinned tools by name (`buck2`, `python3`, `buildifier`, `ruff`, `ty`, `syft`):
+Update one or more pinned tools by name (`buck2`, `starlark-fmt`, `python3`, `ruff`, `ty`, `syft`):
 
 ```sh
 tools/buck run tine//tools:bump -- --tool ruff --tool ty
@@ -434,6 +434,9 @@ tools/buck run tine//tools:bump -- --all
 
 Each tool is resolved to its latest upstream release and its `url` and `sha256` are rewritten in place.
 Add `--commit` to record the result as a git commit whose message itemizes each update.
+
+`buck2` and `starlark-fmt` ship from the same release of the same fork, so bump them together (`--all`
+does) to keep them on one tag.
 
 python3 minor version stays pinned in pyproject.toml; updating to a new minor release stays a deliberate
 manual change.

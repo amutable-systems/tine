@@ -20,10 +20,14 @@ def _signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
         ),
         category = "signing_key",
     )
-    return [DefaultInfo(sub_targets = {
-        "cert": [DefaultInfo(default_output = certificate)],
-        "key": [DefaultInfo(default_output = key)],
-    })]
+    return [
+        DefaultInfo(
+            sub_targets = {
+                "cert": [DefaultInfo(default_output = certificate)],
+                "key": [DefaultInfo(default_output = key)],
+            }
+        )
+    ]
 
 signing_key = rule(
     impl = _signing_key_impl,

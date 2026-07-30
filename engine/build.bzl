@@ -23,13 +23,15 @@ def _configure_repositories(repositories: list[Dependency]) -> list[ConfiguredPa
             fail("engine: repository '{}' has no bootstrap directory".format(repository.label.name))
         if repo.baseurl == None:
             fail("engine: repository '{}' has no bootstrap base URL".format(repository.label.name))
-        configured.append(ConfiguredPackageRepositoryInfo(
-            id = repository.label.name,
-            dependency = repository,
-            directory = repo.dir,
-            priority = _REPOSITORY_PRIORITY,
-            baseurl = repo.baseurl,
-        ))
+        configured.append(
+            ConfiguredPackageRepositoryInfo(
+                id = repository.label.name,
+                dependency = repository,
+                directory = repo.dir,
+                priority = _REPOSITORY_PRIORITY,
+                baseurl = repo.baseurl,
+            )
+        )
     return configured
 
 def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -96,10 +98,14 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.actions.run(
             cmd_args(
                 system.extract[RunInfo],
-                spec_args(ctx, "extract.spec.json", {
-                    "out": chroot1.as_output(),
-                    "packages": [payloads],
-                }),
+                spec_args(
+                    ctx,
+                    "extract.spec.json",
+                    {
+                        "out": chroot1.as_output(),
+                        "packages": [payloads],
+                    },
+                ),
             ),
             category = "extract",
         )
@@ -117,16 +123,20 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
                 engine = installer_engine,
                 exe = system.install,
             ),
-            spec_args(ctx, "install.spec.json", {
-                "docs": True,
-                "engine_config": True,
-                "installroot": None,
-                "langs": [],
-                "lower": [],
-                "packages_dir": packages,
-                "target": chroot2.as_output(),
-                "work": None,
-            }),
+            spec_args(
+                ctx,
+                "install.spec.json",
+                {
+                    "docs": True,
+                    "engine_config": True,
+                    "installroot": None,
+                    "langs": [],
+                    "lower": [],
+                    "packages_dir": packages,
+                    "target": chroot2.as_output(),
+                    "work": None,
+                },
+            ),
         ),
         category = "engine",
     )
@@ -161,6 +171,15 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
 _engine = rule(
     impl = _engine_impl,
     attrs = {
+        "arch": attrs.string(default = "x86_64", doc = "the resolution arch"),
+        "disable_repository_groups": attrs.list(attrs.string(), default = []),
+        "enable_repository_groups": attrs.list(attrs.string(), default = []),
+        "labels": attrs.list(attrs.string(), default = []),
+        "lock": attrs.option(
+            attrs.source(),
+            default = None,
+            doc = "optional frozen transaction, including remote package transport pins",
+        ),
         "packages": attrs.list(
             attrs.string(),
             doc = "top-level engine package names used to resolve the effective transaction",
@@ -171,30 +190,16 @@ _engine = rule(
             default = None,
             doc = "predecessor engine used to resolve and install this engine's transaction",
         ),
-        "enable_repository_groups": attrs.list(attrs.string(), default = []),
-        "disable_repository_groups": attrs.list(attrs.string(), default = []),
-        "labels": attrs.list(attrs.string(), default = []),
-        "lock": attrs.option(
-            attrs.source(),
-            default = None,
-            doc = "optional frozen transaction, including remote package transport pins",
-        ),
-        "arch": attrs.string(default = "x86_64", doc = "the resolution arch"),
         # EngineInfo carries this into the rest of the graph.
         "_sandbox": attrs.exec_dep(default = "tine//engine:sandbox", providers = [RunInfo]),
     },
 )
 
-def engine(
-        name: str,
-        packages: list[str],
-        release: str,
-        labels: list[str] = [],
-        **kwargs) -> None:
+def engine(name: str, packages: list[str], release: str, labels: list[str] = [], **kwargs) -> None:
     """Declare an engine rooted in one base OS release."""
     if not name.endswith(".engine"):
         fail("engine name must end with '.engine': {}".format(name))
-    locks = glob(["snapshot/engine/" + name[:-len(".engine")] + ".json"])
+    locks = glob(["snapshot/engine/" + name[: -len(".engine")] + ".json"])
     if len(locks) > 1:
         fail("engine {} has multiple locks: {}".format(name, locks))
     _engine(
@@ -203,5 +208,5 @@ def engine(
         release = release,
         labels = ["tine:engine"] + labels,
         lock = locks[0] if locks else None,
-        **kwargs
+        **kwargs,
     )

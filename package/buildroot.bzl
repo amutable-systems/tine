@@ -6,16 +6,18 @@ load(":manager.bzl", "PackageManagerInfo")
 BuildrootInfo = provider(
     doc = "A base root and package manager used to build native packages.",
     fields = {
-        "root": provider_field(Artifact),
         "package_manager": provider_field(Dependency),
+        "root": provider_field(Artifact),
     },
 )
 
 def _buildroot_impl(ctx: AnalysisContext) -> list[Provider]:
     manager = ctx.attrs.package_manager[PackageManagerInfo]
     if manager.local_packages != None:
-        fail("buildroot: a package manager with local packages is not supported; buildroot " +
-             "contents must come from explicit, cycle-checked package buildroot deps")
+        fail(
+            "buildroot: a package manager with local packages is not supported; buildroot "
+            + "contents must come from explicit, cycle-checked package buildroot deps"
+        )
     packages = ctx.attrs.packages
     if ctx.attrs.package_set != None:
         if packages:
@@ -38,15 +40,15 @@ _buildroot = rule(
     impl = _buildroot_impl,
     attrs = {
         "package_manager": attrs.dep(providers = [PackageManagerInfo]),
-        "packages": attrs.list(
-            attrs.string(),
-            default = [],
-            doc = "explicit packages installed in every package buildroot",
-        ),
         "package_set": attrs.option(
             attrs.string(),
             default = None,
             doc = "release package set installed in every package buildroot",
+        ),
+        "packages": attrs.list(
+            attrs.string(),
+            default = [],
+            doc = "explicit packages installed in every package buildroot",
         ),
     },
 )
@@ -54,7 +56,4 @@ _buildroot = rule(
 def buildroot(name: str, **kwargs) -> None:
     if not name.endswith(".buildroot"):
         fail("buildroot name must end with '.buildroot': {}".format(name))
-    _buildroot(
-        name = name,
-        **kwargs
-    )
+    _buildroot(name = name, **kwargs)

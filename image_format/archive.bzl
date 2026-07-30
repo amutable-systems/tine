@@ -30,16 +30,15 @@ ImageDirectoryInfo = provider(
     },
 )
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def declare_image_archive(
-        ctx: AnalysisContext,
-        *,
-        image: ImageInfo,
-        format: str,
-        compression: str,
-        strip_pkgdb: bool = False,
-        identifier: str | None = None) -> ImageArchiveInfo:
+    ctx: AnalysisContext,
+    *,
+    image: ImageInfo,
+    format: str,
+    compression: str,
+    strip_pkgdb: bool = False,
+    identifier: str | None = None,
+) -> ImageArchiveInfo:
     """Declare an archive action from a resolved logical image.
 
     With strip_pkgdb, the archive omits the package database wherever the image's package system
@@ -91,18 +90,19 @@ ARCHIVE_ATTRS = {
 
 image_archive = rule(
     impl = _image_archive_impl,
-    attrs = ARCHIVE_ATTRS | {
+    attrs = ARCHIVE_ATTRS
+    | {
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image to archive"),
-    } | IMAGE_TOOLS_ATTR,
+    }
+    | IMAGE_TOOLS_ATTR,
 )
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def declare_image_directory(
-        ctx: AnalysisContext,
-        *,
-        image: ImageInfo,
-        identifier: str | None = None) -> ImageDirectoryInfo:
+    ctx: AnalysisContext,
+    *,
+    image: ImageInfo,
+    identifier: str | None = None,
+) -> ImageDirectoryInfo:
     """Declare a directory materialization from a resolved logical image."""
     out = declare_out(ctx, identifier, "image.rootfs", dir = True)
     cmd = terminal_image_command(
@@ -129,5 +129,6 @@ image_directory = rule(
     impl = _image_directory_impl,
     attrs = {
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image to materialize"),
-    } | IMAGE_TOOLS_ATTR,
+    }
+    | IMAGE_TOOLS_ATTR,
 )

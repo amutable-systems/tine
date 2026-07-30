@@ -23,15 +23,16 @@ _box = rule(
 )
 
 def box(
-        name: str,
-        packages: list[str],
-        release: str = DEFAULT_RELEASE,
-        resolver_engine: str = DEFAULT_RESOLVER_ENGINE,
-        enable_repository_groups: list[str] = [],
-        disable_repository_groups: list[str] = [],
-        arch: str = "x86_64",
-        labels: list[str] = [],
-        visibility: list[str] | None = None) -> None:
+    name: str,
+    packages: list[str],
+    release: str = DEFAULT_RELEASE,
+    resolver_engine: str = DEFAULT_RESOLVER_ENGINE,
+    enable_repository_groups: list[str] = [],
+    disable_repository_groups: list[str] = [],
+    arch: str = "x86_64",
+    labels: list[str] = [],
+    visibility: list[str] | None = None,
+) -> None:
     """Build an engine and expose its host-integrated interactive entry point."""
     if not packages:
         fail("box: packages must not be empty")

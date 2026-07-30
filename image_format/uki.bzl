@@ -26,16 +26,9 @@ UkiInfo = provider(
     },
 )
 
-# buildifier: disable=name-conventions  (type alias, conventionally UpperCamelCase)
 UkiProfile = dict
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
-def uki_profile(
-        id: str,
-        title: str,
-        cmdline: list[str],
-        sign_expected_pcr: bool = True) -> UkiProfile:
+def uki_profile(id: str, title: str, cmdline: list[str], sign_expected_pcr: bool = True) -> UkiProfile:
     """Describe one alternative boot profile embedded in a UKI.
 
     Profiles whose boot state is not sealed against (e.g. installers or factory reset) can opt
@@ -65,22 +58,21 @@ def encode_profiles(profiles: list[UkiProfile]) -> list[str]:
         ids[profile["id"]] = True
     return [json.encode(profile) for profile in profiles]
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def declare_uki(
-        ctx: AnalysisContext,
-        *,
-        image: ImageInfo,
-        initrds: list[ImageArchiveInfo],
-        cmdline: list[str],
-        profiles: list[str],
-        arch: str,
-        image_id: str,
-        version: str,
-        root_hash: RootHashInfo | None = None,
-        secure_boot_private_key: Artifact | None = None,
-        secure_boot_certificate: Artifact | None = None,
-        identifier: str | None = None) -> UkiInfo:
+    ctx: AnalysisContext,
+    *,
+    image: ImageInfo,
+    initrds: list[ImageArchiveInfo],
+    cmdline: list[str],
+    profiles: list[str],
+    arch: str,
+    image_id: str,
+    version: str,
+    root_hash: RootHashInfo | None = None,
+    secure_boot_private_key: Artifact | None = None,
+    secure_boot_certificate: Artifact | None = None,
+    identifier: str | None = None,
+) -> UkiInfo:
     """Declare UKI generation from resolved image providers."""
     if (secure_boot_private_key == None) != (secure_boot_certificate == None):
         fail("uki: secure_boot_private_key and secure_boot_certificate must be specified together")
@@ -113,7 +105,9 @@ def declare_uki(
             "root_hash": {
                 "kind": root_hash.kind,
                 "path": root_hash.hash,
-            } if root_hash != None else None,
+            }
+            if root_hash != None
+            else None,
             "secure_boot": secure_boot,
             "systemd_arch": ARCHES[arch].systemd,
             "version": version,
@@ -169,7 +163,8 @@ UKI_ATTRS = {
 
 _uki = rule(
     impl = _uki_impl,
-    attrs = UKI_ATTRS | {
+    attrs = UKI_ATTRS
+    | {
         "image": attrs.dep(
             providers = [ImageInfo],
             doc = "the image supplying the kernel, modules, stub, and os-release",
@@ -190,10 +185,10 @@ _uki = rule(
             doc = "repart result whose verity hash is added to the embedded kernel command line",
         ),
         "version": attrs.string(default = "0", doc = "image version in the UKI name"),
-    } | IMAGE_TOOLS_ATTR,
+    }
+    | IMAGE_TOOLS_ATTR,
 )
 
-# buildifier: disable=function-docstring-args
 def uki(name: str, profiles: list[UkiProfile] = [], **kwargs) -> None:
     """Build UKIs, with each profile added as an alternative sd-boot menu entry.
 
@@ -204,8 +199,4 @@ def uki(name: str, profiles: list[UkiProfile] = [], **kwargs) -> None:
     """
     if (kwargs.get("secure_boot_private_key") == None) != (kwargs.get("secure_boot_certificate") == None):
         fail("uki: secure_boot_private_key and secure_boot_certificate must be specified together")
-    _uki(
-        name = name,
-        profiles = encode_profiles(profiles),
-        **kwargs
-    )
+    _uki(name = name, profiles = encode_profiles(profiles), **kwargs)

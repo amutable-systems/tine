@@ -1,0 +1,29 @@
+{
+  "IsSortableListArg": {
+    "data": true,
+    "deps": true,
+    "exported_deps": true,
+    "exports": true,
+    "files": true,
+    "hdrs": true,
+    "labels": true,
+    "outs": true,
+    "resources": true,
+    "runtime_deps": true,
+    "srcs": true,
+    "tests": true,
+    "tools": true,
+    "visibility": true
+  },
+  "SortableBlacklist": {
+    "genrule.outs": true,
+    "genrule.srcs": true
+  },
+  "NamePriority": {},
+  "Overrides": [
+    {
+      "Files": ["*"],
+      "SortKwargs": false
+    }
+  ]
+}

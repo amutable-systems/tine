@@ -25,16 +25,15 @@ SysextImageInfo = provider(
     },
 )
 
-# buildifier: disable=function-docstring-args
-# buildifier: disable=function-docstring-return
 def declare_image_sysext(
-        ctx: AnalysisContext,
-        *,
-        image: ImageInfo,
-        extension: str,
-        base: ImageInfo | None = None,
-        release: dict[str, str] = {},
-        seed: str | None = None) -> SysextImageInfo:
+    ctx: AnalysisContext,
+    *,
+    image: ImageInfo,
+    extension: str,
+    base: ImageInfo | None = None,
+    release: dict[str, str] = {},
+    seed: str | None = None,
+) -> SysextImageInfo:
     """Declare a system-extension DDI from resolved logical images."""
     out = ctx.actions.declare_output(extension + ".raw")
 
@@ -107,7 +106,8 @@ SYSEXT_ATTRS = {
 
 image_sysext = rule(
     impl = _image_sysext_impl,
-    attrs = SYSEXT_ATTRS | {
+    attrs = SYSEXT_ATTRS
+    | {
         "base": attrs.option(
             attrs.dep(providers = [ImageInfo]),
             default = None,
@@ -119,5 +119,6 @@ image_sysext = rule(
             doc = "extension name; defaults to the target name",
         ),
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image supplying /usr and /opt"),
-    } | IMAGE_TOOLS_ATTR,
+    }
+    | IMAGE_TOOLS_ATTR,
 )

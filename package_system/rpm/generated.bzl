@@ -5,14 +5,12 @@ load("//package:local_packages.bzl", "local_packages")
 load(":rules.bzl", "rpm_package")
 
 # Keep these records aligned with the importer's generated schema.
-# buildifier: disable=name-conventions  (a record *type*, conventionally UpperCamelCase)
 SourceMetadata = record(
     url = str,
     sha256sum = str,
     size = int,  # archive size in bytes
 )
 
-# buildifier: disable=name-conventions
 SrcpkgMetadata = record(
     build_requires = dict[str, list[str]],  # "_all" + per-arch conditional extras
     # producing build arch → pkgname → {Files, Requires, Recommends, Provides}
@@ -27,7 +25,6 @@ SrcpkgMetadata = record(
 # TODO: Generalize the currently pinned build architecture.
 _ARCH = "x86_64"
 
-# buildifier: disable=name-conventions  (a type alias, conventionally UpperCamelCase)
 PackageMetadata = dict[str, typing.Any]
 
 def _build_requires(meta: SrcpkgMetadata) -> list[str]:
@@ -41,13 +38,13 @@ def _parse_metadata(meta: PackageMetadata) -> SrcpkgMetadata:
     data["sources"] = [SourceMetadata(**source) for source in data["sources"]]
     return SrcpkgMetadata(**data)
 
-# buildifier: disable=unnamed-macro  (declares source http_files and one rpm_package)
 def _declare_rpm_package(
-        package: str,
-        buildroot: str,
-        meta: SrcpkgMetadata,
-        buildroot_deps: list[str],
-        rpmbuild_options: list[str] = []) -> None:
+    package: str,
+    buildroot: str,
+    meta: SrcpkgMetadata,
+    buildroot_deps: list[str],
+    rpmbuild_options: list[str] = [],
+) -> None:
     spec = "{}/{}.spec".format(package, package)
     srcs = []
     for source in meta.sources:
@@ -77,14 +74,13 @@ def _declare_rpm_package(
         rpmbuild_options = rpmbuild_options,
     )
 
-# buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package + its source http_files)
-# buildifier: disable=function-docstring-args
 def rpm_package_json(
-        package: str,
-        buildroot: str,
-        meta: PackageMetadata,
-        buildroot_deps: list[str] = [],
-        rpmbuild_options: list[str] = []) -> None:
+    package: str,
+    buildroot: str,
+    meta: PackageMetadata,
+    buildroot_deps: list[str] = [],
+    rpmbuild_options: list[str] = [],
+) -> None:
     """Validate generated metadata and project it onto `rpm_package`."""
     _declare_rpm_package(
         package = package,
@@ -178,11 +174,13 @@ def _binary_source(packages: dict[str, SrcpkgMetadata]) -> dict[str, str]:
         for arch_bins in packages[name].binaries.values():
             for binname in arch_bins:
                 if sources.get(binname, name) != name:
-                    fail("binary package '{}' is built by both '{}' and '{}'".format(
-                        binname,
-                        sources[binname],
-                        name,
-                    ))
+                    fail(
+                        "binary package '{}' is built by both '{}' and '{}'".format(
+                            binname,
+                            sources[binname],
+                            name,
+                        )
+                    )
                 sources[binname] = name
     return sources
 
@@ -198,8 +196,9 @@ def _binary_provides(packages: dict[str, SrcpkgMetadata]) -> dict[str, dict[str,
     return provides
 
 def _requires_edges(
-        packages: dict[str, SrcpkgMetadata],
-        binary_provides: dict[str, dict[str, bool]]) -> dict[str, list[str]]:
+    packages: dict[str, SrcpkgMetadata],
+    binary_provides: dict[str, dict[str, bool]],
+) -> dict[str, list[str]]:
     """Map each binary package to the local binaries providing any of its runtime Requires.
 
     Weak dependencies are excluded to match solve policy. Rich dependencies contribute all their
@@ -218,9 +217,10 @@ def _requires_edges(
     return edges
 
 def _buildrequires_edges(
-        packages: dict[str, SrcpkgMetadata],
-        provides: dict[str, dict[str, bool]],
-        seed_only_packages: list[str]) -> dict[str, dict[str, list[str]]]:
+    packages: dict[str, SrcpkgMetadata],
+    provides: dict[str, dict[str, bool]],
+    seed_only_packages: list[str],
+) -> dict[str, dict[str, list[str]]]:
     """The package-to-self-hosted-provider graph, with the capabilities justifying each edge.
 
     A seed-only source package (tool use rather than linkage; see docs/self-host-approaches.md)
@@ -237,9 +237,10 @@ def _buildrequires_edges(
     return edges
 
 def _buildroot_locks(
-        edge_caps: dict[str, dict[str, list[str]]],
-        provides: dict[str, dict[str, bool]],
-        buildroot_only_packages: list[str]) -> dict[str, list[str]]:
+    edge_caps: dict[str, dict[str, list[str]]],
+    provides: dict[str, dict[str, bool]],
+    buildroot_only_packages: list[str],
+) -> dict[str, list[str]]:
     """Build an acyclic package-to-self-hosted-provider map.
 
     Cyclic edges fall back to upstream unless a buildroot-only package requires them.
@@ -284,13 +285,13 @@ _buildrequires_graph = rule(
     },
 )
 
-# buildifier: disable=unnamed-macro  (fan-out macro: an rpm_package_json per branch package)
 def rpm_branch(
-        buildroot: str,
-        packages: dict[str, PackageMetadata],
-        buildroot_only_packages: list[str] = [],
-        seed_only_packages: list[str] = [],
-        rpmbuild_options: dict[str, list[str]] = {}) -> None:
+    buildroot: str,
+    packages: dict[str, PackageMetadata],
+    buildroot_only_packages: list[str] = [],
+    seed_only_packages: list[str] = [],
+    rpmbuild_options: dict[str, list[str]] = {},
+) -> None:
     """Declare a branch, its self-hosting buildroot edges, and its local-packages universe."""
     metadata = {name: _parse_metadata(meta) for name, meta in packages.items()}
     for pin in seed_only_packages:
@@ -323,11 +324,7 @@ def rpm_branch(
         name = "_local_packages",
         binary_source = binary_source,
         packages = [":" + name for name in sorted(metadata)],
-        provides = {
-            cap: sorted(binaries)
-            for cap, binaries in binary_provides.items()
-            if "(" not in cap and "/" not in cap
-        },
+        provides = {cap: sorted(binaries) for cap, binaries in binary_provides.items() if "(" not in cap and "/" not in cap},
         requires_edges = _requires_edges(metadata, binary_provides),
         visibility = ["PUBLIC"],
     )

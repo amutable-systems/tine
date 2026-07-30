@@ -5,7 +5,15 @@ load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//package:buildroot.bzl", "BuildrootInfo")
 load("//package:install.bzl", "install_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
-load("//package:repository.bzl", "LocalPackageInfo", "PackageArtifactInfo", "PackagePoolInfo", "PackagePoolValueInfo", "PackageRepresentationInfo", "remote_repository_base")
+load(
+    "//package:repository.bzl",
+    "LocalPackageInfo",
+    "PackageArtifactInfo",
+    "PackagePoolInfo",
+    "PackagePoolValueInfo",
+    "PackageRepresentationInfo",
+    "remote_repository_base",
+)
 load("//package:system.bzl", "PackageSystemInfo")
 
 _RPM_PACKAGE_SYSTEM = "@tine//package_system/rpm:package_system"
@@ -17,10 +25,11 @@ def _snapshot_data(snapshot: ArtifactValue, id: str) -> dict:
     return data
 
 def _materialize_repodata_impl(
-        actions: AnalysisActions,
-        id: str,
-        repo: OutputArtifact,
-        snapshot: ArtifactValue) -> list[Provider]:
+    actions: AnalysisActions,
+    id: str,
+    repo: OutputArtifact,
+    snapshot: ArtifactValue,
+) -> list[Provider]:
     data = _snapshot_data(snapshot, id)
     repomd_xml = data.get("repomd", "")
     if not repomd_xml:
@@ -70,12 +79,13 @@ def _retained_packages(id: str, engine_locks: list[ArtifactValue]) -> dict[str, 
     return retained
 
 def _materialize_package_pool_impl(
-        actions: AnalysisActions,
-        baseurl: str,
-        decompress: RunInfo,
-        engine_locks: list[ArtifactValue],
-        id: str,
-        snapshot: ArtifactValue) -> list[Provider]:
+    actions: AnalysisActions,
+    baseurl: str,
+    decompress: RunInfo,
+    engine_locks: list[ArtifactValue],
+    id: str,
+    snapshot: ArtifactValue,
+) -> list[Provider]:
     data = _snapshot_data(snapshot, id)
     packages = _retained_packages(id, engine_locks)
     for pkgid, package in data.get("packages", {}).items():
@@ -131,18 +141,22 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     snapshot = ctx.attrs.snapshot
     if snapshot == None:
         snapshot = ctx.actions.write("empty-snapshot.json", "{}")
-    ctx.actions.dynamic_output_new(_materialize_repodata(
-        id = ctx.label.name,
-        repo = repo.as_output(),
-        snapshot = snapshot,
-    ))
-    pool = ctx.actions.dynamic_output_new(_materialize_package_pool(
-        baseurl = ctx.attrs.baseurl,
-        decompress = ctx.attrs._decompress[RunInfo],
-        engine_locks = ctx.attrs.engine_locks,
-        id = ctx.label.name,
-        snapshot = snapshot,
-    ))
+    ctx.actions.dynamic_output_new(
+        _materialize_repodata(
+            id = ctx.label.name,
+            repo = repo.as_output(),
+            snapshot = snapshot,
+        )
+    )
+    pool = ctx.actions.dynamic_output_new(
+        _materialize_package_pool(
+            baseurl = ctx.attrs.baseurl,
+            decompress = ctx.attrs._decompress[RunInfo],
+            engine_locks = ctx.attrs.engine_locks,
+            id = ctx.label.name,
+            snapshot = snapshot,
+        )
+    )
     return remote_repository_base(ctx, repo) + [
         PackagePoolInfo(value = pool),
     ]
@@ -166,15 +180,11 @@ _remote_repository = rule(
     },
 )
 
-def rpm_remote_repository(
-        name: str,
-        baseurl: str,
-        labels: list[str] = [],
-        **kwargs) -> None:
+def rpm_remote_repository(name: str, baseurl: str, labels: list[str] = [], **kwargs) -> None:
     """Declare a repository backed by its optional package-relative snapshot."""
     if not name.endswith(".repository"):
         fail("rpm_remote_repository name must end with '.repository': {}".format(name))
-    snapshot_name = name[:-len(".repository")]
+    snapshot_name = name[: -len(".repository")]
     snapshots = glob(["snapshot/repo/" + snapshot_name + ".json"])
     if len(snapshots) > 1:
         fail("rpm_remote_repository {} has multiple snapshots: {}".format(name, snapshots))
@@ -186,7 +196,7 @@ def rpm_remote_repository(
         labels = ["tine:rpm-remote-repository"] + labels,
         package_system = _RPM_PACKAGE_SYSTEM,
         snapshot = snapshot,
-        **kwargs
+        **kwargs,
     )
 
 def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -212,13 +222,15 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
                     ),
                 )
             extra_packages.append(info.packages)
-        buildroot = buildroot + [install_packages(
-            ctx,
-            package_manager_dep,
-            ctx.attrs.build_requires,
-            stack = buildroot,
-            extra_packages = extra_packages,
-        )]
+        buildroot = buildroot + [
+            install_packages(
+                ctx,
+                package_manager_dep,
+                ctx.attrs.build_requires,
+                stack = buildroot,
+                extra_packages = extra_packages,
+            )
+        ]
 
     rpms = ctx.actions.declare_output("rpms", dir = True)
 
@@ -227,18 +239,22 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
 
     build = cmd_args(
         chroot_run(engine = package_manager.engine[EngineInfo], exe = system.build),
-        spec_args(ctx, "build.spec.json", {
-            "dist": ctx.attrs.dist,
-            # bottom..top: the base lowerdir, then this package's BuildRequires delta
-            "lower": buildroot,
-            "out": rpms.as_output(),
-            "release": ctx.attrs.release,
-            "rpmbuild_options": ctx.attrs.rpmbuild_options,
-            "source_date_epoch": ctx.attrs.source_date_epoch,
-            "sources": ctx.attrs.srcs,
-            "spec_file": ctx.attrs.spec,
-            "subpackages": {name: out.as_output() for name, out in sub_outputs.items()},
-        }),
+        spec_args(
+            ctx,
+            "build.spec.json",
+            {
+                "dist": ctx.attrs.dist,
+                # bottom..top: the base lowerdir, then this package's BuildRequires delta
+                "lower": buildroot,
+                "out": rpms.as_output(),
+                "release": ctx.attrs.release,
+                "rpmbuild_options": ctx.attrs.rpmbuild_options,
+                "source_date_epoch": ctx.attrs.source_date_epoch,
+                "sources": ctx.attrs.srcs,
+                "spec_file": ctx.attrs.spec,
+                "subpackages": {name: out.as_output() for name, out in sub_outputs.items()},
+            },
+        ),
     )
     ctx.actions.run(build, category = "rpmbuild")
 
@@ -255,25 +271,24 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
 _rpm_package = rule(
     impl = _rpm_package_impl,
     attrs = {
-        "spec": attrs.source(doc = "the rpm spec file (derived from `package` by the macro)"),
-        "package": attrs.string(doc = "the rpm package Name: (distinct from the buck target name)"),
-        "srcs": attrs.list(attrs.source(), default = [], doc = "Source/Patch files"),
-        "release": attrs.string(
-            doc = "dist-stripped Release base; the build freezes %autorelease = <release>%{?dist}",
-        ),
-        "subpackages": attrs.list(
-            attrs.string(),
-            doc = "declared binary subpackage names (the %package list)",
-        ),
         "build_requires": attrs.list(
             attrs.string(),
             default = [],
             doc = "the package's BuildRequires, installed as a delta over the shared base buildroot",
         ),
+        "buildroot": attrs.dep(
+            providers = [BuildrootInfo],
+            doc = "the shared base buildroot",
+        ),
         "buildroot_deps": attrs.list(
             attrs.dep(providers = [LocalPackageInfo]),
             default = [],
             doc = "our packages whose rpms overlay the buildroot (self-hosted BRs)",
+        ),
+        "dist": attrs.string(default = ".aos"),
+        "package": attrs.string(doc = "the rpm package Name: (distinct from the buck target name)"),
+        "release": attrs.string(
+            doc = "dist-stripped Release base; the build freezes %autorelease = <release>%{?dist}",
         ),
         "rpmbuild_options": attrs.list(
             attrs.string(),
@@ -281,10 +296,11 @@ _rpm_package = rule(
             doc = "extra rpmbuild CLI options (--with=..., --without=..., --define=...)",
         ),
         "source_date_epoch": attrs.int(doc = "per-package SDE from the changelog"),
-        "dist": attrs.string(default = ".aos"),
-        "buildroot": attrs.dep(
-            providers = [BuildrootInfo],
-            doc = "the shared base buildroot",
+        "spec": attrs.source(doc = "the rpm spec file (derived from `package` by the macro)"),
+        "srcs": attrs.list(attrs.source(), default = [], doc = "Source/Patch files"),
+        "subpackages": attrs.list(
+            attrs.string(),
+            doc = "declared binary subpackage names (the %package list)",
         ),
     },
 )

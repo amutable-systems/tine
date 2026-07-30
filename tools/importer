@@ -1136,7 +1136,7 @@ def regenerate_buck(branchdir: Path) -> None:
     Loads are sorted, so an add/remove touches one line and rebases re-resolve by regenerating.
     """
     distro, branch = branchdir.parts[-2], branchdir.parts[-1]
-    # Sort by the filename (with .json) to match buildifier order
+    # Sort by the filename (with .json) to match the formatter's load order
     pkgs = [p.stem for p in sorted(branchdir.glob('*.json'), key=lambda p: p.name)
             if is_package_entry(p)]
 
