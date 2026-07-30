@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  # TODO: narrow to pull_request once we move from pushing branches to PRs.
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # buck's mkosi-sandbox needs unprivileged user namespaces (unshare(CLONE_NEWUSER)); Ubuntu
+      # restricts them via AppArmor, so lift the restriction.
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      # verify-catalog shells out to `git -C <catalog>`, which trips git's safe.directory guard on a
+      # checkout owned by another uid.
+      - name: Set up git
+        run: git config --global --add safe.directory '*'
+
+      # First buck invocation: fetch the pinned buck binary and build the engine (the RPM-resolved
+      # toolchain every later step shares), so each step's timing reflects its own work.
+      - name: Bootstrap buck and the engine
+        run: tools/buck build tine//catalog:fedora.rawhide.engine
+
+      - name: Linters and unit tests
+        run: tools/buck run tine//tools:check
+
+      # Scoped to the rpmrepo snapshotted rawhide engine; CentOS Stream mirrors
+      # are intentionally unpinned and drift, so they are not verifiable.
+      - name: Verify catalog
+        run: tools/buck run tine//tools:verify-catalog -- --engine fedora.rawhide.engine
