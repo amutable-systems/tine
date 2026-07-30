@@ -15,10 +15,9 @@ import contextlib
 import json
 import subprocess
 import sys
-import time
-import urllib.error
-import urllib.request
 from pathlib import Path
+
+from util import urlopen, with_retries
 
 DEFAULT_CATALOG = "tine//catalog"
 ENGINE_LABEL = "tine:engine"
@@ -105,24 +104,12 @@ def _newest_snapshot(repository: str, mirror: str, series: str) -> str:
     gateway, found, _ = mirror.partition("/v2/mirror/")
     if not found:
         raise SystemExit(f"{repository}: mirror {mirror!r} is not an rpmrepo /v2/mirror/ URL")
-    # CDN bot filters (e.g. Cloudflare's) reject Python's default agent.
-    request = urllib.request.Request(gateway + "/v2/enumerate", headers={"User-Agent": "tine-catalog"})
 
     def enumerate_snapshots() -> list[object]:
-        for attempt in range(1, 5):
-            try:
-                with urllib.request.urlopen(request) as response:
-                    return json.load(response)
-            except (urllib.error.URLError, ConnectionError, TimeoutError) as error:
-                # Retry transient failures; unstable connections reset mid-handshake.
-                transient = getattr(error, "code", None) in (None, 408, 429, 500, 502, 503, 504)
-                if not transient or attempt == 4:
-                    raise
-                print(f"{repository}: enumerate: {error}; retrying…", file=sys.stderr)
-                time.sleep(2**attempt)
-        raise AssertionError("unreachable")
+        with urlopen(gateway + "/v2/enumerate", agent="tine-catalog") as response:
+            return json.load(response)
 
-    snapshots = enumerate_snapshots()
+    snapshots = with_retries(f"{repository}: enumerate", enumerate_snapshots)
     matches = [s for s in snapshots if isinstance(s, str) and _series(s) == series]
     if not matches:
         raise SystemExit(f"{repository}: the mirror enumerates no {series!r} snapshots")
