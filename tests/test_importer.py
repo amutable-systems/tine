@@ -1173,9 +1173,9 @@ class NativePackages(PackagesTestCase):
     def test_srpm(self) -> None:
         """srpm assembles a native package with the bare native dist and frozen %autorelease.
 
-        A native package has no upstream lookaside; its Source0 is delivered locally (the future
-        AOS lookaside would do this -- see fetch_sources, a no-op without a `sources` file), so we
-        drop the tarball beside the spec before assembling.
+        A native package has no upstream lookaside; its Source0 is delivered locally (a future
+        downstream lookaside would do this -- see fetch_sources, a no-op without a `sources` file),
+        so we drop the tarball beside the spec before assembling.
         """
         rel = self.make_native()
         (self.monorepo / rel / "mine-1.0.tar.gz").write_bytes(make_tarball("mine", "1.0"))

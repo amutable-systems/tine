@@ -20,7 +20,7 @@ Operations on the `upstream-rpm` branch to import/fetch upstream dist-git change
  - `update-upstreams`: check for any new upstream dist-git commits for all currently imported packages and
    pull them in
 
-Operations on the `main` branch to maintain AOS packages:
+Operations on the `main` branch to maintain the downstream packages:
 
  - `import pkgname [distro branch]`: copies `packages/…`_pkgname_`{/,.json}` from `upstream-rpm` branch
    into main, as a single commit. If there are multiple imports, you have to specify distro and branch to
@@ -47,8 +47,8 @@ Operations on the `main` branch to maintain AOS packages:
    happen with buck).
  - `rebuild pkgname reasonpkg-version-release`: Generate an automated "pkgname: Rebuild against
    reasonpkg-version-release" commit
- - `list`: table with all rpms, local and upstream version/release (might be "AOS only"), and modification
-   status
+ - `list`: table with all rpms, local and upstream version/release (a package with no upstream is shown as
+   `native`), and modification status
  - `check [start-ref]`: Validate consistency of all commits (optionally, starting from given ref); will
    run in all PRs
 
@@ -68,8 +68,9 @@ Operations on the `main` branch to maintain AOS packages:
        "increase last component for a modified one"
  - Packages using `%autorelease` need no manual bump; the release value is derived from the imported
    metadata and the local commit count (see the `srpm` operation details in [packages.md](packages.md)).
- - Builds use an AOS-specific `%dist` tag: `aos` appended to the upstream dist tag, e.g. `.fc44aos`; the
-   rationale is recorded in the design principles in [packages.md](packages.md).
+ - Builds use a downstream-specific `%dist` tag: `aos` (this documentation's placeholder, see
+   [packages.md](packages.md)) appended to the upstream dist tag, e.g. `.fc44aos`; the rationale is
+   recorded in the design principles in [packages.md](packages.md).
 
 ## Making local package modifications
 

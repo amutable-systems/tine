@@ -915,6 +915,5 @@ External projects that informed the design:
 - Buck2 for action/dynamic-dependency semantics, sub-targets, content-based paths, and test execution;
 - rpm and libdnf5 for build, resolution, transaction, and signature behavior;
 - mkosi/mkosi-sandbox for user-namespace isolation, root mounting, UKIs, and repart-based images;
-- Antlir2 for repository/package-selection ideas and as a comparison point for image feature graphs;
 - Barrage for the planned streamed integration-test executor;
 - Siguldry for a possible production PKCS#11 signing boundary.
