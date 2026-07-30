@@ -11,3 +11,10 @@ python_bootstrap_library(
     srcs = ["specs.py"],
     visibility = ["PUBLIC"],
 )
+
+# Spec loading for driver tests running in the unit-test tree (tine//tests:unit-test).
+export_file(
+    name = "specs-src",
+    src = "specs.py",
+    visibility = ["tine//tests:unit-test"],
+)
