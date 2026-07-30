@@ -23,6 +23,13 @@ jobs:
       - name: Allow unprivileged user namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
+      - name: Set up /dev/kvm
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm --settle
+          ls -l /dev/kvm
+
       # verify-catalog shells out to `git -C <catalog>`, which trips git's safe.directory guard on a
       # checkout owned by another uid.
       - name: Set up git
@@ -40,3 +47,19 @@ jobs:
       # are intentionally unpinned and drift, so they are not verifiable.
       - name: Verify catalog
         run: tools/buck run tine//tools:verify-catalog -- --engine fedora.rawhide.engine
+
+      - name: Build boot-demo image
+        run: tools/buck build //examples/image:boot-demo
+
+      # Boot the image in a VM and drive its console over a pty: wait for the autologin shell, assert
+      # the system settled (degraded is tolerated for now), then power off.
+      - name: Boot-test boot-demo
+        run: tools/buck run //examples/image:boot-demo-vm-smoke
+
+      - name: Build Secure Boot image
+        run: tools/buck build //examples/image-secureboot:image
+
+      # Boot with Secure Boot enforced and a vTPM: enroll the keys on first boot, smoke-check, then
+      # power off. Exercises the signed UKI/systemd-boot and the measured expected-PCR policy.
+      - name: Boot-test Secure Boot image
+        run: tools/buck run //examples/image-secureboot:vm-smoke

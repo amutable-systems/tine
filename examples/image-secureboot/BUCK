@@ -64,13 +64,17 @@ image_vm(
 command_alias(
     name = "vm-smoke",
     args = [
-        "--check", "bootctl | grep -F 'Secure Boot: enabled (user)'",
-        "--check", "bootctl | grep -F 'Measured UKI: yes'",
-        "--check", "bootctl | grep -F 'Measured OS: yes'",
+        "--check",
+        "bootctl | grep -F 'Secure Boot: enabled (user)'",
+        "--check",
+        "bootctl | grep -F 'Measured UKI: yes'",
+        "--check",
+        "bootctl | grep -F 'Measured OS: yes'",
         # The booted /usr must carry the signed bootloader: bootctl update (and thus
         # systemd-boot-update.service after an OS update) reinstalls from there, and an unsigned
         # binary would fail Secure Boot verification on the next reboot.
-        "--check", "test -e /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed",
+        "--check",
+        "test -e /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed",
         "$(exe_target :vm)",
     ],
     exe = "tine//tests:boot-smoke",

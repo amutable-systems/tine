@@ -6,14 +6,48 @@ hermetic sandbox (no root, no containers, no network). Filesystem images are sta
 The outputs are reproducible and content-cached: deterministic archives, unified kernel images, and
 dm-verity protected GPT disks.
 
-This repository is the reusable build machinery only. Images, packages and examples live in the projects
-that consume it.
-
 ## Requirements
 
 The host needs Linux with unprivileged user namespaces, `jq`, `curl`, `sha256sum`, and `zstd`. Also
 `/dev/kvm` for running VMs. The first invocation bootstraps the pinned Buck2 binary; everything else is
 fetched and cached by Buck itself.
+
+## Quick start
+
+Build a minimal tar image with a few packages and custom files:
+
+```sh
+tools/buck build //examples/image:demo
+```
+
+Build a bootable GPT disk with a unified kernel image and dm-verity protected `/usr`:
+
+```sh
+tools/buck build //examples/image:boot-demo
+```
+
+Boot it in an ephemeral VM:
+
+```sh
+tools/buck run //examples/image:boot-demo-vm
+```
+
+Images are declared in ordinary `BUCK` files ([examples/image/BUCK](examples/image/BUCK) has the complete
+demos):
+
+```python
+load("@tine//image:defs.bzl", "chroot", "install", "rootfs_archive")
+
+rootfs_archive(
+    name = "demo",
+    package_manager = ":image.package-manager",
+    ops = [
+        install(["bash", "coreutils"]),
+        chroot(["/usr/bin/bash", "-c", "echo built-by-tine > /etc/tine/marker"]),
+    ],
+    format = "tar",
+)
+```
 
 ## Consuming the cell
 
@@ -37,22 +71,6 @@ Buck fetches the pinned commit into its own cache; nothing is checked into the c
 path is only the location the cell would occupy. Buck2 forbids nested cells inside an external cell, so the
 consuming project owns its own `toolchains` cell; copy [`toolchains/BUCK`](toolchains/BUCK) as a starting
 point.
-
-Images are then declared in ordinary `BUCK` files:
-
-```python
-load("@tine//image:defs.bzl", "chroot", "install", "rootfs_archive")
-
-rootfs_archive(
-    name = "demo",
-    package_manager = ":image.package-manager",
-    ops = [
-        install(["bash", "coreutils"]),
-        chroot(["/usr/bin/bash", "-c", "echo built-by-tine > /etc/tine/marker"]),
-    ],
-    format = "tar",
-)
-```
 
 A consuming OS monorepo ("OS.git" in these docs) additionally holds package sources under
 `packages/<distro>/<branch>/<package>`, imported and updated from upstream dist-gits (Fedora, or CentOS
@@ -79,9 +97,8 @@ Design:
 
 ## Development
 
-Standalone, this repository builds its own targets only: the catalog, the tooling, and the test suite.
-
 ```sh
+tools/buck build //...                     # the examples, the catalog, and the tooling
 tools/buck run tine//tools:check           # lint, type-check, unit tests
 tools/buck run tine//tools:fmt             # auto-format and auto-fix
 tools/buck run tine//tools:verify-catalog  # assert the committed catalog lock matches
