@@ -1,14 +1,14 @@
 # Standalone root cell. Consuming projects supply their own; see README.md.
 
 [cells]
-root = .
+# Named `tine`, not `root`, so same-cell labels read `tine//...` exactly as in a consuming project.
+# An alias would not do: as an external cell, `tine` must resolve to itself.
+tine = .
 toolchains = toolchains
 prelude = prelude
 none = none
 
 [cell_aliases]
-# Same-cell targets are written `tine//...` so the labels are identical in a consuming project.
-tine = root
 config = prelude
 # Satisfy the bundled prelude's internal platform alias.
 fbsource = none
@@ -17,7 +17,7 @@ fbsource = none
 prelude = bundled
 
 [parser]
-target_platform_detector_spec = target:root//...->prelude//platforms:default
+target_platform_detector_spec = target:tine//...->prelude//platforms:default
 
 [build]
 execution_platforms = prelude//platforms:default
