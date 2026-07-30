@@ -1,6 +1,6 @@
 """Tests for the rpm importer
 
-    python3 -m unittest discover -s tine/tests -t tine -v
+    python3 -m unittest discover -s tests -t . -v
 
 These are integration tests: they stand up a local dist-git repo, build *real* rpms from it
 (so the metadata pipeline's `rpm -qp`/`rpmspec` calls run for real), and mock only the network

@@ -147,9 +147,9 @@ cacheable build action. The generated transaction is an input to the existing dy
 so the engine builds in one invocation without mutating the source tree. Its package selection changes only
 when its authored policy, resolver engine, or pinned repository inputs change.
 
-`tine/tools/buck run tine//tools:refresh-catalog` refreshes the default `tine//catalog` package in two
+`tools/buck run tine//tools:refresh-catalog` refreshes the default `tine//catalog` package in two
 phases. Pass another catalog package after `--`, for example
-`tine/tools/buck run tine//tools:refresh-catalog -- my_project//catalog`:
+`tools/buck run tine//tools:refresh-catalog -- my_project//catalog`:
 
 0. Advance every repository pinned to an rpmrepo mirror (declared through the release macro's
    `rpmrepo_mirror`/`rpmrepo_snapshot` and carried on the target as `rpmrepo.*` metadata) to the
@@ -257,7 +257,7 @@ The host contract is intentionally small; its short list of requirements is docu
 
 ### Execution isolation and target roots
 
-All build actions run through `chroot_run()` and `tine/engine/sandbox.py`. The sandbox binds the engine's
+All build actions run through `chroot_run()` and `engine/sandbox.py`. The sandbox binds the engine's
 userspace read-only over an otherwise isolated namespace, supplies API and temporary filesystems, clears the
 host environment, disables network by default, and uses mkosi-sandbox's unprivileged fakeroot behavior
 (`--suppress-chown`, `--suppress-sync`, and `--become-root`).
@@ -902,13 +902,13 @@ unnecessary unless real composition requirements appear.
 
 Useful implementation entry points:
 
-- `tine/package/{system,repository,release,manager,solver,buildroot,install}.bzl`
-- `tine/package_system/rpm/rules.bzl` and
-  `tine/package_system/rpm/{snapshot,plan,install,pkgdb,createrepo,build,extract,decompress}.py`
-- `tine/engine/{build,runtime}.bzl`, `tine/engine/sandbox.py`, and `tine/rootfs/rootfs.py`
-- `tine/image/{image,compose,defs,sign,vm}.bzl` and `tine/image_format/{archive,boot,disk,sysext,uki}.bzl`
-- `tine/tools/catalog.py` and `tine/catalog/BUCK`
-- the generated `packages/*/*/BUCK` and `tine/package_system/rpm/generated.bzl`
+- `package/{system,repository,release,manager,solver,buildroot,install}.bzl`
+- `package_system/rpm/rules.bzl` and
+  `package_system/rpm/{snapshot,plan,install,pkgdb,createrepo,build,extract,decompress}.py`
+- `engine/{build,runtime}.bzl`, `engine/sandbox.py`, and `rootfs/rootfs.py`
+- `image/{image,compose,defs,sign,vm}.bzl` and `image_format/{archive,boot,disk,sysext,uki}.bzl`
+- `tools/catalog.py` and `catalog/BUCK`
+- the generated `packages/*/*/BUCK` and `package_system/rpm/generated.bzl`
 
 External projects that informed the design:
 

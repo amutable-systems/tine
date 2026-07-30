@@ -7,7 +7,7 @@ cell-local configuration.
 Initialize the parent from the checkout containing tine:
 
 ```console
-$ tine/bin/tine workspace init ~/Projects
+$ bin/tine workspace init ~/Projects
 ```
 
 This registers the current checkout, creates `.tine/workspace.toml` and the parent Buck configuration, and
@@ -36,7 +36,7 @@ remove or modify the project directory.
 
 Projects use `tine//catalog:...` for Tine's default catalog. A project-specific catalog is an ordinary
 `//catalog` package within that project and does not require workspace registration. Refresh one with
-`tine/tools/buck run tine//tools:refresh-catalog -- my_project//catalog`, using the project's cell name.
+`tools/buck run tine//tools:refresh-catalog -- my_project//catalog`, using the project's cell name.
 
 The workspace root is only a cell registry. Its `?*` ignore glob matches every non-empty root-relative path,
 but not the workspace root itself. Consequently, an unregistered directory is invisible to Buck and cannot

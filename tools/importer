@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """rpm monorepo import/maintenance machinery
 
-See tine/docs/packages.md for the design.
+See docs/packages.md for the design.
 
 Dependencies: git, rpm, rpm-build (rpmspec). Everything else happens over REST.
 `srpm` additionally needs dist-git-client to fetch sources.

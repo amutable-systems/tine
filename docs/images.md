@@ -29,7 +29,7 @@ engine. The default catalog is [`tine//catalog`](../catalog/BUCK) and currently 
 
 Each release consists of targets named `<family>.<release>.<role>`, for example
 `tine//catalog:fedora.rawhide.package-manager` or `tine//catalog:centos.10-stream.release`. The pins live
-as committed snapshots under [`tine/catalog/snapshot/`](../catalog/snapshot/): repository metadata in
+as committed snapshots under [`catalog/snapshot/`](../catalog/snapshot/): repository metadata in
 `snapshot/repo/*.json` and frozen engine transactions in `snapshot/engine/*.json`. Normal builds therefore
 never touch the network; `refresh-catalog` (below) advances the pins. A project can instead declare its
 own `//catalog` package with the same macros. The naming scheme and the pinning mechanism are described in
@@ -47,14 +47,14 @@ described in [design.md](design.md).
 The wrapper commands work from anywhere in the root project:
 
 ```sh
-tine/tools/buck run tine//tools:refresh-catalog
-tine/tools/buck run tine//tools:verify-catalog
-tine/tools/buck run tine//tools:fmt
-tine/tools/buck run tine//tools:check
+tools/buck run tine//tools:refresh-catalog
+tools/buck run tine//tools:verify-catalog
+tools/buck run tine//tools:fmt
+tools/buck run tine//tools:check
 ```
 
 `refresh-catalog` refreshes the default `tine//catalog` package. Pass another catalog package after `--`,
-for example `tine/tools/buck run tine//tools:refresh-catalog -- my_project//catalog`. `verify-catalog`
+for example `tools/buck run tine//tools:refresh-catalog -- my_project//catalog`. `verify-catalog`
 performs the same generation and fails when the committed JSON differs. The pinning and refresh mechanism
 is described in [design.md](design.md).
 
@@ -386,7 +386,7 @@ supplies the VM stack, its `autologin` option provisions a locked root password 
 and arbitrary non-secret system credentials configure settings such as first-boot locale and timezone.
 
 ```sh
-tine/tools/buck run //examples/image:boot-demo-vm
+tools/buck run //examples/image:boot-demo-vm
 ```
 
 The example image uses a tmpfs root with `mount.usr=dissect`; SELinux is disabled because the build does not
@@ -397,14 +397,14 @@ yet produce filesystem labels. Ephemeral mode preserves the Buck disk artifact.
 Representative builds are:
 
 ```sh
-tine/tools/buck build //packages/fedora/rawhide:zlib-ng
-tine/tools/buck build //examples/image:demo
-tine/tools/buck build //examples/image:layered-install
-tine/tools/buck build //examples/image:boot-demo
-tine/tools/buck build '//examples/image:boot-demo[uki]'
-tine/tools/buck build '//examples/image:boot-demo[partitions][usr]'
-tine/tools/buck build //examples/image:demo-ext
-tine/tools/buck build //examples/image-local-packages:image
+tools/buck build //packages/fedora/rawhide:zlib-ng
+tools/buck build //examples/image:demo
+tools/buck build //examples/image:layered-install
+tools/buck build //examples/image:boot-demo
+tools/buck build '//examples/image:boot-demo[uki]'
+tools/buck build '//examples/image:boot-demo[partitions][usr]'
+tools/buck build //examples/image:demo-ext
+tools/buck build //examples/image-local-packages:image
 ```
 
 The first validates package import, package-manager selection, buildroot assembly, and RPM collection.
@@ -423,13 +423,13 @@ monorepo; the other targets also build from a standalone checkout.
 Update one or more pinned tools by name (`buck2`, `python3`, `buildifier`, `ruff`, `ty`, `syft`):
 
 ```sh
-tine/tools/buck run tine//tools:bump -- --tool ruff --tool ty
+tools/buck run tine//tools:bump -- --tool ruff --tool ty
 ```
 
 Update all tools:
 
 ```sh
-tine/tools/buck run tine//tools:bump -- --all
+tools/buck run tine//tools:bump -- --all
 ```
 
 Each tool is resolved to its latest upstream release and its `url` and `sha256` are rewritten in place.

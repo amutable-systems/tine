@@ -17,7 +17,7 @@ The `tine` cell contains reusable machinery organized by subsystem. Starlark rul
 drivers live together in `engine`, `package`, `package_system`, `image`, `image_format`, `rootfs`,
 and `archive`. Vendored code lives in `vendor`. The default catalog is `tine//catalog`; consumers may
 instead declare a project-specific `//catalog` package. Package sources and targets live in the OS.git
-root that vendors this cell, under `packages/` (built as `//packages/...`).
+root that consumes this cell, under `packages/` (built as `//packages/...`).
 
 ## Commands
 

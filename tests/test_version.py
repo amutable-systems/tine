@@ -1,6 +1,6 @@
 """Tests for the git-derived image version tool.
 
-    python3 -m unittest discover -s tine/tests -t tine -v
+    python3 -m unittest discover -s tests -t . -v
 
 Each test builds a real throwaway git repository; the tool's git calls run for real.
 """

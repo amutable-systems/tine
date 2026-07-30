@@ -1,0 +1,32 @@
+# Standalone root cell. Consuming projects supply their own; see README.md.
+
+[cells]
+root = .
+toolchains = toolchains
+prelude = prelude
+none = none
+
+[cell_aliases]
+# Same-cell targets are written `tine//...` so the labels are identical in a consuming project.
+tine = root
+config = prelude
+# Satisfy the bundled prelude's internal platform alias.
+fbsource = none
+
+[external_cells]
+prelude = bundled
+
+[parser]
+target_platform_detector_spec = target:root//...->prelude//platforms:default
+
+[build]
+execution_platforms = prelude//platforms:default
+
+[project]
+# VCS state must not invalidate Buck's file watcher.
+ignore = .git, .jj, **/.git, **/.jj, **/buck-out
+
+[buck2]
+materializations = deferred
+sqlite_materializer_state = true
+defer_write_actions = true

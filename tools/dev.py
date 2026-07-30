@@ -42,11 +42,21 @@ def _starlark_srcs(buck: str) -> list[Path]:
     files = sorted(
         project / f for f in _buck_out(buck, "uquery", f"allbuildfiles({universe})").splitlines() if f
     )
-    return [f for f in files if f.is_relative_to(Path(aliases["tine"])) and f.suffix != ".json"]
+    # Attribute each file to the innermost cell holding it. Standalone, tine is the root cell, so a
+    # plain prefix test would also claim every nested cell's files, including the bundled prelude's
+    # (which are not on disk, and which buildifier then skips without failing).
+    cell_roots = sorted((Path(p) for p in cells.values()), key=lambda p: len(p.parts), reverse=True)
+    tine = Path(aliases["tine"])
+
+    def owner(path: Path) -> Path | None:
+        return next((root for root in cell_roots if path.is_relative_to(root)), None)
+
+    return [f for f in files if owner(f) == tine and f.suffix != ".json"]
 
 
 def _lint(args: argparse.Namespace) -> None:
     cell = _cell_root(args.buck, "tine")
+    srcs = _starlark_srcs(args.buck)
     _bold("ruff")
     _run([args.ruff, "format", "--check", "--no-cache", cell])
     _run([args.ruff, "check", "--no-cache", cell])
@@ -70,14 +80,16 @@ def _lint(args: argparse.Namespace) -> None:
             "-mode=check",
             "-lint=warn",
             "-warnings=-function-docstring-args,-function-docstring-return",
-            *_starlark_srcs(args.buck),
+            *srcs,
         ]
     )
+    # Pass the files rather than the cell directory: standalone, the tine cell is the project root,
+    # which Buck normalizes to an empty path and rejects.
     _bold("starlark lint")
-    _run([args.buck, "-v", "0", "starlark", "lint", "--console", "none", cell])
+    _run([args.buck, "-v", "0", "starlark", "lint", "--console", "none", *srcs])
     _bold("starlark typecheck")
     # Typecheck errors use stdout; stderr is only the per-file event log.
-    _run([args.buck, "-v", "0", "starlark", "typecheck", cell], stderr=subprocess.DEVNULL)
+    _run([args.buck, "-v", "0", "starlark", "typecheck", *srcs], stderr=subprocess.DEVNULL)
 
 
 def _fmt(args: argparse.Namespace) -> None:
