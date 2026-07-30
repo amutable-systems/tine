@@ -54,6 +54,16 @@ http_tool(
     visibility = ["PUBLIC"],
 )
 
+# Cargo wrapper that embeds the crate graph in every binary it builds, so SBOM scanners can report
+# what a from-source Rust binary contains. Fedora does not package it, and we
+# can't build it from source yet. https://crates.io/crates/cargo-auditable
+http_tool(
+    name = "cargo-auditable",
+    path = "cargo-auditable",
+    spec = _pins["cargo-auditable"],
+    visibility = ["PUBLIC"],
+)
+
 # Runtime driver for the source-tree commands below.
 python_bootstrap_binary(
     name = "dev",
