@@ -49,10 +49,11 @@ See [the design plan](docs/design.md).
 
 - Use cell-relative `tine//...` labels for same-cell targets, never `root//...`; this cell is named `tine`
   both standalone and in a consuming project.
-- This repository carries a `.buckroot`. Without it Buck takes the *furthest* ancestor `.buckconfig`, so a
-  parent directory holding one (such as a Tine workspace root) silently captures the project and every
-  `//...` pattern resolves to zero targets. That also means this checkout cannot currently be registered in
-  a Tine workspace; see [workspace.md](docs/workspace.md).
+- Never add a `.buckroot` here. Buck takes the *furthest* ancestor `.buckconfig` and `.buckroot` stops that
+  search, so one would keep this checkout out of a Tine workspace, where it supplies the `tine` cell.
+- The flip side: a stale `.buckconfig` in any parent directory captures the project, and `//...` then
+  resolves to zero targets while still exiting 0. If a command mysteriously finds nothing, check
+  `tools/buck root --kind project` before anything else.
 
 ## Python guidelines
 

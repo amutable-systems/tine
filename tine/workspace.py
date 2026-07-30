@@ -13,7 +13,9 @@ from util import ANSI_CYAN, ANSI_GREEN, ANSI_RESET, atomic_write_text
 
 MARKER = "# Managed by tine workspace. Edit with `tine workspace ...`."
 MANIFEST_VERSION = 2
-RESERVED_CELLS = frozenset({"config", "fbsource", "none", "prelude", "root", "tine", "toolchains"})
+# Names the generated configuration owns outright. `tine` is deliberately absent: it is the cell name of
+# a real checkout, which _cell_entries lets that project supply.
+RESERVED_CELLS = frozenset({"config", "fbsource", "none", "prelude", "root", "toolchains"})
 
 
 @dataclass(frozen=True)
@@ -152,16 +154,19 @@ def _load_manifest(workspace: Path) -> Manifest:
 
 
 def _cell_entries(manifest: Manifest) -> list[tuple[str, Path]]:
-    entries = [
-        ("root", manifest.workspace),
-        ("tine", manifest.tine),
-        ("toolchains", manifest.tine / "toolchains"),
-        ("prelude", manifest.workspace / "prelude"),
-        ("none", manifest.workspace / "none"),
-    ]
+    # Keyed, so the project carrying the tine cell supplies the `tine` entry instead of duplicating it.
+    # A standalone tine checkout is an ordinary project that happens to be named `tine`; only when the
+    # cell is vendored inside a larger project does `tine` name no project of its own.
+    entries = {
+        "root": manifest.workspace,
+        "tine": manifest.tine,
+        "toolchains": manifest.tine / "toolchains",
+        "prelude": manifest.workspace / "prelude",
+        "none": manifest.workspace / "none",
+    }
     for project in sorted(manifest.projects, key=lambda item: item.name):
-        entries.append((project.name, project.path))
-    return entries
+        entries[project.name] = project.path
+    return list(entries.items())
 
 
 def _render_buckconfig(manifest: Manifest) -> str:
@@ -213,12 +218,31 @@ _.path = ["{{{{config_root}}}}/{bin_directory}", "{{{{config_root}}}}/{tools}"]
 """
 
 
+def _assert_no_buckroot(path: Path, description: str) -> None:
+    if (path / ".buckroot").exists():
+        raise CliError(
+            f"remove {path / '.buckroot'} before registering {description}: it stops Buck before it "
+            "reaches the workspace root"
+        )
+
+
 def _assert_project(project: Project, manifest: Manifest) -> None:
     _path_within(project.path, manifest.workspace, "project")
     if not project.path.is_dir():
         raise CliError(f"project directory does not exist: {project.path}")
-    if (project.path / ".buckroot").exists():
-        raise CliError(f"remove {project.path / '.buckroot'} before adding the project")
+    if project.name == "tine" and project.path != manifest.tine:
+        raise CliError(f"{project.path} would claim the tine cell, which belongs to {manifest.tine}")
+    _assert_no_buckroot(project.path, project.name)
+
+
+def _discard_orphaned(path: Path) -> None:
+    """Drop a generated file left behind by a workspace whose manifest is gone.
+
+    Buck takes the furthest ancestor .buckconfig, so an orphaned one keeps capturing the project root
+    and every command resolves against a cell map that no longer describes anything.
+    """
+    if path.is_file() and path.read_text().startswith(f"{MARKER}\n"):
+        path.unlink()
 
 
 def _write_workspace(manifest: Manifest) -> None:
@@ -229,6 +253,7 @@ def _write_workspace(manifest: Manifest) -> None:
         _path_within(path, manifest.workspace, description)
         if not path.is_dir():
             raise CliError(f"{description} does not exist: {path}")
+    _assert_no_buckroot(manifest.tine, "the tine cell")
     for project in manifest.projects:
         _assert_project(project, manifest)
     managed = {
@@ -308,8 +333,7 @@ def _init(args: argparse.Namespace) -> Manifest:
     if source_root == workspace:
         raise CliError("the workspace must be a parent of the tine source checkout")
     _path_within(source_root, workspace, "tine source checkout")
-    if (source_root / ".buckroot").exists():
-        raise CliError(f"remove {source_root / '.buckroot'} before initializing the workspace")
+    _discard_orphaned(workspace / ".buckconfig")
     cells = _audit_cells(args.buck, source_root)
     project = _new_project(source_root, args.caller_directory)
     manifest = Manifest(
@@ -383,6 +407,7 @@ def _list(args: argparse.Namespace) -> None:
     width = max((len(project.name) for project in projects), default=0)
 
     print(f"{ANSI_CYAN}Workspace{ANSI_RESET}  {manifest.workspace}")
+    print(f"{ANSI_CYAN}Tine cell{ANSI_RESET}  {manifest.tine}")
     print(f"{ANSI_CYAN}Projects{ANSI_RESET}")
     for project in projects:
         name = f"{project.name:<{width}}"
@@ -415,5 +440,7 @@ def add_command(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
 
 def run(args: argparse.Namespace) -> None:
     manifest = args.workspace_handler(args)
+    names = ", ".join(project.name for project in sorted(manifest.projects, key=lambda item: item.name))
     print(f"Tine workspace ready at {manifest.workspace}")
-    print(f"Registered projects: {', '.join(project.name for project in manifest.projects)}")
+    print(f"Tine cell: {manifest.tine}")
+    print(f"Registered projects: {names or 'none yet, add one with `tine workspace add <directory>`'}")

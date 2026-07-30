@@ -4,22 +4,24 @@ Tine can register several independent repositories as cells of one parent Buck p
 local state and outputs in the parent's single `buck-out`, while each repository keeps its own BUCK files and
 cell-local configuration.
 
-> **This does not yet work for a standalone tine checkout.** The commands below assume the tine cell sits
-> inside a registered project, which was true when tine was vendored as a subdirectory. Three things now
-> refuse it: `bin/tine` derives `--source-root` from the cell's *parent*, so `workspace init` on that parent
-> sees `source_root == workspace`; `tine` is a reserved cell name, so a checkout directory called `tine`
-> cannot become a project; and this repository carries a `.buckroot`, which `workspace init` and
-> `workspace add` both reject. Until that is redesigned, use a standalone checkout.
-
-Initialize the parent from the checkout containing tine:
+Initialize the parent from this checkout:
 
 ```console
 $ bin/tine workspace init ~/Projects
 ```
 
-This registers the current checkout, creates `.tine/workspace.toml` and the parent Buck configuration, and
-writes `.config/mise/conf.d/tine.toml`. Run `mise trust ~/Projects` once, then start a new shell under the
+This creates `.tine/workspace.toml` and the parent Buck configuration, and writes
+`.config/mise/conf.d/tine.toml`. Run `mise trust ~/Projects` once, then start a new shell under the
 workspace. `tine` is available on `PATH` from any child directory.
+
+This checkout is registered like any other project, and because it is named `tine` its cell *is* the
+workspace's `tine` cell, which is how other projects resolve `tine//...` against it. Nothing else may claim
+that name. If the cell is instead vendored inside a larger project, that project is registered under its own
+name and supplies `tine` as a nested cell.
+
+No project may contain a `.buckroot`, this one included. Buck takes the *furthest* ancestor `.buckconfig`
+and `.buckroot` stops that search, so a project carrying one never reaches the workspace root. `init` and
+`add` both refuse it.
 
 Register another checkout explicitly:
 
@@ -52,5 +54,10 @@ that cell's `[project] ignore` setting instead. Run `tine workspace doctor` to c
 files, cell map, and Buck project boundary.
 
 Generated files carry a marker. The CLI refuses to replace an unmarked workspace `.buckconfig` or mise
-fragment. Projects must not contain `.buckroot`, because it would stop Buck before it reaches the shared
-workspace configuration. Project `.buckconfig` files remain project-owned and unchanged.
+fragment. Project `.buckconfig` files remain project-owned and unchanged.
+
+A generated `.buckconfig` whose manifest has been deleted is orphaned: it still captures the Buck project
+root, so every command resolves against a cell map describing nothing. `init` discards such a file before
+re-reading the cell map. The manifest is the registry, so recovering this way starts with no projects and
+each one has to be added again. If the orphaned map is broken badly enough that Buck cannot run at all,
+delete the workspace's `.buckconfig` by hand first, since the CLI itself runs through Buck.
