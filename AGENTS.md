@@ -16,8 +16,8 @@
 The `tine` cell contains reusable machinery organized by subsystem. Starlark rules and their
 drivers live together in `engine`, `package`, `package_system`, `image`, `image_format`, `rootfs`,
 and `archive`. Vendored code lives in `vendor`. The default catalog is `tine//catalog`; consumers may
-instead declare a project-specific `//catalog` package. `examples` holds the demo images and dev box that
-CI builds and boot-tests. Package sources and targets live in the OS.git root that consumes this cell,
+instead declare a project-specific `//catalog` package. `examples` holds the demo images that CI builds and
+boot-tests, plus a dev box. Package sources and targets live in the OS.git root that consumes this cell,
 under `packages/` (built as `//packages/...`).
 
 ## Commands
@@ -47,9 +47,12 @@ See [the design plan](docs/design.md).
 
 ## Workspace compatibility
 
-- Use cell-relative `//...` labels for same-cell targets, never `root//...`; `root` is the parent registry
-  cell in a Tine workspace.
-- Registered projects must not contain `.buckroot`, because it prevents Buck from discovering the workspace.
+- Use cell-relative `tine//...` labels for same-cell targets, never `root//...`; this cell is named `tine`
+  both standalone and in a consuming project.
+- This repository carries a `.buckroot`. Without it Buck takes the *furthest* ancestor `.buckconfig`, so a
+  parent directory holding one (such as a Tine workspace root) silently captures the project and every
+  `//...` pattern resolves to zero targets. That also means this checkout cannot currently be registered in
+  a Tine workspace; see [workspace.md](docs/workspace.md).
 
 ## Python guidelines
 

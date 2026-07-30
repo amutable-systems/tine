@@ -26,12 +26,12 @@ from typing import Literal, NamedTuple, NotRequired, TypedDict, cast, get_args
 def repo_root() -> Path | None:
     """The OS.git root: the nearest ancestor holding both packages/ and a git checkout.
 
-    OS.git vendors tine/, so the importer always runs from inside the OS tree. Walk up from this
-    file to the first ancestor carrying packages/ and a .git (a directory in a plain clone, a file
-    in a worktree or submodule). This finds the root whether tine sits at tine/, transitionally at
-    tine/tine/, or vendored without its own .git, and from the copied test tree under buck-out.
-    Returns None in a standalone tine checkout with no OS tree above it: import must stay quiet
-    there; only the git verbs need the root, and they exit with a message.
+    The importer only does useful work from inside the OS tree, so walk up from this file to the
+    first ancestor carrying packages/ and a .git (a directory in a plain clone, a file in a worktree
+    or submodule). That finds the root wherever the cell sits: expanded from an external cell,
+    vendored without its own .git, or in the copied test tree under buck-out. Returns None in a
+    standalone tine checkout with no OS tree above it: import must stay quiet there; only the git
+    verbs need the root, and they exit with a message.
     """
     for d in Path(__file__).resolve().parents:
         if (d / 'packages').is_dir() and (d / '.git').exists():

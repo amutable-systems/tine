@@ -42,16 +42,25 @@ def _starlark_srcs(buck: str) -> list[Path]:
     files = sorted(
         project / f for f in _buck_out(buck, "uquery", f"allbuildfiles({universe})").splitlines() if f
     )
-    # Attribute each file to the innermost cell holding it. Standalone, tine is the root cell, so a
-    # plain prefix test would also claim every nested cell's files, including the bundled prelude's
-    # (which are not on disk, and which buildifier then skips without failing).
-    cell_roots = sorted((Path(p) for p in cells.values()), key=lambda p: len(p.parts), reverse=True)
+    # Keep the tine cell's own files, plus those of cells nested inside it (standalone, tine is the
+    # root cell and owns a nested `toolchains`). Reject by owning cell rather than by path prefix,
+    # because nested `none`/`prelude` are not on disk and buildifier skips unreadable files without
+    # failing, so a prefix test silently checks nothing.
+    cell_roots = sorted(
+        ((Path(path), name) for name, path in cells.items()),
+        key=lambda item: len(item[0].parts),
+        reverse=True,
+    )
     tine = Path(aliases["tine"])
 
-    def owner(path: Path) -> Path | None:
-        return next((root for root in cell_roots if path.is_relative_to(root)), None)
+    def owner(path: Path) -> str | None:
+        return next((name for root, name in cell_roots if path.is_relative_to(root)), None)
 
-    return [f for f in files if owner(f) == tine and f.suffix != ".json"]
+    return [
+        f
+        for f in files
+        if f.is_relative_to(tine) and owner(f) not in (None, "none", "prelude") and f.suffix != ".json"
+    ]
 
 
 def _lint(args: argparse.Namespace) -> None:

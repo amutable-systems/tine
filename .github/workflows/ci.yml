@@ -48,6 +48,9 @@ jobs:
       - name: Verify catalog
         run: tools/buck run tine//tools:verify-catalog -- --engine fedora.rawhide.engine
 
+      - name: Build the dev box
+        run: tools/buck build //examples/box:box
+
       - name: Build boot-demo image
         run: tools/buck build //examples/image:boot-demo
 

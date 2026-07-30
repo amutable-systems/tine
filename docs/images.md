@@ -397,24 +397,24 @@ yet produce filesystem labels. Ephemeral mode preserves the Buck disk artifact.
 Representative builds are:
 
 ```sh
-tools/buck build //packages/fedora/rawhide:zlib-ng
 tools/buck build //examples/image:demo
 tools/buck build //examples/image:layered-install
 tools/buck build //examples/image:boot-demo
 tools/buck build '//examples/image:boot-demo[uki]'
 tools/buck build '//examples/image:boot-demo[partitions][usr]'
 tools/buck build //examples/image:demo-ext
-tools/buck build //examples/image-local-packages:image
 ```
 
-The first validates package import, package-manager selection, buildroot assembly, and RPM collection.
-Packages with `buildroot_deps` additionally exercise local-package preference. The image targets validate
-package installation and commands sharing one delta, incremental layering, archive packing, versioned UKI
-creation, semantic boot-artifact extraction, ESP-layer assembly, and disk composition. `demo-ext` is a
-system-extension DDI on top of `boot-demo`. Running `boot-demo-vm` validates the interactive VM runner; it
-exposes `demo-ext` under `/var/lib/extensions` in the guest, which validates the sysext merge at boot. The
-`//packages/...` and `//examples/image-local-packages` targets need the package sources of a vendoring OS
-monorepo; the other targets also build from a standalone checkout.
+These validate package installation and commands sharing one delta, incremental layering, archive packing,
+versioned UKI creation, semantic boot-artifact extraction, ESP-layer assembly, and disk composition.
+`demo-ext` is a system-extension DDI on top of `boot-demo`. Running `boot-demo-vm` validates the interactive
+VM runner; it exposes `demo-ext` under `/var/lib/extensions` in the guest, which validates the sysext merge
+at boot.
+
+A consuming project adds `//packages/fedora/rawhide:zlib-ng`, which validates package import,
+package-manager selection, buildroot assembly and RPM collection (packages with `buildroot_deps`
+additionally exercise local-package preference), and `//examples/image-local-packages:image`, which builds
+an image from those packages. Neither target exists in this repository.
 
 ## Updating pinned tools
 

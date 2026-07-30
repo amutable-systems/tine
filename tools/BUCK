@@ -7,12 +7,14 @@ load(":tools.json", _pins = "value")
 # releases live in ./tools.json and are refreshed by `bump` (see docs/images.md).
 
 # Relocatable bootstrap Python; 3.14 provides stdlib zstd for RPM payloads.
+# PUBLIC, not just `toolchains//:python_bootstrap`: a consuming project owns its own toolchains cell
+# (Buck2 forbids nested cells inside an external cell), so the consumer is a different label.
 http_tool(
     name = "python3",
     args = ["-B"],
     path = "bin/python3",
     spec = _pins["python3"],
-    visibility = ["toolchains//:python_bootstrap"],
+    visibility = ["PUBLIC"],
 )
 
 # Raw static binary, so no archive path is needed.

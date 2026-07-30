@@ -23,18 +23,20 @@ by content, and suitable for remote execution. The current implementation alread
 - layered filesystem images, deterministic archives, bootable GPT disks, and a VM runner.
 
 The system does not yet claim complete source provenance, production signing, remote execution, or a full
-release pipeline. Images currently mix packages built in this repository with pinned upstream packages.
+release pipeline. Images currently mix locally built packages with pinned upstream packages.
 
 ## Current architecture
 
 ### Repository and cell layout
 
-The root project consumes reusable machinery from the `tine` cell:
+This repository is the `tine` cell; a consuming project registers it as an external cell and adds its own
+package tree:
 
 ```text
-//packages/               independently versioned package specs, sources, and generated BUCK files
-//examples/image/         image smoke targets
-//examples/image-local-packages/  bootable image from self-built packages
+//packages/               (consuming project) independently versioned package specs, sources, and BUCK files
+//examples/image-local-packages/  (consuming project) bootable image from self-built packages
+tine//examples/image/     image smoke targets
+tine//examples/box/       pinned interactive development environment
 tine//package/            package-system-neutral providers and installation flow
 tine//package_system/rpm/ RPM repository, resolver, installer, extractor, and builder
 tine//engine/             engine bootstrap and sandbox command construction
@@ -58,7 +60,7 @@ macros instead take a `<family>.<release>` prefix and declare the complete repos
 package-manager, and buildroot bundle. An engine's identity describes its provenance rather than every
 release that may consume it.
 
-The package source tree lives in the OS.git repository (which vendors this `tine` cell) under `packages/`.
+The package source tree lives in the OS.git repository (which consumes this `tine` cell) under `packages/`.
 It is intentionally not part of the reusable `tine` cell: package policy and imported source data change
 independently of build machinery.
 

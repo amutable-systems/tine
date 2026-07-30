@@ -4,6 +4,13 @@ Tine can register several independent repositories as cells of one parent Buck p
 local state and outputs in the parent's single `buck-out`, while each repository keeps its own BUCK files and
 cell-local configuration.
 
+> **This does not yet work for a standalone tine checkout.** The commands below assume the tine cell sits
+> inside a registered project, which was true when tine was vendored as a subdirectory. Three things now
+> refuse it: `bin/tine` derives `--source-root` from the cell's *parent*, so `workspace init` on that parent
+> sees `source_root == workspace`; `tine` is a reserved cell name, so a checkout directory called `tine`
+> cannot become a project; and this repository carries a `.buckroot`, which `workspace init` and
+> `workspace add` both reject. Until that is redesigned, use a standalone checkout.
+
 Initialize the parent from the checkout containing tine:
 
 ```console

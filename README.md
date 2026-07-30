@@ -56,21 +56,44 @@ consuming project's root `.buckconfig`:
 
 ```ini
 [cells]
+root = .
 tine = tine
 toolchains = toolchains
+prelude = prelude
+none = none
+
+[cell_aliases]
+config = prelude
+# The cell's own cell_aliases are honoured even as an external cell, and it aliases fbsource to
+# satisfy the bundled prelude, so `none` has to resolve here too.
+fbsource = none
 
 [external_cells]
+prelude = bundled
 tine = git
 
 [external_cell_tine]
 git_origin = <url of this repository>
 commit_hash = <sha1 to pin>
+
+[parser]
+target_platform_detector_spec = target:root//...->prelude//platforms:default target:tine//...->prelude//platforms:default
+
+[build]
+execution_platforms = prelude//platforms:default
 ```
 
 Buck fetches the pinned commit into its own cache; nothing is checked into the consuming repo. The `tine`
-path is only the location the cell would occupy. Buck2 forbids nested cells inside an external cell, so the
-consuming project owns its own `toolchains` cell; copy [`toolchains/BUCK`](toolchains/BUCK) as a starting
-point.
+path is only the location the cell would occupy, and no `tine/` or `prelude/` or `none/` directory needs to
+exist. Buck2 forbids nested cells inside an external cell, so the consuming project owns its own
+`toolchains` cell; copy [`toolchains/BUCK`](toolchains/BUCK) as a starting point.
+
+The consuming project also needs a Buck2 binary before it can fetch any cell, so vendor a copy of
+[`tools/buck`](tools/buck) and the `buck2` entry of [`tools/tools.json`](tools/tools.json), and keep that
+pin in step with this repository's.
+
+To edit the cell in place instead of pinning it, run `tools/buck expand-external-cell tine` and comment out
+the `[external_cells] tine` entry.
 
 A consuming OS monorepo ("OS.git" in these docs) additionally holds package sources under
 `packages/<distro>/<branch>/<package>`, imported and updated from upstream dist-gits (Fedora, or CentOS
