@@ -92,5 +92,21 @@
         "sha256": "bf7b29ff57f06da30918266a0e1c2885a8f99784798d1bdb1628886aa015d788"
       }
     }
+  },
+  "cargo-auditable": {
+    "repository": "rust-secure-code/cargo-auditable",
+    "release": "v0.7.5",
+    "platforms": {
+      "aarch64": {
+        "artifact": "cargo-auditable-aarch64-unknown-linux-musl.tar.xz",
+        "sha256": "35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294",
+        "strip_prefix": "cargo-auditable-aarch64-unknown-linux-musl"
+      },
+      "x86_64": {
+        "artifact": "cargo-auditable-x86_64-unknown-linux-musl.tar.xz",
+        "sha256": "3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4",
+        "strip_prefix": "cargo-auditable-x86_64-unknown-linux-musl"
+      }
+    }
   }
 }
