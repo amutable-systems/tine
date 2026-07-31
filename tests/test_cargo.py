@@ -256,7 +256,7 @@ class TestBuild(unittest.TestCase):
             build._take_binaries(built, {"hello": str(built / "out")})
         self.assertEqual(
             str(caught.exception),
-            "cargo-build: no hello in target/release; the build produced: hello-cli",
+            "cargo-build: no hello in target/release, which holds: hello-cli",
         )
 
 

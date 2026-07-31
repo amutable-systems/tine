@@ -38,6 +38,8 @@ class Spec(TypedDict):
     root: str
     # The project's source tree.
     src: str
+    # Cargo's build directory, kept from the previous build of this project.
+    target: str
     # The unpacked crates the build resolves against.
     vendor: str
 
@@ -95,14 +97,18 @@ def _take_binaries(built: Path, binaries: dict[str, str]) -> None:
     """Copy each declared binary out; a name the build did not produce is a mis-declaration."""
     missing = [name for name in binaries if not (built / name).is_file()]
     if missing:
-        produced = sorted(
+        # Everything executable in there, which after an earlier build of the same project may name
+        # more than this one produced.
+        found = sorted(
             entry.name for entry in built.iterdir() if entry.is_file() and os.access(entry, os.X_OK)
         )
         raise SystemExit(
-            f"cargo-build: no {', '.join(missing)} in target/release; "
-            f"the build produced: {', '.join(produced)}"
+            f"cargo-build: no {', '.join(missing)} in target/release, which holds: {', '.join(found)}"
         )
     for name, out in binaries.items():
+        # Replace, never rewrite: buck no longer clears this action's outputs, and whatever consumed
+        # the previous binary may hold a hard link to it.
+        Path(out).unlink(missing_ok=True)
         util.clone_file(built / name, Path(out))
 
 
@@ -132,6 +138,11 @@ def main(argv: list[str] | None = None) -> None:
     # fixed names neither collide with a preserved failed tree nor accumulate across builds.
     build = Path("/var/tmp/build")
     cargo_home = Path("/var/tmp/cargo")
+
+    # Cargo's build directory is the exception: buck keeps the previous one, so a rebuild redoes only
+    # what changed. Cargo decides that from the modification times of the sources, which the copy
+    # below preserves.
+    target = Path(spec["target"]).resolve()
 
     shutil.copytree(spec["src"], build)
 
@@ -165,10 +176,10 @@ def main(argv: list[str] | None = None) -> None:
         ],
         check=True,
         cwd=workspace,
-        env=os.environ | {"CARGO_HOME": str(cargo_home)},
+        env=os.environ | {"CARGO_HOME": str(cargo_home), "CARGO_TARGET_DIR": str(target)},
     )
 
-    _take_binaries(workspace / "target" / "release", spec["binaries"])
+    _take_binaries(target / "release", spec["binaries"])
 
 
 if __name__ == "__main__":

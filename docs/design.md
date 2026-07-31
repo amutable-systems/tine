@@ -407,9 +407,14 @@ from the committed lock the downloads were derived from. `cargo-auditable` embed
 binary, which syft catalogs as `pkg:cargo` components, so a from-source binary reports its dependencies in
 the image SBOM the way an installed package does.
 
-The unit of caching is the project: one action rebuilds every crate whenever any source changes. Splitting
-it would require the crate dependency graph rather than just the lock, and is deliberately not attempted
-until iteration speed demands it.
+The unit of caching is the project: any change to its sources reruns one action for the whole crate graph.
+Splitting that into one action per crate would require the crate dependency graph rather than just the
+lock, and is deliberately not attempted; the rerun is made cheap instead. Cargo's build directory is a
+declared output that buck is told not to clear before rerunning the action, so cargo finds the previous
+one and recompiles only what changed, exactly as it does in a working copy. Nothing else survives: the
+source tree is copied afresh from the action's inputs on every run, with the modification times cargo
+compares them by. A build that finds no previous directory remains the reference, which is what CI and any
+`buck2 clean` produce.
 
 ### Filesystem layer representation
 
