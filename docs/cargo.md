@@ -88,8 +88,9 @@ itself verifies that the repository holds the commit the lock names.
 How the crates are pinned, fetched and vendored is described under "Rust source builds" in
 [design.md](design.md).
 
-- **A project is one cache unit.** Any change to its sources reruns a single action that rebuilds the whole
-  crate graph.
+- **A project is one cache unit, and reruns are incremental.** Any change to its sources reruns a single
+  action for the whole project, but cargo's build directory survives between runs, so that action
+  recompiles only what changed. `buck2 clean` is what forces a build from scratch.
 - **Only crates.io registry sources work.** Another registry is rejected with the package named, rather
   than guessed at. A `Cargo.lock` older than version 3 is rejected too: it records no per-package
   checksums.

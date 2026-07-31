@@ -11,7 +11,7 @@ _MANIFEST = "Cargo.toml"
 # Names the rule declares for itself, as outputs or as sub-targets (vendor.bzl's among them). A binary
 # sharing one would either collide in the output namespace or, worse, be shadowed by the sub-target of
 # the same name.
-_RESERVED = ("crate", "crates", "src", "vendor")
+_RESERVED = ("crate", "crates", "src", "target", "vendor")
 
 def _named(srcs: list[Artifact], name: str) -> list[Artifact]:
     return [src for src in srcs if src.short_path.rsplit("/", 1)[-1] == name]
@@ -113,6 +113,10 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
     if reserved:
         fail("cargo_package {}: binaries may not be named {}".format(ctx.label.name, reserved))
     outputs = {name: ctx.actions.declare_output(name) for name in ctx.attrs.binaries}
+
+    # Cargo's own build directory. An action's outputs are the only place it may leave state behind,
+    # and buck clears them before rerunning it unless told not to.
+    target = ctx.actions.declare_output("target", dir = True)
     ctx.actions.run(
         cmd_args(
             chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = ctx.attrs._build),
@@ -131,11 +135,13 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
                     },
                     "root": root,
                     "src": src,
+                    "target": target.as_output(),
                     "vendor": vendor,
                 },
             ),
         ),
         category = "cargo_build",
+        no_outputs_cleanup = True,
     )
     sub_targets = {name: [DefaultInfo(default_output = out)] for name, out in outputs.items()}
     return [DefaultInfo(default_outputs = outputs.values(), sub_targets = sub_targets)]
