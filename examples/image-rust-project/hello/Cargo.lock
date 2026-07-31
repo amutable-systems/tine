@@ -5,8 +5,7 @@ version = 4
 [[package]]
 name = "anyhow"
 version = "1.0.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+source = "git+https://github.com/dtolnay/anyhow?rev=1dbe1862#1dbe1862aae650423e3361fbd20b7d17c5109cc3"
 
 [[package]]
 name = "hello"

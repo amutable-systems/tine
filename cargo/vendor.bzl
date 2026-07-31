@@ -11,7 +11,8 @@ VENDOR_ATTRS = {
 def assemble_vendor(ctx: AnalysisContext, crates: list[dict[str, str]]) -> Artifact:
     """Declare the vendored crate tree one project's loaded Cargo.lock pins.
 
-    The lock's checksum is the tarball's, so buck verifies each download itself.
+    The lock's checksum is the tarball's, so buck verifies each download itself. Git dependencies
+    never enter this tree (see build.py).
     """
     crate_files = {}
     for crate in crates:

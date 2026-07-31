@@ -2,7 +2,7 @@
 
 load("//:specs.bzl", "executable", "spec_args")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
-load(":lock.bzl", "crate_downloads")
+load(":lock.bzl", "crate_downloads", "git_sources")
 load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
 
 _LOCK = "Cargo.lock"
@@ -63,6 +63,34 @@ def _workspace(label: Label, srcs: list[Artifact]) -> (Artifact | None, str):
         fail("cargo_package {}: srcs hold no {} beside the {}".format(label.name, _MANIFEST, _LOCK))
     return (locks[0] if locks else None), root
 
+def _git_fetch_impl(ctx: AnalysisContext) -> list[Provider]:
+    git_dir = ctx.actions.declare_output(".git", dir = True)
+    work_tree = ctx.actions.declare_output("work-tree", dir = True)
+    ctx.actions.run(
+        cmd_args(
+            ctx.attrs._tool[RunInfo],
+            cmd_args(git_dir.as_output(), format = "--git-dir={}"),
+            cmd_args(work_tree.as_output(), format = "--work-tree={}"),
+            cmd_args(ctx.attrs.repo, format = "--repo={}"),
+            cmd_args(ctx.attrs.rev, format = "--rev={}"),
+        ),
+        category = "git_fetch",
+        local_only = True,
+    )
+    return [DefaultInfo(default_output = git_dir, other_outputs = [work_tree])]
+
+# The prelude's git_fetch rule, except that it hands out the repository rather than the checked-out
+# work tree: cargo resolves a replaced git source against a repository. The fetch itself, prelude
+# tool and all, is unchanged; this rule goes away if the prelude ever exposes the .git output.
+_git_fetch = rule(
+    impl = _git_fetch_impl,
+    attrs = {
+        "repo": attrs.string(doc = "the URL the lock's git source names"),
+        "rev": attrs.string(doc = "the locked commit; the tool fails unless it fetches exactly that"),
+        "_tool": attrs.exec_dep(providers = [RunInfo], default = "prelude//git/tools:git_fetch"),
+    },
+)
+
 def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
     lock, root = _workspace(ctx.label, ctx.attrs.srcs)
     if lock != None and ctx.attrs.crates == None:
@@ -94,6 +122,13 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
                 {
                     "auditable": executable(ctx.attrs._auditable),
                     "binaries": {name: out.as_output() for name, out in outputs.items()},
+                    "git": {
+                        commit: {
+                            "fields": fields,
+                            "repo": repo[DefaultInfo].default_outputs[0],
+                        }
+                        for commit, (fields, repo) in ctx.attrs.git.items()
+                    },
                     "root": root,
                     "src": src,
                     "vendor": vendor,
@@ -115,12 +150,31 @@ _cargo_package = rule(
             doc = "one download per registry crate, derived from the loaded lock; None without one",
         ),
         "engine": attrs.dep(providers = [EngineInfo], doc = "engine carrying the Rust toolchain"),
+        "git": attrs.dict(
+            attrs.string(),
+            attrs.tuple(attrs.dict(attrs.string(), attrs.string()), attrs.dep()),
+            default = {},
+            doc = "commit hash -> (the fields cargo identifies that git source by, its fetched repository)",
+        ),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, Cargo.lock included"),
         "_auditable": attrs.dep(providers = [RunInfo], default = "tine//tools:cargo-auditable"),
         "_build": attrs.dep(providers = [RunInfo], default = "tine//cargo:build"),
     }
     | VENDOR_ATTRS,
 )
+
+def _git_checkouts(name: str, sources: dict[str, dict[str, str]]) -> dict[str, (dict[str, str], str)]:
+    """One fetch target per git source the lock names, keyed by commit."""
+    checkouts = {}
+    for commit, fields in sources.items():
+        target = "{}-{}.git".format(name, commit[:12])
+        _git_fetch(
+            name = target,
+            repo = fields["git"],
+            rev = commit,
+        )
+        checkouts[commit] = (fields, ":" + target)
+    return checkouts
 
 def cargo_package(name: str, binaries: list[str], srcs: list[str] | None = None, lock: dict[str, typing.Any] | None = None, **kwargs) -> None:
     """Build a checked-out Rust project against the crates its Cargo.lock pins.
@@ -137,6 +191,7 @@ def cargo_package(name: str, binaries: list[str], srcs: list[str] | None = None,
         name = name,
         binaries = binaries,
         crates = crate_downloads(name, lock) if lock != None else None,
+        git = _git_checkouts(name, git_sources(name, lock)) if lock != None else {},
         srcs = srcs if srcs != None else glob([name + "/**"], exclude = [name + "/target/**"]),
         **kwargs,
     )

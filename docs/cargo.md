@@ -1,7 +1,8 @@
 # Building Rust projects from source
 
 A repository that builds images can also build a Rust project it has checked out, without packaging it first.
-Every crate is fetched by Buck against the SHA-256 the project's `Cargo.lock` already records. `cargo` itself
+The project's committed `Cargo.lock` pins everything: Buck fetches each registry crate against the SHA-256
+the lock records, and each git dependency as a fetch of exactly the locked commit. `cargo` itself
 runs offline inside an engine, and [`cargo-auditable`](https://crates.io/crates/cargo-auditable) writes the
 crate graph into each binary so the image's SBOM reports those crates beside its packages.
 
@@ -71,6 +72,17 @@ engine(
   wrapper that shells out to `rpm --eval`.
 - The engine is a build environment. It never becomes part of an image, and the toolchain is not shipped.
 
+## Git dependencies
+
+A crate that lives in git is pinned by the commit alone: every git source in the loaded lock, transitive
+dependencies included, becomes a fetch of exactly the locked commit, which the hash itself verifies.
+Nothing else has to be pinned or committed, and the manifest needs no particular spelling of the
+dependency.
+
+Git dependencies are not vendored: cargo builds each one inside its own fetched repository, so workspace
+inheritance and path dependencies between sibling crates behave exactly as in an online build, and cargo
+itself verifies that the repository holds the commit the lock names.
+
 ## Properties and limits
 
 How the crates are pinned, fetched and vendored is described under "Rust source builds" in
@@ -78,8 +90,9 @@ How the crates are pinned, fetched and vendored is described under "Rust source 
 
 - **A project is one cache unit.** Any change to its sources reruns a single action that rebuilds the whole
   crate graph.
-- **Only crates.io dependencies work.** A git dependency has no checksum in `Cargo.lock`, so it cannot be
-  pinned from the lock alone and is rejected; supporting it needs a committed pin of its own.
+- **Only crates.io registry sources work.** Another registry is rejected with the package named, rather
+  than guessed at. A `Cargo.lock` older than version 3 is rejected too: it records no per-package
+  checksums.
 - **A project with dependencies must commit its `Cargo.lock`.** This is good practice for a binary crate
   anyway, for ensuring reproducibility and moving surprise failures from unrelated PRs to
   dependabot/renovate ones. The build passes `--locked`, so a lock that no longer agrees with `Cargo.toml`
