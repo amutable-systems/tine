@@ -153,8 +153,9 @@ when its authored policy, resolver engine, or pinned repository inputs change.
 phases. Pass another catalog package after `--`, for example
 `tools/buck run tine//tools:refresh-catalog -- my_project//catalog`:
 
-0. Advance every repository pinned to an rpmrepo mirror (declared through the release macro's
-   `rpmrepo_mirror`/`rpmrepo_snapshot` and carried on the target as `rpmrepo.*` metadata) to the
+0. Advance every repository pinned to an rpmrepo mirror (declared through
+   `rpm_remote_repository()`'s `rpmrepo_mirror`/`rpmrepo_snapshot`, which a release macro forwards
+   for the repository it owns, and carried on the target as `rpmrepo.*` metadata) to the
    newest snapshot its gateway enumerates, by rewriting the declared `rpmrepo_snapshot` in place.
    `verify-catalog` skips this phase and checks the committed pins.
 1. Run every remote repository's `[snapshot]` sub-target on the host. `snapshot.py` downloads and verifies

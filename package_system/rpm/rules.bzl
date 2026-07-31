@@ -180,10 +180,37 @@ _remote_repository = rule(
     },
 )
 
-def rpm_remote_repository(name: str, baseurl: str, labels: list[str] = [], **kwargs) -> None:
-    """Declare a repository backed by its optional package-relative snapshot."""
+def rpm_remote_repository(
+    name: str,
+    baseurl: str | None = None,
+    rpmrepo_mirror: str | None = None,
+    rpmrepo_snapshot: str | None = None,
+    labels: list[str] = [],
+    **kwargs,
+) -> None:
+    """Declare a repository backed by its optional package-relative snapshot.
+
+    A repository is named either by a plain `baseurl` or by an rpmrepo pin, which composes the
+    base URL from `rpmrepo_mirror` and `rpmrepo_snapshot` and records the pin for refresh-catalog
+    to advance. The pin belongs on the declaration a catalog writes, so releases forward their own
+    pin arguments here rather than reproducing the composition.
+    """
     if not name.endswith(".repository"):
         fail("rpm_remote_repository name must end with '.repository': {}".format(name))
+    if (rpmrepo_mirror == None) != (rpmrepo_snapshot == None):
+        fail("rpm_remote_repository requires rpmrepo_mirror and rpmrepo_snapshot together: {}".format(name))
+    metadata = {}
+    if rpmrepo_mirror != None:
+        if baseurl != None:
+            fail(
+                "rpm_remote_repository takes rpmrepo_mirror/rpmrepo_snapshot or baseurl, not both: {}".format(name),
+            )
+        baseurl = rpmrepo_mirror.rstrip("/") + "/" + rpmrepo_snapshot
+
+        # refresh-catalog reads the pin back through this metadata to advance the snapshot.
+        metadata = {"rpmrepo.mirror": rpmrepo_mirror, "rpmrepo.snapshot": rpmrepo_snapshot}
+    elif baseurl == None:
+        fail("rpm_remote_repository requires baseurl or an rpmrepo pin: {}".format(name))
     snapshot_name = name[: -len(".repository")]
     snapshots = glob(["snapshot/repo/" + snapshot_name + ".json"])
     if len(snapshots) > 1:
@@ -194,6 +221,7 @@ def rpm_remote_repository(name: str, baseurl: str, labels: list[str] = [], **kwa
         baseurl = baseurl,
         engine_locks = glob(["snapshot/engine/*.json"]),
         labels = ["tine:rpm-remote-repository"] + labels,
+        metadata = metadata,
         package_system = _RPM_PACKAGE_SYSTEM,
         snapshot = snapshot,
         **kwargs,
