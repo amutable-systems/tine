@@ -1,5 +1,5 @@
 # Vendored from mkosi: mkosi/sandbox.py
-# Source: https://github.com/systemd/mkosi  commit 47a2d678552490dca6c49ab6f66ae591c00c92dc  (version 27~devel)
+# Source: https://github.com/systemd/mkosi  commit 555b4d58a689452f3a2cc179a84b7ce26cac8a3e  (version 27~devel)
 # Single-file, ctypes-only, unprivileged-userns sandbox. Do not edit here;
 # re-vendor from upstream and re-apply this header. License: LGPL-2.1-or-later.
 #
@@ -79,8 +79,9 @@ MOVE_MOUNT_F_EMPTY_PATH = 0x00000004
 MS_BIND = 4096
 MS_MOVE = 8192
 MS_REC = 16384
-MS_SHARED = 1 << 20
+MS_PRIVATE = 1 << 18
 MS_SLAVE = 1 << 19
+MS_SHARED = 1 << 20
 NR_mount_setattr = 442
 NR_move_mount = 429
 NR_open_tree = 428
@@ -947,12 +948,8 @@ class chroot:
     def __enter__(self) -> None:
         self.cwd = os.getcwd()
         self.fd = os.open("/", os.O_CLOEXEC | os.O_PATH | os.O_DIRECTORY)
-        try:
-            os.chroot(self.root)
-            os.chdir("/")
-        except BaseException:
-            os.close(self.fd)
-            raise
+        os.chroot(self.root)
+        os.chdir("/")
 
     def __exit__(self, *args: object, **kwargs: object) -> None:
         os.fchdir(self.fd)
@@ -1694,11 +1691,6 @@ def enter(argv: list[str]) -> list[str]:
 
     # As documented in the pivot_root() man page, this will unmount the old rootfs.
     umount2(".", MNT_DETACH)
-
-    # Avoid surprises by making sure the sandbox's mount propagation is shared. This doesn't
-    # actually mean mounts get propagated into the host. Instead, a new mount propagation peer
-    # group is set up.
-    mount("", ".", "", MS_SHARED | MS_REC, "")
 
     if chdir:
         os.chdir(chdir)
