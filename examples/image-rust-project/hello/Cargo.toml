@@ -9,7 +9,8 @@ name = "hello-cli"
 path = "src/main.rs"
 
 # Real dependencies with transitive ones of their own, so the vendored tree and the SBOM have
-# something to show.
+# something to show. anyhow comes from git rather than crates.io to exercise the checkout path;
+# any rev spelling works, since the lock pins the resolved commit.
 [dependencies]
-anyhow = "1"
+anyhow = { git = "https://github.com/dtolnay/anyhow", rev = "1dbe1862" }
 serde_json = "1"

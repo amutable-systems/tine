@@ -5,6 +5,9 @@ Each crate directory carries a .cargo-checksum.json recording the tarball's hash
 file's, which is how cargo satisfies itself that the tree matches the lock. The tarball's hash is
 recomputed here from bytes buck already verified against the lock, so it necessarily equals the
 lock's pin.
+
+Only registry crates are vendored; a git dependency stays a git source, pointed at its fetched
+repository instead (see build.py).
 """
 
 import hashlib

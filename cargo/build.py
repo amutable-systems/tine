@@ -1,10 +1,12 @@
 #!/usr/bin/python3
 """Build a Rust project from source inside an engine, against its vendored crate tree.
 
-The build runs offline: every crate is already unpacked, and pointing cargo's crates-io source at
-that directory is what keeps it from consulting the registry index. cargo-auditable wraps the
-build to record the crate graph in each binary, which is how the image's SBOM learns what went
-into it.
+The build runs with no network: every registry crate is already unpacked, and pointing cargo's
+crates-io source at that directory is what keeps it from consulting the registry index. Each git
+source is replaced by the fetched repository itself, a file:// clone cargo takes its own checkout
+from, insisting on the locked commit, so nothing has to be rewritten or re-verified here.
+cargo-auditable wraps the build to record the crate graph in each binary, which is how the image's
+SBOM learns what went into it.
 """
 
 import os
@@ -18,11 +20,20 @@ import specs
 import util
 
 
+class GitSource(TypedDict):
+    # The fields cargo identifies the source by (`git` plus the reference the project asked for).
+    fields: dict[str, str]
+    # The fetched repository providing the locked commit.
+    repo: str
+
+
 class Spec(TypedDict):
     # The cargo-auditable wrapper cargo builds through.
     auditable: str
     # Declared binary name -> the output to write it to.
     binaries: dict[str, str]
+    # Locked commit -> the git source to replace with its fetched repository.
+    git: dict[str, GitSource]
     # Where the workspace sits inside `src`, empty when the project is its own root.
     root: str
     # The project's source tree.
@@ -95,13 +106,22 @@ def _take_binaries(built: Path, binaries: dict[str, str]) -> None:
         util.clone_file(built / name, Path(out))
 
 
-def _cargo_config(vendor: Path) -> str:
-    """Point the registry at the vendored directory."""
-    return (
-        '[source.crates-io]\nreplace-with = "vendored-sources"\n'
-        "\n"
-        f'[source.vendored-sources]\ndirectory = "{vendor}"\n'
-    )
+def _cargo_config(vendor: Path, git: dict[str, GitSource]) -> str:
+    """Point the registry at the vendored directory and every git source at its fetched repository.
+
+    Cargo replaces a source as a whole, so each git dependency needs a stanza of its own: one
+    section carrying the fields cargo identifies the source by (the section names are arbitrary),
+    replaced with one naming the local repository that stands in for the remote.
+    """
+    sections = ['[source.crates-io]\nreplace-with = "vendored-sources"\n']
+    for commit, source in sorted(git.items()):
+        rendered = "".join(f'{name} = "{value}"\n' for name, value in source["fields"].items())
+        local = f"git-{commit[:12]}"
+        sections.append(f'[source."{local}-upstream"]\n{rendered}replace-with = "{local}"\n')
+        repo = Path(source["repo"]).resolve()
+        sections.append(f'[source.{local}]\ngit = "file://{repo}"\nrev = "{commit}"\n')
+    sections.append(f'[source.vendored-sources]\ndirectory = "{vendor}"\n')
+    return "\n".join(sections)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -120,7 +140,7 @@ def main(argv: list[str] | None = None) -> None:
 
     cargo_home.mkdir(parents=True)
     (cargo_home / "config.toml").write_text(
-        _cargo_config(Path(spec["vendor"]).resolve()),
+        _cargo_config(Path(spec["vendor"]).resolve(), spec["git"]),
         encoding="utf-8",
     )
 
@@ -130,6 +150,10 @@ def main(argv: list[str] | None = None) -> None:
     if not (workspace / "Cargo.lock").exists():
         _reject_unlocked_dependencies(workspace)
         locked = []
+    # Cargo refuses every git transfer under --offline, the file:// repositories included. That
+    # flag is just belt-and-suspenders though: the action always runs in an unshared network
+    # namespace, so cargo can never reach out to the actual internet.
+    offline = [] if spec["git"] else ["--offline"]
     subprocess.run(
         [
             Path(spec["auditable"]).resolve(),
@@ -137,7 +161,7 @@ def main(argv: list[str] | None = None) -> None:
             "build",
             "--release",
             *locked,
-            "--offline",
+            *offline,
         ],
         check=True,
         cwd=workspace,

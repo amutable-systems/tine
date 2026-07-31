@@ -378,20 +378,27 @@ sole manifest identifies the root, `--locked` is dropped, and the empty vendored
 network are what keep the build from resolving anything. The declaration contract is in
 [cargo.md](cargo.md).
 
-The loaded lock declares every download at parse time. A lock entry's `checksum` is the SHA-256 of its
+The loaded lock declares every fetch at parse time. A lock entry's `checksum` is the SHA-256 of its
 crates.io tarball and `static.crates.io` serves that tarball under a URL derived from name and version, so
 each registry crate becomes one hash-verified `download_file`, the same treatment as repository packages,
-and deriving them needs no network or pin file; a lock older than version 3 records no checksums and is
-rejected. Sources other than crates.io are rejected with the package named.
+and deriving them needs no network; a lock older than version 3 records no checksums and is rejected. A
+git dependency is pinned by the commit in its lock source and becomes a repository fetch instead,
+transitive dependencies included, since the lock always carries the full commit; each fetch
+shallow-fetches its commit and fails unless `FETCH_HEAD` is exactly that hash, so the commit itself is
+the integrity check. Anything from another registry is rejected with the package named.
 
 A build is then two actions:
 
-1. `cargo_vendor` unpacks the downloaded crates into `vendor/<name>-<version>/` with the
-   `.cargo-checksum.json` cargo expects.
-2. `cargo_build` runs cargo offline in the consumer's engine with the network unshared, against the
-   vendored tree alone. A cargo configuration file inside the checkout would outrank the one the driver
-   writes, redirecting its sources, so the build refuses it. The declared binaries come out of
-   `target/release`.
+1. `cargo_vendor` unpacks the registry crates into `vendor/<name>-<version>/` with the
+   `.cargo-checksum.json` cargo expects. Git dependencies never enter this tree.
+2. `cargo_build` runs cargo in the consumer's engine with the network unshared, against the vendored tree
+   and the fetched repositories: each git source is replaced by its repository, served over git's local
+   `file://` transport, so cargo takes its own checkout and resolves each crate inside its workspace,
+   inheritance and sibling path dependencies included, and it insists on finding the locked commit in the
+   replacement. Cargo classifies every git transfer as remote no matter the transport, so a build with
+   git dependencies drops `--offline`; the unshared network is what keeps it offline. A cargo
+   configuration file inside the checkout would outrank the one the driver writes, redirecting its
+   sources, so the build refuses it. The declared binaries come out of `target/release`.
 
 A vendored directory is not cargo's only offline mode (a pre-populated `cargo fetch` cache builds offline
 too), but it is the only one buck can assemble from individually hash-verified downloads, and the cache
@@ -851,9 +858,10 @@ These are properties of the implementation today, not merely ideas for future op
   an upstream intermediate silently resolves upstream, and there is still no per-package source/prebuilt
   choice under one shared version pin.
 - RPM builds use `--nocheck`; package test policy is not implemented.
-- Rust source builds cover crates.io dependencies only. A git dependency carries no checksum in
-  `Cargo.lock`, so it cannot be pinned from the lock and is rejected. One `cargo_package` is also one cache
-  unit: any source change rebuilds its whole crate graph.
+- Rust source builds cover crates.io and git sources; another registry is rejected. A git dependency's
+  integrity rests on the commit hash the lock records: SHA-1 for ordinary repositories, which is weaker
+  than the SHA-256 pinning everything else here uses. The fetch is a network action, pinned but online, unlike every
+  other build step.
 - `cargo-auditable` is a pinned upstream release binary rather than a source-built one, so the Rust build
   path is not itself part of the source-trust chain.
 - Crate downloads carry no recorded size, so Buck learns it from an HTTP HEAD whenever a download action
@@ -941,9 +949,10 @@ unnecessary unless real composition requirements appear.
 - Add leaf-selected OS/package-manager transitions when consumers need one target graph to build against
   multiple releases. The transition must select existing provider boundaries rather than reintroduce a
   monolithic distribution object.
-- Extend Rust source builds to git dependencies, which need a committed pin of their own, and replace the
-  pinned `cargo-auditable` binary with a source-built one once that no longer depends on itself existing.
-  Add C/C++/Go equivalents only when in-repository builds need them.
+- Replace the pinned `cargo-auditable` binary with a source-built one once that no longer depends on
+  itself existing, and map commits to tarballs for whatever forge a dependency turns up on next. Add
+  C/C++/Go equivalents only when in-repository builds need them; Go needs its own module pins, because
+  `go.sum` records content dirhashes rather than the hash of the module zip.
 - Define the upstream-update workflow: import Fedora changes, rebase local patches, refresh snapshots and
   generated metadata, and verify that version skew has not invalidated source/upstream interchangeability.
 

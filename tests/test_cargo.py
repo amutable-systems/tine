@@ -52,6 +52,10 @@ vendor = _load("vendor")
 ANYHOW_SHA = "a" * 64
 LIBC_SHA = "b" * 64
 
+SD_CONF_URL = "https://github.com/mvo5/sd-conf"
+SD_CONF_COMMIT = "f8f381feee216fce20a4ed07163836a082bb0830"
+SD_CONF = f"git+{SD_CONF_URL}?rev=f8f381fe#{SD_CONF_COMMIT}"
+
 MANIFEST = """\
 [package]
 name = "hello"
@@ -92,6 +96,20 @@ source = "sparse+https://index.crates.io/"
 checksum = "{ANYHOW_SHA}"
 """
 
+GIT_LOCK = f"""\
+version = 4
+
+[[package]]
+name = "sd-conf"
+version = "0.1.0"
+source = "{SD_CONF}"
+
+[[package]]
+name = "sd-conf-macros"
+version = "0.1.0"
+source = "{SD_CONF}"
+"""
+
 
 def _lock(text: str) -> dict[str, typing.Any]:
     """Parse a lock fixture the way a `?format=toml` data load hands it to the macro."""
@@ -119,6 +137,9 @@ class TestCrateDownloads(unittest.TestCase):
             ],
         )
 
+    def test_git_sources_are_not_downloads(self) -> None:
+        self.assertEqual(lock_bzl.crate_downloads("hello", _lock(GIT_LOCK)), [])
+
     def test_rejects_unsupported_source(self) -> None:
         source = "sparse+https://crates.example.invalid/"
         lock = f'[[package]]\nname = "libc"\nversion = "0.2.180"\nsource = "{source}"\n'
@@ -129,12 +150,6 @@ class TestCrateDownloads(unittest.TestCase):
             f"cargo_package hello: libc 0.2.180: unsupported dependency source {source}",
         )
 
-    def test_rejects_git_source(self) -> None:
-        source = "git+https://github.com/mvo5/sd-conf?rev=f8f381fe#" + "f" * 40
-        lock = f'[[package]]\nname = "sd-conf"\nversion = "0.1.0"\nsource = "{source}"\n'
-        with self.assertRaisesRegex(StarlarkFailure, "unsupported dependency source"):
-            lock_bzl.crate_downloads("hello", _lock(lock))
-
     def test_rejects_missing_checksum(self) -> None:
         source = "registry+https://github.com/rust-lang/crates.io-index"
         lock = f'[[package]]\nname = "libc"\nversion = "0.2.180"\nsource = "{source}"\n'
@@ -144,6 +159,51 @@ class TestCrateDownloads(unittest.TestCase):
     def test_rejects_a_value_that_is_not_a_lock(self) -> None:
         with self.assertRaisesRegex(StarlarkFailure, r"no \[\[package\]\] list"):
             lock_bzl.crate_downloads("hello", {"value": "something else"})
+
+
+class TestGitSources(unittest.TestCase):
+    def test_records_each_git_source_once(self) -> None:
+        """Two crates from one repository share the one entry recording it."""
+        self.assertEqual(
+            lock_bzl.git_sources("hello", _lock(GIT_LOCK)),
+            {SD_CONF_COMMIT: {"git": SD_CONF_URL, "rev": "f8f381fe"}},
+        )
+
+    def _source(self, source: str) -> dict[str, dict[str, str]]:
+        lock = f'[[package]]\nname = "x"\nversion = "0.1.0"\nsource = "{source}"\n'
+        return lock_bzl.git_sources("hello", _lock(lock))
+
+    def test_source_tracking_the_default_branch(self) -> None:
+        commit = "d" * 40
+        self.assertEqual(
+            self._source(f"git+https://example.invalid/x.git#{commit}"),
+            {commit: {"git": "https://example.invalid/x.git"}},
+        )
+
+    def test_source_with_branch(self) -> None:
+        commit = "e" * 40
+        self.assertEqual(
+            self._source(f"git+https://example.invalid/x?branch=next#{commit}"),
+            {commit: {"git": "https://example.invalid/x", "branch": "next"}},
+        )
+
+    def test_source_without_a_commit(self) -> None:
+        with self.assertRaisesRegex(StarlarkFailure, "git source without a full commit"):
+            self._source("git+https://example.invalid/x")
+
+    def test_source_with_a_short_commit(self) -> None:
+        with self.assertRaisesRegex(StarlarkFailure, "git source without a full commit"):
+            self._source("git+https://example.invalid/x#f8f381fe")
+
+    def test_rejects_two_spellings_of_one_source(self) -> None:
+        """One commit under two source IDs would need a replacement stanza the build never writes."""
+        commit = "f" * 40
+        lock = (
+            f'[[package]]\nname = "x"\nversion = "0.1.0"\nsource = "git+https://example.invalid/x?branch=main#{commit}"\n'
+            f'[[package]]\nname = "y"\nversion = "0.1.0"\nsource = "git+https://example.invalid/x?rev={commit[:8]}#{commit}"\n'
+        )
+        with self.assertRaisesRegex(StarlarkFailure, "two spellings of one git source"):
+            lock_bzl.git_sources("hello", _lock(lock))
 
 
 class TestBuild(unittest.TestCase):
@@ -165,9 +225,25 @@ class TestBuild(unittest.TestCase):
         )
 
     def test_cargo_config(self) -> None:
+        """The registry points at the vendored tree, each git source at its fetched repository."""
+        git = {
+            SD_CONF_COMMIT: {
+                "fields": {"git": SD_CONF_URL, "rev": "f8f381fe"},
+                "repo": "/repos/sd-conf/.git",
+            }
+        }
         self.assertEqual(
-            build._cargo_config(Path("/vendor")),
+            build._cargo_config(Path("/vendor"), git),
             '[source.crates-io]\nreplace-with = "vendored-sources"\n'
+            "\n"
+            '[source."git-f8f381feee21-upstream"]\n'
+            f'git = "{SD_CONF_URL}"\n'
+            'rev = "f8f381fe"\n'
+            'replace-with = "git-f8f381feee21"\n'
+            "\n"
+            "[source.git-f8f381feee21]\n"
+            'git = "file:///repos/sd-conf/.git"\n'
+            f'rev = "{SD_CONF_COMMIT}"\n'
             "\n"
             '[source.vendored-sources]\ndirectory = "/vendor"\n',
         )
