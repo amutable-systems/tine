@@ -175,7 +175,24 @@ def main(argv: list[str] | None = None) -> NoReturn:
     out += ["--bind", "/proc", "/proc"]
     if not args.relaxed:
         out += ["--dev", "/dev"]
-        out += ["--tmpfs", "/run", "--tmpfs", "/tmp", "--tmpfs", "/var/tmp"]
+        out += ["--tmpfs", "/run"]
+
+        # Back /tmp and /var/tmp with Buck's on-disk per-action scratch directory instead of a
+        # tmpfs. Staging trees run into gigabytes and should not go into RAM: it easily runs
+        # out, and Linux's page cache does a much better job of using it for performance.
+        #
+        # A sandbox entered outside an action has no scratch directory: `buck run` on an engine or
+        # its [resolve] subtarget. Those keep the tmpfs, which dies with the mount namespace.
+        staging = None
+        if cwd and "BUCK_SCRATCH_PATH" in os.environ:
+            staging = Path(cwd, os.environ["BUCK_SCRATCH_PATH"])
+        for name in ("tmp", "var/tmp"):
+            if staging is None:
+                out += ["--tmpfs", "/" + name]
+                continue
+            backing = staging / name.replace("/", "-")
+            backing.mkdir(parents=True, exist_ok=True)
+            out += ["--bind", str(backing), "/" + name]
 
     if args.source_date_epoch is not None:
         out += ["--setenv", "SOURCE_DATE_EPOCH", str(args.source_date_epoch)]

@@ -52,7 +52,8 @@ def limit_langs(langs: list[str]) -> None:
     libdnf5 exposes neither a macro API nor an equivalent option, so this has to arrive through
     rpm's own macro path. XDG_CONFIG_HOME is the entry that keeps it inside this driver: writing
     /etc/rpm/macros.* as mkosi does would need a bind mount arranged by the action, outside the
-    package system. The directory lives on the action's tmpfs and dies with it.
+    package system. The directory lives in the action's temporary space, which Buck clears
+    before that action next runs.
     """
     config = Path(tempfile.mkdtemp(prefix="rpmconfig.")) / "rpm"
     config.mkdir()
