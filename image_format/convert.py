@@ -17,8 +17,8 @@ class Spec(TypedDict):
 def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("convert", argv)
 
-    source = Path(spec["input"]).resolve()
-    out = Path(spec["out"]).resolve()
+    source = Path(spec["input"])
+    out = Path(spec["out"])
     if spec["format"] not in ("qcow2", "raw.zst"):
         raise SystemExit(f"convert: unknown format {spec['format']!r}")
     if spec["format"] == "qcow2":

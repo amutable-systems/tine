@@ -145,7 +145,7 @@ def _install(install: InstallSpec, target: Path, scratch: Path) -> None:
     spec = specs.write(
         scratch / "install.spec.json",
         {
-            "packages_dir": str(Path(install["packages_dir"]).resolve()),
+            "packages_dir": str(Path(install["packages_dir"]).absolute()),
             "target": None,
             "installroot": str(target),
             "lower": [],
@@ -155,7 +155,7 @@ def _install(install: InstallSpec, target: Path, scratch: Path) -> None:
             "docs": install["docs"],
         },
     )
-    rc = subprocess.run([str(Path(install["installer"]).resolve()), "--spec", str(spec)]).returncode
+    rc = subprocess.run([install["installer"], "--spec", str(spec)]).returncode
     if rc != 0:
         raise SystemExit(f"image package installation failed (rc={rc})")
 
@@ -193,7 +193,9 @@ def _apply(
 def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("image", argv)
 
-    out = Path(spec["out"]).resolve()
+    # Mount options name the upper and work directories; the kernel does not read them relative to
+    # this process.
+    out = Path(spec["out"]).absolute()
     out.mkdir(parents=True, exist_ok=True)
     operations = [_operation(operation) for operation in spec["operations"]]
     for operation in operations:
@@ -218,7 +220,7 @@ def main(argv: list[str] | None = None) -> None:
             "/buildroot",
             lowers=lower,
             upperdir=out,
-            workdir=Path(spec["work"]).resolve(),
+            workdir=Path(spec["work"]).absolute(),
             apivfs=True,
             binds=binds,
         )

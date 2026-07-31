@@ -184,12 +184,12 @@ def install_into_root(
 
 def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("install", argv)
-    packages_dir = Path(spec["packages_dir"]).resolve()
+    packages_dir = Path(spec["packages_dir"]).absolute()
 
     if spec["installroot"] is not None:
         if spec["target"] is not None or spec["lower"] or spec["work"] is not None:
             raise SystemExit("install: installroot excludes target, lower, and work")
-        installroot = Path(spec["installroot"]).resolve()
+        installroot = Path(spec["installroot"]).absolute()
         install_into_root(
             packages_dir,
             installroot,
@@ -204,7 +204,7 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit("install: one of target and installroot is required")
 
     # libdnf5 needs absolute paths, and bind sources must exist.
-    target = Path(spec["target"]).resolve()
+    target = Path(spec["target"]).absolute()
     target.mkdir(parents=True, exist_ok=True)
 
     incremental = bool(spec["lower"])
@@ -215,7 +215,7 @@ def main(argv: list[str] | None = None) -> None:
             BUILDROOT,
             lowers=spec["lower"],
             upperdir=target,
-            workdir=Path(spec["work"]).resolve(),
+            workdir=Path(spec["work"]).absolute(),
             apivfs=True,
         )
     else:

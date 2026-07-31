@@ -63,11 +63,11 @@ def _normalize(spdx: Path, cdx: Path, source_name: str, source_version: str, epo
 def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("sbom", argv)
 
-    syft = Path(spec["syft"]).resolve()
+    syft = Path(spec["syft"])
     source_name = spec["source_name"]
     source_version = spec["source_version"]
-    spdx = Path(spec["spdx"]).resolve()
-    cdx = Path(spec["cdx"]).resolve()
+    spdx = Path(spec["spdx"])
+    cdx = Path(spec["cdx"])
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
 
     with (

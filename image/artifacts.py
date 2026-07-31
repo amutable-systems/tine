@@ -117,9 +117,9 @@ def _extract(tree: Path, source: Source, out: Path) -> None:
 def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("artifacts", argv)
 
-    source = _read_source(Path(spec["manifest"]).resolve(), spec["artifact"])
+    source = _read_source(Path(spec["manifest"]), spec["artifact"])
     with finalize.image(spec, program="artifacts") as tree:
-        _extract(tree, source, Path(spec["out"]).resolve())
+        _extract(tree, source, Path(spec["out"]))
 
 
 if __name__ == "__main__":

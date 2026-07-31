@@ -68,7 +68,7 @@ def load_repositories(spec: Spec) -> list[Repository]:
     return [
         Repository(
             repository["id"],
-            Path(repository["directory"]).resolve(),
+            Path(repository["directory"]).absolute(),  # libdnf5 needs absolute paths
             repository["priority"],
             repository["baseurl"],
         )
@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "make-cache":
         spec: Spec = specs.load(args.spec, prog="plan")
         repos = load_repositories(spec)
-        out = Path(args.out).resolve()
+        out = Path(args.out)
         out.mkdir(parents=True, exist_ok=True)
         load_base(repos, out, None, spec["arch"])
         print(f"plan: cached {len(repos)} repo(s)", file=sys.stderr)
@@ -235,7 +235,7 @@ def main(argv: list[str] | None = None) -> None:
     if not solve_spec["install"]:
         raise SystemExit("plan: a solve needs at least one install spec")
     repos = load_repositories(solve_spec)
-    seeds = [Path(cache_dir).resolve() for cache_dir in solve_spec["cache"]]
+    seeds = [Path(cache_dir).absolute() for cache_dir in solve_spec["cache"]]
 
     with ExitStack() as stack:
         installroot = None

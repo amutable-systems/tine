@@ -80,16 +80,16 @@ def createrepo(entries: list[tuple[str, Path]], out: Path, revision: str) -> Non
 
 def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("createrepo", argv)
-    entries = [(Path(package).name, Path(package).resolve()) for package in spec["packages"]]
+    entries = [(Path(package).name, Path(package).absolute()) for package in spec["packages"]]
     for index, directory in enumerate(spec["packages_dirs"]):
         entries += [
             (f"{index}/{package.name}", package)
-            for package in sorted(Path(directory).resolve().glob("*.rpm"))
+            for package in sorted(Path(directory).absolute().glob("*.rpm"))
             if not package.name.endswith(".src.rpm")
         ]
     # The fallback keeps standalone use possible.
     revision = os.environ.get("SOURCE_DATE_EPOCH", "0")
-    createrepo(entries, Path(spec["out"]).resolve(), revision)
+    createrepo(entries, Path(spec["out"]).absolute(), revision)
 
 
 if __name__ == "__main__":

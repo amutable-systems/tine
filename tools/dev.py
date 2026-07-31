@@ -176,7 +176,7 @@ def _scc(args: argparse.Namespace) -> None:
 
 
 def _ty(args: argparse.Namespace) -> None:
-    engine = Path(args.engine).resolve()
+    engine = Path(args.engine)
     site_packages = sorted((engine / "usr/lib").glob("python*/site-packages"))
     if len(site_packages) != 1:
         raise SystemExit(f"ty: expected one site-packages directory in {engine}, found {len(site_packages)}")
@@ -185,7 +185,7 @@ def _ty(args: argparse.Namespace) -> None:
     if inherited := env.get("PYTHONPATH"):
         pythonpath.append(inherited)
     env["PYTHONPATH"] = os.pathsep.join(pythonpath)
-    executable = Path(args.ty).resolve()
+    executable = Path(args.ty).absolute()
     os.execve(executable, [str(executable), *args.arguments], env)
 
 

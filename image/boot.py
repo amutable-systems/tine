@@ -151,7 +151,7 @@ def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("boot", argv)
 
     with finalize.image(spec, program="boot") as tree:
-        _write_selection(_select(tree), Path(spec["out"]).resolve())
+        _write_selection(_select(tree), Path(spec["out"]))
 
 
 if __name__ == "__main__":

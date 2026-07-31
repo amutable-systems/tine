@@ -124,7 +124,7 @@ def _cargo_config(vendor: Path, git: dict[str, GitSource]) -> str:
         rendered = "".join(f'{name} = "{value}"\n' for name, value in source["fields"].items())
         local = f"git-{commit[:12]}"
         sections.append(f'[source."{local}-upstream"]\n{rendered}replace-with = "{local}"\n')
-        repo = Path(source["repo"]).resolve()
+        repo = Path(source["repo"]).absolute()
         sections.append(f'[source.{local}]\ngit = "file://{repo}"\nrev = "{commit}"\n')
     sections.append(f'[source.vendored-sources]\ndirectory = "{vendor}"\n')
     return "\n".join(sections)
@@ -142,7 +142,8 @@ def main(argv: list[str] | None = None) -> None:
     # Cargo's build directory is the exception: buck keeps the previous one, so a rebuild redoes only
     # what changed. Cargo decides that from the modification times of the sources, which the copy
     # below preserves.
-    target = Path(spec["target"]).resolve()
+    # Cargo runs with the workspace as its cwd, so every path handed to it must be absolute.
+    target = Path(spec["target"]).absolute()
 
     shutil.copytree(spec["src"], build)
 
@@ -151,7 +152,7 @@ def main(argv: list[str] | None = None) -> None:
 
     cargo_home.mkdir(parents=True)
     (cargo_home / "config.toml").write_text(
-        _cargo_config(Path(spec["vendor"]).resolve(), spec["git"]),
+        _cargo_config(Path(spec["vendor"]).absolute(), spec["git"]),
         encoding="utf-8",
     )
 
@@ -167,7 +168,7 @@ def main(argv: list[str] | None = None) -> None:
     offline = [] if spec["git"] else ["--offline"]
     subprocess.run(
         [
-            Path(spec["auditable"]).resolve(),
+            Path(spec["auditable"]).absolute(),
             "auditable",
             "build",
             "--release",

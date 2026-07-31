@@ -78,7 +78,7 @@ def main(argv: list[str] | None = None) -> None:
         release = strict | release
         lowers = lowers[base:]
 
-    out = Path(spec["out"]).resolve()
+    out = Path(spec["out"])
     with finalize.image(spec, program="sysext", lowers=lowers) as tree:
         # A sysext identifies itself solely through its extension-release; the base os-release
         # must not ride along into the merged /usr.

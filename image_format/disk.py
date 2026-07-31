@@ -221,16 +221,16 @@ def main(argv: list[str] | None = None) -> None:
     partitions = [
         ImportedPartition(
             Definition.parse(partition["definition"]),
-            Path(partition["blocks"]).resolve(),
-            Path(partition["metadata"]).resolve(),
+            Path(partition["blocks"]),
+            Path(partition["metadata"]),
         )
         for partition in spec["partitions"]
     ]
     outputs = [
         SplitOutput(
             output["name"],
-            Path(output["blocks"]).resolve(),
-            Path(output["metadata"]).resolve(),
+            Path(output["blocks"]),
+            Path(output["metadata"]),
         )
         for output in spec["split_outputs"]
     ]
@@ -258,7 +258,7 @@ def main(argv: list[str] | None = None) -> None:
             if spec["seed"]
             else _derived_seed(spec["identity"], raw_definitions, partitions)
         )
-        out = Path(spec["out"]).resolve() if spec["out"] else None
+        out = Path(spec["out"]) if spec["out"] else None
         disk = scratch / "image.raw" if outputs else out
         assert disk is not None  # one of a disk output and split outputs is required
         cmd = [
@@ -278,16 +278,16 @@ def main(argv: list[str] | None = None) -> None:
         if outputs:
             cmd.append("--split=yes")
         if spec["private_key"]:
-            cmd += ["--private-key", str(Path(spec["private_key"]).resolve())]
+            cmd += ["--private-key", spec["private_key"]]
         if spec["certificate"]:
-            cmd += ["--certificate", str(Path(spec["certificate"]).resolve())]
+            cmd += ["--certificate", spec["certificate"]]
         result = subprocess.run([*cmd, str(disk)], check=True, stdout=subprocess.PIPE, text=True)
         rows: list[dict[str, Any]] = json.loads(result.stdout)
 
         for output in outputs:
             _copy_partition(_partition_row(rows, files[output.name]), output)
         if spec["root_hash_out"]:
-            _write_root_hash(rows, Path(spec["root_hash_out"]).resolve())
+            _write_root_hash(rows, Path(spec["root_hash_out"]))
         if out and outputs:
             shutil.copyfile(disk, out)
 

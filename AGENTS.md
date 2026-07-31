@@ -76,6 +76,26 @@ See [the design plan](docs/design.md).
 - Always use `pathlib.Path` (not `os.path`/string paths); prefer `Path` methods over `os.*`.
 - Keep the check command green (see Commands).
 
+### Paths in action scripts
+
+Buck hands drivers project-relative paths and runs them at the project root. Keep them that way by
+default; making a path absolute is a decision that needs a reason.
+
+- **Relative (the default).** Anything read, written, or passed to a subprocess that inherits the
+  action's cwd. No conversion, no filesystem access.
+- **`.absolute()`.** Only when something downstream changes the frame of reference: a chroot, a
+  subprocess given its own `cwd=`, a mount option the kernel resolves itself, a path written into a
+  spec another process consumes, or a library that documents needing absolute paths (libdnf5 does).
+  Say which in a comment.
+- **`.resolve()`.** Only to inspect what a link points at, as `rootfs.py` does for overlay lowers
+  (`lstat`/`getxattr` must see the real directory) and `sandbox.py` for the tools tree's usr-merge
+  symlinks. It follows symlinks, and `[buck2] cell_execution_paths = canonical_v1` presents sources
+  through a symlink farm, so resolving a source path collapses it back to the physical checkout and
+  undoes the cache normalization.
+
+Outside actions the trade-off flips: the `tine` CLI resolves user-supplied paths, because there the
+canonical location is the identity being recorded.
+
 ## Commit guidelines
 
 - Always sign off commits.

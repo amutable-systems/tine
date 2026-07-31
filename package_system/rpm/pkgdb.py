@@ -53,7 +53,7 @@ def _trim(db: Path) -> None:
 def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("pkgdb", argv)
 
-    out = Path(spec["out"]).resolve()
+    out = Path(spec["out"])
     out.mkdir(parents=True, exist_ok=True)
     db = out / Path(DBPATH).name
     with finalize.image(spec, program="pkgdb") as tree:

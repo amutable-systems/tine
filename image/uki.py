@@ -78,13 +78,13 @@ def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("uki", argv)
 
     efi_arch = spec["efi_arch"]
-    out = Path(spec["out"]).resolve()
+    out = Path(spec["out"])
     out.mkdir(parents=True)
-    initrds = [Path(initrd).resolve() for initrd in spec["initrds"]]
+    initrds = [Path(initrd) for initrd in spec["initrds"]]
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
     secure_boot = spec["secure_boot"]
-    key = str(Path(secure_boot["private_key"]).resolve()) if secure_boot else None
-    certificate = str(Path(secure_boot["certificate"]).resolve()) if secure_boot else None
+    key = secure_boot["private_key"] if secure_boot else None
+    certificate = secure_boot["certificate"] if secure_boot else None
 
     with (
         finalize.image(spec, program="uki") as tree,
@@ -111,7 +111,7 @@ def main(argv: list[str] | None = None) -> None:
         root_hash = spec["root_hash"]
         base = _cmdline(
             spec["cmdline"],
-            Path(root_hash["path"]).resolve() if root_hash else None,
+            Path(root_hash["path"]) if root_hash else None,
             root_hash["kind"] if root_hash else None,
         )
         cmdline = scratch / "cmdline"

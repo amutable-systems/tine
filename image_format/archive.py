@@ -130,7 +130,7 @@ def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("archive", argv)
 
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
-    out = Path(spec["out"]).resolve()
+    out = Path(spec["out"])
     with finalize.image(spec, program="archive") as tree:
         # The package database is a supply-chain artifact that the image's `[pkgdb]` subtarget
         # captures separately, so an archive nothing resolves packages in can drop it.

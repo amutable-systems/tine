@@ -34,7 +34,8 @@ _BASE_ENV = {
 
 
 def _abs(p: str) -> str:
-    return str(Path(p).resolve())
+    # Bind sources are mounted after the sandbox has changed root, so they cannot stay relative.
+    return str(Path(p).absolute())
 
 
 def _kv(pairs: list[str], sep: str) -> list[tuple[str, str]]:
