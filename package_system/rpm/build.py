@@ -38,15 +38,12 @@ def main(argv: list[str] | None = None) -> int:
     if not spec["lower"]:
         raise SystemExit("build_rpm: the buildroot stack cannot be empty")
 
-    # Use action scratch space and discard leftovers from a failed prior run.
-    scratch = os.environ.get("BUCK_SCRATCH_PATH")
-    if not scratch:
-        raise SystemExit("BUCK_SCRATCH_PATH not set (buck provides it; the sandbox forwards it)")
-    topdir = (Path(scratch) / "topdir").resolve()
-    if topdir.exists():
-        shutil.rmtree(topdir)
+    # Use action scratch space, which is what the sandbox backs /tmp with. Buck clears it before
+    # each execution, so a fixed name neither collides with a preserved failed tree nor
+    # accumulates across builds.
+    topdir = Path("/tmp/topdir")
     for d in ("SOURCES", "SPECS", "BUILD", "BUILDROOT", "RPMS", "SRPMS"):
-        (topdir / d).mkdir(parents=True, exist_ok=True)
+        (topdir / d).mkdir(parents=True)
     spec_file = Path(spec["spec_file"])
     # Freeze rpmautospec macros so builds need neither Git nor rpmautospec.
     frozen = (
