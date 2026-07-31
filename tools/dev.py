@@ -59,7 +59,10 @@ def _starlark_srcs(buck: str) -> list[Path]:
     return [
         f
         for f in files
-        if f.is_relative_to(tine) and owner(f) not in (None, "none", "prelude") and f.suffix != ".json"
+        # Data loads are parse inputs too, but not Starlark, and the format override means their
+        # names promise nothing, so keep what is known to be Starlark rather than reject data.
+        if f.is_relative_to(tine) and owner(f) not in (None, "none", "prelude")
+        if f.suffix == ".bzl" or f.name in ("BUCK", "PACKAGE")
     ]
 
 
@@ -104,8 +107,12 @@ def _lint(args: argparse.Namespace) -> None:
     _bold("starlark lint")
     _run([args.buck, "-v", "0", "starlark", "lint", "--console", "none", *srcs])
     _bold("starlark typecheck")
-    # Typecheck errors use stdout; stderr is only the per-file event log.
-    _run([args.buck, "-v", "0", "starlark", "typecheck", *srcs], stderr=subprocess.DEVNULL)
+    # Typecheck errors use stdout; stderr is only the per-file event log. Unlike lint, typecheck
+    # follows load() into data files and parses them as Starlark, which no TOML survives (a JSON
+    # object happens to be a valid Starlark expression), so files with a TOML load stay out; the
+    # probe also matches the `?format=toml` spelling.
+    checkable = [f for f in srcs if 'toml"' not in f.read_text(encoding="utf-8")]
+    _run([args.buck, "-v", "0", "starlark", "typecheck", *checkable], stderr=subprocess.DEVNULL)
 
 
 def _fmt(args: argparse.Namespace) -> None:
