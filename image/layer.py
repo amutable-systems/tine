@@ -31,13 +31,23 @@ class Spec(TypedDict):
     operations: list[object]
 
 
+# Where a chrooted command sees the project, and so every declared input. /run is one of the
+# tmpfs mounts apivfs puts over the mounted root, so the mount point never reaches the overlay
+# upper the layer captures, and the path does not depend on where the project is checked out.
+PROJECT = "/run/tine/project"
+
+
+def _chroots(operation: list[object]) -> bool:
+    return operation[0] == "run" and len(operation) == 4 and operation[3] is True
+
+
 def _operation(value: object) -> list[object]:
     if not isinstance(value, list) or not value or not isinstance(value[0], str):
         raise SystemExit(f"image op is not a tagged array: {value!r}")
     return cast(list[object], value)
 
 
-def _run(tag: str, raw_cmd: object, raw_env: object) -> None:
+def _run(tag: str, raw_cmd: object, raw_env: object, cwd: str | None = None) -> None:
     if not isinstance(raw_cmd, list) or not raw_cmd or not all(isinstance(arg, str) for arg in raw_cmd):
         raise SystemExit(f"image op {tag!r} has invalid cmd: {raw_cmd!r}")
     if not isinstance(raw_env, dict) or not all(
@@ -46,7 +56,7 @@ def _run(tag: str, raw_cmd: object, raw_env: object) -> None:
         raise SystemExit(f"image op {tag!r} has invalid env: {raw_env!r}")
     cmd = cast(list[str], raw_cmd)
     env = cast(dict[str, str], raw_env)
-    rc = subprocess.run(cmd, env=os.environ | env).returncode
+    rc = subprocess.run(cmd, env=os.environ | env, cwd=cwd).returncode
     if rc != 0:
         raise SystemExit(f"image op `{tag} {cmd}` failed (rc={rc})")
 
@@ -163,11 +173,12 @@ def _apply(
             if install is None:
                 raise SystemExit("image install operation has no package installer")
             _install(install, target, scratch)
-        case ["run", raw_cmd, raw_env]:
-            _run("run", raw_cmd, raw_env)
-        case ["chroot", raw_cmd, raw_env]:
-            with rootfs.chroot(target):
-                _run("chroot", raw_cmd, raw_env)
+        case ["run", raw_cmd, raw_env, bool(chroot)]:
+            if not chroot:
+                _run("run", raw_cmd, raw_env)
+            else:
+                with rootfs.chroot(target):
+                    _run("run", raw_cmd, raw_env, cwd=PROJECT)
         case ["copy", str(source), str(destination)]:
             _copy(Path(source), _destination(target, destination))
         case ["os_release", raw_fields]:
@@ -195,6 +206,10 @@ def main(argv: list[str] | None = None) -> None:
     if bool(install_count) != (install is not None):
         raise SystemExit("image install operation and package installer require each other")
 
+    # A chrooted command names an artifact exactly as an engine command does, so the project is
+    # mounted for the whole layer whenever one asks for it.
+    binds = [(os.getcwd(), PROJECT)] if any(_chroots(op) for op in operations) else []
+
     lower = spec["lower"]
     if lower:
         if spec["work"] is None:
@@ -205,11 +220,12 @@ def main(argv: list[str] | None = None) -> None:
             upperdir=out,
             workdir=Path(spec["work"]).resolve(),
             apivfs=True,
+            binds=binds,
         )
     else:
         if spec["work"] is not None:
             raise SystemExit("image work overlay directory requires a lower stack")
-        mounted = rootfs.rootfs("/buildroot", bind=out, apivfs=True)
+        mounted = rootfs.rootfs("/buildroot", bind=out, apivfs=True, binds=binds)
 
     with mounted as target, tempfile.TemporaryDirectory(prefix="layer.") as scratch:
         for operation in operations:

@@ -49,7 +49,6 @@ load(
     ":image.bzl",
     _ImageInfo = "ImageInfo",
     _ImageSbomInfo = "ImageSbomInfo",
-    _chroot = "chroot",
     _copy = "copy",
     _image = "image",
     _install = "install",
@@ -67,7 +66,6 @@ load(":vm.bzl", _image_vm = "image_vm")
 # Logical images and their operations.
 image = _image
 run = _run
-chroot = _chroot
 install = _install
 install_package_set = _install_package_set
 mkdir = _mkdir

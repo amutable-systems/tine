@@ -197,28 +197,19 @@ ARCHES = {"x86_64": struct(efi = "x64", systemd = "x86-64")}
 
 # Operations replayed by the layer driver.
 
-def run(cmd: list[str | Artifact], env: dict[str, str] = {}) -> LayerOperation:
-    """Run `cmd` with the engine's own tooling and the image mounted at /buildroot.
+def run(cmd: list[str | Artifact], env: dict[str, str] = {}, chroot: bool = False) -> LayerOperation:
+    """Run `cmd` against the image, either with the engine's tooling or the image's own.
 
-    An argument names a build artifact by being one, or by spelling `$(location //target)`
-    in a BUCK file.
+    By default the engine supplies the userspace and the image is mounted at /buildroot. With
+    `chroot`, the command runs inside the image instead, and the project is bind-mounted at a
+    fixed path which becomes the working directory, so an artifact argument resolves the same
+    either way and a script the repository owns can simply be run.
+
+    An argument names a build artifact by being one, or by spelling `$(location //target)` in a
+    BUCK file. Buck's macro parser claims `$(...)`, so a shell substitution has to be written
+    `\\$(...)`; an unescaped one fails to parse rather than reaching the shell.
     """
-    return ("run", cmd, _environment(env))
-
-def chroot(cmd: list[str], env: dict[str, str] = {}) -> LayerOperation:
-    """Run `cmd` with the image's own binaries, chrooted into it.
-
-    Build outputs are not visible inside the image, so use run() for anything that needs one.
-    """
-    for argument in cmd:
-        if type(argument) != "string":
-            fail("chroot: artifact arguments require run()")
-
-        # A chrooted command is coerced as a plain string, so Buck would leave this macro
-        # verbatim for the shell. Other `$(...)` text is a shell substitution and stays.
-        if "$(location" in argument:
-            fail("chroot: $(location) arguments require run()")
-    return ("chroot", cmd, _environment(env))
+    return ("run", cmd, _environment(env), chroot)
 
 def _environment(env: dict[str, str]) -> dict[str, str]:
     return {name: env[name] for name in sorted(env)}
@@ -324,7 +315,12 @@ def _encode_operation(operation: LayerOperation) -> LayerOperation:
         return operation
 
     # An engine argument is a plain string, an artifact, or a resolved $(location) macro.
-    return (operation[0], [spec_argument(argument) for argument in operation[1]], operation[2])
+    return (
+        operation[0],
+        [spec_argument(argument) for argument in operation[1]],
+        operation[2],
+        operation[3],
+    )
 
 def _install_specs(operation: tuple, package_sets: dict[str, list[str]] | None) -> list[str] | None:
     if operation[0] != "install":
@@ -528,17 +524,13 @@ def declare_image(
     )
 
 IMAGE_OPERATION_ATTR = attrs.one_of(
-    # Only the engine command takes attrs.arg(), so a chrooted command is free to spell shell
-    # substitutions as `$(...)` without escaping them away from Buck's macro parser.
+    # A command takes attrs.arg() whether or not it chroots, so an artifact argument reads the
+    # same either way; a shell substitution is escaped as `\\$(...)` at the call site.
     attrs.tuple(
         attrs.enum(["run"]),
         attrs.list(attrs.arg()),
         attrs.dict(attrs.string(), attrs.string()),
-    ),
-    attrs.tuple(
-        attrs.enum(["chroot"]),
-        attrs.list(attrs.string()),
-        attrs.dict(attrs.string(), attrs.string()),
+        attrs.bool(),
     ),
     attrs.tuple(
         attrs.enum(["install"]),

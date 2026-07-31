@@ -4,7 +4,6 @@ load(
     "@tine//image:defs.bzl",
     "DEFAULT_USR_VERITY_PARTITIONS",
     "bootable_disk_image",
-    "chroot",
     "copy",
     "image",
     "image_archive",
@@ -25,10 +24,15 @@ package_manager(
     base = "tine//catalog:fedora.rawhide.package-manager",
 )
 
-# A build artifact an engine command names through $(location).
+# A build artifact a command names through $(location), chrooted or not.
 export_file(
     name = "marker.txt",
     src = "marker.txt",
+)
+
+export_file(
+    name = "configure.sh",
+    src = "configure.sh",
 )
 
 # Minimal install + ordered-ops demo. `:demo` is both the tar result and a logical image.
@@ -41,7 +45,20 @@ rootfs_archive(
         # copy() takes a source directly, so it needs no $(location) around the label.
         copy(":marker.txt", "/etc/tine/from-copy"),
         install(["bash", "coreutils"]),
-        chroot(["/usr/bin/bash", "-c", "echo built-by-$(echo tine) > /etc/tine/marker"]),
+        # A chrooted command runs with the image's own binaries. Buck's macro parser claims
+        # `$(...)`, so the shell substitution is escaped.
+        run(["/usr/bin/bash", "-c", "echo built-by-\\$(echo tine) > /etc/tine/marker"], chroot = True),
+        # A repository-owned script, run inside the image. The project is mounted there, so
+        # `$(location)` names the script and its data exactly as it would outside.
+        run(
+            [
+                "/usr/bin/bash",
+                "$(location :configure.sh)",
+                "$(location :marker.txt)",
+                "from-script-argument",
+            ],
+            chroot = True,
+        ),
     ],
     format = "tar",
 )
@@ -61,11 +78,14 @@ image(
     ops = [
         install(["bash", "coreutils"]),
         mkdir("/etc/tine"),
-        chroot([
-            "/usr/bin/bash",
-            "-c",
-            "echo base > /etc/tine/from-base-kept; echo base > /etc/tine/from-base-gone",
-        ]),
+        run(
+            [
+                "/usr/bin/bash",
+                "-c",
+                "echo base > /etc/tine/from-base-kept; echo base > /etc/tine/from-base-gone",
+            ],
+            chroot = True,
+        ),
     ],
 )
 
@@ -73,7 +93,7 @@ image(
     name = "chained-child.layer",
     parent = ":chained-base",
     ops = [
-        chroot(["/usr/bin/bash", "-c", "echo child > /etc/tine/from-child"]),
+        run(["/usr/bin/bash", "-c", "echo child > /etc/tine/from-child"], chroot = True),
         remove("/etc/tine/from-base-gone"),
     ],
 )
@@ -90,7 +110,7 @@ image(
     package_manager = ":image.package-manager",
     ops = [
         install(["bash"]),
-        chroot(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"]),
+        run(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"], chroot = True),
     ],
 )
 
@@ -99,7 +119,7 @@ image(
     parent = ":layered-install-base",
     ops = [
         install(["coreutils"]),
-        chroot(["/usr/bin/bash", "-c", "ls /usr/bin/ls > /etc/from-child-install"]),
+        run(["/usr/bin/bash", "-c", "ls /usr/bin/ls > /etc/from-child-install"], chroot = True),
     ],
 )
 
@@ -116,11 +136,14 @@ image(
     ops = [
         install(["bash", "coreutils"]),
         mkdir("/etc/tine"),
-        chroot([
-            "/usr/bin/bash",
-            "-c",
-            "echo kept > '/etc/tine/esc\\x2dkept'; echo gone > '/etc/tine/esc\\x2dgone'",
-        ]),
+        run(
+            [
+                "/usr/bin/bash",
+                "-c",
+                "echo kept > '/etc/tine/esc\\x2dkept'; echo gone > '/etc/tine/esc\\x2dgone'",
+            ],
+            chroot = True,
+        ),
     ],
 )
 
@@ -210,7 +233,7 @@ image(
     package_manager = ":image.package-manager",
     ops = [
         install(["bash", "coreutils"]),
-        chroot(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"]),
+        run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"], chroot = True),
     ],
 )
 
@@ -219,7 +242,7 @@ image(
     parent = ":opaque-base",
     ops = [
         remove("/etc/tine/sub"),
-        chroot(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo new > /etc/tine/sub/fresh"]),
+        run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo new > /etc/tine/sub/fresh"], chroot = True),
     ],
 )
 
