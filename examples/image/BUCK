@@ -10,6 +10,7 @@ load(
     "image_vm",
     "install",
     "mkdir",
+    "python",
     "remove",
     "rootfs_archive",
     "run",
@@ -33,6 +34,11 @@ export_file(
 export_file(
     name = "configure.sh",
     src = "configure.sh",
+)
+
+export_file(
+    name = "configure.py",
+    src = "configure.py",
 )
 
 # Minimal install + ordered-ops demo. `:demo` is both the tar result and a logical image.
@@ -59,6 +65,10 @@ rootfs_archive(
             ],
             chroot = True,
         ),
+        # The same, in python, which this image does not install: the interpreter is Buck's own.
+        python(["$(location :configure.py)", "$(location :marker.txt)", "from-python-argument"], chroot = True),
+        # Unchrooted, the same interpreter sees the image at /buildroot, like any engine command.
+        python(["-c", "from pathlib import Path; Path('/buildroot/etc/tine/from-python-engine').write_text('x\\n')"]),
     ],
     format = "tar",
 )

@@ -211,6 +211,20 @@ def run(cmd: list[str | Artifact], env: dict[str, str] = {}, chroot: bool = Fals
     """
     return ("run", cmd, _environment(env), chroot)
 
+def python(cmd: list[str | Artifact], env: dict[str, str] = {}, chroot: bool = False) -> LayerOperation:
+    """Run a python script against the image, with the interpreter Buck already pins.
+
+    `chroot` picks the image's view exactly as it does for `run`: mounted at /buildroot by default,
+    or the script's own root. Either way the interpreter is the relocatable one Buck fetches for its
+    own bootstrap, named through the project, so the image never needs a python of its own. `cmd`
+    is the script and its arguments, each naming artifacts as a `run` argument does.
+    """
+    if not cmd:
+        fail("python: cmd must not be empty")
+
+    # -B: the script and its imports are project sources, which no build may write bytecode into.
+    return run(["$(location tine//tools:python3)", "-B"] + cmd, env = env, chroot = chroot)
+
 def _environment(env: dict[str, str]) -> dict[str, str]:
     return {name: env[name] for name in sorted(env)}
 

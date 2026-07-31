@@ -130,6 +130,11 @@ ordered operation sequence in one action and persists exactly one delta:
   owns is therefore just `run(["/usr/bin/bash", "$(location :setup.sh)"], chroot = True)`. Buck's macro
   parser claims `$(...)`, so a shell substitution has to be written `\$(...)`; an unescaped one fails to
   parse rather than silently reaching the shell.
+- `python([...])` runs a python script against the image without the image needing python: it is a `run`
+  of the relocatable interpreter Buck already pins for its own bootstrap, named through the project like
+  any other artifact. It takes the same `env` and `chroot` arguments, so the script either sees the image
+  at `/buildroot` or has it as its own root; in the chrooted case nothing of the interpreter reaches the
+  delta, because the project bind carrying it lives under `/run`.
 - `copy` introduces a declared Buck artifact at an absolute image path; `mkdir`, `symlink`, and `remove`
   mutate the same root.
 

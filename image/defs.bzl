@@ -56,6 +56,7 @@ load(
     _install_systemd_boot = "install_systemd_boot",
     _merge_os_release = "merge_os_release",
     _mkdir = "mkdir",
+    _python = "python",
     _remove = "remove",
     _run = "run",
     _symlink = "symlink",
@@ -66,6 +67,7 @@ load(":vm.bzl", _image_vm = "image_vm")
 # Logical images and their operations.
 image = _image
 run = _run
+python = _python
 install = _install
 install_package_set = _install_package_set
 mkdir = _mkdir
