@@ -17,6 +17,7 @@ def chroot_run(
     exe: Dependency | str | None = None,
     network: bool = False,
     relaxed: bool = False,
+    box: str | None = None,
 ) -> RunInfo:
     """Enter an engine, optionally running a command or interactive relaxed leaf."""
     run = cmd_args(
@@ -28,6 +29,8 @@ def chroot_run(
         run.add("--relaxed")
     else:
         run.add("--bind-cwd", "--source-date-epoch", str(ASSEMBLY_SDE))
+    if box != None:
+        run.add("--box", box)
     if network:
         run.add("--network")
     run.add("--")

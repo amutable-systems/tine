@@ -11,7 +11,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     return [
         DefaultInfo(default_output = engine.root),
         engine,
-        chroot_run(engine, relaxed = True),
+        chroot_run(engine, relaxed = True, box = ctx.label.name),
     ]
 
 _box = rule(

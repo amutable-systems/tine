@@ -7,11 +7,14 @@ Target-root setup belongs to rootfs.py rather than this launcher.
 
 import argparse
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import NoReturn
 
 import mkosi.sandbox
+
+_BOX_LEVEL = re.compile(r":(?P<level>[1-9][0-9]*)$")
 
 # Kernel APIs and ephemeral trees supplied by the sandbox.
 _PROVIDED = frozenset({"proc", "sys", "dev", "run", "tmp", "boot"})
@@ -48,8 +51,9 @@ def _kv(pairs: list[str], sep: str) -> list[tuple[str, str]]:
     return out
 
 
-def _relaxed(out: list[str], tools: Path) -> None:
+def _relaxed(tools: Path) -> list[str]:
     """Mount pinned userspace over a host-integrated root."""
+    out = []
     for name in _TOOLS_DIRS:
         if (tools / name).is_dir():
             out += ["--ro-bind", str(tools / name), "/" + name]
@@ -71,10 +75,10 @@ def _relaxed(out: list[str], tools: Path) -> None:
     for f in _HOST_ETC:
         if Path("/etc", f).exists() and (tools / "etc" / f).exists():
             out += ["--ro-bind", f"/etc/{f}", f"/etc/{f}"]
-    _identity(out, tools)
+    return out + _identity(tools)
 
 
-def _identity(out: list[str], tools: Path) -> None:
+def _identity(tools: Path) -> list[str]:
     """Make the invoking uid/gid resolvable inside the sandbox.
 
     Relaxed /etc comes from the tools tree, which lists only system users. On a host the caller's uid
@@ -94,6 +98,7 @@ def _identity(out: list[str], tools: Path) -> None:
         "passwd": f"{name}:x:{uid}:{gid}::{home}:/bin/sh\n",
         "group": f"{name}:x:{gid}:\n",
     }
+    out = []
     for base, entry in tables.items():
         source = tools / "etc" / base
         content = source.read_text(encoding="utf-8") if source.exists() else ""
@@ -104,6 +109,27 @@ def _identity(out: list[str], tools: Path) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(content + entry)
         out += ["--ro-bind", str(path), f"/etc/{base}"]
+    return out
+
+
+def _box(name: str) -> list[str]:
+    """Announce the box in the environment, counting depth when boxes nest."""
+    previous = os.environ.get("TINE_BOX", "") if os.environ.get("TINE_IN_BOX") else ""
+    if previous:
+        level = _BOX_LEVEL.search(previous)
+        name = f"{name}:{int(level.group('level')) + 1 if level else 2}"
+    out = ["--setenv", "TINE_BOX", name, "--setenv", "TINE_IN_BOX", "1"]
+
+    # Starship owns the prompt layout; TINE_BOX is rendered through its env_var module instead.
+    if os.environ.get("STARSHIP_SHELL"):
+        return out
+    prefix = os.environ.get("SHELL_PROMPT_PREFIX", "")
+    marker = f"({previous})"
+    if previous and marker in prefix:
+        prefix = prefix.replace(marker, f"({name})", 1)
+    else:
+        prefix = f"({name}){prefix}"
+    return out + ["--setenv", "SHELL_PROMPT_PREFIX", prefix]
 
 
 def main(argv: list[str] | None = None) -> NoReturn:
@@ -117,6 +143,7 @@ def main(argv: list[str] | None = None) -> NoReturn:
     p.add_argument("--chdir", default=None)
     p.add_argument("--bind-cwd", dest="bind_cwd", action="store_true", help="bind+chdir the project root")
     p.add_argument("--network", action="store_true", help="grant network (default: unshared)")
+    p.add_argument("--box", default=None, help="enter as the named development box (prompt and TINE_BOX)")
     p.add_argument(
         "--relaxed",
         action="store_true",
@@ -129,6 +156,8 @@ def main(argv: list[str] | None = None) -> NoReturn:
         raise SystemExit("no command given (expected `-- cmd ...`)")
     if args.relaxed and args.bind_cwd:
         raise SystemExit("--bind-cwd is for hermetic builds; --relaxed sees the host cwd already")
+    if args.box and not args.relaxed:
+        raise SystemExit("--box describes an interactive host-integrated shell; it requires --relaxed")
 
     out: list[str] = []
 
@@ -140,7 +169,7 @@ def main(argv: list[str] | None = None) -> NoReturn:
     # Recreate usr-merge symlinks instead of binding through them.
     tools = Path(args.tools).resolve()
     if args.relaxed:
-        _relaxed(out, tools)
+        out += _relaxed(tools)
     else:
         for entry in sorted(tools.iterdir()):
             if entry.name in _PROVIDED:
@@ -199,6 +228,8 @@ def main(argv: list[str] | None = None) -> NoReturn:
         out += ["--setenv", "SOURCE_DATE_EPOCH", str(args.source_date_epoch)]
     for k, v in _kv(args.setenv, "="):
         out += ["--setenv", k, v]
+    if args.box:
+        out += _box(args.box)
     if args.relaxed:
         # Resolve through the host /run while keeping the tools tree's /etc.
         if Path("/etc/resolv.conf").exists():

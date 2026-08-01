@@ -2,7 +2,6 @@
 
 import argparse
 import os
-import re
 import subprocess
 from pathlib import Path
 from typing import NoReturn
@@ -11,8 +10,6 @@ import workspace
 from errors import CliError
 
 BOX_LABEL = "tine:box"
-_BOX_PREFIX = re.compile(r"\(box(?::(?P<level>[1-9][0-9]*))?\)")
-_BOX_NAME = re.compile(r"box(?::(?P<level>[1-9][0-9]*))?")
 
 
 def add_command(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -62,27 +59,6 @@ def _target(buck: str, workspace_root: Path, cell: str, requested: str | None) -
     raise CliError(f"multiple box targets found; select one with --target:\n  {choices}")
 
 
-def _set_box_environment() -> None:
-    previous = _BOX_NAME.fullmatch(os.getenv("TINE_BOX", ""))
-    if os.getenv("TINE_IN_BOX") and previous:
-        name = f"box:{int(previous.group('level') or 1) + 1}"
-    else:
-        name = "box"
-    os.environ["TINE_BOX"] = name
-    os.environ["TINE_IN_BOX"] = "1"
-
-    # Starship owns the prompt layout; TINE_BOX is rendered through its env_var module instead.
-    if os.getenv("STARSHIP_SHELL"):
-        return
-    prefix = os.getenv("SHELL_PROMPT_PREFIX", "")
-    match = _BOX_PREFIX.search(prefix)
-    if match:
-        prefix = f"{prefix[: match.start()]}({name}){prefix[match.end() :]}"
-    else:
-        prefix = f"({name}){prefix}"
-    os.environ["SHELL_PROMPT_PREFIX"] = prefix
-
-
 def run(args: argparse.Namespace) -> NoReturn:
     command = list(args.command)
     if command[:1] == ["--"]:
@@ -95,7 +71,6 @@ def run(args: argparse.Namespace) -> NoReturn:
     workspace_root = workspace.find_workspace(caller)
     buck = str(args.buck)
     target = _target(buck, workspace_root, project.name, args.target)
-    _set_box_environment()
     os.chdir(caller)
     os.execv(
         buck,

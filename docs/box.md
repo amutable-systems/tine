@@ -26,8 +26,9 @@ contains only one:
 $ tine box
 ```
 
-Tine sets `TINE_BOX` to `box`, or `box:2`, `box:3`, and so on for nested boxes. For ordinary prompts it
-also adds the corresponding marker to the standard `SHELL_PROMPT_PREFIX`.
+Entering a box sets `TINE_BOX` to the target's name, suffixed with `:2`, `:3`, and so on when boxes nest.
+For ordinary prompts it also adds the corresponding marker to the standard `SHELL_PROMPT_PREFIX`. The box
+target owns this, not the `tine` CLI, so `buck run //:box` is marked the same way.
 
 Starship owns its multiline layout, so Tine leaves `SHELL_PROMPT_PREFIX` alone when `STARSHIP_SHELL` is
 set. Add a native segment to `~/.config/starship.toml` instead:
