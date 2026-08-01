@@ -393,6 +393,11 @@ Runtime and execution policy live on the `image_vm` target, not in the disk prov
 supplies the VM stack, its `autologin` option provisions a locked root password and runtime `login.noauth`,
 and arbitrary non-secret system credentials configure settings such as first-boot locale and timezone.
 
+`grow` enlarges the disk file to a given size before boot (vmspawn's `--grow-image`), which is how an
+ephemeral guest is given room the built partitions do not occupy; the guest claims that room itself, for
+example with `systemd-repart`. vmspawn grows the built artifact in place, and the added space sits past the
+GPT backup header until something rewrites the table.
+
 ```sh
 tools/buck run //examples/image:boot-demo-vm
 ```

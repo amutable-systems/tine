@@ -4,6 +4,9 @@ load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//image_format:disk.bzl", "RepartInfo")
 load("//image_format:sysext.bzl", "SysextImageInfo")
 
+# A byte count with an optional systemd size suffix, which vmspawn reads base-1024.
+_SIZE_PATTERN = "^[0-9]+(\\.[0-9]+)?[KMGTPE]?$"
+
 def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
     disk = ctx.attrs.image[RepartInfo]
     if disk.disk == None:
@@ -21,6 +24,14 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
         "--kvm=yes",
         "--network-user-mode",
     )
+
+    if ctx.attrs.grow != None:
+        if not regex_match(_SIZE_PATTERN, ctx.attrs.grow):
+            fail("image_vm: invalid grow size {!r}".format(ctx.attrs.grow))
+
+        # vmspawn grows the file itself, before the ephemeral overlay is stacked on top of it, so
+        # the guest sees the larger disk while its writes still go nowhere.
+        run.add("--grow-image={}".format(ctx.attrs.grow))
 
     if ctx.attrs.secure_boot:
         # OVMF variable store starts in setup mode and sd-boot enrolls the
@@ -78,6 +89,11 @@ image_vm = rule(
             doc = "non-secret system credentials passed to systemd-vmspawn",
         ),
         "engine": attrs.dep(providers = [EngineInfo], doc = "execution environment supplying the VM stack"),
+        "grow": attrs.option(
+            attrs.string(),
+            default = None,
+            doc = 'size to grow the disk file to before booting, e.g. "8G"; the built image itself grows',
+        ),
         "image": attrs.dep(providers = [RepartInfo], doc = "the raw disk image to boot ephemerally"),
         "secure_boot": attrs.bool(
             default = False,
