@@ -111,7 +111,6 @@ User guides:
 - [Maintaining packages](docs/importer.md): importing and updating packages from upstream distributions,
   local modifications, branch curation
 - [Development boxes](docs/box.md): pinned interactive development environments
-- [Shared workspaces](docs/workspace.md): registering several repositories as one Buck project
 
 Design:
 

@@ -93,9 +93,6 @@ default; making a path absolute is a decision that needs a reason.
   through a symlink farm, so resolving a source path collapses it back to the physical checkout and
   undoes the cache normalization.
 
-Outside actions the trade-off flips: the `tine` CLI resolves user-supplied paths, because there the
-canonical location is the identity being recorded.
-
 ## Commit guidelines
 
 - Always sign off commits.

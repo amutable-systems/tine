@@ -19,16 +19,16 @@ The default release is `tine//catalog:fedora.rawhide.release`, resolved and inst
 `tine//catalog:fedora.rawhide.engine`. Override either attribute when the project needs a different base or
 bootstrap environment.
 
-From anywhere in that project, enter an interactive shell. Tine discovers the box target when the project
-contains only one:
+Run the target to enter an interactive shell. Buck runs it from the directory you invoked it in, so this
+works from anywhere in the project:
 
 ```console
-$ tine box
+$ tools/buck run //:box
 ```
 
 Entering a box sets `TINE_BOX` to the target's name, suffixed with `:2`, `:3`, and so on when boxes nest.
 For ordinary prompts it also adds the corresponding marker to the standard `SHELL_PROMPT_PREFIX`. The box
-target owns this, not the `tine` CLI, so `buck run //:box` is marked the same way.
+target itself sets these, so every way of entering it is marked the same.
 
 Starship owns its multiline layout, so Tine leaves `SHELL_PROMPT_PREFIX` alone when `STARSHIP_SHELL` is
 set. Add a native segment to `~/.config/starship.toml` instead:
@@ -41,14 +41,13 @@ format = '[\($env_value\)](bold cyan) '
 Run a command non-interactively by placing it after `--`:
 
 ```console
-$ tine box -- pytest
+$ tools/buck run //:box -- pytest
 ```
 
-When a project declares multiple boxes, a root `//:box` remains the default. Otherwise, select one with
-`--target`:
+A project may declare as many boxes as it likes; each is its own target:
 
 ```console
-$ tine box --target //tools:box -- make check
+$ tools/buck run //tools:box -- make check
 ```
 
 The box root is a normal engine artifact. Its userspace is pinned and read-only, while the relaxed entry

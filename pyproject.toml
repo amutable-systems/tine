@@ -23,7 +23,7 @@ lint.select = [
 [tool.ty.environment]
 python-version = "3.14"
 # Runtime trees use a flat import namespace; third-party imports come from `--python`.
-extra-paths = ["archive", "cargo", "engine", "image", "image_format", "package_system/rpm", "rootfs", "tine", "vendor"]
+extra-paths = ["archive", "cargo", "engine", "image", "image_format", "package_system/rpm", "rootfs", "vendor"]
 
 [tool.ty.src]
 # Verbatim vendored modules do not follow Tine's project-specific type rules.

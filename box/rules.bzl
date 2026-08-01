@@ -49,6 +49,6 @@ def box(
     _box(
         name = name,
         engine = ":" + name + ".engine",
-        labels = ["tine:box"] + labels,
+        labels = labels,
         visibility = visibility,
     )
