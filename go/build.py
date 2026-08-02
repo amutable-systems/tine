@@ -23,7 +23,7 @@ class Spec(TypedDict):
     cgo: bool | None
     # Extra flags for the C compiler of a cgo build, on top of the -O2 -g always passed.
     cgo_cflags: list[str]
-    # go's build cache.
+    # go's build cache, kept from the previous build of this project.
     gocache: str
     # The fetched module cache directory, or None for a project without a go.sum.
     module_cache_dir: str | None

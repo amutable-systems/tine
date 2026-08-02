@@ -81,8 +81,10 @@ The engine is a build environment. It never becomes part of an image, and the to
 How the modules are pinned, fetched and verified is described under "Go source builds" in
 [design.md](design.md).
 
-- **A project is one cache unit.** Any change to its sources reruns the build action for the whole
-  project; only changes to `go.mod`/`go.sum` rerun the fetch.
+- **A project is one cache unit, and reruns are incremental.** Any change to its sources reruns the
+  build action for the whole project, but go's build cache survives between runs, so it recompiles only
+  what changed. Only changes to `go.mod`/`go.sum` rerun the fetch, whose module cache survives too, so a
+  dependency bump downloads only what is missing. `buck2 clean` is what forces a build from scratch.
 - **`go.mod` and `go.sum` must agree.** The build runs `-mod=readonly`, so a stale `go.sum` fails the
   build instead of quietly resolving something else; `go mod tidy` and commit the result.
 - **The fetch is a network action**, one of the few build steps that reach out at all. It declares its own
