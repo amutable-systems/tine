@@ -26,7 +26,7 @@ import specs
 class Spec(TypedDict):
     # The project's go.mod.
     mod: str
-    # The module cache directory to fill, `cache/download` in the proxy layout.
+    # The module cache directory to fill, `cache/download` in the proxy layout, kept across fetches.
     module_cache_dir: str
     # The project's go.sum, which go checks a download against wherever it pins one.
     sum: str

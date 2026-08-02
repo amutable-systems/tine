@@ -419,8 +419,8 @@ compares them by. A build that finds no previous directory remains the reference
 
 ### Go source builds
 
-`go_package()` gives a checked-out Go project the same treatment — sources in, declared binaries out, one
-cache unit per project. But the pinning is delegated rather than translated: A `go.sum` records `h1:`
+`go_package()` gives a checked-out Go project the same treatment, sources in and declared binaries out.
+But the pinning is delegated rather than translated: A `go.sum` records `h1:`
 dirhashes over each module's contents, not the hash of any bytes a proxy serves, so there is nothing a
 hash-verified `download_file` could check a download against. Deriving byte hashes would mean a second,
 generated lock to keep refreshed. Instead go itself is the verifier, and the build is two actions so the
@@ -454,6 +454,15 @@ A local `go build` inside the checkout leaves no build tree behind: go's cache l
 is no `target/` equivalent for the glob and the daemon's watcher to exclude. It does drop the binary it
 built into the current directory, which the glob then picks up as a source, so a project is better built
 with `-o`.
+
+The unit of caching is the project, not the package: one action per package would mean modelling the
+package graph and the toolchain here, which is what rules_go exists for, and go's own content-keyed build
+cache gets most of that back for none of it. So reruns are made cheap the same way as for Rust: both
+caches are declared outputs that buck is told not to clear before rerunning their actions. go's build
+cache keys on file contents, so a rerun recompiles only what actually changed, and a rerun fetch
+downloads only what the kept module cache is missing. Old module versions accumulate there after
+dependency bumps, but they are inert: go takes only what `go.sum` names out of the proxy view. A run that
+finds no previous cache remains the reference, which is what CI and any `buck2 clean` produce.
 
 ### Filesystem layer representation
 

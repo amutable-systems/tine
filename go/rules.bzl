@@ -78,7 +78,8 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
     outputs = {name: ctx.actions.declare_output(name) for name in ctx.attrs.binaries}
 
     # The one online step: go downloads what go.mod names and verifies it against go.sum. Its
-    # inputs are only those two files, so editing sources never refetches.
+    # inputs are only those two files, so editing sources never refetches; and the cache is kept
+    # across reruns, so a dependency bump downloads only what is missing from it.
     module_cache = None
     if sum != None:
         module_cache = ctx.actions.declare_output("module-cache", dir = True)
@@ -97,8 +98,11 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             ),
             category = "go_fetch",
             local_only = True,
+            no_outputs_cleanup = True,
         )
 
+    # go's own build cache. An action's outputs are the only place it may leave state behind, and
+    # buck clears them before rerunning it unless told not to.
     gocache = ctx.actions.declare_output("gocache", dir = True)
     ctx.actions.run(
         cmd_args(
@@ -119,6 +123,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             ),
         ),
         category = "go_build",
+        no_outputs_cleanup = True,
     )
     sub_targets = {name: [DefaultInfo(default_output = out)] for name, out in outputs.items()}
     return [DefaultInfo(default_outputs = outputs.values(), sub_targets = sub_targets)]
