@@ -14,7 +14,7 @@
 ## Layout
 
 The `tine` cell contains reusable machinery organized by subsystem. Starlark rules and their
-drivers live together in `engine`, `package`, `package_system`, `cargo`, `image`, `image_format`,
+drivers live together in `engine`, `package`, `package_system`, `cargo`, `go`, `image`, `image_format`,
 `rootfs`, and `archive`. Vendored code lives in `vendor`. The default catalog is `tine//catalog`;
 consumers may instead declare a project-specific `//catalog` package. `examples` holds the demo images
 that CI builds and boot-tests, plus a dev box. Package sources and targets live in the OS.git root that
