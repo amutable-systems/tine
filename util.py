@@ -83,6 +83,27 @@ def clone_file(src: Path, dst: Path, allow_link: bool = False) -> None:
     shutil.copy(src, dst)
 
 
+def take_binaries(built: Path, binaries: dict[str, str], *, tool: str, where: str) -> None:
+    """Copy each declared binary out of a build tree.
+
+    A name the build did not produce is a fatal error. `tool` prefixes that failure and `where`
+    names the tree in it, both in the terms of the ecosystem the calling driver builds for.
+    """
+    missing = [name for name in binaries if not (built / name).is_file()]
+    if missing:
+        # Everything executable in there, which after an earlier build of the same project may name
+        # more than this one produced.
+        found = sorted(
+            entry.name for entry in built.iterdir() if entry.is_file() and os.access(entry, os.X_OK)
+        )
+        raise SystemExit(f"{tool}: no {', '.join(missing)} in {where}, which holds: {', '.join(found)}")
+    for name, out in binaries.items():
+        # Replace, never rewrite: buck does not clear a kept action's outputs, and whatever consumed
+        # the previous binary may hold a hard link to it.
+        Path(out).unlink(missing_ok=True)
+        clone_file(built / name, Path(out))
+
+
 def remove_path(path: Path, with_parents: bool = False) -> None:
     """Remove a file, symlink, or whole directory tree, if it is there at all.
 
