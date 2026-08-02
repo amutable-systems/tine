@@ -127,6 +127,7 @@ tools/buck build //...                     # the examples, the catalog, and the 
 tools/buck run tine//tools:check           # lint, type-check, unit tests
 tools/buck run tine//tools:fmt             # auto-format and auto-fix
 tools/buck run tine//tools:verify-catalog  # assert the committed catalog lock matches
+tools/ci.sh                                # the whole CI pipeline: checks, image builds, boot smokes
 ```
 
 The full command list is in [AGENTS.md](AGENTS.md).

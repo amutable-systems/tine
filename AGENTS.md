@@ -33,6 +33,8 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
 - **Auto-format + auto-fix:** `buck run tine//tools:fmt`
 - **Refresh the catalog lock:** `buck run tine//tools:refresh-catalog`;
   `buck run tine//tools:verify-catalog` asserts the committed lock matches.
+- **Full CI pipeline:** `tools/ci.sh` runs every check plus the example image builds and VM boot
+  smokes as one fail-fast command.
 - **rpm importer:** `buck run tine//tools:importer -- <verb>` runs the package import/update tool
   in the dev box with the host's git identity and network; see [importer.md](docs/importer.md).
 - **BuildRequires cycle analysis:** `buck run tine//tools:scc -- <branch label>`; background in

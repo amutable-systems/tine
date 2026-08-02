@@ -35,41 +35,7 @@ jobs:
       - name: Set up git
         run: git config --global --add safe.directory '*'
 
-      # First buck invocation: fetch the pinned buck binary and build the engine (the RPM-resolved
-      # toolchain every later step shares), so each step's timing reflects its own work.
-      - name: Bootstrap buck and the engine
-        run: tools/buck build tine//catalog:fedora.rawhide.engine
-
-      - name: Linters and unit tests
-        run: tools/buck run tine//tools:check
-
-      # Scoped to the rpmrepo snapshotted rawhide engine; CentOS Stream mirrors
-      # are intentionally unpinned and drift, so they are not verifiable.
-      - name: Verify catalog
-        run: tools/buck run tine//tools:verify-catalog -- --engine fedora.rawhide.engine
-
-      - name: Build the dev box
-        run: tools/buck build //examples/box:box
-
-      - name: Build boot-demo image
-        run: tools/buck build //examples/image:boot-demo
-
-      # Boot the image in a VM and drive its console over a pty: wait for the autologin shell, assert
-      # the system settled (degraded is tolerated for now), then power off.
-      - name: Boot-test boot-demo
-        run: tools/buck run //examples/image:boot-demo-vm-smoke
-
-      # Rust build and crates SBOM
-      - name: Build a Rust project from source
-        run: tools/buck build '//examples/image-rust-project:demo[sbom][cyclonedx]' --out sbom.cdx.json
-
-      - name: Check the crate graph reaches the SBOM
-        run: grep -q 'pkg:cargo/serde_json@' sbom.cdx.json
-
-      - name: Build Secure Boot image
-        run: tools/buck build //examples/image-secureboot:image
-
-      # Boot with Secure Boot enforced and a vTPM: enroll the keys on first boot, smoke-check, then
-      # power off. Exercises the signed UKI/systemd-boot and the measured expected-PCR policy.
-      - name: Boot-test Secure Boot image
-        run: tools/buck run //examples/image-secureboot:vm-smoke
+      # the actual pipeline (bootstrap, linters, catalog, image builds, and VM boot smokes)
+      # emits a log group per step
+      - name: CI
+        run: tools/ci.sh
