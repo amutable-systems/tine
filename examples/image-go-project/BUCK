@@ -1,0 +1,60 @@
+"""An image carrying a Go program built from source.
+
+In a product this package lives in the OS.git that vendors tine, beside a checkout of each project
+it builds. `hello/` plays that checkout.
+"""
+
+load("@tine//engine:build.bzl", "engine")
+load("@tine//go:rules.bzl", "go_package")
+load("@tine//image:defs.bzl", "copy", "install", "rootfs_archive")
+load("@tine//package:manager.bzl", "package_manager")
+
+# The build environment for our Go projects; it never reaches an image.
+engine(
+    name = "go.engine",
+    packages = [
+        # TLS trust for the module fetch from proxy.golang.org.
+        "ca-certificates",
+        "golang",
+        # tine's in-engine drivers run on the engine's own interpreter.
+        "python3",
+    ],
+    release = "tine//catalog:fedora.rawhide.release",
+    resolver_engine = "tine//catalog:fedora.rawhide.engine",
+)
+
+# A checked-out project needs no build file of its own: the sources default to the directory named
+# after the target, and the go.mod in them marks the module root.
+go_package(
+    name = "hello",
+    binaries = ["hello-cli"],
+    engine = ":go.engine",
+)
+
+# A project with no dependencies at all, which therefore commits no go.sum and fetches nothing.
+go_package(
+    name = "nodeps",
+    binaries = ["nodeps"],
+    engine = ":go.engine",
+)
+
+package_manager(
+    name = "image.package-manager",
+    base = "tine//catalog:fedora.rawhide.package-manager",
+)
+
+# `:demo[sbom][cyclonedx]` lists the Go modules each binary was built from, next to the image's
+# packages.
+rootfs_archive(
+    name = "demo",
+    package_manager = ":image.package-manager",
+    ops = [
+        # No runtime packages needed: neither project imports anything that pulls in cgo, so both
+        # binaries are static. The filesystem skeleton still comes from its package, giving the
+        # copies below their place to land.
+        install(["filesystem"]),
+        copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
+        copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
+    ],
+    format = "tar",
+)

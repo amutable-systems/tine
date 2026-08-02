@@ -44,6 +44,7 @@ tine//rootfs/             bind/overlay mounting and stored-delta translation
 tine//image/              layers, boot artifacts, composition macros, and VM runners
 tine//image_format/       archive, directory, and raw-disk output rules and drivers
 tine//cargo/              vendored crate trees and offline Rust source builds
+tine//go/                 go.sum-verified module fetches and offline Go source builds
 tine//catalog/            default repositories, locks, releases, package managers, and buildroots
 tine//tools/              pinned development and catalog-refresh commands
 ```
@@ -415,6 +416,44 @@ one and recompiles only what changed, exactly as it does in a working copy. Noth
 source tree is copied afresh from the action's inputs on every run, with the modification times cargo
 compares them by. A build that finds no previous directory remains the reference, which is what CI and any
 `buck2 clean` produce.
+
+### Go source builds
+
+`go_package()` gives a checked-out Go project the same treatment — sources in, declared binaries out, one
+cache unit per project. But the pinning is delegated rather than translated: A `go.sum` records `h1:`
+dirhashes over each module's contents, not the hash of any bytes a proxy serves, so there is nothing a
+hash-verified `download_file` could check a download against. Deriving byte hashes would mean a second,
+generated lock to keep refreshed. Instead go itself is the verifier, and the build is two actions so the
+network stays confined to the first:
+
+1. `go_fetch` is the online action: `go mod download` in the consumer's engine with the network shared,
+   reading nothing but `go.mod` and `go.sum`, so editing sources never refetches. go checks a download
+   against the committed `go.sum` where that pins it, and against the checksum database otherwise.
+   Downloading deliberately does not extend `go.sum`, so an unpinned module is fetched here and rejected
+   in the step below. The driver does reject a `go.sum` missing the module graph's `go.mod` hashes, which
+   is the one incompleteness that downloading repairs silently. The output is go's module cache.
+2. `go_build` compiles offline. The `cache/download` half of a module cache is exactly the layout a
+   module proxy serves, so the driver points `GOPROXY` at it as a `file://` URL and go re-extracts every
+   module from it, verifying against `go.sum` a second time (the fetched artifact is never trusted
+   implicitly). `-mod=readonly` makes a lock that no longer agrees with `go.mod` a failure rather than a
+   silent re-resolution, and `GOTOOLCHAIN=local` keeps the engine's go the only toolchain.
+
+The declared binaries also select what gets built, rather than only what is taken out of a build of
+everything. A checked-out project often carries commands an image does not install; building those would
+cost time for nothing, and worse, may require additional build requirements. The driver therefore asks go
+which main packages exist (`go list -e`, which loads metadata without compiling and tolerates a package
+that does not load at all) and passes only the declared ones to `go build`. The same listing reports the
+name go itself would give each binary, and turns a misdeclared binary into a failure that names the
+module's actual commands before anything compiles.
+
+No auditable wrapper exists in this path because go itself embeds the module list in every binary it
+links. syft catalogs these as `pkg:golang` components in the image SBOM. The declaration contract is in
+[go.md](go.md).
+
+A local `go build` inside the checkout leaves no build tree behind: go's cache lives outside it, so there
+is no `target/` equivalent for the glob and the daemon's watcher to exclude. It does drop the binary it
+built into the current directory, which the glob then picks up as a source, so a project is better built
+with `-o`.
 
 ### Filesystem layer representation
 
@@ -865,10 +904,12 @@ These are properties of the implementation today, not merely ideas for future op
 - RPM builds use `--nocheck`; package test policy is not implemented.
 - Rust source builds cover crates.io and git sources; another registry is rejected. A git dependency's
   integrity rests on the commit hash the lock records: SHA-1 for ordinary repositories, which is weaker
-  than the SHA-256 pinning everything else here uses. The fetch is a network action, pinned but online, unlike every
-  other build step.
+  than the SHA-256 pinning everything else here uses.
 - `cargo-auditable` is a pinned upstream release binary rather than a source-built one, so the Rust build
   path is not itself part of the source-trust chain.
+- Two build steps reach the network, where everything else here downloads only what buck has verified
+  against a recorded byte hash: a Rust git fetch, pinned by the commit hash in the lock, and a Go module
+  fetch, whose integrity rests on the committed `go.sum` as go enforces it at build time.
 - Crate downloads carry no recorded size, so Buck learns it from an HTTP HEAD whenever a download action
   executes. A cold daemon therefore needs the network even when every crate is already cached.
 - Debuginfo/debugsource outputs are not first-class declared sub-targets.
@@ -956,8 +997,7 @@ unnecessary unless real composition requirements appear.
   monolithic distribution object.
 - Replace the pinned `cargo-auditable` binary with a source-built one once that no longer depends on
   itself existing, and map commits to tarballs for whatever forge a dependency turns up on next. Add
-  C/C++/Go equivalents only when in-repository builds need them; Go needs its own module pins, because
-  `go.sum` records content dirhashes rather than the hash of the module zip.
+  C/C++ equivalents only when in-repository builds need them.
 - Define the upstream-update workflow: import Fedora changes, rebase local patches, refresh snapshots and
   generated metadata, and verify that version skew has not invalidated source/upstream interchangeability.
 
@@ -971,6 +1011,7 @@ Useful implementation entry points:
 - `engine/{build,runtime}.bzl`, `engine/sandbox.py`, and `rootfs/rootfs.py`
 - `image/{image,compose,defs,sign,vm}.bzl` and `image_format/{archive,boot,disk,sysext,uki}.bzl`
 - `cargo/{rules,lock,vendor}.bzl` and `cargo/{vendor,build}.py`
+- `go/rules.bzl` and `go/{fetch,build}.py`
 - `tools/catalog.py` and `catalog/BUCK`
 - the generated `packages/*/*/BUCK` and `package_system/rpm/generated.bzl`
 

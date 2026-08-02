@@ -73,6 +73,19 @@ rust_sbom() {
     grep -q 'pkg:cargo/anyhow@' <<< "$sbom"
 }
 
+# The same for the from-source Go image: the modules go embeds in the binary must reach the SBOM.
+go_sbom() {
+    local sbom
+    sbom=$("$buck" build 'tine//examples/image-go-project:demo[sbom][cyclonedx]' --out -)
+    # our own go modules, unversioned: -buildvcs=false leaves a main module's version at (devel)
+    grep -q 'pkg:golang/example.com/hello' <<< "$sbom"
+    grep -q 'pkg:golang/example.com/nodeps' <<< "$sbom"
+    # hello's direct dependency
+    grep -q 'pkg:golang/rsc.io/quote@' <<< "$sbom"
+    # hello's indirect dependency
+    grep -q 'pkg:golang/golang.org/x/text@' <<< "$sbom"
+}
+
 # First invocation fetches buck's pinned tools and builds the shared engine; kept its own group so
 # bootstrap time stays visible.
 group engine           -- "$buck" build tine//catalog:fedora.rawhide.engine
@@ -83,5 +96,6 @@ group box              -- "$buck" build tine//examples/box:box
 group boot-demo-image  -- "$buck" build tine//examples/image:boot-demo
 group boot-demo-smoke  -- "$buck" run tine//examples/image:boot-demo-vm-smoke
 group rust-sbom        -- rust_sbom
+group go-sbom          -- go_sbom
 group secureboot-image -- "$buck" build tine//examples/image-secureboot:image
 group secureboot-smoke -- "$buck" run tine//examples/image-secureboot:vm-smoke

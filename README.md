@@ -108,6 +108,8 @@ User guides:
   VM runner
 - [Building Rust projects](docs/cargo.md): building a checked-out Rust project offline, with its
   crate graph in the executables and image SBOM
+- [Building Go projects](docs/go.md): the same for a checked-out Go project, whose module list go
+  itself embeds in the executables
 - [Maintaining packages](docs/importer.md): importing and updating packages from upstream distributions,
   local modifications, branch curation
 - [Development boxes](docs/box.md): pinned interactive development environments
