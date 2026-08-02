@@ -93,25 +93,6 @@ def _reject_local_config(build: Path, workspace: Path) -> None:
         directory = directory.parent
 
 
-def _take_binaries(built: Path, binaries: dict[str, str]) -> None:
-    """Copy each declared binary out; a name the build did not produce is a mis-declaration."""
-    missing = [name for name in binaries if not (built / name).is_file()]
-    if missing:
-        # Everything executable in there, which after an earlier build of the same project may name
-        # more than this one produced.
-        found = sorted(
-            entry.name for entry in built.iterdir() if entry.is_file() and os.access(entry, os.X_OK)
-        )
-        raise SystemExit(
-            f"cargo-build: no {', '.join(missing)} in target/release, which holds: {', '.join(found)}"
-        )
-    for name, out in binaries.items():
-        # Replace, never rewrite: buck no longer clears this action's outputs, and whatever consumed
-        # the previous binary may hold a hard link to it.
-        Path(out).unlink(missing_ok=True)
-        util.clone_file(built / name, Path(out))
-
-
 def _cargo_config(vendor: Path, git: dict[str, GitSource]) -> str:
     """Point the registry at the vendored directory and every git source at its fetched repository.
 
@@ -180,7 +161,7 @@ def main(argv: list[str] | None = None) -> None:
         env=os.environ | {"CARGO_HOME": str(cargo_home), "CARGO_TARGET_DIR": str(target)},
     )
 
-    _take_binaries(target / "release", spec["binaries"])
+    util.take_binaries(target / "release", spec["binaries"], tool="cargo-build", where="target/release")
 
 
 if __name__ == "__main__":

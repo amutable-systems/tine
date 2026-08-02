@@ -19,6 +19,8 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import override
 
+import util
+
 TINE_REPO = Path(__file__).resolve().parent.parent
 
 
@@ -253,7 +255,9 @@ class TestBuild(unittest.TestCase):
         (built / "hello-cli").write_text("elf", encoding="utf-8")
         (built / "hello-cli").chmod(0o755)
         with self.assertRaises(SystemExit) as caught:
-            build._take_binaries(built, {"hello": str(built / "out")})
+            util.take_binaries(
+                built, {"hello": str(built / "out")}, tool="cargo-build", where="target/release"
+            )
         self.assertEqual(
             str(caught.exception),
             "cargo-build: no hello in target/release, which holds: hello-cli",
