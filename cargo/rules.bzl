@@ -8,9 +8,9 @@ load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
 _LOCK = "Cargo.lock"
 _MANIFEST = "Cargo.toml"
 
-# Names the rule declares for itself, as outputs or as sub-targets (vendor.bzl's among them). A binary
-# sharing one would either collide in the output namespace or, worse, be shadowed by the sub-target of
-# the same name.
+# Output names the rule declares for itself, vendor.bzl's among them. A binary sharing one collides in
+# the output namespace, which buck reports as a duplicate path in buck-out rather than as the
+# declaration being wrong.
 _RESERVED = ("crate", "crates", "src", "target", "vendor")
 
 def _named(srcs: list[Artifact], name: str) -> list[Artifact]:
