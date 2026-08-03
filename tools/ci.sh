@@ -64,7 +64,13 @@ group() {
 rust_sbom() {
     local sbom
     sbom=$("$buck" build 'tine//examples/image-rust-project:demo[sbom][cyclonedx]' --out -)
+    # our own rust packages
+    grep -q 'pkg:cargo/hello@0.1.0' <<< "$sbom"
+    grep -q 'pkg:cargo/nodeps@0.1.0' <<< "$sbom"
+    # hello's dependency from crates.io
     grep -q 'pkg:cargo/serde_json@' <<< "$sbom"
+    # hello's dependency from git
+    grep -q 'pkg:cargo/anyhow@' <<< "$sbom"
 }
 
 # First invocation fetches buck's pinned tools and builds the shared engine; kept its own group so
