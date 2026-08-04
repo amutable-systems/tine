@@ -70,6 +70,7 @@ load(
     _SigningKeyInfo = "SigningKeyInfo",
     _generate_signing_key = "generate_signing_key",
     _pem_signing_key = "pem_signing_key",
+    _pkcs11_signing_key = "pkcs11_signing_key",
 )
 load(":substitute.bzl", _substitute = "substitute")
 load(":vm.bzl", _image_vm = "image_vm")
@@ -104,6 +105,7 @@ generate_signing_key = _generate_signing_key
 image_install = _image_install
 substitute = _substitute
 pem_signing_key = _pem_signing_key
+pkcs11_signing_key = _pkcs11_signing_key
 SigningKeyInfo = _SigningKeyInfo
 
 # Compositions.
