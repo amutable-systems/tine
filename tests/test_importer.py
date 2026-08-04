@@ -1060,6 +1060,53 @@ class DownstreamPackages(PackagesTestCase):
         self.assertEqual(self.capture(self.tool.diff_package, "testpkg", None, None), "")
         self.assertEqual(self.tool.check(), [])
 
+    def test_sync_restarts_the_local_bump(self) -> None:
+        """Discarding our delta puts the release back to the import's, and `.1` becomes free again.
+
+        The reset commit is a local commit, so counting it would make check demand a `.1` release
+        from a package that is pristine again -- and push the *next* real modification to `.2`.
+        """
+        rel = "packages/fedora/rawhide/arp"
+        sha = self.commit("arp", "rawhide", "1.0", "1", "Initial import", autorelease=True)
+        self.build_koji("arp", "1.0", "1", sha, autorelease=True)
+        self.tool.import_upstream("fedora", "rawhide", "arp", sha)
+        self.tool.import_("arp", None, None)
+        self.modify(rel, "Summary: Test package", "Summary: Patched", release=("1", "1.1"))
+        self.assertEqual(self.tool.local_bump(rel), 1)
+
+        self.tool.sync("arp", None, None)
+
+        self.assertEqual(self.tool.local_bump(rel), 0)
+        meta = json.loads((self.monorepo / f"{rel}.json").read_text())
+        self.assertEqual(meta["release"], "1")
+        self.assertEqual(self.tool.check(), [])
+
+        # The next modification is `.1` again, not `.2`.
+        self.tool.rebuild("arp", "openssl-3.5.0-1")
+        meta = json.loads((self.monorepo / f"{rel}.json").read_text())
+        self.assertEqual(meta["release"], "1.1")
+        self.assertEqual(self.tool.check(), [])
+
+    def test_sync_discards_a_rebuild_only_delta(self) -> None:
+        """A reset whose whole delta was an X-Rebuild bump touches only metadata, and that is fine.
+
+        It is the one local metadata-only commit that legitimately carries no X-Rebuild: trailer of
+        its own -- it takes one away.
+        """
+        rel = "packages/fedora/rawhide/arp"
+        sha = self.commit("arp", "rawhide", "1.0", "1", "Initial import", autorelease=True)
+        self.build_koji("arp", "1.0", "1", sha, autorelease=True)
+        self.tool.import_upstream("fedora", "rawhide", "arp", sha)
+        self.tool.import_("arp", None, None)
+        self.tool.rebuild("arp", "openssl-3.5.0-1")
+
+        self.tool.sync("arp", None, None)
+
+        changed = git("show", "--name-only", "--format=", "HEAD", cwd=self.monorepo).split()
+        self.assertEqual(changed, [f"{rel}.json"])
+        self.assertEqual(json.loads((self.monorepo / f"{rel}.json").read_text())["release"], "1")
+        self.assertEqual(self.tool.check(), [])
+
     def test_rpm_metadata_recompute(self) -> None:
         """rpm-metadata recomputes srcpkg.json from the actual built rpms (the post-build check).
 

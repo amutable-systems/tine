@@ -937,22 +937,59 @@ def sync(packagename: str, distro: str | None = None, branch: str | None = None)
     logging.info('%s: reset to imported upstream version', coord)
 
 
+def import_commit(rel: str, head: str = 'HEAD') -> str:
+    """The commit that last imported a package as of `head`, or '' if it is native.
+
+    The base our local modifications sit on: both the release they bump (local_bump) and the pristine
+    tree they deviate from (resets_to_import) are measured against it. Both the dir and its sibling
+    <pkg>.json count, so a trailing upstream metadata-only rebuild is the base too.
+    """
+    return git('log', head, '-1', '--grep=^X-Upstream-Commit:', '--format=%H',
+               '--', rel, f'{rel}.json', cwd=ROOT).strip()
+
+
+def resets_to_import(c: str, rel: str) -> bool:
+    """Whether local commit `c` put a package back to the upstream version it is based on.
+
+    `sync` produces such a commit, and so does a hand-written revert of a local modification. It
+    *removes* a modification instead of making one, which is why it restarts the release bump
+    (local_bump) and needs neither a Release bump nor an X-Rebuild: trailer (check_commit) -- the
+    tree comparison here establishes the release directly, instead of tracking it in a trailer.
+    """
+    base = import_commit(rel, c)
+    if not base or base == c:
+        return False
+    paths = ['--', rel, f'{rel}.json']
+    return git('ls-tree', c, *paths, cwd=ROOT) == git('ls-tree', base, *paths, cwd=ROOT)
+
+
 def local_bump(rel: str, head: str = 'HEAD') -> int:
     """The package's local minor-version bump: the count of its local commits since the last import.
 
     Local = commits without an X-Upstream-Commit trailer that either touch packages/.../<pkg>/ or
     carry an X-Rebuild: <pkg> trailer (packages.md), counted from the most recent import commit up to
-    `head` -- a fresh upstream release restarts the bump, so the next modification is `.1` again.
-    A branch-history scan, fine at this scale.
+    `head` -- a fresh upstream release restarts the bump, so the next modification is `.1` again. A
+    local commit that discards our delta restarts it just the same (resets_to_import): the package is
+    back at the import, hence back to its unsuffixed release. A branch-history scan, fine at this scale.
     """
     pkg = Path(rel).name
-    anchor = git('log', head, '-1', '--grep=^X-Upstream-Commit:', '--format=%H',
-                 '--', rel, f'{rel}.json', cwd=ROOT).strip()
+    anchor = import_commit(rel, head)
     revs = f'{anchor}..{head}' if anchor else head
     touched = set(git('log', revs, '--invert-grep', '--grep=^X-Upstream-Commit:',
                       '--format=%H', '--', rel, cwd=ROOT).split())
     rebuilt = set(git('log', revs, f'--grep=^X-Rebuild: {pkg}$', '--format=%H', cwd=ROOT).split())
-    return len(touched | rebuilt)
+    ours = touched | rebuilt
+    bump = 0
+    # Newest first, over every local commit that touched the package at all -- a reset ends the count
+    # the way the import does, and it may well be one that `ours` does not count (a discarded
+    # X-Rebuild bump touches only the json).
+    for c in git('log', revs, '--invert-grep', '--grep=^X-Upstream-Commit:', '--format=%H',
+                 '--', rel, f'{rel}.json', cwd=ROOT).split():
+        if resets_to_import(c, rel):
+            break
+        if c in ours:
+            bump += 1
+    return bump
 
 
 def bumped_release(release: str, prev_bump: int) -> str:
@@ -1390,6 +1427,10 @@ def check_commit(c: str) -> list[str]:
         and not any(p.endswith(f'/{BRANCH_PROPERTIES}') for p in names)
     # Whether the commit touched the package's sources, as opposed to only json metadata
     dir_changed = any(p.startswith(f'{rel}/') for p in names)
+    # A local commit that discards our delta is exempt from the local-change rules below: it takes a
+    # modification away rather than adding one, so it has no Release bump and no X-Rebuild: trailer
+    # to show, and its release is the import's -- already established by its tree.
+    reset = not upstream and resets_to_import(c, rel)
 
     def bad(msg: str) -> None:
         errors.append(f'{c[:12]} {pkg}: {msg}')
@@ -1415,16 +1456,17 @@ def check_commit(c: str) -> list[str]:
                             cwd=ROOT).strip():
         bad(f'X-Upstream-Commit {upstream[:12]} has no match on upstream-rpm at {rel}')
     # A local source change must be an %autorelease package or bump Release: (incl. native packages).
-    if not upstream and dir_changed and not autorel and not release_bumped(c, rel):
+    if not upstream and dir_changed and not reset and not autorel and not release_bumped(c, rel):
         bad('local commit neither uses %autorelease nor bumps Release:')
     # A *local* metadata-only change is only legitimate as an %autorelease rebuild. An imported
     # one is fine as-is: upstream's rpmautospec mass rebuilds are empty dist-git commits
     # ("Rebuilt for ..."), mirrored 1:1 to keep the %autorelease count, and their build's
     # recomputed json is all such a commit has to show.
-    if not upstream and json_only and not autorel:
-        bad('changes only metadata but is not an %autorelease package')
-    if not upstream and json_only and not rebuild:
-        bad('changes only metadata but has no X-Rebuild: trailer')
+    if not upstream and json_only and not reset:
+        if not autorel:
+            bad('changes only metadata but is not an %autorelease package')
+        if not rebuild:
+            bad('changes only metadata but has no X-Rebuild: trailer')
     # An X-Rebuild is an %autorelease, metadata-only no-change rebuild.
     if rebuild and not autorel:
         bad('has X-Rebuild: but is not an %autorelease package')
@@ -1456,8 +1498,7 @@ def check_commit(c: str) -> list[str]:
             # A local bump continues the last import's release with our minor '.N': N counts our
             # own commits since that import (the one place a commit count remains -- it is *our*
             # count, fully contained in our history).
-            anchor = git('log', c, '-1', '--grep=^X-Upstream-Commit:', '--format=%H',
-                         '--', rel, jrel, cwd=ROOT).strip()
+            anchor = import_commit(rel, c)
             base = '0'  # native package: no upstream release to continue
             if anchor and git('ls-tree', anchor, '--', jrel, cwd=ROOT).strip():
                 am = cast(SrcpkgMetadata, json.loads(git('show', f'{anchor}:{jrel}', cwd=ROOT)))
