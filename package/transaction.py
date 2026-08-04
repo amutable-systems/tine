@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Literal, NamedTuple, NotRequired, TypedDict
 
-from util import atomic_text_writer
+from util import text_destination
 
 
 class Repository(NamedTuple):
@@ -93,7 +93,7 @@ def entry(
 
 
 def write(path: Path, packages: list[TransactionPackage]) -> None:
-    """Order a transaction and atomically write it, so identical solves give identical bytes."""
+    """Order a transaction before writing it, so identical solves give identical bytes."""
     packages.sort(
         key=lambda package: (
             package["repo"],
@@ -103,6 +103,6 @@ def write(path: Path, packages: list[TransactionPackage]) -> None:
             package.get("url", ""),
         )
     )
-    with atomic_text_writer(path) as output:
+    with text_destination(path) as output:
         json.dump(packages, output, indent=2)
         output.write("\n")

@@ -186,6 +186,22 @@ def atomic_text_writer(path: Path, *, mode: int | None = None) -> Iterator[TextI
             temporary.unlink(missing_ok=True)
 
 
+@contextmanager
+def text_destination(path: Path) -> Iterator[TextIO]:
+    """Yield a UTF-8 stream for a path, or for stdout when the caller named `-`.
+
+    A driver published as a run target is asked for its output by a caller that has nowhere to put
+    a file: the hermetic sandbox makes only the project writable, and buck2 execs the target, so
+    stdout reaches the caller unmediated.
+    """
+    if str(path) == "-":
+        yield sys.stdout
+        sys.stdout.flush()
+        return
+    with atomic_text_writer(path) as stream:
+        yield stream
+
+
 def atomic_write_text(path: Path, content: str, *, mode: int | None = None) -> None:
     """Atomically replace a path with UTF-8 text."""
     with atomic_text_writer(path, mode=mode) as stream:

@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> None:
     solve.add_argument(
         "--out",
         required=True,
-        help="output transaction JSON (remote adds url/size; local adds location)",
+        help="output transaction JSON, or `-` for stdout (remote adds url/size; local adds location)",
     )
 
     cache = sub.add_parser("make-cache", help="just load the repos (no solve)")
