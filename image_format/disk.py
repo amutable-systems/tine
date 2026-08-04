@@ -9,6 +9,7 @@ import sys
 import tempfile
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Self, TypedDict
 
@@ -35,6 +36,7 @@ class Spec(finalize.ImageSpec):
     out: str | None
     # Stable target identity the seed derives from, unless one is given outright.
     identity: str
+    output_size: str | None
     seed: str | None
     private_key: str | None
     certificate: str | None
@@ -209,6 +211,26 @@ def _write_root_hash(rows: list[dict[str, Any]], output: Path) -> None:
     output.write_text(hashes.pop() + "\n")
 
 
+def _grow(disk: Path, size: str) -> None:
+    """Extend a composed disk to its requested size, leaving the added room a hole.
+
+    repart sizes the disk to what its partitions need; the extra room is not something any of them
+    should claim, so the file is enlarged after the fact instead. As with vmspawn's --grow-image,
+    the room sits past the GPT backup header until something rewrites the table.
+    """
+    suffixes = "KMGTPE"  # systemd reads them base-1024
+    target = (
+        int(Decimal(size[:-1]) * 1024 ** (suffixes.index(size[-1]) + 1))
+        if size[-1] in suffixes
+        else int(size)
+    )
+    composed = disk.stat().st_size
+    if composed > target:
+        raise SystemExit(f"repart: the partitions need {composed} bytes, more than the requested {size}")
+    with disk.open("r+b") as f:
+        f.truncate(target)
+
+
 def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("repart", argv)
 
@@ -290,6 +312,8 @@ def main(argv: list[str] | None = None) -> None:
             _write_root_hash(rows, Path(spec["root_hash_out"]))
         if out and outputs:
             shutil.copyfile(disk, out)
+        if out and spec["output_size"]:
+            _grow(out, spec["output_size"])
 
     artifacts = []
     if out:

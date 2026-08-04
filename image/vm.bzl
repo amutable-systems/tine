@@ -1,11 +1,8 @@
 """Interactive virtual-machine image runners."""
 
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
-load("//image_format:disk.bzl", "RepartInfo")
+load("//image_format:disk.bzl", "RepartInfo", "SIZE_PATTERN")
 load("//image_format:sysext.bzl", "SysextImageInfo")
-
-# A byte count with an optional systemd size suffix, which vmspawn reads base-1024.
-_SIZE_PATTERN = "^[0-9]+(\\.[0-9]+)?[KMGTPE]?$"
 
 def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
     disk = ctx.attrs.image[RepartInfo]
@@ -26,7 +23,7 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
     )
 
     if ctx.attrs.grow != None:
-        if not regex_match(_SIZE_PATTERN, ctx.attrs.grow):
+        if not regex_match(SIZE_PATTERN, ctx.attrs.grow):
             fail("image_vm: invalid grow size {!r}".format(ctx.attrs.grow))
 
         # vmspawn grows the file itself, before the ephemeral overlay is stacked on top of it, so
