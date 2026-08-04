@@ -173,8 +173,27 @@ def _apivfs(stack: ExitStack, target: Path) -> None:
     stack.callback(umount2, str(target / "dev"), MNT_DETACH)
     _bind("/proc", target / "proc")
     stack.callback(umount2, str(target / "proc"), MNT_DETACH)
-    for sub in ("run", "tmp", "var/tmp"):
-        TmpfsOperation(str(target / sub)).execute()
+    TmpfsOperation(str(target / "run")).execute()
+    stack.callback(umount2, str(target / "run"), MNT_DETACH)
+
+    # Back the root's /tmp and /var/tmp with Buck's on-disk per-action scratch directory, as the
+    # sandbox does for its own (engine/sandbox.py): package scripts stage gigabytes there, which a
+    # tmpfs charges to RAM. Buck clears the scratch path before each execution, so the backing
+    # neither accumulates nor collides with an earlier run's leftovers. Outside an action there is
+    # no scratch directory (`buck run` on an engine), and a tmpfs is all that is available.
+    staging = os.environ.get("BUCK_SCRATCH_PATH")
+    scratch = None
+    if staging is not None:
+        Path(staging).mkdir(parents=True, exist_ok=True)
+        scratch = Path(tempfile.mkdtemp(dir=staging, prefix="apivfs."))
+    for sub in ("tmp", "var/tmp"):
+        if scratch is None:
+            TmpfsOperation(str(target / sub)).execute()
+        else:
+            backing = scratch / sub.replace("/", "-")
+            backing.mkdir()
+            backing.chmod(0o1777)  # what a tmpfs mounted on /tmp defaults to
+            _bind(backing, target / sub)
         stack.callback(umount2, str(target / sub), MNT_DETACH)
 
 
