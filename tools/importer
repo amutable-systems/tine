@@ -817,7 +817,7 @@ def is_modified(ours: str, upstream: str) -> bool:
     A pure Release: bump (our rebuilds) counts as unmodified, per packages.md. Both args are tree-ish
     refs in this repo (the upstream-rpm branch shares our object store),
     e.g. 'HEAD:packages/<pkg>' and '<sha>:packages/<distro>/<branch>/<pkg>'. Used by
-    list/update/sync/diff.
+    list/update/diff.
     """
     if git('rev-parse', ours, cwd=ROOT).strip() == git('rev-parse', upstream, cwd=ROOT).strip():
         return False
@@ -840,6 +840,21 @@ def restore(ref: str, *paths: str) -> None:
         git('checkout', ref, '--', *at_ref, cwd=ROOT)
 
 
+def pending_upstream(wt: Path, rel: str) -> tuple[str, list[str]]:
+    """The upstream-rpm commit our import is anchored at, plus the newer ones (oldest first).
+
+    Exactly what `update` and `sync` replay; empty when we are on the latest upstream commit.
+    """
+    anchor = upstream_anchor(rel)
+    if not anchor:
+        raise SystemExit(f'{rel.removeprefix("packages/")}: native package, no upstream to take')
+    urc = git('log', 'upstream-rpm', '-1', '--format=%H',
+              f'--grep=^X-Upstream-Commit: {anchor}$', cwd=wt).strip()
+    assert urc, f'no upstream-rpm commit for {rel} @ {anchor}'
+    return urc, git('rev-list', '--reverse', '--first-parent', f'{urc}..upstream-rpm',
+                    '--', rel, f'{rel}.json', cwd=wt).split()
+
+
 def update(packagename: str, distro: str | None = None, branch: str | None = None) -> bool:
     """Replay any new upstream-rpm commits for a package onto the current (main) branch.
 
@@ -850,16 +865,7 @@ def update(packagename: str, distro: str | None = None, branch: str | None = Non
     """
     wt = ensure_worktree()
     rel = resolve_main(packagename, distro, branch)
-    anchor = upstream_anchor(rel)
-    if not anchor:
-        raise SystemExit(f'{rel.removeprefix("packages/")}: native package, nothing to update')
-
-    # The upstream-rpm commit carrying our anchor; new commits are everything after it.
-    urc = git('log', 'upstream-rpm', '-1', '--format=%H',
-              f'--grep=^X-Upstream-Commit: {anchor}$', cwd=wt).strip()
-    assert urc, f'no upstream-rpm commit for {rel} @ {anchor}'
-    new = git('rev-list', '--reverse', '--first-parent', f'{urc}..upstream-rpm',
-              '--', rel, f'{rel}.json', cwd=wt).split()
+    urc, new = pending_upstream(wt, rel)
     if not new:
         logging.info('%s: already up to date', rel.removeprefix('packages/'))
         return True
@@ -920,27 +926,33 @@ def update_all() -> bool:
     return ok
 
 
-def sync(packagename: str, distro: str | None = None, branch: str | None = None) -> None:
-    """Discard local changes: reset a package to its imported upstream version, in one commit.
+def sync(packagename: str, distro: str | None = None, branch: str | None = None) -> bool:
+    """Update a package to the latest upstream, discarding our local modifications.
 
-    Restores the package dir and its srcpkg.json to the commit that imported the current anchor,
-    so afterwards `diff` is empty and `list` shows it clean. Use this when local modifications have
-    become obsolete; use `update` instead to take newer upstream commits.
+    `update` for a delta we no longer want to carry -- upstream adopted it, or we dropped the
+    requirement. The new upstream commits are replayed the same way, except that the first one takes
+    upstream's package dir wholesale instead of merging ours into it, so our delta is gone and nothing
+    can conflict (replay). When we are already on the latest upstream commit there is nothing to fold
+    the discard into, so it becomes a commit of its own.
+
+    Afterwards `diff` is empty and `list` shows the package clean. Returns True on success; see
+    update() on the False case.
     """
+    wt = ensure_worktree()
     rel = resolve_main(packagename, distro, branch)
     coord = rel.removeprefix('packages/')
-    anchor = upstream_anchor(rel)
-    if not anchor:
-        raise SystemExit(f'{coord}: native package (no upstream to sync to)')
-    # The main commit that imported this anchor holds the pristine upstream dir + predicted json.
-    imported = git('log', 'HEAD', '-1', '--format=%H', f'--grep=^X-Upstream-Commit: {anchor}$',
-                   '--', rel, f'{rel}.json', cwd=ROOT).strip()
-    assert imported, f'no import commit for {coord} @ {anchor}'
-    restore(imported, rel, f'{rel}.json')
+    _, new = pending_upstream(wt, rel)
+    if new:
+        ok = replay(new, rel, take_upstream=True)
+        logging.info('%s: discarded our modifications, applied %d new commit(s)', coord, len(new))
+        return ok
+    # The import commit holds the pristine upstream dir + predicted json we go back to.
+    restore(import_commit(rel), rel, f'{rel}.json')
     if not git('diff', '--cached', '--name-only', cwd=ROOT).strip():
-        raise SystemExit(f'{coord}: already in sync with upstream (nothing to reset)')
-    git('commit', '--quiet', '-m', f'{Path(rel).name}: reset to imported upstream version', cwd=ROOT)
-    logging.info('%s: reset to imported upstream version', coord)
+        raise SystemExit(f'{coord}: already in sync with upstream (nothing to discard)')
+    git('commit', '--quiet', '-m', f'{Path(rel).name}: Discard local modifications', cwd=ROOT)
+    logging.info('%s: discarded our modifications', coord)
+    return True
 
 
 def import_commit(rel: str, head: str = 'HEAD') -> str:
@@ -1599,7 +1611,7 @@ def main() -> None:
     dp.add_argument('distro', nargs='?', help='disambiguate when present from several sources')
     dp.add_argument('branch', nargs='?')
 
-    yp = sub.add_parser('sync', help='discard local changes, reset a package to its upstream version')
+    yp = sub.add_parser('sync', help='update a package to the latest upstream, discarding our changes')
     yp.add_argument('packagename')
     yp.add_argument('distro', nargs='?', help='disambiguate when present from several sources')
     yp.add_argument('branch', nargs='?')
@@ -1653,7 +1665,8 @@ def main() -> None:
         diff_package(args.packagename, args.distro, args.branch)
     elif args.command == 'sync':
         assert (args.distro is None) == (args.branch is None), 'specify both distro and branch, or neither'
-        sync(args.packagename, args.distro, args.branch)
+        if not sync(args.packagename, args.distro, args.branch):
+            raise SystemExit(1)
     elif args.command == 'srpm':
         assert (args.distro is None) == (args.branch is None), 'specify both distro and branch, or neither'
         srpm(args.packagename, args.distro, args.branch)

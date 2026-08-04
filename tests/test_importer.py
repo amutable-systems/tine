@@ -470,20 +470,26 @@ class PackagesTestCase(unittest.TestCase):
         return sha
 
     def modify(
-        self, rel: str, old: str, new: str, addfile: str | None = None,
-        release: tuple[str, str] | None = None
+        self,
+        rel: str,
+        old: str,
+        new: str,
+        addfile: str | None = None,
+        release: tuple[str, str] | None = None,
     ) -> None:
         """Make (and commit) a local spec modification on main, as a developer would.
 
-        Optionally adds a new file (a downstream patch) and advances the recorded release from
-        `release`'s (old, new) pair -- the metadata half of a local change, which `check` demands and
-        the post-build recompute produces. Tests that don't run `check` can leave it out.
+        Optionally adds a new file (a downstream patch) and advances the release from `release`'s
+        (old, new) pair, in the spec and in the recorded metadata -- what the conventions demand of a
+        local change and `check` enforces (an %autorelease spec has no Release: line to bump, so only
+        the metadata moves). Tests that don't run `check` can leave it out.
         """
         if addfile:
             (self.monorepo / rel / addfile).write_text(f"# {addfile}\n")
         spec = self.monorepo / rel / f"{Path(rel).name}.spec"
         spec.write_text(spec.read_text().replace(old, new))
         if release:
+            spec.write_text(spec.read_text().replace(f"Release: {release[0]}%", f"Release: {release[1]}%"))
             metafile = self.monorepo / f"{rel}.json"
             meta = json.loads(metafile.read_text())
             for arch in meta["binaries"].values():
@@ -1017,8 +1023,47 @@ class DownstreamPackages(PackagesTestCase):
         self.assertIn("up to date", rows["cleanpkg"])
         self.assertIn("modified", rows["modpkg"])
 
+    def test_sync_takes_new_upstream_commits(self) -> None:
+        """sync is `update` with our delta declared obsolete: it lands on the latest upstream, clean.
+
+        The discard folds into the replayed upstream commit -- there is no separate reset commit, and
+        the 1:1 X-Upstream-Commit correspondence holds.
+        """
+        rel = "packages/fedora/rawhide/bbb"
+        b1 = self.commit("bbb", "rawhide", "1.0", "1", "Update to 1.0")
+        self.build_koji("bbb", "1.0", "1", b1)
+        self.tool.import_upstream("fedora", "rawhide", "bbb", b1)
+        self.tool.import_("bbb", None, None)
+        # A local delta that `update` would keep: an edit upstream doesn't touch, plus our own file.
+        self.modify(
+            rel,
+            "Summary: Test package",
+            "Summary: Patched downstream",
+            addfile="downstream.patch",
+            release=("1", "1.1"),
+        )
+        b2 = self.commit("bbb", "rawhide", "2.0", "1", "Update to 2.0")
+        self.build_koji("bbb", "2.0", "1", b2)
+        self.tool.update_upstreams()
+
+        before = git("rev-parse", "HEAD", cwd=self.monorepo).strip()
+        self.assertTrue(self.tool.sync("bbb", None, None))
+
+        # One commit, and it is upstream's own: the discard rode along in it.
+        self.assertEqual(git("rev-list", "--count", f"{before}..HEAD", cwd=self.monorepo).strip(), "1")
+        self.assertEqual(self.imported_shas(rel, "main"), [b2, b1])
+        # Landed on the new upstream version with nothing of ours left.
+        spec = (self.monorepo / rel / "bbb.spec").read_text()
+        self.assertIn("Version: 2.0", spec)
+        self.assertIn("Summary: Test package", spec)
+        self.assertFalse((self.monorepo / rel / "downstream.patch").exists())
+        meta = json.loads((self.monorepo / f"{rel}.json").read_text())
+        self.assertIn(f"bbb = 2.0-1{NDIST}", meta["binaries"]["x86_64"]["bbb"]["Provides"])
+        self.assertEqual(self.capture(self.tool.diff_package, "bbb", None, None), "")
+        self.assertEqual(self.tool.check(), [])
+
     def test_sync(self) -> None:
-        """sync resets a locally modified package to its imported upstream version, in one commit."""
+        """With no new upstream commits waiting, sync resets the package in a commit of its own."""
         rel = "packages/fedora/rawhide/testpkg"
         self.seed("testpkg")
         self.tool.import_("testpkg", None, None)
@@ -1052,7 +1097,13 @@ class DownstreamPackages(PackagesTestCase):
         rel = "packages/fedora/rawhide/testpkg"
         self.seed("testpkg")
         self.tool.import_("testpkg", None, None)
-        self.modify(rel, "Release: 1", "Release: 1.1", addfile="downstream.patch", release=("1", "1.1"))
+        self.modify(
+            rel,
+            "Summary: Test package",
+            "Summary: Patched downstream",
+            addfile="downstream.patch",
+            release=("1", "1.1"),
+        )
 
         self.tool.sync("testpkg", None, None)
 

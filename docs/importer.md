@@ -25,18 +25,22 @@ Operations on the `main` branch to maintain the downstream packages:
  - `import pkgname [distro branch]`: copies `packages/…`_pkgname_`{/,.json}` from `upstream-rpm` branch
    into main, as a single commit. If there are multiple imports, you have to specify distro and branch to
    disambiguate.
- - `update pkgname`: applies all new upstream commits on top of current state.
+ - `update pkgname`: applies all new upstream commits on top of current state, keeping our local
+   modifications.
      * for unmodified local package this always works, file content remains identical between up- and
-       downstream.
-     * for modified local package this may result in conflicts
+       downstream
+     * for modified local package this may result in conflicts (see `sync` below)
  - `update-all`: Run `update pkgname` for all currently imported packages; i.e. keeps individual
    per-package commits, but will just result in one branch/PR with the whole update batch. That (1) groups
    together updates that were published to Fedora in a single batch, (2) avoids unnecessarily many CI
    runs, and (3) retains bisectability of package updates.
  - `rpm-metadata [--distro … --branch …] pkgname rpm [rpm...]`: Recompute `pkgname.json` from locally
    built rpms. Meant to be run by the build system for a package import/update branch/PR.
- - `sync pkgname`: Discard our local changes (when they are obsolete) and reset the package to its
-   `upstream-rpm` version (same path on both branches)
+ - `sync pkgname`: `update pkgname` for a local delta we no longer want to carry: upstream adopted
+   it, or we dropped the requirement. Same replay, except that the package directory is taken from
+   upstream wholesale instead of merged into ours, so our changes are gone and nothing can conflict. The
+   discard rides along in the upstream commit; if we are already on the latest upstream commit, it
+   becomes a commit of its own.
  - `diff pkgname`: show diff between the `upstream-rpm` and `main` versions of `packages/…/pkgname/`
    (ignores metadata differences)
  - `srpm pkgname`: assemble the `.src.rpm`: freeze the `%autorelease`/`%autochangelog` macros, fetch the
