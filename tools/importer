@@ -681,7 +681,7 @@ def update_upstreams() -> None:
             logging.info('%s/%s/%s: imported %d new commit(s)', distro, branch, packagename, len(commits))
 
 
-def replay(commits: list[str], rel: str, take_theirs: bool = False) -> bool:
+def replay(commits: list[str], rel: str, take_upstream: bool = False) -> bool:
     """Cherry-pick upstream-rpm commits (oldest first) 1:1 onto the current branch.
 
     Forces each commit's srcpkg.json to the %dist-predicted form of its upstream content, and
@@ -695,20 +695,27 @@ def replay(commits: list[str], rel: str, take_theirs: bool = False) -> bool:
     `commits` (a metadata-only rebuild still gets its own faithful commit).
 
     -Xno-renames: a pure subtree add whose merge base holds other packages main lacks would
-    otherwise misfire as a "directory rename split". take_theirs adds -Xtheirs, folding a discardable
-    local delta (a Release-only bump, per update()) into the update commit instead of conflicting.
+    otherwise misfire as a "directory rename split".
+
+    take_upstream discards a local delta we don't want to carry over (an obsolete modification per
+    sync(), a Release-only bump per update()): the dir is taken from the commit wholesale instead of
+    merged into ours, so the delta -- files we added included -- is gone and nothing can conflict.
+    Only the first commit needs it; the dir is upstream's from there on.
     """
     jrel = f'{rel}.json'
     branchdir = (ROOT / rel).parent
     buckrel = f'{Path(rel).parent}/BUCK'
-    strategy = ['-Xno-renames'] + (['-Xtheirs'] if take_theirs else [])
     conflicts: list[str] = []
-    for c in commits:
-        # Apply without committing. On import the dir merges cleanly (verbatim on both sides); on
-        # update a local modification may conflict in the dir (handled below). The json is never
-        # merged -- we recompute it, discarding any conflict cherry-pick left in it.
-        subprocess.run(['git', 'cherry-pick', '-n', *strategy, '--allow-empty', c],
-                       cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    for i, c in enumerate(commits):
+        # Stage the commit's dir without committing yet: taken wholesale when we discard our delta,
+        # otherwise merged into ours -- which on import is clean (verbatim on both sides), while on
+        # update a local modification may conflict (handled below). The json is never merged -- we
+        # recompute it, discarding any conflict cherry-pick left in it.
+        if take_upstream and i == 0:
+            restore(c, rel)
+        else:
+            subprocess.run(['git', 'cherry-pick', '-n', '-Xno-renames', '--allow-empty', c],
+                           cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if git('ls-tree', c, '--', jrel, cwd=ROOT).strip():
             meta = cast(SrcpkgMetadata, json.loads(git('show', f'{c}:{jrel}', cwd=ROOT)))
             predict_dist(meta)
@@ -857,13 +864,12 @@ def update(packagename: str, distro: str | None = None, branch: str | None = Non
         logging.info('%s: already up to date', rel.removeprefix('packages/'))
         return True
     # A purely-Release local delta (a rebuild's Release: bump) has nothing worth preserving over an
-    # update: discard it into the update commit (cherry-pick -Xtheirs) so the new upstream release
-    # wins cleanly rather than colliding on the Release: line (packages.md). A real modification is kept
-    # and may conflict.
+    # update: take the dir from upstream so the new release wins cleanly rather than colliding on the
+    # Release: line (packages.md). A real modification is kept, and may conflict.
     ours, base = f'HEAD:{rel}', f'{urc}:{rel}'
     release_only = git('rev-parse', ours, cwd=ROOT).strip() != git('rev-parse', base, cwd=ROOT).strip() \
         and not is_modified(ours, base)
-    ok = replay(new, rel, take_theirs=release_only)
+    ok = replay(new, rel, take_upstream=release_only)
     logging.info('%s: applied %d new commit(s)', rel.removeprefix('packages/'), len(new))
     return ok
 
