@@ -49,6 +49,9 @@ engine(
         # ukify needs these to sign UKIs and parse PEs, but they are only weak dependencies
         "python3-cryptography",
         "python3-pefile",
+        # remote signing with hardware keys
+        "pkcs11-provider",
+        "p11-kit-client",
         "e2fsprogs",
         "erofs-utils",
         "veritysetup",

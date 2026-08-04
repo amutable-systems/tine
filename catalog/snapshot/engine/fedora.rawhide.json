@@ -1080,6 +1080,14 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260729/Packages/p/p11-kit-0.26.4-2.fc45.x86_64.rpm"
   },
   {
+    "package_id": "p11-kit-client-0.26.4-2.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkg_checksum": "e5a3a8e40affd92dc7743a37dd1bc800f6b335f942680617500981512305ca06",
+    "source": "repo",
+    "size": 247648,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260729/Packages/p/p11-kit-client-0.26.4-2.fc45.x86_64.rpm"
+  },
+  {
     "package_id": "p11-kit-trust-0.26.4-2.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "c3d742c768b99e7eab05cf87a09ef625f55c0e7fd167a61a8fe8a91cd4f5a020",
@@ -1118,6 +1126,14 @@
     "source": "repo",
     "size": 303814,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260729/Packages/p/pixman-0.46.2-4.fc45.x86_64.rpm"
+  },
+  {
+    "package_id": "pkcs11-provider-1.2.0-3.fc45.x86_64",
+    "repo": "fedora.rawhide.repository",
+    "pkg_checksum": "77be867031bd1e3ad46523f022e965853f4ddf5f2f6314a4c4f74980adf0f565",
+    "source": "repo",
+    "size": 202200,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260729/Packages/p/pkcs11-provider-1.2.0-3.fc45.x86_64.rpm"
   },
   {
     "package_id": "pkgconf-2.5.1-2.fc45.x86_64",
