@@ -261,6 +261,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         profiles = ctx.attrs.profiles,
         root_hash = system.info.root_hash if verity else None,
         secure_boot_key = secure_boot_key,
+        sign_expected_pcr_key = resolve_signing_key(ctx.attrs.sign_expected_pcr_key),
         version = version,
     )
     esp = declare_image(
@@ -379,13 +380,14 @@ def bootable_disk_image(
     profiles: list[UkiProfile] = [],
     verity_key: str | None = None,
     secure_boot_key: str | None = None,
+    sign_expected_pcr_key: str | None = None,
     **kwargs,
 ) -> None:
     """Compose the default initrd, versioned UKIs, the ESP, and system partitions into a disk.
 
-    With secure_boot_key, the UKIs and systemd-boot are signed for Secure Boot, the UKIs carry a
-    signed expected-PCR policy, and the ESP receives key auto-enrollment files for firmware in setup
-    mode.
+    With secure_boot_key, the UKIs and systemd-boot are signed for Secure Boot, and the ESP receives
+    key auto-enrollment files for firmware in setup mode. With sign_expected_pcr_key, the UKIs carry
+    a signed expected-PCR policy.
     """
     _bootable_disk_image(
         name = name,
@@ -401,6 +403,7 @@ def bootable_disk_image(
         ops = flatten_operations(ops),
         profiles = encode_profiles(profiles),
         secure_boot_key = secure_boot_key,
+        sign_expected_pcr_key = sign_expected_pcr_key,
         verity_key = verity_key,
         **kwargs,
     )

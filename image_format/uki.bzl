@@ -71,9 +71,12 @@ def declare_uki(
     version: str,
     root_hash: RootHashInfo | None = None,
     secure_boot_key: SigningKeyInfo | None = None,
+    sign_expected_pcr_key: SigningKeyInfo | None = None,
     identifier: str | None = None,
 ) -> UkiInfo:
     """Declare UKI generation from resolved image providers."""
+    if sign_expected_pcr_key != None and secure_boot_key == None:
+        fail("uki: sign_expected_pcr_key needs Secure Boot signing, which signs the UKI it seals")
     out = declare_out(ctx, identifier, "ukis", dir = True)
     check_name("uki image_id", image_id, FILENAME_PATTERN)
     check_name("uki version", version, VERSION_PATTERN)
@@ -107,6 +110,7 @@ def declare_uki(
             if root_hash != None
             else None,
             "secure_boot": secure_boot,
+            "sign_expected_pcr_private_key": sign_expected_pcr_key.private_key if sign_expected_pcr_key else None,
             "systemd_arch": ARCHES[arch].systemd,
             "version": version,
         },
@@ -130,6 +134,7 @@ def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
         profiles = ctx.attrs.profiles,
         root_hash = root_hash,
         secure_boot_key = resolve_signing_key(ctx.attrs.secure_boot_key),
+        sign_expected_pcr_key = resolve_signing_key(ctx.attrs.sign_expected_pcr_key),
         version = ctx.attrs.version,
     )
     return [DefaultInfo(default_output = info.ukis), info]
@@ -149,7 +154,12 @@ UKI_ATTRS = {
     "secure_boot_key": attrs.option(
         attrs.dep(providers = [SigningKeyInfo]),
         default = None,
-        doc = "key signing the UKI, its kernel, and the expected-PCR policy",
+        doc = "key signing the UKI and its kernel",
+    ),
+    "sign_expected_pcr_key": attrs.option(
+        attrs.dep(providers = [SigningKeyInfo]),
+        default = None,
+        doc = "key sealing the expected-PCR policy; without one the policy is not sealed",
     ),
 }
 
@@ -186,6 +196,7 @@ def uki(name: str, profiles: list[UkiProfile] = [], **kwargs) -> None:
 
     A profile's cmdline is appended to the base cmdline (kernel arguments are last-wins, so
     profiles can also override it). With secure_boot_key, the UKI and its embedded kernel are signed
-    for Secure Boot and a signed expected-PCR policy covers every profile that does not opt out.
+    for Secure Boot. With sign_expected_pcr_key, a signed expected-PCR policy covers every profile
+    that does not opt out.
     """
     _uki(name = name, profiles = encode_profiles(profiles), **kwargs)
