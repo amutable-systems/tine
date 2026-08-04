@@ -177,9 +177,8 @@ when needed:
   (defaults: target name and `0`; systemd architecture spelling, e.g. `x86-64`), the shape
   systemd-sysupdate UKI transfers match. Alternative kernel command lines are `uki_profile()` descriptors,
   which add boot profiles as separate sd-boot menu entries, each appending its arguments to the base kernel
-  command line; with declared `secure_boot_*` key material, the UKI and its embedded kernel are signed for
-  Secure Boot and sealed with a signed expected-PCR 11 policy per profile (opt out per profile with
-  `sign_expected_pcr`);
+  command line; with a `secure_boot_key`, the UKI and its embedded kernel are signed for Secure Boot and
+  sealed with a signed expected-PCR 11 policy per profile (opt out per profile with `sign_expected_pcr`);
 - `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
   GPT disk and independent partition artifacts in one `RepartInfo`; its disk field is absent for a
   split-only invocation;
@@ -240,10 +239,10 @@ Required attributes:
 Optional attributes:
 
 - `disk_seed` (string): Seeds stable partition UUIDs; passed on to `repart()`.
-- `verity_private_key` / `verity_certificate` (string): PEM files signing the verity signature
-  partition; passed on to `repart()`.
-- `secure_boot_private_key` / `secure_boot_certificate` (string): PEM pair signing the UKIs and
-  systemd-boot; see "Secure Boot signing" below.
+- `verity_key` (target providing `SigningKeyInfo`): Signs the verity signature partition; passed on to
+  `repart()`.
+- `secure_boot_key` (target providing `SigningKeyInfo`): Signs the UKIs and systemd-boot; see "Secure
+  Boot signing" below.
 - `initrd` (target label providing `ImageInfo`): A logical image whose tree becomes the initrd, replacing
   the default initrd package image. The rule consumes the resolved provider, archives it into the
   zstd-compressed cpio itself, and republishes the package database and SBOM that image already carries.
@@ -362,28 +361,27 @@ The injected per-commit version rebuilds only the artifacts that embed it, never
 
 ## Secure Boot signing
 
-`bootable_disk_image()` accepts a `secure_boot_private_key`/`secure_boot_certificate` PEM pair. It signs the
-UKIs (including a signed expected-PCR policy, see the `uki` rule above) and the systemd-boot binaries with
-`systemd-sbsign`, and `bootctl` places `loader/keys/auto/{PK,KEK,db}.auth` enrollment variables on the ESP:
-firmware in setup mode enrolls the certificate on first boot and then enforces Secure Boot. The same
-self-signed pair covers PE signing, the PCR policy, and enrollment.
+`bootable_disk_image()` accepts a `secure_boot_key`, which names a target providing `SigningKeyInfo` (the
+private key and its certificate). It signs the UKIs (including a signed expected-PCR policy, see the `uki`
+rule above) and the systemd-boot binaries with `systemd-sbsign`, and `bootctl` places
+`loader/keys/auto/{PK,KEK,db}.auth` enrollment variables on the ESP: firmware in setup mode enrolls the
+certificate on first boot and then enforces Secure Boot. One key covers PE signing, the PCR policy, and
+enrollment.
 
 The systemd-boot binary is signed inside the image tree, as a `.signed` sibling under
 `/usr/lib/systemd/boot/efi`, sealed under the verity root hash where the booted system's `bootctl update`
 finds it after an OS update; [design.md](design.md) explains why it must live there.
 
-Development images can source the pair in two ways:
+Development images can source a key in two ways:
 
-- Generated per workspace: the `signing_key` rule mints the pair at build time with `ukify genkey`, into
-  buck-out; see `//examples/image-secureboot`, which consumes `:signing[cert]`/`:signing[key]`. Nothing is
-  committed and no manual step is needed, but every workspace (and every build after `buck clean`) mints a
-  different key, so all signed artifacts rebuild instead of coming out of caches, and each workspace's
-  images enroll a different certificate.
-- Committed in the consuming project: point `secure_boot_private_key`/`_certificate` at PEM files in git
-  (the pattern of mkosi's `mkosi.key`/`mkosi.crt`); the attributes accept plain source files. Stable
-  inputs keep the whole signed image graph cacheable, and every build enrolls the same certificate. Such
-  a key is public to everyone with repository access: use it for test images only, and never enroll it on
-  real hardware.
+- `generate_signing_key()` mints a pair at build time with `ukify genkey`, into buck-out; see
+  `//examples/image-secureboot`. Nothing is committed and no manual step is needed. Every workspace, and
+  every build after `buck clean`, mints a different key, so all signed artifacts rebuild and each
+  workspace's images enroll a different certificate.
+- `pem_signing_key()` adopts PEM files committed in the consuming project, the pattern of mkosi's
+  `mkosi.key`/`mkosi.crt`. Stable inputs keep the whole signed image graph cacheable, and every build
+  enrolls the same certificate. Such a key is public to everyone with repository access: use it for test
+  images only, and never enroll it on real hardware.
 
 Either way, keep production signing behind a dedicated boundary (see the design plan).
 

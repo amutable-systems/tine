@@ -61,7 +61,12 @@ load(
     _run = "run",
     _symlink = "symlink",
 )
-load(":sign.bzl", _signing_key = "signing_key")
+load(
+    ":sign.bzl",
+    _SigningKeyInfo = "SigningKeyInfo",
+    _generate_signing_key = "generate_signing_key",
+    _pem_signing_key = "pem_signing_key",
+)
 load(":vm.bzl", _image_vm = "image_vm")
 
 # Logical images and their operations.
@@ -89,7 +94,9 @@ partition = _partition
 format_partition_labels = _format_partition_labels
 disk_convert = _disk_convert
 image_vm = _image_vm
-signing_key = _signing_key
+generate_signing_key = _generate_signing_key
+pem_signing_key = _pem_signing_key
+SigningKeyInfo = _SigningKeyInfo
 
 # Compositions.
 rootfs_archive = _rootfs_archive

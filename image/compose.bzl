@@ -46,6 +46,11 @@ load(
     "sign_systemd_boot",
     "symlink",
 )
+load(
+    ":sign.bzl",
+    "SigningKeyInfo",  # @unused Used as a function argument type.
+    "resolve_signing_key",
+)
 
 InitrdInfo = provider(
     doc = "A logical initrd image and its derived cpio archive.",
@@ -139,11 +144,12 @@ _DEFAULT_INITRD_OPS = [
     remove("/etc/services"),
 ]
 
-def _esp_operations(ctx: AnalysisContext, ukis: Artifact) -> list[LayerOperation]:
-    operations = [copy(ukis, "/boot/EFI/Linux")] + install_systemd_boot(
-        certificate = ctx.attrs.secure_boot_certificate,
-        private_key = ctx.attrs.secure_boot_private_key,
-    )
+def _esp_operations(
+    ctx: AnalysisContext,
+    ukis: Artifact,
+    secure_boot_key: SigningKeyInfo | None,
+) -> list[LayerOperation]:
+    operations = [copy(ukis, "/boot/EFI/Linux")] + install_systemd_boot(secure_boot_key)
     for destination in sorted(ctx.attrs.esp_files):
         if not (destination.startswith("/boot/") or destination.startswith("/efi/")):
             fail(
@@ -162,6 +168,8 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # The version lands in partition labels and the UKI filename.
     version = check_name("bootable_disk_image version", ctx.attrs.version, VERSION_PATTERN)
+
+    secure_boot_key = resolve_signing_key(ctx.attrs.secure_boot_key)
 
     if ctx.attrs.initrd != None:
         initrd = ctx.attrs.initrd[ImageInfo]
@@ -194,12 +202,8 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     # it must precede the verity partitions below so that the booted /usr carries the signed
     # binary (see sign_systemd_boot).
     identity_ops = [merge_os_release({"IMAGE_ID": image_id, "IMAGE_VERSION": version})]
-    if ctx.attrs.secure_boot_private_key != None:
-        identity_ops += sign_systemd_boot(
-            ctx.attrs.secure_boot_private_key,
-            ctx.attrs.secure_boot_certificate,
-            ctx.attrs.arch,
-        )
+    if secure_boot_key != None:
+        identity_ops += sign_systemd_boot(secure_boot_key, ctx.attrs.arch)
     identity = declare_image(
         ctx,
         identifier = "identity",
@@ -227,14 +231,13 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
     system = declare_repart(
         ctx,
-        certificate = ctx.attrs.verity_certificate,
         definitions = system_definitions,
         disk = False,
         identifier = "system",
         image = identity,
-        private_key = ctx.attrs.verity_private_key,
         seed = ctx.attrs.disk_seed,
         split = True,
+        verity_key = resolve_signing_key(ctx.attrs.verity_key),
     )
 
     # An initrd never resolves a dependency or verifies a package, and the kernel unpacks the whole
@@ -257,14 +260,13 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         initrds = [initrd_archive],
         profiles = ctx.attrs.profiles,
         root_hash = system.info.root_hash if verity else None,
-        secure_boot_certificate = ctx.attrs.secure_boot_certificate,
-        secure_boot_private_key = ctx.attrs.secure_boot_private_key,
+        secure_boot_key = secure_boot_key,
         version = version,
     )
     esp = declare_image(
         ctx,
         identifier = "esp",
-        ops = _esp_operations(ctx, uki.ukis),
+        ops = _esp_operations(ctx, uki.ukis, secure_boot_key),
         parent = identity,
         version = version,
     )
@@ -348,8 +350,11 @@ _bootable_disk_image = rule(
             doc = ("logical image to archive and use as the initrd; " + "defaults to the release initrd package set"),
         ),
         "package_manager": attrs.dep(providers = [PackageManagerInfo]),
-        "verity_certificate": attrs.option(attrs.source(), default = None),
-        "verity_private_key": attrs.option(attrs.source(), default = None),
+        "verity_key": attrs.option(
+            attrs.dep(providers = [SigningKeyInfo]),
+            default = None,
+            doc = "key signing the verity signature partition",
+        ),
     },
 )
 
@@ -366,22 +371,16 @@ def bootable_disk_image(
     definitions: list[Partition],
     ops: list[LayerOperationTree] = [],
     profiles: list[UkiProfile] = [],
-    verity_private_key: str | None = None,
-    verity_certificate: str | None = None,
-    secure_boot_private_key: str | None = None,
-    secure_boot_certificate: str | None = None,
+    verity_key: str | None = None,
+    secure_boot_key: str | None = None,
     **kwargs,
 ) -> None:
     """Compose the default initrd, versioned UKIs, the ESP, and system partitions into a disk.
 
-    With secure_boot_private_key/_certificate, the UKIs and systemd-boot are signed for Secure
-    Boot, the UKIs carry a signed expected-PCR policy, and the ESP receives key auto-enrollment
-    files for firmware in setup mode.
+    With secure_boot_key, the UKIs and systemd-boot are signed for Secure Boot, the UKIs carry a
+    signed expected-PCR policy, and the ESP receives key auto-enrollment files for firmware in setup
+    mode.
     """
-    if (verity_private_key == None) != (verity_certificate == None):
-        fail("bootable_disk_image: verity_private_key and verity_certificate must be specified together")
-    if (secure_boot_private_key == None) != (secure_boot_certificate == None):
-        fail("bootable_disk_image: secure_boot_private_key and secure_boot_certificate must be specified together")
     _bootable_disk_image(
         name = name,
         # The rule renders label placeholders from its own identity during analysis.
@@ -390,14 +389,12 @@ def bootable_disk_image(
             disk = True,
             imports = False,
             rendered = False,
-            signed = verity_private_key != None,
+            signed = verity_key != None,
             split = True,
         ),
         ops = flatten_operations(ops),
         profiles = encode_profiles(profiles),
-        secure_boot_certificate = secure_boot_certificate,
-        secure_boot_private_key = secure_boot_private_key,
-        verity_certificate = verity_certificate,
-        verity_private_key = verity_private_key,
+        secure_boot_key = secure_boot_key,
+        verity_key = verity_key,
         **kwargs,
     )

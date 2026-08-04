@@ -12,6 +12,7 @@ load(
     "declare_out",
     "terminal_image_command",
 )
+load("//image:sign.bzl", "SigningKeyInfo", "resolve_signing_key")
 load(":archive.bzl", "ImageArchiveInfo")
 load(
     ":disk.bzl",
@@ -69,13 +70,10 @@ def declare_uki(
     image_id: str,
     version: str,
     root_hash: RootHashInfo | None = None,
-    secure_boot_private_key: Artifact | None = None,
-    secure_boot_certificate: Artifact | None = None,
+    secure_boot_key: SigningKeyInfo | None = None,
     identifier: str | None = None,
 ) -> UkiInfo:
     """Declare UKI generation from resolved image providers."""
-    if (secure_boot_private_key == None) != (secure_boot_certificate == None):
-        fail("uki: secure_boot_private_key and secure_boot_certificate must be specified together")
     out = declare_out(ctx, identifier, "ukis", dir = True)
     check_name("uki image_id", image_id, FILENAME_PATTERN)
     check_name("uki version", version, VERSION_PATTERN)
@@ -84,10 +82,10 @@ def declare_uki(
             fail("uki: initrd must be a cpio archive, got {!r}".format(initrd.format))
 
     secure_boot = None
-    if secure_boot_private_key != None:
+    if secure_boot_key != None:
         secure_boot = {
-            "certificate": secure_boot_certificate,
-            "private_key": secure_boot_private_key,
+            "certificate": secure_boot_key.certificate,
+            "private_key": secure_boot_key.private_key,
         }
     cmd = terminal_image_command(
         ctx,
@@ -131,8 +129,7 @@ def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
         initrds = [initrd[ImageArchiveInfo] for initrd in ctx.attrs.initrds],
         profiles = ctx.attrs.profiles,
         root_hash = root_hash,
-        secure_boot_certificate = ctx.attrs.secure_boot_certificate,
-        secure_boot_private_key = ctx.attrs.secure_boot_private_key,
+        secure_boot_key = resolve_signing_key(ctx.attrs.secure_boot_key),
         version = ctx.attrs.version,
     )
     return [DefaultInfo(default_output = info.ukis), info]
@@ -149,15 +146,10 @@ UKI_ATTRS = {
         default = [],
         doc = "serialized alternative boot profiles",
     ),
-    "secure_boot_certificate": attrs.option(
-        attrs.source(),
+    "secure_boot_key": attrs.option(
+        attrs.dep(providers = [SigningKeyInfo]),
         default = None,
-        doc = "PEM certificate for Secure Boot signing",
-    ),
-    "secure_boot_private_key": attrs.option(
-        attrs.source(),
-        default = None,
-        doc = "PEM key for Secure Boot and expected-PCR signing",
+        doc = "key signing the UKI, its kernel, and the expected-PCR policy",
     ),
 }
 
@@ -193,10 +185,7 @@ def uki(name: str, profiles: list[UkiProfile] = [], **kwargs) -> None:
     """Build UKIs, with each profile added as an alternative sd-boot menu entry.
 
     A profile's cmdline is appended to the base cmdline (kernel arguments are last-wins, so
-    profiles can also override it). With secure_boot_private_key/_certificate, the UKI and its
-    embedded kernel are signed for Secure Boot and a signed expected-PCR policy covers every
-    profile that does not opt out.
+    profiles can also override it). With secure_boot_key, the UKI and its embedded kernel are signed
+    for Secure Boot and a signed expected-PCR policy covers every profile that does not opt out.
     """
-    if (kwargs.get("secure_boot_private_key") == None) != (kwargs.get("secure_boot_certificate") == None):
-        fail("uki: secure_boot_private_key and secure_boot_certificate must be specified together")
     _uki(name = name, profiles = encode_profiles(profiles), **kwargs)
