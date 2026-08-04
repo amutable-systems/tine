@@ -8,9 +8,9 @@ load(
     "@tine//image:defs.bzl",
     "DEFAULT_USR_VERITY_PARTITIONS",
     "bootable_disk_image",
+    "generate_signing_key",
     "image_vm",
     "install",
-    "signing_key",
 )
 load("@tine//package:manager.bzl", "package_manager")
 
@@ -19,7 +19,7 @@ package_manager(
     base = "tine//catalog:fedora.rawhide.package-manager",
 )
 
-signing_key(name = "signing")
+generate_signing_key(name = "signing")
 
 bootable_disk_image(
     name = "image",
@@ -38,11 +38,10 @@ bootable_disk_image(
             "dbus-broker",
         ]),
     ],
-    # The key signs the UKIs (with a signed expected-PCR policy) and systemd-boot, and put
-    # auto-enrollment files onto the ESP. These also accept committed static PEM files, which
-    # cache better; see "Secure Boot signing" in images.md.
-    secure_boot_certificate = ":signing[cert]",
-    secure_boot_private_key = ":signing[key]",
+    # The key signs the UKIs (with a signed expected-PCR policy) and systemd-boot, and puts
+    # auto-enrollment files onto the ESP. For a key that caches across workspaces, see
+    # pem_signing_key() under "Secure Boot signing" in images.md.
+    secure_boot_key = ":signing",
 )
 
 image_vm(

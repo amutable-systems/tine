@@ -12,6 +12,7 @@ load(
     "spec_path",
     "terminal_image_command",
 )
+load("//image:sign.bzl", "SigningKeyInfo", "resolve_signing_key")
 
 Partition = dict[str, typing.Any]
 
@@ -239,8 +240,7 @@ def declare_repart(
     imported: list[RepartInfo] = [],
     imported_root_hash: RootHashInfo | None = None,
     seed: str | None = None,
-    private_key: Artifact | None = None,
-    certificate: Artifact | None = None,
+    verity_key: SigningKeyInfo | None = None,
     basename: str = "image",
     identifier: str | None = None,
 ) -> RepartOutput:
@@ -250,11 +250,9 @@ def declare_repart(
         decoded,
         disk = disk,
         imports = bool(imported),
-        signed = private_key != None,
+        signed = verity_key != None,
         split = split,
     )
-    if (private_key == None) != (certificate == None):
-        fail("repart: private_key and certificate must be specified together")
 
     imported_partitions = []
     for info in imported:
@@ -265,7 +263,7 @@ def declare_repart(
         fail("repart: new and imported partition names must be unique")
 
     spec = {
-        "certificate": certificate,
+        "certificate": verity_key.certificate if verity_key else None,
         "definitions": decoded,
         "identity": "{}[{}]".format(ctx.label, identifier or "repart"),
         "out": None,
@@ -277,7 +275,7 @@ def declare_repart(
             }
             for value in imported_partitions
         ],
-        "private_key": private_key,
+        "private_key": verity_key.private_key if verity_key else None,
         "root_hash_out": None,
         "seed": seed,
         "split_outputs": [],
@@ -368,15 +366,14 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
     result = declare_repart(
         ctx,
         basename = ctx.attrs.basename,
-        certificate = ctx.attrs.certificate,
         definitions = ctx.attrs.definitions,
         disk = ctx.attrs.disk,
         image = ctx.attrs.image[ImageInfo],
         imported = imported,
         imported_root_hash = imported_root_hash,
-        private_key = ctx.attrs.private_key,
         seed = ctx.attrs.seed,
         split = ctx.attrs.split,
+        verity_key = resolve_signing_key(ctx.attrs.verity_key),
     )
     return [
         DefaultInfo(default_outputs = result.outputs, sub_targets = result.sub_targets),
@@ -385,13 +382,16 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
 
 REPART_ATTRS = {
     "basename": attrs.string(default = "image", doc = "file name of the composed disk, without extension"),
-    "certificate": attrs.option(attrs.source(), default = None, doc = "PEM certificate for verity signing"),
     "definitions": attrs.list(attrs.string(), doc = "serialized partition definitions"),
-    "private_key": attrs.option(attrs.source(), default = None, doc = "PEM key for verity signing"),
     "seed": attrs.option(
         attrs.string(),
         default = None,
         doc = "explicit GPT/partition UUID seed; by default derive one from target identity and definitions",
+    ),
+    "verity_key": attrs.option(
+        attrs.dep(providers = [SigningKeyInfo]),
+        default = None,
+        doc = "key signing the verity signature partition",
     ),
 }
 
@@ -417,27 +417,23 @@ def repart(
     partitions: list[str] = [],
     disk: bool = True,
     split: bool = False,
-    private_key: str | None = None,
-    certificate: str | None = None,
+    verity_key: str | None = None,
     **kwargs,
 ) -> None:
     """Create a disk, independent partitions, or both."""
-    if (private_key == None) != (certificate == None):
-        fail("repart: private_key and certificate must be specified together")
     _repart(
         name = name,
         definitions = encode_definitions(
             definitions,
             disk = disk,
             imports = bool(partitions),
-            signed = private_key != None,
+            signed = verity_key != None,
             split = split,
         ),
         partitions = partitions,
         disk = disk,
         split = split,
-        private_key = private_key,
-        certificate = certificate,
+        verity_key = verity_key,
         **kwargs,
     )
 

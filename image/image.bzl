@@ -5,6 +5,7 @@ load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//package:install.bzl", "resolve_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
+load(":sign.bzl", "SigningKeyInfo")
 
 ImageToolsInfo = provider(
     doc = "The pinned drivers every image rule and terminal output runs.",
@@ -260,7 +261,7 @@ def merge_os_release(fields: dict[str, str]) -> LayerOperation:
     """Merge quoted KEY="value" assignments into the image's /usr/lib/os-release."""
     return ("os_release", fields)
 
-def sign_systemd_boot(private_key: Artifact, certificate: Artifact, arch: str) -> list[LayerOperation]:
+def sign_systemd_boot(key: SigningKeyInfo, arch: str) -> list[LayerOperation]:
     """Return operations that sign the image's systemd-boot binary as a `.signed` sibling.
 
     Sign before anything seals /usr, e.g. a verity partition; design.md explains why the signed
@@ -274,35 +275,30 @@ def sign_systemd_boot(private_key: Artifact, certificate: Artifact, arch: str) -
                 "/usr/lib/systemd/systemd-sbsign",
                 "sign",
                 "--private-key",
-                private_key,
+                key.private_key,
                 "--certificate",
-                certificate,
+                key.certificate,
                 "--output=" + binary + ".signed",
                 binary,
             ],
         ),
     ]
 
-def install_systemd_boot(
-    private_key: Artifact | None = None,
-    certificate: Artifact | None = None,
-) -> list[LayerOperation]:
+def install_systemd_boot(key: SigningKeyInfo | None = None) -> list[LayerOperation]:
     """Return operations that install systemd-boot into the image ESP staging paths.
 
-    With signing credentials, bootctl prefers the `.signed` binaries (see sign_systemd_boot) and
+    With a signing key, bootctl prefers the `.signed` binaries (see sign_systemd_boot) and
     writes loader/keys/auto enrollment variables, which sd-boot enrolls on firmware in
     setup mode. The key material never enters the image.
     """
-    if (private_key == None) != (certificate == None):
-        fail("install_systemd_boot: private_key and certificate must be specified together")
     enroll = []
-    if private_key != None:
+    if key != None:
         enroll = [
             "--secure-boot-auto-enroll=yes",
             "--certificate",
-            certificate,
+            key.certificate,
             "--private-key",
-            private_key,
+            key.private_key,
         ]
     return [
         mkdir("/efi"),
