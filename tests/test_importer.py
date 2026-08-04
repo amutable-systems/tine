@@ -469,11 +469,33 @@ class PackagesTestCase(unittest.TestCase):
         self.tool.import_upstream(distro, branch, pkg, sha)
         return sha
 
-    def modify(self, rel: str, old: str, new: str) -> None:
-        """Make (and commit) a local spec modification on the current main branch."""
+    def modify(
+        self, rel: str, old: str, new: str, addfile: str | None = None,
+        release: tuple[str, str] | None = None
+    ) -> None:
+        """Make (and commit) a local spec modification on main, as a developer would.
+
+        Optionally adds a new file (a downstream patch) and advances the recorded release from
+        `release`'s (old, new) pair -- the metadata half of a local change, which `check` demands and
+        the post-build recompute produces. Tests that don't run `check` can leave it out.
+        """
+        if addfile:
+            (self.monorepo / rel / addfile).write_text(f"# {addfile}\n")
         spec = self.monorepo / rel / f"{Path(rel).name}.spec"
         spec.write_text(spec.read_text().replace(old, new))
-        git("commit", "--quiet", "-am", f"{Path(rel).name}: local patch", cwd=self.monorepo)
+        if release:
+            metafile = self.monorepo / f"{rel}.json"
+            meta = json.loads(metafile.read_text())
+            for arch in meta["binaries"].values():
+                for binmeta in arch.values():
+                    for key in ("Provides", "Requires", "Recommends"):
+                        binmeta[key] = [
+                            s.replace(f"-{release[0]}{NDIST}", f"-{release[1]}{NDIST}") for s in binmeta[key]
+                        ]
+            self.tool.project_build_fields(meta, meta.get("source_date_epoch") or 0)
+            self.tool.write_json(metafile, meta)
+        git("add", "-A", "--", rel, f"{rel}.json", cwd=self.monorepo)
+        git("commit", "--quiet", "-m", f"{Path(rel).name}: local patch", cwd=self.monorepo)
 
     def capture(self, fn: Callable[..., object], *args: object) -> str:
         """Run a verb that prints to stdout (diff/list) and return its captured output."""
@@ -1020,6 +1042,23 @@ class DownstreamPackages(PackagesTestCase):
         # Syncing an already-clean package fails: there's nothing to reset.
         with self.assertRaises(SystemExit):
             self.tool.sync("testpkg", None, None)
+
+    def test_sync_drops_locally_added_files(self) -> None:
+        """sync removes a file our modification *added*, not only the ones upstream also has.
+
+        Restoring the import's paths one by one leaves an added downstream patch behind, and that
+        residue keeps the package "modified" for list/diff even though the spec is pristine again.
+        """
+        rel = "packages/fedora/rawhide/testpkg"
+        self.seed("testpkg")
+        self.tool.import_("testpkg", None, None)
+        self.modify(rel, "Release: 1", "Release: 1.1", addfile="downstream.patch", release=("1", "1.1"))
+
+        self.tool.sync("testpkg", None, None)
+
+        self.assertFalse((self.monorepo / rel / "downstream.patch").exists())
+        self.assertEqual(self.capture(self.tool.diff_package, "testpkg", None, None), "")
+        self.assertEqual(self.tool.check(), [])
 
     def test_rpm_metadata_recompute(self) -> None:
         """rpm-metadata recomputes srcpkg.json from the actual built rpms (the post-build check).
