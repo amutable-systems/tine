@@ -819,6 +819,20 @@ def is_modified(ours: str, upstream: str) -> bool:
     return not (changed and all(re.match(r'[-+]Release:', ln) for ln in changed))
 
 
+def restore(ref: str, *paths: str) -> None:
+    """Stage `paths` exactly as they are at `ref`, dropping whatever we added on top.
+
+    `git checkout <ref> -- <paths>` alone only rewinds what `ref` *has*, so a file our local
+    modification added (a downstream patch) would survive it and keep the package modified. Clearing
+    the paths first makes the result an exact tree match. A path that `ref` doesn't have at all is
+    simply gone afterwards.
+    """
+    git('rm', '--quiet', '-r', '--ignore-unmatch', '--', *paths, cwd=ROOT)
+    at_ref = [p for p in paths if git('ls-tree', ref, '--', p, cwd=ROOT).strip()]
+    if at_ref:
+        git('checkout', ref, '--', *at_ref, cwd=ROOT)
+
+
 def update(packagename: str, distro: str | None = None, branch: str | None = None) -> bool:
     """Replay any new upstream-rpm commits for a package onto the current (main) branch.
 
@@ -916,7 +930,7 @@ def sync(packagename: str, distro: str | None = None, branch: str | None = None)
     imported = git('log', 'HEAD', '-1', '--format=%H', f'--grep=^X-Upstream-Commit: {anchor}$',
                    '--', rel, f'{rel}.json', cwd=ROOT).strip()
     assert imported, f'no import commit for {coord} @ {anchor}'
-    git('checkout', imported, '--', rel, f'{rel}.json', cwd=ROOT)
+    restore(imported, rel, f'{rel}.json')
     if not git('diff', '--cached', '--name-only', cwd=ROOT).strip():
         raise SystemExit(f'{coord}: already in sync with upstream (nothing to reset)')
     git('commit', '--quiet', '-m', f'{Path(rel).name}: reset to imported upstream version', cwd=ROOT)
