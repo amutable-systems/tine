@@ -6,7 +6,7 @@ nothing secret is committed.
 
 load(
     "@tine//image:defs.bzl",
-    "DEFAULT_USR_VERITY_PARTITIONS",
+    "DEFAULT_SIGNED_USR_VERITY_PARTITIONS",
     "bootable_disk_image",
     "generate_signing_key",
     "image_vm",
@@ -24,7 +24,7 @@ generate_signing_key(name = "signing")
 bootable_disk_image(
     name = "image",
     package_manager = ":image.package-manager",
-    definitions = DEFAULT_USR_VERITY_PARTITIONS,
+    definitions = DEFAULT_SIGNED_USR_VERITY_PARTITIONS,
     ops = [
         install([
             "kernel-core",
@@ -38,10 +38,13 @@ bootable_disk_image(
             "dbus-broker",
         ]),
     ],
-    # The key signs the UKIs (with a signed expected-PCR policy) and systemd-boot, and puts
-    # auto-enrollment files onto the ESP. For a key that caches across workspaces, see
-    # pem_signing_key() under "Secure Boot signing" in images.md.
+
+    # One key covers both roles for this demo example. It signs the UKIs (with a signed expected-PCR
+    # policy) and systemd-boot, puts auto-enrollment files onto the ESP, and signs the verity root hash.
+    # For a key that caches across workspaces, see pem_signing_key() under "Secure Boot signing" in
+    # images.md. In a production setup you should use two separate keys.
     secure_boot_key = ":signing",
+    verity_key = ":signing",
 )
 
 image_vm(
@@ -74,6 +77,10 @@ command_alias(
         # binary would fail Secure Boot verification on the next reboot.
         "--check",
         "test -e /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed",
+        # The disk carries the signature over the verity root hash, which is what lets anything
+        # receiving this image as an update verify it before trusting it.
+        "--check",
+        "test -e /dev/disk/by-designator/usr-verity-sig",
         "$(exe_target :vm)",
     ],
     exe = "tine//tests:boot-smoke",
