@@ -5,7 +5,7 @@ load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//package:install.bzl", "resolve_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
-load(":sign.bzl", "SigningKeyInfo")
+load(":sign.bzl", "SigningAccess", "SigningKeyInfo", "external_signing_execution", "key_source_arguments", "merge_signing_access")
 
 ImageToolsInfo = provider(
     doc = "The pinned drivers every image rule and terminal output runs.",
@@ -113,9 +113,15 @@ def _image_command(
     driver: str,
     identifier: str | None,
     spec: dict[str, typing.Any],
+    signing_access: SigningAccess | None = None,
 ) -> cmd_args:
     return cmd_args(
-        chroot_run(engine = engine[EngineInfo], exe = exe),
+        chroot_run(
+            engine = engine[EngineInfo],
+            exe = exe,
+            ro_binds = signing_access.ro_binds if signing_access else {},
+            setenv = signing_access.setenv if signing_access else {},
+        ),
         spec_args(
             ctx.actions,
             spec_path(identifier, driver),
@@ -131,13 +137,16 @@ def terminal_image_command(
     driver: str,
     spec: dict[str, typing.Any],
     identifier: str | None = None,
+    signing_access: SigningAccess | None = None,
 ) -> cmd_args:
     """Run a terminal driver against one finalized logical-image stack.
 
-    The stack and its deferred tmpfiles join the driver's own fields in one spec.
+    The stack and its deferred tmpfiles join the driver's own fields in one spec. `signing_access`
+    grants the driver what an externally held signing key needs from the host.
     """
     return _image_command(
         ctx,
+        signing_access = signing_access,
         driver = driver,
         engine = image.engine,
         exe = exe,
@@ -301,6 +310,9 @@ def sign_systemd_boot(key: SigningKeyInfo, arch: str) -> list[LayerOperation]:
                 key.private_key,
                 "--certificate",
                 key.certificate,
+            ]
+            + key_source_arguments(key)
+            + [
                 "--output=" + binary + ".signed",
                 binary,
             ],
@@ -322,7 +334,7 @@ def install_systemd_boot(key: SigningKeyInfo | None = None) -> list[LayerOperati
             key.certificate,
             "--private-key",
             key.private_key,
-        ]
+        ] + key_source_arguments(key)
     return [
         mkdir("/efi"),
         run(
@@ -442,8 +454,13 @@ def declare_image(
     install_langs: list[str] = [],
     source_name: str | None = None,
     version: str = "0",
+    keys: list[SigningKeyInfo | None] = [],
 ) -> ImageInfo:
-    """Declare one logical image layer from resolved providers and operations."""
+    """Declare one logical image layer from resolved providers and operations.
+
+    `keys` names the signing keys this layer's operations use, so that the action can reach one held
+    outside the build.
+    """
     tools = ctx.attrs._tools[ImageToolsInfo]
     if parent != None:
         if engine != None or package_manager != None:
@@ -517,11 +534,17 @@ def declare_image(
                 "langs": install_langs,
                 "packages_dir": closure,
             }
+        signing_access = merge_signing_access(keys)
         cmd = cmd_args(
-            chroot_run(engine = engine[EngineInfo], exe = tools.layer),
+            chroot_run(
+                engine = engine[EngineInfo],
+                exe = tools.layer,
+                ro_binds = signing_access.ro_binds,
+                setenv = signing_access.setenv,
+            ),
             spec_args(ctx.actions, spec_path(identifier, "layer"), spec),
         )
-        ctx.actions.run(cmd, category = "image", identifier = identifier or "layer")
+        ctx.actions.run(cmd, category = "image", identifier = identifier or "layer", **external_signing_execution(signing_access))
 
         layers = layers + [delta]
         install_specs = parent_install_specs + (install_specs if install_specs != None else [])

@@ -513,8 +513,9 @@ Secure Boot signing, which signs the UKI whose measurements it seals. Each role 
 sealing a policy with the Secure Boot key is something a caller spells out rather than gets by default. The
 two authorize different things: one says which boot binaries firmware may load, the other which measured
 boot states may unseal TPM secrets. Keeping them apart bounds a compromise of either one, and means only the
-policy key has to be reachable to re-seal a policy. Its certificate goes unused, because ukify derives the
-`.pcrpkey` section from the private key.
+policy key has to be reachable to re-seal a policy. For a key in the build graph its certificate goes
+unused, because ukify derives the `.pcrpkey` section from the private key; a key behind a provider needs
+one, as [signing-pkcs11.md](signing-pkcs11.md) describes.
 
 The systemd-boot binary is signed inside the image tree, as a `.signed` sibling under
 `/usr/lib/systemd/boot/efi`, sealed under the verity root hash where the booted system's `bootctl update`
@@ -530,7 +531,9 @@ Development images can source a key in two ways:
   signed image graph cacheable, and every build enrolls the same certificate. Such a key is public to
   everyone with repository access: use it for test images only, and never enroll it on real hardware.
 
-Either way, keep production signing behind a dedicated boundary (see the design plan).
+A production build should sign with `pkcs11_signing_key()`, where the key is held by a PKCS#11 token and
+the build reaches it over a socket without ever seeing the key material. See
+[signing-pkcs11.md](signing-pkcs11.md).
 
 ## Running the image in a VM
 

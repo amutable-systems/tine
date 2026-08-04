@@ -208,6 +208,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     identity = declare_image(
         ctx,
         identifier = "identity",
+        keys = [secure_boot_key],
         ops = identity_ops,
         parent = root,
         version = version,
@@ -283,6 +284,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     esp = declare_image(
         ctx,
         identifier = "esp",
+        keys = [secure_boot_key],
         ops = _esp_operations(ctx, uki.ukis, secure_boot_key),
         parent = identity,
         version = version,

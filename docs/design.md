@@ -22,8 +22,8 @@ by content, and suitable for remote execution. The current implementation alread
 - RPM builds from imported spec/source metadata, including self-hosted buildroot dependencies;
 - layered filesystem images, deterministic archives, bootable GPT disks, and a VM runner.
 
-The system does not yet claim complete source provenance, production signing, remote execution, or a full
-release pipeline. Images currently mix locally built packages with pinned upstream packages.
+The system does not yet claim complete source provenance, remote execution, or a full release pipeline.
+Images currently mix locally built packages with pinned upstream packages.
 
 ## Current architecture
 
@@ -944,8 +944,7 @@ These are properties of the implementation today, not merely ideas for future op
 - Directory image output cannot represent backslashes in names; archive outputs should be used instead.
 - The default `/usr`-only disk has a volatile root. Package and authored state outside `/usr` is not yet
   translated into factory defaults or another persistent partition.
-- Bootable images currently disable SELinux. Verity and Secure Boot/expected-PCR signing accept declared
-  development key material, but production signing boundaries are not implemented.
+- Bootable images currently disable SELinux.
 - Remote execution, Barrage integration, release publishing, and systematic reproducibility audits are not
   wired into CI.
 
@@ -988,8 +987,8 @@ locks currently provides reviewable integrity but is not a substitute for signat
 
 A later release pipeline needs repository composition, comps metadata, source/debuginfo publication policy,
 provenance/attestations, and signing. Secure Boot signing should use deterministic RSA PKCS#1 v1.5 without
-timestamps. Development keys can be declared/cacheable inputs; production keys should be exposed through a
-restricted signing service/PKCS#11 boundary and run as non-cacheable release actions.
+timestamps. Development keys are declared, cacheable inputs; production builds sign with a key held outside
+the build, addressed by URI over a PKCS#11 socket, see [signing-pkcs11.md](signing-pkcs11.md).
 
 ### Image hardening and formats
 
@@ -997,7 +996,6 @@ Near-term image gaps are:
 
 - offline SELinux labeling instead of `selinux=0`;
 - deterministic ext4/FAT byte-level validation and any required normalization;
-- production verity, Secure Boot, and expected-PCR signing through a restricted key boundary;
 - OCI, confext, ESP, and other terminal formats as real consumers require them;
 - sysext verity signing;
 - richer ordered operations for setting file metadata directly;
