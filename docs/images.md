@@ -175,7 +175,10 @@ when needed:
 - `uki` builds the unified kernel image for the image's single installed kernel from one or more cpio
   `ImageArchiveInfo` dependencies and provides `UkiInfo`, named `<image_id>_<version>_<arch>.efi`
   (defaults: target name and `0`; systemd architecture spelling, e.g. `x86-64`), the shape
-  systemd-sysupdate UKI transfers match. Alternative kernel command lines are `uki_profile()` descriptors,
+  systemd-sysupdate UKI transfers match. After those dependencies it appends one further initrd of its
+  own, holding the kernel modules `initrd_modules` selects, so that none of the initrds handed to it has
+  to carry modules for the kernel in question (see "Kernel modules in the UKI"). Alternative kernel
+  command lines are `uki_profile()` descriptors,
   which add boot profiles as separate sd-boot menu entries, each appending its arguments to the base kernel
   command line; with a `secure_boot_key`, the UKI and its embedded kernel are signed for Secure Boot, and
   with a `sign_expected_pcr_key` they are sealed with a signed expected-PCR 11 policy per profile (opt out
@@ -256,9 +259,12 @@ Optional attributes:
   the default initrd package image. The rule consumes the resolved provider, archives it into the
   zstd-compressed cpio itself, and republishes the package database and SBOM that image already carries.
   The cpio removes the package database, since nothing in an initrd reads it; `[initrd][pkgdb]` still
-  captures it from the image's own tree.
+  captures it from the image's own tree. It needs no kernel modules: `initrd_modules` selects those and
+  the UKI carries them in an initrd of its own.
 - `cmdline` (string list): Kernel command line arguments, default
   `["root=tmpfs", "mount.usr=dissect", "rw"]`; passed on to `uki()`.
+- `initrd_modules` (glob pattern list): The kernel modules the UKI carries, default
+  `DEFAULT_INITRD_MODULES`; see "Kernel modules in the UKI"; passed on to `uki()`.
 - `profiles` (`uki_profile()` descriptor list): Alternative sd-boot menu entries, passed on to `uki()`.
 - `arch` (string): Architecture; only `x86_64` is supported right now; passed on to `uki()`.
 - `esp_files` (dict): Map from an absolute image path (under `/boot` or `/efi`, the trees the ESP
@@ -290,6 +296,7 @@ views and supply-chain artifacts are lazy subtargets:
 ```text
 //examples/image:boot-demo
 ├── [uki]
+│   └── [modules]
 ├── [directory]
 ├── [qcow2]
 ├── [raw.zst]
@@ -331,6 +338,65 @@ separate also preserves the distinction a vulnerability triage needs: a package 
 boot is not exposed the way the same package in the running system is. The union of the two accounts for
 everything in the UKI, provided the image keeps the kernel package installed in its own tree, which is where
 the UKI's kernel and modules come from.
+
+### Kernel modules in the UKI
+
+A UKI carries the kernel, the initrds it was built from, and one further initrd the `uki` rule assembles
+for that kernel alone, holding kernel modules. `initrd_modules` selects those modules from the image's own
+`/usr/lib/modules/<kver>`, and the build adds what they depend on and the firmware they ask for. This
+initrd is appended after the ones passed in, so no initrd has to be built for a particular kernel: an
+image given to `bootable_disk_image` as `initrd` needs no kernel modules of its own, and gets the ones
+selected here.
+
+The default is `DEFAULT_INITRD_MODULES`, exported from `//image:defs.bzl`. It is a core set rather than
+every module the kernel package ships, because only the path to `/usr` has to work from the UKI: `/usr`
+keeps the complete set, the erofs partition compresses it, and the system loads any other module from
+there once it has switched root. The core set covers the usual ways a machine reaches its root
+filesystem, meaning AHCI, NVMe, SCSI and USB storage, the virtio devices a VM is given, device-mapper
+including dm-verity, the filesystems these images use, and keyboard and console input so that a rescue
+shell works. It does not cover enterprise storage controllers such as SAS and RAID adapters, a root
+filesystem reached over the network, or any device whose driver needs firmware. An appliance that boots
+through one of those has to name it:
+
+```python
+bootable_disk_image(
+    # The core set, plus a controller this appliance boots from, minus a filesystem it never mounts.
+    initrd_modules = DEFAULT_INITRD_MODULES + ["mpt3sas", "-btrfs"],
+)
+```
+
+Patterns written without `DEFAULT_INITRD_MODULES` replace it rather than extending it: `["*"]` carries
+every module the image installs, and `[]` carries none.
+
+A pattern that matches no module is reported rather than fatal, counted on stderr and named in the
+manifest below, because one pattern list meets kernels that ship different sets of modules and an entry
+naming something a given kernel does not have is ordinary. Naming a module the kernel builds in counts
+as a match and packs nothing, since the kernel already holds it.
+
+Each pattern is matched against a module's path below `/usr/lib/modules/<kver>`, with its `.ko`, `.ko.gz`,
+`.ko.xz` or `.ko.zst` suffix removed and `_` and `-` treated as one character, as kmod treats them:
+
+| pattern              | matches                                                            |
+|----------------------|--------------------------------------------------------------------|
+| `loop`               | the basename                                                       |
+| `block/loop`         | a trailing run of path components                                  |
+| `/kernel/block/loop` | the whole path, anchored at the root of the module directory       |
+| `crypto/`            | everything below that directory                                    |
+| `raid[0-9]*`         | shell globs (`*` crosses `/`)                                      |
+| `-nouveau`           | excludes; patterns are evaluated in order and the last match wins  |
+
+Firmware follows the modules: whatever a selected module declares is packed alongside it, symlinks
+included, as is the firmware of modules the kernel has built in, since those load it from the initrd too.
+An image that installs no firmware therefore ships none, and one that installs `linux-firmware` and asks
+for every module gets all of it.
+
+`[uki][modules]` is the record of that whole decision, as JSON, and it is where to start when a UKI boots
+to no root. Alongside the kernel version and the patterns the target asked for, it names the ones that
+matched nothing, the dependencies the image does not install and the firmware nothing satisfies, then
+totals the modules, the firmware, the content bytes and the size of the archive itself. Every packed path is listed with what it is (`module`, `firmware`, `index`, `vdso` or `directory`),
+its size, and why it is in there: `selected` for one a pattern named, `needed_by` for one the closure
+pulled in, and `declared_by` for firmware, each naming the modules responsible. The driver prints only
+counts as it builds, since the names are all here.
 
 ### Image versioning
 

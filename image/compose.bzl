@@ -23,6 +23,7 @@ load(
     "UkiProfile",  # @unused Used as a type.
     "declare_uki",
     "encode_profiles",
+    "uki_subtargets",
 )
 load("//package:manager.bzl", "PackageManagerInfo")
 load(
@@ -257,6 +258,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         identifier = "uki",
         image = identity,
         image_id = image_id,
+        initrd_modules = ctx.attrs.initrd_modules,
         initrds = [initrd_archive],
         profiles = ctx.attrs.profiles,
         root_hash = system.info.root_hash if verity else None,
@@ -314,7 +316,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
             ),
             initrd_info,
         ],
-        "uki": [DefaultInfo(default_output = uki.ukis), uki],
+        "uki": [DefaultInfo(default_output = uki.ukis, sub_targets = uki_subtargets(uki)), uki],
     })
     for conversion in conversions:
         sub_targets[conversion.format] = [

@@ -42,6 +42,8 @@ engine(
         "coreutils",
         "libseccomp",
         "ca-certificates",
+        # the uki driver resolves module dependencies through libkmod
+        "kmod-libs",
         "systemd-udev",
         "systemd-ukify",
         # ukify needs these to sign UKIs and parse PEs, but they are only weak dependencies

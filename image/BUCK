@@ -34,10 +34,22 @@ python_bootstrap_binary(
     main = "uki.py",
     deps = [
         ":finalize",
+        ":kmod",
         "//:specs",
         "//archive:cpio",
     ],
     visibility = ["PUBLIC"],
+)
+
+python_bootstrap_library(
+    name = "kmod",
+    srcs = ["kmod.py"],
+)
+
+export_file(
+    name = "kmod-src",
+    src = "kmod.py",
+    visibility = ["tine//tests:unit-test"],
 )
 
 python_bootstrap_binary(

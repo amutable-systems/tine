@@ -86,6 +86,21 @@ go_sbom() {
     grep -q 'pkg:golang/golang.org/x/text@' <<< "$sbom"
 }
 
+# Assert the UKI's module selection still carries what the demo image boots through. The smokes below
+# prove the same thing by booting, but this pins it against the real kernel without a VM, so a change to
+# the default list that drops one of these fails here with the module named.
+uki_modules() {
+    local manifest
+    manifest=$("$buck" build 'tine//examples/image:boot-demo[uki][modules]' --out -)
+    # Only modules Fedora builds as modules: it links dm-mod, ext4, virtio_blk, virtio_pci, ahci and
+    # sd_mod into the kernel, so no initrd carries those and the smokes cover them instead.
+    local module
+    for module in erofs dm-verity loop overlay nvme vfat virtio_scsi virtio_net virtiofs; do
+        grep -q "\"path\": \".*/$module\.ko" <<< "$manifest" ||
+            { echo "uki modules: $module is missing" >&2; return 1; }
+    done
+}
+
 # First invocation fetches buck's pinned tools and builds the shared engine; kept its own group so
 # bootstrap time stays visible.
 group engine           -- "$buck" build tine//catalog:fedora.rawhide.engine
@@ -94,6 +109,7 @@ group check            -- "$buck" run tine//tools:check
 group verify-catalog   -- "$buck" run tine//tools:verify-catalog -- --engine fedora.rawhide.engine
 group box              -- "$buck" build tine//examples/box:box
 group boot-demo-image  -- "$buck" build tine//examples/image:boot-demo
+group uki-modules      -- uki_modules
 group boot-demo-smoke  -- "$buck" run tine//examples/image:boot-demo-vm-smoke
 group rust-sbom        -- rust_sbom
 group go-sbom          -- go_sbom

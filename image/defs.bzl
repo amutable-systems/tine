@@ -27,6 +27,7 @@ load(
     _partition = "partition",
     _repart = "repart",
 )
+load("//image_format:modules.bzl", _DEFAULT_INITRD_MODULES = "DEFAULT_INITRD_MODULES")
 load(
     "//image_format:sysext.bzl",
     _SysextImageInfo = "SysextImageInfo",
@@ -102,6 +103,9 @@ SigningKeyInfo = _SigningKeyInfo
 rootfs_archive = _rootfs_archive
 sysext_image = _sysext_image
 bootable_disk_image = _bootable_disk_image
+
+# The core kernel modules a UKI carries unless a target says otherwise; extend it with `+`.
+DEFAULT_INITRD_MODULES = _DEFAULT_INITRD_MODULES
 
 # Conventional partition layouts.
 DEFAULT_ROOT_PARTITIONS = _DEFAULT_ROOT_PARTITIONS

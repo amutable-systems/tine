@@ -19,10 +19,12 @@ load(
     "RepartInfo",
     "RootHashInfo",  # @unused Used as a function argument type.
 )
+load(":modules.bzl", "DEFAULT_INITRD_MODULES")
 
 UkiInfo = provider(
     doc = "Unified kernel images built for one logical image.",
     fields = {
+        "modules": provider_field(Artifact),
         "ukis": provider_field(Artifact),
     },
 )
@@ -69,6 +71,7 @@ def declare_uki(
     arch: str,
     image_id: str,
     version: str,
+    initrd_modules: list[str],
     root_hash: RootHashInfo | None = None,
     secure_boot_key: SigningKeyInfo | None = None,
     sign_expected_pcr_key: SigningKeyInfo | None = None,
@@ -78,6 +81,8 @@ def declare_uki(
     if sign_expected_pcr_key != None and secure_boot_key == None:
         fail("uki: sign_expected_pcr_key needs Secure Boot signing, which signs the UKI it seals")
     out = declare_out(ctx, identifier, "ukis", dir = True)
+    # Declared next to the UKIs, not inside them: that directory is copied onto the ESP whole.
+    modules = declare_out(ctx, identifier, "modules.json")
     check_name("uki image_id", image_id, FILENAME_PATTERN)
     check_name("uki version", version, VERSION_PATTERN)
     for initrd in initrds:
@@ -100,7 +105,9 @@ def declare_uki(
             "cmdline": cmdline,
             "efi_arch": ARCHES[arch].efi,
             "image_id": image_id,
+            "initrd_modules": initrd_modules,
             "initrds": [initrd.archive for initrd in initrds],
+            "modules_manifest": modules.as_output(),
             "out": out.as_output(),
             "profiles": [json.decode(profile) for profile in profiles],
             "root_hash": {
@@ -116,7 +123,11 @@ def declare_uki(
         },
     )
     ctx.actions.run(cmd, category = "uki", identifier = identifier or "uki")
-    return UkiInfo(ukis = out)
+    return UkiInfo(modules = modules, ukis = out)
+
+def uki_subtargets(info: UkiInfo) -> dict[str, list[Provider]]:
+    """The selection manifest, exposed wherever the UKIs themselves are."""
+    return {"modules": [DefaultInfo(default_output = info.modules)]}
 
 def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
     root_hash = None
@@ -130,6 +141,7 @@ def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
         cmdline = ctx.attrs.cmdline,
         image = ctx.attrs.image[ImageInfo],
         image_id = ctx.attrs.image_id if ctx.attrs.image_id != None else ctx.label.name,
+        initrd_modules = ctx.attrs.initrd_modules,
         initrds = [initrd[ImageArchiveInfo] for initrd in ctx.attrs.initrds],
         profiles = ctx.attrs.profiles,
         root_hash = root_hash,
@@ -137,7 +149,7 @@ def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
         sign_expected_pcr_key = resolve_signing_key(ctx.attrs.sign_expected_pcr_key),
         version = ctx.attrs.version,
     )
-    return [DefaultInfo(default_output = info.ukis), info]
+    return [DefaultInfo(default_output = info.ukis, sub_targets = uki_subtargets(info)), info]
 
 UKI_ATTRS = {
     "arch": attrs.enum(ARCHES.keys(), default = "x86_64"),
@@ -145,6 +157,11 @@ UKI_ATTRS = {
         attrs.string(),
         default = [],
         doc = "kernel command-line arguments embedded in the UKI",
+    ),
+    "initrd_modules": attrs.list(
+        attrs.string(),
+        default = DEFAULT_INITRD_MODULES,
+        doc = "glob patterns selecting the kernel modules the UKI's per-kernel initrd carries",
     ),
     "profiles": attrs.list(
         attrs.string(),

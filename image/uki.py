@@ -16,6 +16,7 @@ import specs
 
 import cpio
 import finalize
+import kmod
 
 # ukify lives outside PATH in the engine.
 UKIFY = "/usr/lib/systemd/ukify"
@@ -42,6 +43,9 @@ class Spec(finalize.ImageSpec):
     out: str
     # Base initrd cpios, in load order.
     initrds: list[str]
+    # Patterns selecting the modules the per-kernel initrd carries, and the report of what it got.
+    initrd_modules: list[str]
+    modules_manifest: str
     cmdline: list[str]
     profiles: list[Profile]
     root_hash: RootHash | None
@@ -61,6 +65,26 @@ def _kvers(tree: Path) -> list[str]:
     if not kvers:
         raise SystemExit("uki: found no kernels under /usr/lib/modules")
     return kvers
+
+
+def _select(tree: Path, kver: str, patterns: list[str]) -> kmod.Selection:
+    """Resolve the module patterns, reporting what the image could not satisfy."""
+    selection = kmod.initrd_modules(tree, kver, patterns)
+    # Counts here, names in the manifest: this stays readable when a broad pattern list meets a kernel
+    # that ships a fraction of it, and the manifest is the artifact one debugs a bad UKI from.
+    if selection.unmatched:
+        print(f"uki: {len(selection.unmatched)} patterns match no module in this image", file=sys.stderr)
+    if selection.missing_firmware:
+        print(
+            f"uki: {len(selection.missing_firmware)} firmware files the selected modules declare are "
+            "not installed",
+            file=sys.stderr,
+        )
+    # Named, because a dependency the image does not install is a hole in the initrd, not a mismatch
+    # between one list and one kernel.
+    for name in selection.missing:
+        print(f"uki: {name} is required by the selection but the image does not install it", file=sys.stderr)
+    return selection
 
 
 def _cmdline(arguments: list[str], root_hash: Path | None, kind: str | None) -> str:
@@ -170,11 +194,16 @@ def main(argv: list[str] | None = None) -> None:
 
         modules = scratch / f"modules-{kver}.cpio"
         prefix = f"usr/lib/modules/{kver}"
-        cpio.pack_tree(
-            tree, modules, epoch,
-            subtree=prefix,
-            exclude=(f"{prefix}/vmlinuz*", f"{prefix}/vmlinux*", f"{prefix}/System.map"),
-        )  # fmt: skip
+        selection = _select(tree, kver, spec["initrd_modules"])
+        cpio.pack_paths(tree, modules, epoch, [entry.path for entry in selection.entries])
+        Path(spec["modules_manifest"]).write_text(
+            kmod.manifest(selection, archive_bytes=modules.stat().st_size), encoding="utf-8"
+        )
+        print(
+            f"uki: {kver}: {len(selection.modules)} modules and {len(selection.firmware)} firmware "
+            f"files in {modules.stat().st_size // 1024} KiB",
+            file=sys.stderr,
+        )
 
         output = out / f"{spec['image_id']}_{spec['version']}_{spec['systemd_arch']}.efi"
         cmd = [UKIFY, "build", "--linux", str(tree / prefix / "vmlinuz")]
