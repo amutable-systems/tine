@@ -116,12 +116,18 @@ def _lint(args: argparse.Namespace) -> None:
 
 
 def _fmt(args: argparse.Namespace) -> None:
+    # Ask Buck everything before the formatters touch the tree. This runs under `buck run`, whose
+    # command stays active for as long as the binary does, and buck2 only recognizes a nested
+    # command as nested when it spawned the process itself, which it does for actions but not for
+    # run targets. A query issued after a write therefore needs a newer state than the command it
+    # is nested in and waits for it to finish: a deadlock rather than an error.
     cell = _cell_root(args.buck, "tine")
+    srcs = _starlark_srcs(args.buck)
     _bold("ruff")
-    _run([args.ruff, "format", cell])
-    _run([args.ruff, "check", "--fix", cell])
+    _run([args.ruff, "format", "--no-cache", cell])
+    _run([args.ruff, "check", "--fix", "--no-cache", cell])
     _bold("starlark_fmt")
-    _run(_starlark_fmt(args, "fmt", *_starlark_srcs(args.buck)))
+    _run(_starlark_fmt(args, "fmt", *srcs))
 
 
 def _write_dot(path: Path, intra: dict[str, list[str]], rev: dict[str, list[str]]) -> None:
