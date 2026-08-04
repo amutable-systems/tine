@@ -1,6 +1,6 @@
 """Tests for the Go build driver's checks.
 
-    python3 -m unittest discover -s tine/tests -t tine -v
+    buck build tine//go:test
 
 The driver hands everything needing a toolchain to go, so what is left to test is how its output is
 read and which declarations it refuses. The engine these tests run in carries no go.
@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from types import ModuleType
 
-TINE_REPO = Path(__file__).resolve().parent.parent
+HERE = Path(__file__).parent
 
 # What `go list -e -json=ImportPath,Name,Target` prints for a v2 module whose command sits at the
 # module root, beside one in cmd/ and a library. go names the first after the second-to-last element
@@ -53,7 +53,7 @@ COLLIDING_LISTING = """\
 
 
 def _load(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, TINE_REPO / "go" / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

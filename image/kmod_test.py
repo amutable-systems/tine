@@ -1,6 +1,6 @@
 """Tests for kernel module selection and the explicit-path cpio packer.
 
-    python3 -m unittest discover -s tests -t . -v
+    buck build tine//image:test
 
 The pattern engine, the firmware walk and the packing decide what a UKI carries, and none of them
 need libkmod or a real kernel, so they run against synthetic module trees here. The dependency
@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 from types import ModuleType, SimpleNamespace
 from typing import override
 
-TINE_REPO = Path(__file__).resolve().parent.parent
+HERE = Path(__file__).parent
 
 # Fedora's paths for the modules this project's images actually boot through: erofs and dm-verity
 # under a dissected /usr, on virtio in a VM and on NVMe or AHCI on metal.
@@ -49,24 +49,24 @@ NOT_CARRIED = (
 )
 
 
-def _load(package: str, name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, TINE_REPO / package / f"{name}.py")
+def _load(name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def _load_bzl(package: str, name: str) -> SimpleNamespace:
-    path = TINE_REPO / package / f"{name}.bzl"
+def _load_bzl(name: str) -> SimpleNamespace:
+    path = HERE / f"{name}.bzl"
     module: dict[str, typing.Any] = {}
     exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module)  # noqa: S102
     return SimpleNamespace(**module)
 
 
-kmod = _load("image", "kmod")
-cpio = _load("archive", "cpio")
-modules_bzl = _load_bzl("image_format", "modules")
+kmod = _load("kmod")
+cpio = _load("cpio")
+modules_bzl = _load_bzl("modules")
 
 
 class TreeTest(unittest.TestCase):

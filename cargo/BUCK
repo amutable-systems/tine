@@ -1,5 +1,7 @@
 """Rust source builds against a vendored, hash-pinned crate tree."""
 
+load("//engine:test.bzl", "engine_unittest")
+
 # The downloaded crates in, the directory cargo builds against out.
 python_bootstrap_binary(
     name = "vendor",
@@ -19,21 +21,18 @@ python_bootstrap_binary(
     ],
 )
 
-# Driver and lock-reader sources for the unit-test tree (tine//tests:unit-test).
-export_file(
-    name = "lock-src",
-    src = "lock.bzl",
-    visibility = ["tine//tests:unit-test"],
-)
-
-export_file(
-    name = "vendor-src",
-    src = "vendor.py",
-    visibility = ["tine//tests:unit-test"],
-)
-
-export_file(
-    name = "build-src",
-    src = "build.py",
-    visibility = ["tine//tests:unit-test"],
+engine_unittest(
+    name = "test",
+    engine = "//box:dev.engine",
+    srcs = [
+        "build.py",
+        "cargo_test.py",
+        "lock.bzl",
+        "vendor.py",
+    ],
+    visibility = ["tine//tools:check"],
+    deps = [
+        "//:specs",
+        "//:util",
+    ],
 )

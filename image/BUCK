@@ -1,5 +1,6 @@
 """Logical image mutation and boot assembly drivers."""
 
+load("//engine:test.bzl", "engine_unittest")
 load(":image.bzl", "image_tools")
 
 # The one bundle every image rule resolves its drivers through.
@@ -46,10 +47,16 @@ python_bootstrap_library(
     srcs = ["kmod.py"],
 )
 
-export_file(
-    name = "kmod-src",
-    src = "kmod.py",
-    visibility = ["tine//tests:unit-test"],
+engine_unittest(
+    name = "test",
+    engine = "//box:dev.engine",
+    srcs = ["kmod_test.py"],
+    visibility = ["tine//tools:check"],
+    deps = [
+        ":kmod",
+        "//archive:cpio",
+        "//image_format:modules",
+    ],
 )
 
 python_bootstrap_binary(

@@ -1,5 +1,6 @@
 """Pinned tool binaries and development commands fetched by Buck."""
 
+load("//engine:test.bzl", "engine_unittest")
 load(":defs.bzl", "http_tool")
 load(":tools.json", _pins = "value")
 
@@ -90,11 +91,14 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-# The version tool source for the unit-test tree (tine//tests:unit-test).
-export_file(
-    name = "version-src",
-    src = "version.py",
-    visibility = ["tine//tests:unit-test"],
+engine_unittest(
+    name = "version-test",
+    engine = "//box:dev.engine",
+    srcs = [
+        "version.py",
+        "version_test.py",
+    ],
+    visibility = [":check"],
 )
 
 command_alias(
@@ -126,11 +130,17 @@ command_alias(
     exe = ":dev",
 )
 
-# check = lint + the unit tests: the resource dependency builds (runs) tine//tests:unit-test.
+# check = lint + the unit tests: each resource dependency builds (runs) one package's suite.
 command_alias(
     name = "check",
     exe = ":lint",
-    resources = ["tine//tests:unit-test"],
+    resources = [
+        "tine//cargo:test",
+        "tine//go:test",
+        "tine//image:test",
+        ":importer-test",
+        ":version-test",
+    ],
 )
 
 # The rpm importer (see docs/importer.md): its verbs need the pinned rpm toolchain plus the
@@ -141,11 +151,14 @@ command_alias(
     exe = "tine//box:dev",
 )
 
-# The importer sources for the unit-test tree (tine//tests:unit-test).
-export_file(
-    name = "importer-src",
-    src = "importer",
-    visibility = ["tine//tests:unit-test"],
+engine_unittest(
+    name = "importer-test",
+    engine = "//box:dev.engine",
+    srcs = [
+        "importer",
+        "importer_test.py",
+    ],
+    visibility = [":check"],
 )
 
 # BuildRequires cycle analysis of a branch (pass its label, e.g. //packages/fedora:rawhide's dir).
