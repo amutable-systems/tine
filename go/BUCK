@@ -1,5 +1,7 @@
 """Go source builds: one online, go.sum-verified module fetch, then an offline compile."""
 
+load("//engine:test.bzl", "engine_unittest")
+
 # Runs inside the engine with the network: go.mod and go.sum in, the verified module cache out.
 python_bootstrap_binary(
     name = "fetch",
@@ -19,9 +21,16 @@ python_bootstrap_binary(
     ],
 )
 
-# Driver source for the unit-test tree (tine//tests:unit-test).
-export_file(
-    name = "build-src",
-    src = "build.py",
-    visibility = ["tine//tests:unit-test"],
+engine_unittest(
+    name = "test",
+    engine = "//box:dev.engine",
+    srcs = [
+        "build.py",
+        "build_test.py",
+    ],
+    visibility = ["tine//tools:check"],
+    deps = [
+        "//:specs",
+        "//:util",
+    ],
 )

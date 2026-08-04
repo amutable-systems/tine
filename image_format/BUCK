@@ -41,9 +41,10 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-# The default module list is data, so the unit tests read the same file the uki rule defaults to.
-export_file(
-    name = "modules-src",
-    src = "modules.bzl",
-    visibility = ["tine//tests:unit-test"],
+# The default module list, written in the Starlark subset that is also plain Python: the uki rule
+# loads it, and tine//image:test exec()s the same file rather than restating the list.
+python_bootstrap_library(
+    name = "modules",
+    srcs = ["modules.bzl"],
+    visibility = ["tine//image:test"],
 )

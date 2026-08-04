@@ -3,7 +3,7 @@
 Only the path to `/usr` has to work from the UKI; `/usr` itself keeps every module the kernel package
 installs, so anything missing here is still loadable once the system has switched root.
 
-Data only, and it stays that way: tine//tests:unit-test reads this file to pin what the list selects.
+Data only, and it stays that way: tine//image:test reads this file to pin what the list selects.
 """
 
 DEFAULT_INITRD_MODULES = [

@@ -1,9 +1,9 @@
 """Tests for the Cargo.lock reader, the vendored crate tree, and the build driver's checks.
 
-    python3 -m unittest discover -s tine/tests -t tine -v
+    buck build tine//cargo:test
 
-cargo/lock.bzl is Starlark, but deliberately written in the subset that is also plain Python, so
-this suite runs it through exec() with buck's `fail` stubbed out. The vendor driver runs for real
+lock.bzl is Starlark, but deliberately written in the subset that is also plain Python, so this
+suite runs it through exec() with buck's `fail` stubbed out. The vendor driver runs for real
 against synthetic .crate tarballs; nothing here needs a network.
 """
 
@@ -21,7 +21,7 @@ from typing import override
 
 import util
 
-TINE_REPO = Path(__file__).resolve().parent.parent
+HERE = Path(__file__).parent
 
 
 class StarlarkFailure(Exception):
@@ -33,14 +33,14 @@ def _fail(message: str) -> typing.NoReturn:
 
 
 def _load_bzl(name: str) -> SimpleNamespace:
-    path = TINE_REPO / "cargo" / f"{name}.bzl"
+    path = HERE / f"{name}.bzl"
     module: dict[str, typing.Any] = {"fail": _fail, "typing": typing}
     exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module)  # noqa: S102
     return SimpleNamespace(**module)
 
 
 def _load(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, TINE_REPO / "cargo" / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

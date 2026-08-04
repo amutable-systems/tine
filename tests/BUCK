@@ -1,29 +1,4 @@
-"""The unit-test suite, a build action running hermetically in the dev box engine."""
-
-load(":defs.bzl", "engine_unittest")
-
-# The tests locate the tool under test relative to their own file, so the tree mirrors the
-# cell layout. `buck build tine//tests:unit-test` runs the suite; the action caches, so it
-# only reruns when the tests, the tool, or the engine change.
-engine_unittest(
-    name = "unit-test",
-    engine = "//box:dev.engine",
-    srcs = {"tests/" + f: f for f in glob(["__init__.py", "test_*.py"])}
-    | {
-        "archive/cpio.py": "//archive:cpio-src",
-        "cargo/build.py": "//cargo:build-src",
-        "cargo/lock.bzl": "//cargo:lock-src",
-        "cargo/vendor.py": "//cargo:vendor-src",
-        "go/build.py": "//go:build-src",
-        "image/kmod.py": "//image:kmod-src",
-        "image_format/modules.bzl": "//image_format:modules-src",
-        "specs.py": "//:specs-src",
-        "tools/importer": "//tools:importer-src",
-        "tools/version.py": "//tools:version-src",
-        "util.py": "//:util-src",
-    },
-    visibility = ["tine//tools:check"],
-)
+"""Cross-image test drivers. Unit tests live beside the code they exercise (`tine//<pkg>:test`)."""
 
 # Generic image_vm boot smoke driver: boots any VM runner under a pty, waits for the autologin
 # shell, asserts the system settled, then powers off. Reused by the example smoke targets.

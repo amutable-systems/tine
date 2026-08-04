@@ -1,6 +1,6 @@
 """Tests for the git-derived image version tool.
 
-    python3 -m unittest discover -s tests -t . -v
+    buck build tine//tools:version-test
 
 Each test builds a real throwaway git repository; the tool's git calls run for real.
 """
@@ -15,8 +15,7 @@ import unittest.mock
 from pathlib import Path
 from typing import override
 
-TINE_REPO = Path(__file__).resolve().parent.parent
-TOOL_PATH = TINE_REPO / "tools" / "version.py"
+TOOL_PATH = Path(__file__).parent / "version.py"
 
 # The longest default partition label pattern (DEFAULT_USR_VERITY_PARTITIONS, signed); the one
 # place that spells out the suffix, which may grow a shorter alias.

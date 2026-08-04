@@ -20,6 +20,11 @@ consumers may instead declare a project-specific `//catalog` package. `examples`
 that CI builds and boot-tests, plus a dev box. Package sources and targets live in the OS.git root that
 consumes this cell, under `packages/` (built as `//packages/...`).
 
+Unit tests sit beside the driver they exercise as `<driver>_test.py`, run by an `engine_unittest`
+target in the same package (`tine//engine:test.bzl`). Cross-package sources reach a suite through
+`deps` on a `python_bootstrap_library`, never `export_file`. `tests` holds only the drivers shared
+across images, like the VM boot smoke.
+
 ## Commands
 
 The pinned `buck` lives in `tools/`,; invoke it by path. Everything else (python3, ruff, ty, starlark_fmt)
@@ -28,8 +33,9 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
 - **buck (whole project):** `buck build //...`.
 - **Lint (format, lint, type-check):** `buck run tine//tools:lint`
 - **Check (lint plus the hooked-in test suites):** `buck run tine//tools:check`
-- **Unit tests alone:** `buck build tine//tests:unit-test` — a cached build action, so it only
-  reruns when the tests, the tool under test, or the dev box engine change.
+- **Unit tests alone:** `buck build tine//cargo:test tine//go:test tine//image:test
+  tine//tools:version-test tine//tools:importer-test` — each is a cached build action, so a suite
+  only reruns when its own tests, the driver it exercises, or the dev box engine change.
 - **Auto-format + auto-fix:** `buck run tine//tools:fmt`
 - **Refresh the catalog lock:** `buck run tine//tools:refresh-catalog`;
   `buck run tine//tools:verify-catalog` asserts the committed lock matches.

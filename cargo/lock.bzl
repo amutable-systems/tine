@@ -10,7 +10,7 @@ fetch targets have to exist before anything runs, and the load makes the committ
 tracked input of the parse.
 
 Deliberately kept to the subset of Starlark that is also plain Python, so the unit suite can
-exercise these functions directly (tests/test_cargo.py runs this file through exec()).
+exercise these functions directly (cargo_test.py runs this file through exec()).
 """
 
 # Both spellings of the crates.io index. The sparse protocol replaced the git one, and locks written
