@@ -181,7 +181,7 @@ when needed:
   sealed with a signed expected-PCR 11 policy per profile (opt out per profile with `sign_expected_pcr`);
 - `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
   GPT disk and independent partition artifacts in one `RepartInfo`; its disk field is absent for a
-  split-only invocation;
+  split-only invocation, and `output_size` composes the disk with free space behind its partitions;
 - `disk_convert` re-encodes a raw disk with an explicitly selected engine and provides `DiskConversionInfo`;
 - `bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
@@ -243,6 +243,12 @@ Optional attributes:
   `repart()`.
 - `secure_boot_key` (target providing `SigningKeyInfo`): Signs the UKIs and systemd-boot; see "Secure
   Boot signing" below.
+- `output_size` (size string such as `"20G"`): Ships the disk at this size instead of at the size its
+  partitions need, so an installed system finds room past them and does not have to resize its medium
+  before first boot; passed on to `repart()`. The partitions keep the sizes their definitions ask for and
+  the composed file is enlarged behind the last one, so the added room costs nothing on disk and, as with
+  `image_vm`'s `grow`, sits past the GPT backup header until something rewrites the table. A size the
+  partitions do not fit in fails the build.
 - `initrd` (target label providing `ImageInfo`): A logical image whose tree becomes the initrd, replacing
   the default initrd package image. The rule consumes the resolved provider, archives it into the
   zstd-compressed cpio itself, and republishes the package database and SBOM that image already carries.
@@ -394,7 +400,8 @@ and arbitrary non-secret system credentials configure settings such as first-boo
 `grow` enlarges the disk file to a given size before boot (vmspawn's `--grow-image`), which is how an
 ephemeral guest is given room the built partitions do not occupy; the guest claims that room itself, for
 example with `systemd-repart`. vmspawn grows the built artifact in place, and the added space sits past the
-GPT backup header until something rewrites the table.
+GPT backup header until something rewrites the table. Use it to give a guest more room than the shipped
+disk carries; a disk that should always carry that room sets `output_size` on the image instead.
 
 ```sh
 tools/buck run //examples/image:boot-demo-vm

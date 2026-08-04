@@ -282,6 +282,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         image = esp,
         imported = [system.info],
         imported_root_hash = system.info.root_hash,
+        output_size = ctx.attrs.output_size,
         seed = ctx.attrs.disk_seed,
         split = True,
     )
@@ -348,6 +349,11 @@ _bootable_disk_image = rule(
             attrs.dep(providers = [ImageInfo]),
             default = None,
             doc = ("logical image to archive and use as the initrd; " + "defaults to the release initrd package set"),
+        ),
+        "output_size": attrs.option(
+            attrs.string(),
+            default = None,
+            doc = 'size to compose the disk at, e.g. "20G"; the room past the partitions stays free',
         ),
         "package_manager": attrs.dep(providers = [PackageManagerInfo]),
         "verity_key": attrs.option(

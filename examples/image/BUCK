@@ -202,6 +202,10 @@ bootable_disk_image(
     esp_files = {"/boot/metadata/demo.spdx.json": ":demo[sbom][spdx]"},
     # A shipped appliance has no terminal to read a man page on.
     install_docs = False,
+    # Ship the disk with free space past its partitions, so an installed system can claim it without
+    # resizing the medium first. The space is sparse and this image boots from tmpfs, so nothing here
+    # consumes it; a real appliance creates a root partition in it on first boot.
+    output_size = "2G",
 )
 
 image_vm(
@@ -223,7 +227,16 @@ command_alias(
     # exe_target, not exe: the runner is data for the driver, not a host tool, so keep it in the
     # target configuration and reuse the image `buck build :boot-demo` already produced (exe would
     # pull it into the exec configuration and rebuild it).
-    args = ["--check", "bootctl | grep -F 'Secure Boot: disabled (setup)'", "$(exe_target :boot-demo-vm)"],
+    args = [
+        "--check",
+        "bootctl | grep -F 'Secure Boot: disabled (setup)'",
+        # The guest sees the disk at its output_size, and the partitions it boots from still
+        # occupy only the front of it.
+        "--check",
+        # Buck's macro parser claims $(...), so the shell substitution is escaped.
+        "test \\$(blockdev --getsize64 /dev/vda) -eq 2147483648",
+        "$(exe_target :boot-demo-vm)",
+    ],
     exe = "tine//tests:boot-smoke",
 )
 

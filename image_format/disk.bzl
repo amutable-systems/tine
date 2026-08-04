@@ -16,6 +16,9 @@ load("//image:sign.bzl", "SigningKeyInfo", "resolve_signing_key")
 
 Partition = dict[str, typing.Any]
 
+# A byte count with an optional systemd size suffix, which every consumer reads base-1024.
+SIZE_PATTERN = "^[0-9]+(\\.[0-9]+)?[KMGTPE]?$"
+
 def partition(
     type: str,
     name: str | None = None,
@@ -241,6 +244,7 @@ def declare_repart(
     imported_root_hash: RootHashInfo | None = None,
     seed: str | None = None,
     verity_key: SigningKeyInfo | None = None,
+    output_size: str | None = None,
     basename: str = "image",
     identifier: str | None = None,
 ) -> RepartOutput:
@@ -253,6 +257,12 @@ def declare_repart(
         signed = verity_key != None,
         split = split,
     )
+
+    if output_size != None:
+        if not disk:
+            fail("repart: output_size applies to a composed disk, which this invocation does not emit")
+        if not regex_match(SIZE_PATTERN, output_size):
+            fail("repart: invalid output_size {!r}".format(output_size))
 
     imported_partitions = []
     for info in imported:
@@ -267,6 +277,7 @@ def declare_repart(
         "definitions": decoded,
         "identity": "{}[{}]".format(ctx.label, identifier or "repart"),
         "out": None,
+        "output_size": output_size,
         "partitions": [
             {
                 "blocks": value.blocks,
@@ -374,6 +385,7 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
         seed = ctx.attrs.seed,
         split = ctx.attrs.split,
         verity_key = resolve_signing_key(ctx.attrs.verity_key),
+        output_size = ctx.attrs.output_size,
     )
     return [
         DefaultInfo(default_outputs = result.outputs, sub_targets = result.sub_targets),
@@ -383,6 +395,11 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
 REPART_ATTRS = {
     "basename": attrs.string(default = "image", doc = "file name of the composed disk, without extension"),
     "definitions": attrs.list(attrs.string(), doc = "serialized partition definitions"),
+    "output_size": attrs.option(
+        attrs.string(),
+        default = None,
+        doc = 'size to compose the disk at, e.g. "20G"; the room past the partitions stays free',
+    ),
     "seed": attrs.option(
         attrs.string(),
         default = None,
