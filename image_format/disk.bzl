@@ -12,7 +12,13 @@ load(
     "spec_path",
     "terminal_image_command",
 )
-load("//image:sign.bzl", "SigningKeyInfo", "resolve_signing_key")
+load(
+    "//image:sign.bzl",
+    "SigningKeyInfo",
+    "external_signing_execution",
+    "merge_signing_access",
+    "resolve_signing_key",
+)
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
 
@@ -318,6 +324,7 @@ def declare_repart(
         "private_key": verity_key.private_key if verity_key else None,
         "root_hash_out": None,
         "seed": seed,
+        "source": verity_key.source if verity_key else None,
         "split_outputs": [],
     }
 
@@ -378,9 +385,11 @@ def declare_repart(
             ]
     else:
         sub_targets.update(_partition_sub_targets(new_partitions))
+    signing_access = merge_signing_access([verity_key])
     ctx.actions.run(
         terminal_image_command(
             ctx,
+            signing_access = signing_access,
             driver = "repart",
             exe = ctx.attrs._tools[ImageToolsInfo].disk,
             identifier = identifier,
@@ -389,6 +398,7 @@ def declare_repart(
         ),
         category = "repart_split" if split else "repart",
         identifier = identifier or "repart",
+        **external_signing_execution(signing_access),
     )
     return RepartOutput(info = info, outputs = outputs, sub_targets = sub_targets)
 

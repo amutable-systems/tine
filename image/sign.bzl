@@ -25,7 +25,7 @@ _LABEL_PATTERN = "^[A-Za-z0-9._-]+$"
 _PATH_DELIMITERS = [":", ";", "?", "&", ",", "%"]
 
 # PKCS#11 client (socket and PIN) sandbox mount.
-_SIGNING_CONFIG_DIR = "/run/signing"
+_SIGNING_CONFIG_DIR = "/run/tine"
 
 SigningKeyInfo = provider(
     doc = "A signing credential, as local PEM artifacts or external URIs",
@@ -74,6 +74,22 @@ def merge_signing_access(keys: list[SigningKeyInfo | None]) -> SigningAccess:
         # variable without naming a source would otherwise keep the action cacheable and remotable.
         external = external or key.source != None or bool(key.ro_binds or key.setenv)
     return SigningAccess(ro_binds = ro_binds, setenv = setenv, external = external)
+
+def external_signing_execution(signing_access: SigningAccess) -> dict[str, typing.Any]:
+    """Execution policy for an action that signs with a key the build does not hold.
+
+    The socket and the credential only exist on this host, so the action cannot run remotely, and its
+    output is not a function of its declared inputs, so it must never reach a shared cache.
+    """
+    if not signing_access.external:
+        return {}
+    return {"allow_cache_upload": False, "local_only": True}
+
+def key_source_arguments(key: SigningKeyInfo) -> list[str]:
+    """systemd's spelling for a key it must load through OpenSSL, empty for a key in the graph."""
+    if key.source == None:
+        return []
+    return ["--private-key-source", key.source, "--certificate-source", key.source]
 
 def _signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
     key = ctx.actions.declare_output("signing.key")

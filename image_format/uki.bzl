@@ -12,7 +12,13 @@ load(
     "declare_out",
     "terminal_image_command",
 )
-load("//image:sign.bzl", "SigningKeyInfo", "resolve_signing_key")
+load(
+    "//image:sign.bzl",
+    "SigningKeyInfo",
+    "external_signing_execution",
+    "merge_signing_access",
+    "resolve_signing_key",
+)
 load(":archive.bzl", "ImageArchiveInfo")
 load(
     ":disk.bzl",
@@ -68,6 +74,7 @@ def _encode_key(key: SigningKeyInfo | None) -> dict[str, typing.Any] | None:
     return {
         "certificate": key.certificate,
         "private_key": key.private_key,
+        "source": key.source,
     }
 
 def declare_uki(
@@ -89,6 +96,16 @@ def declare_uki(
     """Declare UKI generation from resolved image providers."""
     if sign_expected_pcr_key != None and secure_boot_key == None:
         fail("uki: sign_expected_pcr_key needs Secure Boot signing, which signs the UKI it seals")
+
+    # ukify has one pair of provider options for both keys, so it cannot load one from a provider and
+    # read the other from a file.
+    if sign_expected_pcr_key != None and sign_expected_pcr_key.source != secure_boot_key.source:
+        fail(
+            "uki: the Secure Boot and expected-PCR keys must come from the same source, got {!r} and {!r}".format(
+                secure_boot_key.source,
+                sign_expected_pcr_key.source,
+            )
+        )
     out = declare_out(ctx, identifier, "ukis", dir = True)
     # Declared next to the UKIs, not inside them: that directory is copied onto the ESP whole.
     modules = declare_out(ctx, identifier, "modules.json")
@@ -98,8 +115,10 @@ def declare_uki(
         if initrd.format != "cpio":
             fail("uki: initrd must be a cpio archive, got {!r}".format(initrd.format))
 
+    signing_access = merge_signing_access([secure_boot_key, sign_expected_pcr_key])
     cmd = terminal_image_command(
         ctx,
+        signing_access = signing_access,
         driver = "uki",
         exe = ctx.attrs._tools[ImageToolsInfo].uki,
         identifier = identifier,
@@ -125,7 +144,7 @@ def declare_uki(
             "version": version,
         },
     )
-    ctx.actions.run(cmd, category = "uki", identifier = identifier or "uki")
+    ctx.actions.run(cmd, category = "uki", identifier = identifier or "uki", **external_signing_execution(signing_access))
     return UkiInfo(modules = modules, ukis = out)
 
 def uki_subtargets(info: UkiInfo) -> dict[str, list[Provider]]:

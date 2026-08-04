@@ -34,6 +34,8 @@ class RootHash(TypedDict):
 class Key(TypedDict):
     private_key: str
     certificate: str
+    # OpenSSL key source in systemd's spelling, None for key material in the build graph.
+    source: str | None
 
 
 class Spec(finalize.ImageSpec):
@@ -95,6 +97,22 @@ def _cmdline(arguments: list[str], root_hash: Path | None, kind: str | None) -> 
     if not digest or any(character not in "0123456789abcdefABCDEF" for character in digest):
         raise SystemExit("uki: invalid verity root hash")
     return " ".join([*arguments, f"{parameter}={digest.lower()}"])
+
+
+def _provider_options(source: str) -> list[str]:
+    """ukify's spelling for keys it loads through an OpenSSL provider.
+
+    ukify names a provider rather than taking systemd's `provider:<name>` source, and translates it
+    for the systemd-sbsign and systemd-measure calls it makes.
+    """
+    prefix = "provider:"
+    if not source.startswith(prefix):
+        raise SystemExit(f"uki: ukify can only load a key through an OpenSSL provider, got {source!r}")
+    provider = source.removeprefix(prefix)
+    return [
+        "--signing-provider", provider,
+        "--certificate-provider", provider,
+    ]  # fmt: skip
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -171,15 +189,22 @@ def main(argv: list[str] | None = None) -> None:
                 "--secureboot-certificate", secure_boot["certificate"],
                 "--sign-kernel",
             ]  # fmt: skip
+            if secure_boot["source"]:
+                signing += _provider_options(secure_boot["source"])
         # ukify measures and signs the base and each joined profile separately. All profiles are
-        # signed by default; the explicit --sign-profile list is only needed when one opts out. The
-        # public key section (.pcrpkey) derives from the private key, so no --pcr-certificate is
-        # needed.
+        # signed by default; the explicit --sign-profile list is only needed when one opts out.
         if pcr:
             signing += [
                 "--pcr-banks", "sha256",
                 "--pcr-private-key", pcr["private_key"],
             ]  # fmt: skip
+            if pcr["source"]:
+                # Only the provider path passes the certificate: ukify's systemd-measure call requires
+                # one there. Everywhere else ukify derives the public key section (.pcrpkey) from the
+                # private key, which cannot mismatch, and passing the certificate instead would be a
+                # risk: nothing checks that certificate and key match, and a mismatch poisons .pcrpkey
+                # and the sealed policy without failing the build, surfacing only at unsealing.
+                signing += ["--pcr-certificate", pcr["certificate"]]
             if not all(profile["sign_expected_pcr"] for profile in profiles):
                 signing += ["--sign-profile", "main"]
                 for profile in profiles:

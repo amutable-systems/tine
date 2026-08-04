@@ -42,6 +42,8 @@ class Spec(finalize.ImageSpec):
     seed: str | None
     private_key: str | None
     certificate: str | None
+    # OpenSSL key source in systemd's spelling, None for key material in the build graph.
+    source: str | None
     definitions: list[dict[str, Any]]
     # Independent partitions copied into the result, and the new ones written out.
     partitions: list[ImportedPartitionSpec]
@@ -314,6 +316,8 @@ def main(argv: list[str] | None = None) -> None:
             cmd += ["--private-key", spec["private_key"]]
         if spec["certificate"]:
             cmd += ["--certificate", spec["certificate"]]
+        if spec["source"]:
+            cmd += ["--private-key-source", spec["source"], "--certificate-source", spec["source"]]
         # repart reads one variable per filesystem it formats and splits each on whitespace.
         env = os.environ | {
             f"SYSTEMD_REPART_MKFS_OPTIONS_{filesystem.upper()}": " ".join(options)
