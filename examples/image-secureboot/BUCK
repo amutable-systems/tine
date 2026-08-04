@@ -1,13 +1,14 @@
 """Bootable image signed for Secure Boot with development keys.
 
-The signing key is generated at build time by the `:signing` target and lives only in buck-out, so
-nothing secret is committed.
+The signing keys are generated at build time and live only in buck-out, so nothing secret is
+committed.
 """
 
 load(
     "@tine//image:defs.bzl",
     "DEFAULT_SIGNED_USR_VERITY_PARTITIONS",
     "bootable_disk_image",
+    "copy",
     "generate_signing_key",
     "image_vm",
     "install",
@@ -20,6 +21,9 @@ package_manager(
 )
 
 generate_signing_key(name = "signing")
+
+# A second key, so that a compromised expected-PCR policy key cannot also sign boot binaries.
+generate_signing_key(name = "pcr-signing")
 
 bootable_disk_image(
     name = "image",
@@ -37,14 +41,17 @@ bootable_disk_image(
             "util-linux",
             "dbus-broker",
         ]),
+        # The smoke test compares this against the public key the stub hands the booted system, to
+        # tell which key sealed the expected-PCR policy. Sealed under verity, so it cannot be swapped.
+        copy(":signing[cert]", "/usr/share/tine-example/secure-boot.crt"),
+        copy(":pcr-signing[cert]", "/usr/share/tine-example/expected-pcr.crt"),
     ],
-
-    # One key covers both roles for this demo example. It signs the UKIs (with a signed expected-PCR
-    # policy) and systemd-boot, puts auto-enrollment files onto the ESP, and signs the verity root hash.
-    # For a key that caches across workspaces, see pem_signing_key() under "Secure Boot signing" in
-    # images.md. In a production setup you should use two separate keys.
+    # This key signs the UKIs and systemd-boot, puts auto-enrollment files onto the ESP, and signs
+    # the verity root hash. For a key that caches across workspaces, see pem_signing_key() under
+    # "Secure Boot signing" in images.md.
     secure_boot_key = ":signing",
     verity_key = ":signing",
+    sign_expected_pcr_key = ":pcr-signing",
 )
 
 image_vm(
@@ -81,6 +88,15 @@ command_alias(
         # receiving this image as an update verify it before trusting it.
         "--check",
         "test -e /dev/disk/by-designator/usr-verity-sig",
+        # The stub hands the booted system the public key the expected-PCR policy is sealed with.
+        "--check",
+        "test -s /run/systemd/tpm2-pcr-public-key.pem",
+        # It must be the expected-PCR key, and not the Secure Boot one. Derive each in the guest and
+        # insist it is non-empty, so that a comparison against empty string doesn't accidentally pass.
+        "--check",
+        '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/expected-pcr.crt >/tmp/pcr.pem && test -s /tmp/pcr.pem && test "\\$(cat /tmp/pcr.pem)" = "\\$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
+        "--check",
+        '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/secure-boot.crt >/tmp/sb.pem && test -s /tmp/sb.pem && test "\\$(cat /tmp/sb.pem)" \'!=\' "\\$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
         "$(exe_target :vm)",
     ],
     exe = "tine//tests:boot-smoke",

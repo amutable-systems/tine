@@ -177,8 +177,9 @@ when needed:
   (defaults: target name and `0`; systemd architecture spelling, e.g. `x86-64`), the shape
   systemd-sysupdate UKI transfers match. Alternative kernel command lines are `uki_profile()` descriptors,
   which add boot profiles as separate sd-boot menu entries, each appending its arguments to the base kernel
-  command line; with a `secure_boot_key`, the UKI and its embedded kernel are signed for Secure Boot and
-  sealed with a signed expected-PCR 11 policy per profile (opt out per profile with `sign_expected_pcr`);
+  command line; with a `secure_boot_key`, the UKI and its embedded kernel are signed for Secure Boot, and
+  with a `sign_expected_pcr_key` they are sealed with a signed expected-PCR 11 policy per profile (opt out
+  per profile with `sign_expected_pcr`);
 - `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
   GPT disk and independent partition artifacts in one `RepartInfo`; its disk field is absent for a
   split-only invocation, and `output_size` composes the disk with free space behind its partitions;
@@ -249,6 +250,8 @@ Optional attributes:
   the composed file is enlarged behind the last one, so the added room costs nothing on disk and, as with
   `image_vm`'s `grow`, sits past the GPT backup header until something rewrites the table. A size the
   partitions do not fit in fails the build.
+- `sign_expected_pcr_key` (target providing `SigningKeyInfo`): Seals the expected-PCR policy; without one
+  the policy is not sealed. See "Secure Boot signing" below.
 - `initrd` (target label providing `ImageInfo`): A logical image whose tree becomes the initrd, replacing
   the default initrd package image. The rule consumes the resolved provider, archives it into the
   zstd-compressed cpio itself, and republishes the package database and SBOM that image already carries.
@@ -368,11 +371,18 @@ The injected per-commit version rebuilds only the artifacts that embed it, never
 ## Secure Boot signing
 
 `bootable_disk_image()` accepts a `secure_boot_key`, which names a target providing `SigningKeyInfo` (the
-private key and its certificate). It signs the UKIs (including a signed expected-PCR policy, see the `uki`
-rule above) and the systemd-boot binaries with `systemd-sbsign`, and `bootctl` places
-`loader/keys/auto/{PK,KEK,db}.auth` enrollment variables on the ESP: firmware in setup mode enrolls the
-certificate on first boot and then enforces Secure Boot. One key covers PE signing, the PCR policy, and
+private key and its certificate). It signs the UKIs and the systemd-boot binaries with `systemd-sbsign`, and
+`bootctl` places `loader/keys/auto/{PK,KEK,db}.auth` enrollment variables on the ESP: firmware in setup mode
+enrolls the certificate on first boot and then enforces Secure Boot. That key covers PE signing and
 enrollment.
+
+`sign_expected_pcr_key` seals the expected-PCR policy the UKIs carry (see the `uki` rule above). It requires
+Secure Boot signing, which signs the UKI whose measurements it seals. Each role names its own key, so
+sealing a policy with the Secure Boot key is something a caller spells out rather than gets by default. The
+two authorize different things: one says which boot binaries firmware may load, the other which measured
+boot states may unseal TPM secrets. Keeping them apart bounds a compromise of either one, and means only the
+policy key has to be reachable to re-seal a policy. Its certificate goes unused, because ukify derives the
+`.pcrpkey` section from the private key.
 
 The systemd-boot binary is signed inside the image tree, as a `.signed` sibling under
 `/usr/lib/systemd/boot/efi`, sealed under the verity root hash where the booted system's `bootctl update`
