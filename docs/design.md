@@ -181,11 +181,16 @@ phases. Pass another catalog package after `--`, for example
    snapshot composing package locations pinned in another builds nothing. `verify-catalog` skips this
    phase and checks the committed pins.
 1. Run every remote repository's `[snapshot]` sub-target on the host. The snapshot driver downloads and
-   verifies repository metadata, drops unused streams, validates package locations, and atomically writes
+   verifies repository metadata, drops unused streams, validates package locations, and writes
    deterministic, pure snapshot JSON. It does not carry packages forward from an earlier snapshot.
 2. Run the selected boxes' `[resolve]` sub-targets against the freshly pinned repository trees and
    atomically replace their optional frozen transactions. The target box's release, repository
    selection, package list, and architecture define the solve.
+
+Both phases take the result from the driver's stdout: a resolve runs in a sandbox that binds the project
+and nothing else, so stdout is the one destination that needs no writable path. The tool then atomically
+replaces the committed file, or, for `verify-catalog`, compares in memory and leaves the checkout as it
+found it.
 
 The catalog tool asks Buck for the selected package's canonical targets and derives the snapshot directory
 from their canonical cell and package. `--box` limits which box transactions are resolved, and scopes
@@ -1043,8 +1048,8 @@ the image layer driver writes an install spec for the package installer.
 
 Two exceptions are deliberate. A planner keeps its verb on the command line, since each verb has its own
 spec schema. Both it and the snapshot driver keep `--out` there too: their `[resolve]` and `[snapshot]` run
-targets let a caller name the file to write, and one calling convention per driver beats splitting the
-destination by verb.
+targets let a caller name the file to write, or `-` for stdout when it has nowhere to write one, and one
+calling convention per driver beats splitting the destination by verb.
 
 ### Store image layers as deltas
 

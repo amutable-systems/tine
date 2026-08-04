@@ -7,7 +7,8 @@ means editing the pin.
 Remote box-lock entries retain their package transports, so a repository's package pool keeps
 the committed box available after its repodata advances.
 
-The host orchestrator discovers refresh subtargets and appends only output paths.
+The host orchestrator discovers refresh subtargets and takes each result from the driver's stdout,
+so refreshing and verifying run one command and only the host decides where an output belongs.
 Nested Buck reuses the invoking daemon through the inherited isolation directory.
 """
 
@@ -18,13 +19,10 @@ import itertools
 import json
 import subprocess
 import sys
-import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
-from util import urlopen, with_retries
-
-VERIFY_PREFIX = ".catalog-verify."
+from util import atomic_write_text, urlopen, with_retries
 
 DEFAULT_CATALOG = "tine//catalog"
 BOX_LABEL = "tine:box"
@@ -78,9 +76,16 @@ def _repository_snapshot_path(target: str) -> Path:
     return _snapshot_path(target, "repo", ".repository")
 
 
-def _run(buck: str, target: str, args: list[str]) -> None:
+def _run(buck: str, target: str) -> str:
+    """Run a refresh subtarget, returning what it wrote to stdout.
+
+    Buck execs the target rather than piping it, and its own output is on stderr, so stdout is
+    the driver's alone. That is the only channel out: the hermetic sandbox a driver runs in binds
+    the project and nothing else, so a path outside it would land in the sandbox's own tmpfs.
+    """
     # Mute nested Buck while preserving driver progress on stderr.
-    subprocess.run([buck, "-v", "0", "run", target, "--console", "none", "--", *args], check=True)
+    command = [buck, "-v", "0", "run", target, "--console", "none", "--", "--out", "-"]
+    return subprocess.run(command, check=True, stdout=subprocess.PIPE, encoding="utf-8").stdout
 
 
 def _pinned_repositories(buck: str, catalog: str, label: str, prefix: str) -> dict[str, dict[str, str]]:
@@ -211,17 +216,15 @@ def _advance_snapshots(buck: str, catalog: str, catalog_dir: Path, selected: lis
         _advance(pinned, wanted, newest, declaration, attribute)
 
 
-def _snapshot(buck: str, target: str, out: Path) -> None:
-    """Atomically replace a repository snapshot with its current pure metadata."""
+def _snapshot(buck: str, target: str) -> str:
+    """One repository's current pure metadata."""
     print(f"==> snapshotting {_name_of(target)} (via {target}[snapshot])", file=sys.stderr)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    _run(buck, f"{target}[snapshot]", ["--out", str(out)])
+    return _run(buck, f"{target}[snapshot]")
 
 
-def _resolve(buck: str, target: str, out: Path) -> None:
+def _resolve(buck: str, target: str) -> str:
     print(f"==> resolving {_name_of(target)} (via {target}[resolve])", file=sys.stderr)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    _run(buck, f"{target}[resolve]", ["--out", str(out)])
+    return _run(buck, f"{target}[resolve]")
 
 
 def _select_boxes(all_resolves: list[str], selected_boxes: list[str] | None) -> list[str]:
@@ -250,11 +253,11 @@ def _refresh(
     catalog: str,
     selected_boxes: list[str] | None,
     advance_snapshots: bool,
-    destination: Path | None = None,
-) -> tuple[Path, list[Path]]:
-    """Snapshot repositories and resolve selected boxes into `destination`, the catalog by default.
+) -> Iterator[tuple[Path, str]]:
+    """Snapshot repositories and resolve selected boxes, yielding each result and where it belongs.
 
-    Returns the catalog directory and what was written, relative to whichever it was written to.
+    Nothing is written here, so a verify regenerates through the same commands a refresh does and
+    still leaves the checkout exactly as it found it.
 
     Selecting boxes also scopes the snapshotted repositories to those the boxes depend on, so a
     partial refresh or verify never touches a repository outside the selection.
@@ -270,23 +273,17 @@ def _refresh(
     if not targets:
         raise SystemExit(f"catalog: no repository/box refresh targets found in {catalog}")
     catalog_dir = _catalog_directory(buck, targets)
-    out_dir = destination if destination is not None else catalog_dir
     if advance_snapshots:
         _advance_snapshots(buck, catalog, catalog_dir, snapshots)
 
-    written = []
     for target in snapshots:
-        written.append(_repository_snapshot_path(target))
-        _snapshot(buck, target, out_dir / written[-1])
+        yield catalog_dir / _repository_snapshot_path(target), _snapshot(buck, target)
 
     for target in resolves:
-        written.append(_box_snapshot_path(target))
-        _resolve(buck, target, out_dir / written[-1])
-
-    return catalog_dir, written
+        yield catalog_dir / _box_snapshot_path(target), _resolve(buck, target)
 
 
-def _differences(committed: Path, regenerated: Path, limit: int = 24) -> str:
+def _differences(committed: Path, regenerated: str, limit: int = 24) -> str:
     """What a regenerated file says that the committed one does not, bounded.
 
     A snapshot runs to tens of thousands of lines, so a full diff of one is unreadable and a diff
@@ -295,7 +292,7 @@ def _differences(committed: Path, regenerated: Path, limit: int = 24) -> str:
     if not committed.exists():
         return f"{committed}: not committed yet\n"
     expected = committed.read_text(encoding="utf-8").splitlines(keepends=True)
-    actual = regenerated.read_text(encoding="utf-8").splitlines(keepends=True)
+    actual = regenerated.splitlines(keepends=True)
     if expected == actual:
         return ""
     diff = difflib.unified_diff(expected, actual, fromfile=str(committed), tofile="regenerated", n=0)
@@ -331,28 +328,14 @@ def main(argv: list[str] | None = None) -> None:
 
     # Run nested commands from the project root so wrappers resolve consistently.
     with contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")) as _:
+        regenerated = _refresh(args.buck, catalog, args.box, advance_snapshots=not args.verify)
         if not args.verify:
-            _refresh(args.buck, catalog, args.box, advance_snapshots=True)
+            for path, content in regenerated:
+                atomic_write_text(path, content)
             return
 
-        # Regenerate beside the catalog rather than over it, so a verify that fails, or dies,
-        # leaves the checkout exactly as it found it. It has to stay inside the project: the
-        # `[resolve]` sub-target runs in a sandbox that binds the project and nothing else, so an
-        # output anywhere else would land in the sandbox's own tmpfs.
-        with tempfile.TemporaryDirectory(dir=".", prefix=VERIFY_PREFIX) as scratch:
-            catalog_dir, written = _refresh(
-                args.buck,
-                catalog,
-                args.box,
-                advance_snapshots=False,
-                destination=Path(scratch),
-            )
-            print("==> verifying the committed catalog matches", file=sys.stderr)
-            stale = [
-                report
-                for relative in written
-                if (report := _differences(catalog_dir / relative, Path(scratch) / relative))
-            ]
+        print("==> verifying the committed catalog matches", file=sys.stderr)
+        stale = [report for path, content in regenerated if (report := _differences(path, content))]
 
     if stale:
         for report in stale:

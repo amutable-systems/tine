@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import IO, Any, TypedDict
 
 import specs
-from util import atomic_text_writer, urlopen, with_retries
+from util import text_destination, urlopen, with_retries
 
 AGENT = "tine-snapshot"
 
@@ -122,8 +122,8 @@ def _write_packages(output: IO[str], packages: Mapping[str, PackageEntry]) -> No
 
 
 def write_snapshot(path: Path, snapshot: Mapping[str, Any]) -> None:
-    """Atomically replace a snapshot with deterministic, reviewable UTF-8 JSON."""
-    with atomic_text_writer(path) as output:
+    """Write a snapshot as deterministic, reviewable UTF-8 JSON, replacing a path atomically."""
+    with text_destination(path) as output:
         output.write("{\n")
         keys = sorted(snapshot)
         for index, key in enumerate(keys):
@@ -145,10 +145,11 @@ def run(prog: str, inventory: Callable[[Any], Mapping[str, Any]], argv: list[str
     """
     parser = argparse.ArgumentParser(prog=prog)
     specs.add_argument(parser)
-    parser.add_argument("--out", required=True, help="snapshot path to write")
+    parser.add_argument("--out", required=True, help="snapshot path to write, or `-` for stdout")
     args = parser.parse_args(argv)
 
     snapshot = inventory(specs.load(args.spec, prog=prog))
     out = Path(args.out)
     write_snapshot(out, snapshot)
-    print(f"wrote {out} ({len(snapshot['packages'])} packages)", file=sys.stderr)
+    where = "stdout" if str(out) == "-" else str(out)
+    print(f"wrote {where} ({len(snapshot['packages'])} packages)", file=sys.stderr)

@@ -25,7 +25,7 @@ execution_platforms = prelude//platforms:default
 [project]
 # VCS state, local build trees, and tool caches must not invalidate Buck's file watcher. `**/target` covers any
 # directory of that name, the case that motivates it being a cargo build run by hand in a checkout.
-ignore = .git, .jj, **/.git, **/.jj, **/buck-out, **/target, **/.ruff_cache, .catalog-verify.*
+ignore = .git, .jj, **/.git, **/.jj, **/buck-out, **/target, **/.ruff_cache
 
 [buck2]
 materializations = deferred
