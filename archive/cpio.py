@@ -9,8 +9,8 @@ import errno
 import mmap
 import os
 import stat
-from collections.abc import Buffer, Iterator
-from pathlib import Path
+from collections.abc import Buffer, Iterable, Iterator
+from pathlib import Path, PurePath, PurePosixPath
 from typing import NamedTuple, Self
 
 MAGIC = b"070701"
@@ -278,33 +278,41 @@ class Writer:
         self._fd = -1
 
 
-def pack_tree(
-    tree: Path, out: Path, epoch: int, *, subtree: str | None = None, exclude: tuple[str, ...] = ()
-) -> int:
-    """Pack a tree or subtree into `out`, optionally filtering entries by glob."""
-    tree = Path(tree)
-    if subtree is not None:
-        parts = Path(subtree).parts
-        paths = [tree.joinpath(*parts[:i]) for i in range(1, len(parts) + 1)]
-        paths += sorted((tree / subtree).rglob("*"))
+def _add(w: Writer, tree: Path, path: Path) -> bool:
+    """Add one path under `tree`; false for a type an initramfs has no use for."""
+    st = path.lstat()
+    name = str(path.relative_to(tree))
+    mode = stat.S_IMODE(st.st_mode)
+    mtime = int(st.st_mtime)
+    if stat.S_ISDIR(st.st_mode):
+        w.add_dir(name, mode=mode, mtime=mtime)
+    elif stat.S_ISLNK(st.st_mode):
+        w.add_symlink(name, os.readlink(path), mtime=mtime)
+    elif stat.S_ISREG(st.st_mode):
+        w.add_file(name, path, mode=mode, mtime=mtime)
     else:
-        paths = sorted(tree.rglob("*"))
+        return False  # devices/fifos/sockets: unneeded in an initramfs (systemd mounts /dev)
+    return True
+
+
+def pack_tree(tree: Path, out: Path, epoch: int) -> int:
+    """Pack a whole tree into `out`."""
+    tree = Path(tree)
     count = 0
     with Writer(out, epoch) as w:
-        for path in paths:
-            if any(path.relative_to(tree).full_match(pattern) for pattern in exclude):
-                continue
-            st = path.lstat()
-            name = str(path.relative_to(tree))
-            mode = stat.S_IMODE(st.st_mode)
-            mtime = int(st.st_mtime)
-            if stat.S_ISDIR(st.st_mode):
-                w.add_dir(name, mode=mode, mtime=mtime)
-            elif stat.S_ISLNK(st.st_mode):
-                w.add_symlink(name, os.readlink(path), mtime=mtime)
-            elif stat.S_ISREG(st.st_mode):
-                w.add_file(name, path, mode=mode, mtime=mtime)
-            else:
-                continue  # devices/fifos/sockets: unneeded in an initramfs (systemd mounts /dev)
-            count += 1
+        for path in sorted(tree.rglob("*")):
+            count += _add(w, tree, path)
+    return count
+
+
+def pack_paths(tree: Path, out: Path, epoch: int, paths: Iterable[str | PurePath]) -> int:
+    """Pack exactly the given tree-relative paths into `out`.
+
+    Sorting is what puts a directory before its contents, which the kernel's unpacker needs.
+    """
+    tree = Path(tree)
+    count = 0
+    with Writer(out, epoch) as w:
+        for rel in sorted({PurePosixPath(path) for path in paths}):
+            count += _add(w, tree, tree / rel)
     return count

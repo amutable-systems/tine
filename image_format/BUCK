@@ -40,3 +40,10 @@ python_bootstrap_binary(
     ],
     visibility = ["PUBLIC"],
 )
+
+# The default module list is data, so the unit tests read the same file the uki rule defaults to.
+export_file(
+    name = "modules-src",
+    src = "modules.bzl",
+    visibility = ["tine//tests:unit-test"],
+)

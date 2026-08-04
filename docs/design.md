@@ -648,7 +648,15 @@ It then combines that image and the derived `ImageArchiveInfo` into `InitrdInfo`
 this provider directly and publishes the same instance from `[initrd]`, so both interfaces describe exactly
 the same initrd.
 
-`uki.py` appends the kernel-modules cpio and runs `ukify`; the UKI is named
+`uki.py` appends the kernel-modules cpio and runs `ukify`. That cpio carries the modules `initrd_modules`
+selects, closed over their dependencies and their firmware with libkmod, which reads the image's own depmod
+index and no configuration from the engine; `/usr` keeps the full set for the booted system. The pattern
+syntax is mkosi's `KernelModules=`, minus the convenience of retrying a leading-slash pattern below
+`kernel/`, so a leading slash anchors instead; `re:` regexes and the `host` value have no equivalent, the
+latter because reading the build host's loaded modules is not hermetic. `DEFAULT_INITRD_MODULES` is
+mkosi-initrd's list, so an image moving onto tine from `KernelInitrdModules=default` keeps the module set it
+had. One list serves kernels that ship different sets of modules, so a pattern matching nothing is reported
+rather than fatal, in the manifest the rule publishes beside the UKI. The UKI is named
 `<image_id>_<version>_<arch>.efi` from the image identity. For now an image holds exactly one kernel — the
 name (and sysupdate's matching of it) could not distinguish more. If several kernels per image ever become
 a requirement, add naming configuration to `uki()` to disambiguate them. The ESP layer copies the UKI

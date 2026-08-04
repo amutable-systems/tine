@@ -10,10 +10,13 @@ engine_unittest(
     engine = "//box:dev.engine",
     srcs = {"tests/" + f: f for f in glob(["__init__.py", "test_*.py"])}
     | {
+        "archive/cpio.py": "//archive:cpio-src",
         "cargo/build.py": "//cargo:build-src",
         "cargo/lock.bzl": "//cargo:lock-src",
         "cargo/vendor.py": "//cargo:vendor-src",
         "go/build.py": "//go:build-src",
+        "image/kmod.py": "//image:kmod-src",
+        "image_format/modules.bzl": "//image_format:modules-src",
         "specs.py": "//:specs-src",
         "tools/importer": "//tools:importer-src",
         "tools/version.py": "//tools:version-src",

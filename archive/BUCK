@@ -5,3 +5,9 @@ python_bootstrap_library(
     srcs = ["cpio.py"],
     visibility = ["tine//..."],
 )
+
+export_file(
+    name = "cpio-src",
+    src = "cpio.py",
+    visibility = ["tine//tests:unit-test"],
+)
