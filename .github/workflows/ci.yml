@@ -9,7 +9,9 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # a run on main records whether that commit is green, so let it finish even after the next merge
+  # has landed
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
