@@ -171,6 +171,26 @@ Any operation may be attached, not only copies, and the operations are spliced i
 still decides where in its own order they land. An `image_install` target may itself `install_from()`
 another, which composes; a cycle is rejected by Buck as a target cycle.
 
+### Installing a file a project ships as a template
+
+A project that expects its build system to fill in a prefix or a port commits the file with markers and a
+`sed` in its install recipe. `substitute()` runs that expansion as a build action, so the values live in
+the declaration that installs the file and the result is an artifact like any other:
+
+```python
+substitute(
+    name = "project-http.service",
+    src = ":project.checkout[contrib/project-http.service.in]",
+    replacements = {"@bindir@": "/usr/bin", "@port@": "555"},
+)
+
+copy(":project-http.service", "/usr/lib/systemd/system/project-http.service")
+```
+
+The output is named after the target. Each placeholder has to appear in the template, so a project
+renaming one fails the build rather than leaving a marker in an installed file, and the template's mode
+carries over, so a substituted script stays executable.
+
 Every `ImageInfo` carries its canonical lazy SBOM artifacts, and a package database whenever the image has
 a package manager. The same
 artifacts are exposed as subtargets, and `ImageSbomInfo` remains available for consumers that need only the
