@@ -49,9 +49,11 @@ load(
 load(
     ":image.bzl",
     _ImageInfo = "ImageInfo",
+    _ImageInstallInfo = "ImageInstallInfo",
     _ImageSbomInfo = "ImageSbomInfo",
     _copy = "copy",
     _image = "image",
+    _install_from = "install_from",
     _install_package_set = "install_package_set",
     _install_packages = "install_packages",
     _install_systemd_boot = "install_systemd_boot",
@@ -62,6 +64,7 @@ load(
     _run = "run",
     _symlink = "symlink",
 )
+load(":install.bzl", _image_install = "image_install")
 load(
     ":sign.bzl",
     _SigningKeyInfo = "SigningKeyInfo",
@@ -75,6 +78,7 @@ image = _image
 run = _run
 python = _python
 install_packages = _install_packages
+install_from = _install_from
 install_package_set = _install_package_set
 mkdir = _mkdir
 symlink = _symlink
@@ -96,6 +100,7 @@ format_partition_labels = _format_partition_labels
 disk_convert = _disk_convert
 image_vm = _image_vm
 generate_signing_key = _generate_signing_key
+image_install = _image_install
 pem_signing_key = _pem_signing_key
 SigningKeyInfo = _SigningKeyInfo
 
@@ -116,6 +121,7 @@ DISK_FORMATS = _DISK_FORMATS
 
 # Providers.
 ImageInfo = _ImageInfo
+ImageInstallInfo = _ImageInstallInfo
 ImageSbomInfo = _ImageSbomInfo
 ImageArchiveInfo = _ImageArchiveInfo
 ImageDirectoryInfo = _ImageDirectoryInfo

@@ -137,10 +137,39 @@ ordered operation sequence in one action and persists exactly one delta:
   delta, because the project bind carrying it lives under `/run`.
 - `copy` introduces a declared Buck artifact at an absolute image path; `mkdir`, `symlink`, and `remove`
   mutate the same root.
+- `install_from` applies the operations another target attaches to itself (see below).
 
 `image()` recursively flattens operation lists, allowing reusable helpers to return ordered groups of
 operations; `rootfs_archive`, `sysext_image`, and `bootable_disk_image` accept the same nested groups.
 Materialize a complete logical image explicitly with `image_directory`.
+
+### Attaching install operations to a target
+
+How a project installs is a property of the project, not of each image carrying it. `image_install()`
+attaches operations to a target, and an image applies them with one `install_from()`:
+
+```python
+image_install(
+    name = "project.install",
+    ops = [
+        copy(":project[project-cli]", "/usr/bin/project-cli"),
+        copy(":project.checkout[tmpfiles.d]", "/usr/lib/tmpfiles.d"),
+    ],
+)
+
+bootable_disk_image(
+    name = "os",
+    ops = [
+        install_packages([...]),
+        install_from(":project.install"),
+    ],
+    ...
+)
+```
+
+Any operation may be attached, not only copies, and the operations are spliced in place, so the image
+still decides where in its own order they land. An `image_install` target may itself `install_from()`
+another, which composes; a cycle is rejected by Buck as a target cycle.
 
 Every `ImageInfo` carries its canonical lazy SBOM artifacts, and a package database whenever the image has
 a package manager. The same
