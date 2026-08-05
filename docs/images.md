@@ -384,10 +384,9 @@ Development images can source a key in two ways:
   `//examples/image-secureboot`. Nothing is committed and no manual step is needed. Every workspace, and
   every build after `buck clean`, mints a different key, so all signed artifacts rebuild and each
   workspace's images enroll a different certificate.
-- `pem_signing_key()` adopts PEM files committed in the consuming project, the pattern of mkosi's
-  `mkosi.key`/`mkosi.crt`. Stable inputs keep the whole signed image graph cacheable, and every build
-  enrolls the same certificate. Such a key is public to everyone with repository access: use it for test
-  images only, and never enroll it on real hardware.
+- `pem_signing_key()` adopts PEM files committed in the consuming project. Stable inputs keep the whole
+  signed image graph cacheable, and every build enrolls the same certificate. Such a key is public to
+  everyone with repository access: use it for test images only, and never enroll it on real hardware.
 
 Either way, keep production signing behind a dedicated boundary (see the design plan).
 
