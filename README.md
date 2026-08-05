@@ -36,13 +36,13 @@ Images are declared in ordinary `BUCK` files ([examples/image/BUCK](examples/ima
 demos):
 
 ```python
-load("@tine//image:defs.bzl", "chroot", "install", "rootfs_archive")
+load("@tine//image:defs.bzl", "chroot", "install_packages", "rootfs_archive")
 
 rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
     ops = [
-        install(["bash", "coreutils"]),
+        install_packages(["bash", "coreutils"]),
         chroot(["/usr/bin/bash", "-c", "echo built-by-tine > /etc/tine/marker"]),
     ],
     format = "tar",

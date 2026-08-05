@@ -6,7 +6,7 @@ it builds. `hello/` plays that checkout.
 
 load("@tine//engine:build.bzl", "engine")
 load("@tine//go:rules.bzl", "go_package")
-load("@tine//image:defs.bzl", "copy", "install", "rootfs_archive")
+load("@tine//image:defs.bzl", "copy", "install_packages", "rootfs_archive")
 load("@tine//package:manager.bzl", "package_manager")
 
 # The build environment for our Go projects; it never reaches an image.
@@ -52,7 +52,7 @@ rootfs_archive(
         # No runtime packages needed: neither project imports anything that pulls in cgo, so both
         # binaries are static. The filesystem skeleton still comes from its package, giving the
         # copies below their place to land.
-        install(["filesystem"]),
+        install_packages(["filesystem"]),
         copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
         copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
     ],

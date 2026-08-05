@@ -11,7 +11,7 @@ load(
     "copy",
     "generate_signing_key",
     "image_vm",
-    "install",
+    "install_packages",
 )
 load("@tine//package:manager.bzl", "package_manager")
 
@@ -30,7 +30,7 @@ bootable_disk_image(
     package_manager = ":image.package-manager",
     definitions = DEFAULT_SIGNED_USR_VERITY_PARTITIONS,
     ops = [
-        install([
+        install_packages([
             "kernel-core",
             "systemd",
             "systemd-udev",

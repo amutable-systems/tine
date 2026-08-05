@@ -229,11 +229,11 @@ def python(cmd: list[str | Artifact], env: dict[str, str] = {}, chroot: bool = F
 def _environment(env: dict[str, str]) -> dict[str, str]:
     return {name: env[name] for name in sorted(env)}
 
-def install(packages: list[str]) -> LayerOperation:
+def install_packages(packages: list[str]) -> LayerOperation:
     """Install native packages using the layer's package manager."""
     if not packages:
-        fail("install: packages must not be empty")
-    return ("install", sorted(packages))
+        fail("install_packages: packages must not be empty")
+    return ("install_packages", sorted(packages))
 
 def install_package_set(name: str) -> LayerOperation:
     """Install a package set supplied by the image's OS release."""
@@ -333,7 +333,7 @@ def _encode_operation(operation: LayerOperation) -> LayerOperation:
     )
 
 def _install_specs(operation: tuple, package_sets: dict[str, list[str]] | None) -> list[str] | None:
-    if operation[0] != "install":
+    if operation[0] != "install_packages":
         if operation[0] != "install_package_set":
             return None
         if package_sets == None:
@@ -459,7 +459,7 @@ def declare_image(
         if install_specs != None:
             fail("image: at most one install operation is allowed per layer")
         install_specs = specs
-        operations.append(("install", specs))
+        operations.append(("install_packages", specs))
 
     if ops:
         closure = None
@@ -543,7 +543,7 @@ IMAGE_OPERATION_ATTR = attrs.one_of(
         attrs.bool(),
     ),
     attrs.tuple(
-        attrs.enum(["install"]),
+        attrs.enum(["install_packages"]),
         attrs.list(attrs.string()),
     ),
     attrs.tuple(

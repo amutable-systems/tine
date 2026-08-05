@@ -169,7 +169,7 @@ def _apply(
     """Apply one operation with its requested view of the mounted root."""
     operation = _operation(value)
     match operation:
-        case ["install", _packages]:
+        case ["install_packages", _packages]:
             if install is None:
                 raise SystemExit("image install operation has no package installer")
             _install(install, target, scratch)
@@ -202,7 +202,7 @@ def main(argv: list[str] | None = None) -> None:
         if operation[0] == "copy" and len(operation) == 3 and isinstance(operation[1], str):
             operation[1] = str(Path(operation[1]).absolute())
     install = spec["install"]
-    install_count = sum(operation[0] == "install" for operation in operations)
+    install_count = sum(operation[0] == "install_packages" for operation in operations)
     if install_count > 1:
         raise SystemExit("image layer allows at most one install operation")
     if bool(install_count) != (install is not None):
