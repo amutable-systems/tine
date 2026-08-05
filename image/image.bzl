@@ -186,6 +186,11 @@ def image_providers(
         image.sbom,
     ] + extra
 
+ImageInstallInfo = provider(
+    doc = "Operations a target contributes to any image installing it.",
+    fields = {"operations": provider_field(list[typing.Any])},
+)
+
 LayerOperation = tuple
 
 # Recursive type aliases are unavailable, so nested lists become dynamic at this boundary.
@@ -256,6 +261,24 @@ def remove(path: str) -> LayerOperation:
 def copy(source: str | Artifact, destination: str) -> LayerOperation:
     """Copy a declared artifact to an absolute path in the image."""
     return ("copy", source, destination)
+
+def install_from(target: str) -> LayerOperation:
+    """Apply the operations an `image_install()` target attaches to itself."""
+    return ("install_from", target)
+
+def expand_install_operations(ops: list[typing.Any]) -> list[typing.Any]:
+    """Splice each install_from target's own operations in place.
+
+    One pass suffices at every level: a target's provider already carries expanded operations, and
+    Starlark has neither recursion nor a while loop to do it any other way.
+    """
+    expanded = []
+    for operation in ops:
+        if operation[0] == "install_from":
+            expanded += operation[1][ImageInstallInfo].operations
+        else:
+            expanded.append(operation)
+    return expanded
 
 def merge_os_release(fields: dict[str, str]) -> LayerOperation:
     """Merge quoted KEY="value" assignments into the image's /usr/lib/os-release."""
@@ -451,7 +474,7 @@ def declare_image(
         package_sets = package_manager[PackageManagerInfo].package_sets
     install_specs = None
     operations = []
-    for operation in ops:
+    for operation in expand_install_operations(ops):
         specs = _install_specs(operation, package_sets)
         if specs == None:
             operations.append(operation)
@@ -568,6 +591,10 @@ IMAGE_OPERATION_ATTR = attrs.one_of(
         attrs.enum(["copy"]),
         attrs.source(allow_directory = True),
         attrs.string(),
+    ),
+    attrs.tuple(
+        attrs.enum(["install_from"]),
+        attrs.dep(providers = [ImageInstallInfo]),
     ),
     attrs.tuple(
         attrs.enum(["os_release"]),

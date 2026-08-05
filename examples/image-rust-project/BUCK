@@ -6,7 +6,7 @@ it builds. `hello/` plays that checkout.
 
 load("@tine//cargo:rules.bzl", "cargo_package")
 load("@tine//engine:build.bzl", "engine")
-load("@tine//image:defs.bzl", "copy", "install_packages", "rootfs_archive")
+load("@tine//image:defs.bzl", "copy", "image_install", "install_from", "install_packages", "mkdir", "rootfs_archive")
 load("@tine//package:manager.bzl", "package_manager")
 
 # The build environment for our Rust projects; it never reaches an image.
@@ -38,6 +38,17 @@ cargo_package(
     engine = ":rust.engine",
 )
 
+# How these binaries install, declared beside the projects rather than repeated by every image that
+# installs them. Any image operation may be attached, not only copies.
+image_install(
+    name = "demo.install",
+    ops = [
+        copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
+        copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
+        mkdir("/usr/share/hello", mode = "0755"),
+    ],
+)
+
 package_manager(
     name = "image.package-manager",
     base = "tine//catalog:fedora.rawhide.package-manager",
@@ -50,8 +61,7 @@ rootfs_archive(
     ops = [
         # Rust links against glibc.
         install_packages(["glibc"]),
-        copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
-        copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
+        install_from(":demo.install"),
     ],
     format = "tar",
 )
