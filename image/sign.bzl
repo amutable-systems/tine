@@ -168,6 +168,37 @@ def _check_host_path(what: str, path: str) -> str:
         fail("pkcs11_signing_key: {} must not name a build artifact, got {!r}".format(what, path))
     return path
 
+def config_signing_key(name: str, section: str = "signing", token_key: str = "token") -> None:
+    """Declare a signing key that build configuration switches to a PKCS#11 token.
+
+    With `-c <section>.<token_key>=<label>` the key lives in that token, addressed through
+    `<section>.pin-file` and `<section>.socket`; without it a development key pair is generated per
+    workspace. One image definition thereby serves development builds and externally signed ones.
+    """
+    token = read_config(section, token_key)
+    if token == None:
+        generate_signing_key(name = name)
+        return
+
+    # Naming a token is the intent to sign with it, so incomplete coordinates are a mistake rather
+    # than a reason to fall back to a generated key
+    coordinates = {key: read_config(section, key) for key in ("pin-file", "socket")}
+    missing = [key for key in sorted(coordinates) if not coordinates[key]]
+    if missing:
+        fail(
+            "config_signing_key: {}.{} names a token; requires configuring {}".format(
+                section,
+                token_key,
+                ", ".join(["{}.{}".format(section, key) for key in missing]),
+            ),
+        )
+    pkcs11_signing_key(
+        name = name,
+        pin_file = coordinates["pin-file"],
+        socket = coordinates["socket"],
+        token = token,
+    )
+
 def _pkcs11_signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
     token = _check_label("token", ctx.attrs.token)
     object = _check_label("object", ctx.attrs.object or token)
