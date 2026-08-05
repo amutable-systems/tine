@@ -55,7 +55,7 @@ class Spec(finalize.ImageSpec):
     image_id: str
     version: str
     secure_boot: SecureBoot | None
-    # Seals the expected-PCR policy; None reuses the Secure Boot key.
+    # Seals the expected-PCR policy; None leaves it unsealed.
     sign_expected_pcr_private_key: str | None
 
 
