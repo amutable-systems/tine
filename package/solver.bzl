@@ -26,7 +26,7 @@ def solve_command(
         chroot_run(engine = engine, exe = system.plan),
         "solve",
         spec_args(
-            ctx,
+            ctx.actions,
             spec_name,
             {
                 "arch": arch,
@@ -56,7 +56,7 @@ def _solver_cache_impl(ctx: AnalysisContext) -> list[Provider]:
             chroot_run(engine = engine, exe = system.plan),
             "make-cache",
             spec_args(
-                ctx,
+                ctx.actions,
                 "make-cache.spec.json",
                 {
                     "arch": ctx.attrs.arch,

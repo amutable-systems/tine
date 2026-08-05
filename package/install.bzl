@@ -111,7 +111,7 @@ def _install_actions(
     cmd = cmd_args(
         chroot_run(engine = package_manager.engine[EngineInfo], exe = system.install),
         spec_args(
-            ctx,
+            ctx.actions,
             "install.spec.json",
             {
                 "docs": True,

@@ -7,11 +7,12 @@ load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
 
 _LOCK = "Cargo.lock"
 _MANIFEST = "Cargo.toml"
+_RESOLVED = "lock.json"
 
 # Output names the rule declares for itself, vendor.bzl's among them. A binary sharing one collides in
 # the output namespace, which buck reports as a duplicate path in buck-out rather than as the
 # declaration being wrong.
-_RESERVED = ("crate", "crates", "src", "target", "vendor")
+_RESERVED = ("crate", "crates", "git", _RESOLVED, "src", "target", "vendor")
 
 def _named(srcs: list[Artifact], name: str) -> list[Artifact]:
     return [src for src in srcs if src.short_path.rsplit("/", 1)[-1] == name]
@@ -63,48 +64,81 @@ def _workspace(label: Label, srcs: list[Artifact]) -> (Artifact | None, str):
         fail("cargo_package {}: srcs hold no {} beside the {}".format(label.name, _MANIFEST, _LOCK))
     return (locks[0] if locks else None), root
 
-def _git_fetch_impl(ctx: AnalysisContext) -> list[Provider]:
-    git_dir = ctx.actions.declare_output(".git", dir = True)
-    work_tree = ctx.actions.declare_output("work-tree", dir = True)
-    ctx.actions.run(
-        cmd_args(
-            ctx.attrs._tool[RunInfo],
-            cmd_args(git_dir.as_output(), format = "--git-dir={}"),
-            cmd_args(work_tree.as_output(), format = "--work-tree={}"),
-            cmd_args(ctx.attrs.repo, format = "--repo={}"),
-            cmd_args(ctx.attrs.rev, format = "--rev={}"),
-        ),
-        category = "git_fetch",
-        local_only = True,
-    )
-    return [DefaultInfo(default_output = git_dir, other_outputs = [work_tree])]
+def _cargo_build_impl(
+    actions: AnalysisActions,
+    auditable: cmd_args,
+    binaries: dict[str, OutputArtifact],
+    build: RunInfo,
+    fetch: RunInfo,
+    lock: ArtifactValue,
+    name: str,
+    root: str,
+    src: Artifact,
+    target: OutputArtifact,
+    vendor: RunInfo,
+) -> list[Provider]:
+    """Declare everything the lock names, once it has been built and can be read."""
+    resolved = lock.read_json()
+    repositories = {}
+    for commit, fields in git_sources(name, resolved).items():
+        # The prelude's git_fetch tool, run directly rather than through its rule: that rule hands
+        # out the work tree, and cargo resolves a replaced git source against the repository.
+        git_dir = actions.declare_output("git", commit[:12] + ".git", dir = True)
+        work_tree = actions.declare_output("git", commit[:12] + ".work-tree", dir = True)
+        actions.run(
+            cmd_args(
+                fetch,
+                cmd_args(git_dir.as_output(), format = "--git-dir={}"),
+                cmd_args(work_tree.as_output(), format = "--work-tree={}"),
+                cmd_args(fields["git"], format = "--repo={}"),
+                cmd_args(commit, format = "--rev={}"),
+            ),
+            category = "git_fetch",
+            identifier = commit[:12],
+            local_only = True,
+        )
+        repositories[commit] = {"fields": fields, "repo": git_dir}
 
-# The prelude's git_fetch rule, except that it hands out the repository rather than the checked-out
-# work tree: cargo resolves a replaced git source against a repository. The fetch itself, prelude
-# tool and all, is unchanged; this rule goes away if the prelude ever exposes the .git output.
-_git_fetch = rule(
-    impl = _git_fetch_impl,
+    actions.run(
+        cmd_args(
+            build,
+            spec_args(
+                actions,
+                "cargo-build.spec.json",
+                {
+                    "auditable": auditable,
+                    "binaries": binaries,
+                    "git": repositories,
+                    "root": root,
+                    "src": src,
+                    "target": target,
+                    "vendor": assemble_vendor(actions, vendor, crate_downloads(name, resolved)),
+                },
+            ),
+        ),
+        category = "cargo_build",
+        no_outputs_cleanup = True,
+    )
+    return []
+
+_cargo_build = dynamic_actions(
+    impl = _cargo_build_impl,
     attrs = {
-        "repo": attrs.string(doc = "the URL the lock's git source names"),
-        "rev": attrs.string(doc = "the locked commit; the tool fails unless it fetches exactly that"),
-        "_tool": attrs.exec_dep(providers = [RunInfo], default = "prelude//git/tools:git_fetch"),
+        "auditable": dynattrs.value(cmd_args),
+        "binaries": dynattrs.dict(str, dynattrs.output()),
+        "build": dynattrs.value(RunInfo),
+        "fetch": dynattrs.value(RunInfo),
+        "lock": dynattrs.artifact_value(),
+        "name": dynattrs.value(str),
+        "root": dynattrs.value(str),
+        "src": dynattrs.value(Artifact),
+        "target": dynattrs.output(),
+        "vendor": dynattrs.value(RunInfo),
     },
 )
 
 def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
     lock, root = _workspace(ctx.label, ctx.attrs.srcs)
-    if lock != None and ctx.attrs.crates == None:
-        fail(
-            ("cargo_package {}: srcs carry {} but no `lock` was passed; load it and pass it:\n" + '    load("//...:{}?format=toml", {}_lock = "value")').format(
-                ctx.label.name,
-                lock.short_path,
-                _LOCK,
-                ctx.label.name.replace("-", "_"),
-            ),
-        )
-    if lock == None and ctx.attrs.crates != None:
-        fail("cargo_package {}: a `lock` was passed but srcs hold no {}".format(ctx.label.name, _LOCK))
-    vendor = assemble_vendor(ctx, ctx.attrs.crates or [])
 
     # Symlinked, not copied: the build driver copies the tree into its scratch space anyway, because
     # cargo needs it writable, and copying twice buys nothing.
@@ -117,31 +151,30 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
     # Cargo's own build directory. An action's outputs are the only place it may leave state behind,
     # and buck clears them before rerunning it unless told not to.
     target = ctx.actions.declare_output("target", dir = True)
-    ctx.actions.run(
-        cmd_args(
-            chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = ctx.attrs._build),
-            spec_args(
-                ctx,
-                "cargo-build.spec.json",
-                {
-                    "auditable": executable(ctx.attrs._auditable),
-                    "binaries": {name: out.as_output() for name, out in outputs.items()},
-                    "git": {
-                        commit: {
-                            "fields": fields,
-                            "repo": repo[DefaultInfo].default_outputs[0],
-                        }
-                        for commit, (fields, repo) in ctx.attrs.git.items()
-                    },
-                    "root": root,
-                    "src": src,
-                    "target": target.as_output(),
-                    "vendor": vendor,
-                },
-            ),
+
+    if lock != None:
+        resolved = ctx.actions.declare_output(_RESOLVED)
+        ctx.actions.run(
+            cmd_args(ctx.attrs._lock[RunInfo], lock, resolved.as_output()),
+            category = "cargo_lock",
+        )
+    else:
+        # A project that resolves nothing takes the same path, with nothing to fetch.
+        resolved = ctx.actions.write_json(_RESOLVED, {"package": []})
+
+    ctx.actions.dynamic_output_new(
+        _cargo_build(
+            auditable = executable(ctx.attrs._auditable),
+            binaries = {name: out.as_output() for name, out in outputs.items()},
+            build = chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = ctx.attrs._build),
+            fetch = ctx.attrs._fetch[RunInfo],
+            lock = resolved,
+            name = ctx.label.name,
+            root = root,
+            src = src,
+            target = target.as_output(),
+            vendor = ctx.attrs._vendor[RunInfo],
         ),
-        category = "cargo_build",
-        no_outputs_cleanup = True,
     )
     sub_targets = {name: [DefaultInfo(default_output = out)] for name, out in outputs.items()}
     return [DefaultInfo(default_outputs = outputs.values(), sub_targets = sub_targets)]
@@ -150,54 +183,28 @@ _cargo_package = rule(
     impl = _cargo_package_impl,
     attrs = {
         "binaries": attrs.list(attrs.string(), doc = "binaries to take out of the build"),
-        "crates": attrs.option(
-            attrs.list(attrs.dict(attrs.string(), attrs.string())),
-            default = None,
-            doc = "one download per registry crate, derived from the loaded lock; None without one",
-        ),
         "engine": attrs.dep(providers = [EngineInfo], doc = "engine carrying the Rust toolchain"),
-        "git": attrs.dict(
-            attrs.string(),
-            attrs.tuple(attrs.dict(attrs.string(), attrs.string()), attrs.dep()),
-            default = {},
-            doc = "commit hash -> (the fields cargo identifies that git source by, its fetched repository)",
-        ),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, Cargo.lock included"),
         "_auditable": attrs.dep(providers = [RunInfo], default = "tine//tools:cargo-auditable"),
         "_build": attrs.dep(providers = [RunInfo], default = "tine//cargo:build"),
+        "_fetch": attrs.exec_dep(providers = [RunInfo], default = "prelude//git/tools:git_fetch"),
+        "_lock": attrs.exec_dep(providers = [RunInfo], default = "tine//cargo:lock"),
     }
     | VENDOR_ATTRS,
 )
 
-def _git_checkouts(name: str, sources: dict[str, dict[str, str]]) -> dict[str, (dict[str, str], str)]:
-    """One fetch target per git source the lock names, keyed by commit."""
-    checkouts = {}
-    for commit, fields in sources.items():
-        target = "{}-{}.git".format(name, commit[:12])
-        _git_fetch(
-            name = target,
-            repo = fields["git"],
-            rev = commit,
-        )
-        checkouts[commit] = (fields, ":" + target)
-    return checkouts
-
-def cargo_package(name: str, binaries: list[str], srcs: list[str] | None = None, lock: dict[str, typing.Any] | None = None, **kwargs) -> None:
+def cargo_package(name: str, binaries: list[str], srcs: list[str] | None = None, **kwargs) -> None:
     """Build a checked-out Rust project against the crates its Cargo.lock pins.
 
     The sources default to the checkout named after the target, minus whatever a cargo build run
-    inside it left behind. A project that commits a Cargo.lock passes it as `lock`, loaded with the
-    format override, since data loads otherwise dispatch on the file suffix:
-
-        load("//images/myproject:Cargo.lock?format=toml", myproject_lock = "value")
+    inside it left behind. A lock among them pins every fetch the build needs, and is read once it
+    has been built, so a project whose tree arrives from a fetch needs nothing committed here.
     """
     if not binaries:
         fail("cargo_package {}: declare the binaries to take out of the build".format(name))
     _cargo_package(
         name = name,
         binaries = binaries,
-        crates = crate_downloads(name, lock) if lock != None else None,
-        git = _git_checkouts(name, git_sources(name, lock)) if lock != None else {},
         srcs = srcs if srcs != None else glob([name + "/**"], exclude = [name + "/target/**"]),
         **kwargs,
     )

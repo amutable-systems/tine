@@ -24,7 +24,7 @@ def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     index = cmd_args(
         chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = system.index),
         spec_args(
-            ctx,
+            ctx.actions,
             "index.spec.json",
             {
                 "out": repo.as_output(),

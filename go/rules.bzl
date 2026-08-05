@@ -87,7 +87,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             cmd_args(
                 chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = ctx.attrs._fetch, network = True),
                 spec_args(
-                    ctx,
+                    ctx.actions,
                     "go-fetch.spec.json",
                     {
                         "mod": module,
@@ -108,7 +108,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
         cmd_args(
             chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = ctx.attrs._build),
             spec_args(
-                ctx,
+                ctx.actions,
                 "go-build.spec.json",
                 {
                     "binaries": {name: out.as_output() for name, out in outputs.items()},

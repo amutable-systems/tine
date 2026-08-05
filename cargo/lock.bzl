@@ -1,13 +1,13 @@
-"""Read a load()-ed Cargo.lock: everything a project's build must fetch.
+"""Read a resolved Cargo.lock: everything a project's build must fetch.
 
 Cargo pins every dependency's exact version and the sha256 of its registry tarball, and crates.io
 serves those tarballs under a derivable URL. A git dependency is pinned by the commit in its lock
 source. The lock therefore already describes every fetch a build needs, with no network access to
 work out what.
 
-The lock is loaded in the consuming BUCK file rather than read by an action: the downloads and
-fetch targets have to exist before anything runs, and the load makes the committed file itself a
-tracked input of the parse.
+A dynamic action reads the lock once it has been built and declares those fetches then, so the lock
+is an ordinary input rather than something the consuming BUCK file has to load: a project whose
+tree arrives from a fetch pins its build the same way a checked-out one does.
 
 Deliberately kept to the subset of Starlark that is also plain Python, so the unit suite can
 exercise these functions directly (cargo_test.py runs this file through exec()).
