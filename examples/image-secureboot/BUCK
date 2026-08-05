@@ -1,15 +1,18 @@
-"""Bootable image signed for Secure Boot with development keys.
+"""Bootable image signed for Secure Boot.
 
-The signing keys are generated at build time and live only in buck-out, so nothing secret is
-committed.
+Without configuration, the signing keys are generated at build time and live only in buck-out, so
+nothing secret is committed. With `signing.*` configuration, the same image signs through PKCS#11
+tokens instead; see docs/signing-pkcs11.md. Real OS images should follow this shape: one definition
+serves both, and only the certificate copies below differ, since a token's certificate is a URI
+rather than an artifact.
 """
 
 load(
     "@tine//image:defs.bzl",
     "DEFAULT_SIGNED_USR_VERITY_PARTITIONS",
     "bootable_disk_image",
+    "config_signing_key",
     "copy",
-    "generate_signing_key",
     "image_vm",
     "install_packages",
 )
@@ -20,10 +23,17 @@ package_manager(
     base = "tine//catalog:fedora.rawhide.package-manager",
 )
 
-generate_signing_key(name = "signing")
+_EXTERNAL = read_config("signing", "token") != None
 
-# A second key, so that a compromised expected-PCR policy key cannot also sign boot binaries.
-generate_signing_key(name = "pcr-signing")
+# A token with `-c signing.{token,pin-file,socket}`, a generated development key pair without them.
+config_signing_key(name = "signing")
+
+# A second key, so that a compromised expected-PCR policy key cannot also sign boot binaries. Its own
+# token, hence its own configuration key: `-c signing.pcr-token`.
+config_signing_key(
+    name = "pcr-signing",
+    token_key = "pcr-token",
+)
 
 bootable_disk_image(
     name = "image",
@@ -41,11 +51,18 @@ bootable_disk_image(
             "util-linux",
             "dbus-broker",
         ]),
-        # The smoke test compares this against the public key the stub hands the booted system, to
-        # tell which key sealed the expected-PCR policy. Sealed under verity, so it cannot be swapped.
-        copy(":signing[cert]", "/usr/share/tine-example/secure-boot.crt"),
-        copy(":pcr-signing[cert]", "/usr/share/tine-example/expected-pcr.crt"),
-    ],
+    ]
+    + (
+        [
+            # The smoke test compares this against the public key the stub hands the booted system, to
+            # tell which key sealed the expected-PCR policy. Sealed under verity, so it cannot be
+            # swapped. Generated keys only: a token's certificate is a URI, not an artifact to copy.
+            copy(":signing[cert]", "/usr/share/tine-example/secure-boot.crt"),
+            copy(":pcr-signing[cert]", "/usr/share/tine-example/expected-pcr.crt"),
+        ]
+        if not _EXTERNAL
+        else []
+    ),
     # This key signs the UKIs and systemd-boot, puts auto-enrollment files onto the ESP, and signs
     # the verity root hash. For a key that caches across workspaces, see pem_signing_key() under
     # "Secure Boot signing" in images.md.
@@ -109,12 +126,21 @@ command_alias(
         # The stub hands the booted system the public key the expected-PCR policy is sealed with.
         "--check",
         "test -s /run/systemd/tpm2-pcr-public-key.pem",
-        # It must be the expected-PCR key, and not the Secure Boot one. Derive each in the guest and
-        # insist it is non-empty, so that a comparison against empty string doesn't accidentally pass.
-        "--check",
-        '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/expected-pcr.crt >/tmp/pcr.pem && test -s /tmp/pcr.pem && test "\\$(cat /tmp/pcr.pem)" = "\\$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
-        "--check",
-        '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/secure-boot.crt >/tmp/sb.pem && test -s /tmp/sb.pem && test "\\$(cat /tmp/sb.pem)" \'!=\' "\\$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
+    ]
+    + (
+        [
+            # It must be the expected-PCR key, and not the Secure Boot one, compared through the
+            # certificates copied into /usr, which external builds do not carry. Derive each in the
+            # guest and insist it is non-empty, so that a comparison against nothing cannot pass.
+            "--check",
+            '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/expected-pcr.crt >/tmp/pcr.pem && test -s /tmp/pcr.pem && test "\\$(cat /tmp/pcr.pem)" = "\\$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
+            "--check",
+            '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/secure-boot.crt >/tmp/sb.pem && test -s /tmp/sb.pem && test "\\$(cat /tmp/sb.pem)" \'!=\' "\\$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
+        ]
+        if not _EXTERNAL
+        else []
+    )
+    + [
         "$(exe_target :vm)",
     ],
     exe = "tine//tests:boot-smoke",
