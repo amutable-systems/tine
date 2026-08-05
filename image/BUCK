@@ -47,12 +47,25 @@ python_bootstrap_library(
     srcs = ["kmod.py"],
 )
 
+# A project's own template in, the file an image installs out.
+python_bootstrap_binary(
+    name = "substitute",
+    main = "substitute.py",
+    deps = ["//:specs"],
+    visibility = ["PUBLIC"],
+)
+
 engine_unittest(
     name = "test",
     engine = "//box:dev.engine",
-    srcs = ["kmod_test.py"],
+    srcs = [
+        "kmod_test.py",
+        "substitute.py",
+        "substitute_test.py",
+    ],
     deps = [
         ":kmod",
+        "//:specs",
         "//archive:cpio",
         "//image_format:modules",
     ],
