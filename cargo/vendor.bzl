@@ -8,7 +8,7 @@ VENDOR_ATTRS = {
     "_vendor": attrs.exec_dep(providers = [RunInfo], default = "tine//cargo:vendor"),
 }
 
-def assemble_vendor(actions: AnalysisActions, tool: RunInfo, crates: list[dict[str, str]]) -> Artifact:
+def assemble_vendor(actions: AnalysisActions, tool: RunInfo, crates: list[dict[str, str]], root: str) -> Artifact:
     """Declare the vendored crate tree one project's Cargo.lock pins.
 
     The lock's checksum is the tarball's, so buck verifies each download itself. Git dependencies
@@ -20,19 +20,19 @@ def assemble_vendor(actions: AnalysisActions, tool: RunInfo, crates: list[dict[s
 
         # These per-download names must stay singular: the plural ones are the directories
         # collecting them.
-        artifact = actions.declare_output("crate", name, has_content_based_path = True)
+        artifact = actions.declare_output(root + "/crate", name, has_content_based_path = True)
         actions.download_file(artifact, crate["url"], sha256 = crate["sha256"])
         crate_files[name] = artifact
 
-    vendor = actions.declare_output("vendor", dir = True)
+    vendor = actions.declare_output(root + "/vendor", dir = True)
     actions.run(
         cmd_args(
             tool,
             spec_args(
                 actions,
-                "cargo-vendor.spec.json",
+                root + "/cargo-vendor.spec.json",
                 {
-                    "crates": actions.copied_dir("crates", crate_files),
+                    "crates": actions.copied_dir(root + "/crates", crate_files),
                     "out": vendor.as_output(),
                 },
             ),

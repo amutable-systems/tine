@@ -26,7 +26,7 @@ _GIT_REFERENCES = ["branch", "tag", "rev"]
 def _packages(target: str, lock: dict[str, typing.Any]) -> list[dict[str, typing.Any]]:
     packages = lock.get("package")
     if type(packages) != type([]):
-        fail("cargo_package {}: `lock` is not a load()-ed Cargo.lock: it has no [[package]] list".format(target))
+        fail("cargo_package {}: `lock` is not a Cargo.lock: it has no [[package]] list".format(target))
     return packages
 
 def crate_downloads(target: str, lock: dict[str, typing.Any]) -> list[dict[str, str]]:

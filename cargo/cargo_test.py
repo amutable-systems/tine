@@ -48,6 +48,7 @@ def _load(name: str) -> ModuleType:
 
 
 lock_bzl = _load_bzl("lock")
+lock_driver = _load("lock")
 build = _load("build")
 vendor = _load("vendor")
 
@@ -206,6 +207,44 @@ class TestGitSources(unittest.TestCase):
         )
         with self.assertRaisesRegex(StarlarkFailure, "two spellings of one git source"):
             lock_bzl.git_sources("hello", _lock(lock))
+
+
+class TestLockDriver(unittest.TestCase):
+    @override
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory(prefix="cargo-lock-test.")
+        self.addCleanup(tmp.cleanup)
+        self.checkout = Path(tmp.name) / "checkout"
+        self.checkout.mkdir()
+
+    def test_finds_a_workspace_inside_a_directory_artifact(self) -> None:
+        (self.checkout / "Cargo.toml").write_text(MANIFEST, encoding="utf-8")
+        (self.checkout / "Cargo.lock").write_text(LOCK, encoding="utf-8")
+
+        self.assertEqual(
+            lock_driver.resolve_workspace("hello", {"generated": str(self.checkout)}),
+            {"lock": _lock(LOCK), "root": "generated"},
+        )
+
+    def test_finds_a_lockless_workspace_inside_a_directory_artifact(self) -> None:
+        (self.checkout / "Cargo.toml").write_text(DEPLESS_MANIFEST, encoding="utf-8")
+
+        self.assertEqual(
+            lock_driver.resolve_workspace("nodeps", {"generated": str(self.checkout)}),
+            {"lock": {"package": []}, "root": "generated"},
+        )
+
+    def test_rejects_several_locks_across_directory_artifacts(self) -> None:
+        other = self.checkout.parent / "other"
+        other.mkdir()
+        (self.checkout / "Cargo.lock").write_text(LOCK, encoding="utf-8")
+        (other / "Cargo.lock").write_text(LOCK, encoding="utf-8")
+
+        with self.assertRaisesRegex(SystemExit, "srcs hold several Cargo.lock files"):
+            lock_driver.resolve_workspace(
+                "hello",
+                {"first": str(self.checkout), "second": str(other)},
+            )
 
 
 class TestBuild(unittest.TestCase):

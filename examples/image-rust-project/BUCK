@@ -23,12 +23,29 @@ engine(
     resolver_engine = "tine//catalog:fedora.rawhide.engine",
 )
 
-# A checked-out project needs no build file of its own: the sources default to the directory named
-# after the target, and the Cargo.lock in them both pins the crates and marks the workspace root.
+# Stand in for the fetch a product would declare here, without needing the network a test cannot have:
+#
+#     git_fetch(
+#         name = "hello.checkout",
+#         repo = "https://github.com/example/hello",
+#         rev = "1c9e0f4b0f7d2a5e8b3c6d1a4f7b2e5c8d0a3f6b",
+#     )
+#
+# Either way cargo_package() receives one opaque directory artifact, whose Cargo.lock no analysis can
+# see, so this keeps the post-fetch workspace-discovery path covered.
+filegroup(
+    name = "hello.checkout",
+    srcs = {src.removeprefix("hello/"): src for src in glob(["hello/**"])},
+    copy = True,
+)
+
+# A fetched project needs no build file of its own. Its Cargo.lock both pins the crates and marks the
+# workspace root, even though neither it nor Cargo.toml is visible until the checkout action runs.
 cargo_package(
     name = "hello",
     binaries = ["hello-cli"],
     engine = ":rust.engine",
+    srcs = [":hello.checkout"],
 )
 
 # A project with no dependencies at all, which therefore commits no Cargo.lock.
