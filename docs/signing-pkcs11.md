@@ -74,8 +74,9 @@ bootable_disk_image(
 )
 ```
 
-`examples/image-secureboot` is the worked example of this shape. The invocation supplies the
-host-side parameters:
+`examples/image-secureboot` is the worked example of this shape, and `tools/ci.sh` builds it against
+tpm2-pkcs11 tokens on a software TPM, served by `tools/signing-server` (which exercises the steps from
+this document). The invocation supplies the host-side parameters:
 
 ```sh
 tools/buck build \

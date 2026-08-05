@@ -23,3 +23,28 @@ box(
     ],
     visibility = ["PUBLIC"],
 )
+
+# PKCS#11 signing tokens for testing (ci.sh's secureboot-pkcs11 step): a software TPM, the
+# production tpm2-pkcs11 module on top, and the p11-kit server exposing its tokens to build
+# sandboxes over a socket. See tools/signing-server.
+box(
+    name = "swtpm-signing",
+    packages = [
+        "bash",
+        "coreutils",
+        # the resource manager swtpm lacks, and the private bus it needs; see tools/signing-server
+        "dbus-daemon",
+        "openssl",
+        "p11-kit-server",
+        "pkcs11-provider",
+        "swtpm",
+        # ukify, to read a UKI section back out in the ci.sh step
+        "systemd-ukify",
+        "tpm2-abrmd",
+        "tpm2-pkcs11",
+        "tpm2-pkcs11-tools",
+        # tpm2_ptool drives these binaries without a package dependency on them
+        "tpm2-tools",
+    ],
+    visibility = ["PUBLIC"],
+)

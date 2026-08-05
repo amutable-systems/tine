@@ -119,18 +119,81 @@ uki_modules() {
     done
 }
 
+# Sign the Secure Boot example through PKCS#11 tokens, exercising the external-key path end to end
+# with the production module: tools/signing-server serves one tpm2-pkcs11 token per key from a
+# software TPM, and the same example builds against its socket. Every tool this needs comes from the
+# swtpm-signing box, so a runner needs nothing beyond what the rest of the pipeline uses. The
+# externally signed image must also boot, which reuses the vm-smoke checks minus the two reading the
+# certificates only generated-key builds carry.
+# Stopping the arrangement is one TERM, per tools/signing-server. The log surfaces only on failure;
+# the daemons keep spamming it during the build (swtpm logs every client disconnect), so it stays
+# out of the console on success.
+pkcs11_cleanup() {
+    local status=$?
+    if [ "$status" -ne 0 ] && [ -e "$pkcs11_dir/log" ]; then cat "$pkcs11_dir/log" >&2; fi
+    # Already gone when the server itself failed, which the socket wait below then reports.
+    if kill -0 "$server_pid" 2> /dev/null; then kill "$server_pid"; fi
+    rm -rf "$pkcs11_dir"
+}
+
+secureboot_pkcs11() {
+    # On a fresh runner this resolves and installs the box engine, so run it in the foreground
+    # where that shows progress, rather than sitting silently in the backgrounded server's log.
+    "$buck" build tine//box:swtpm-signing
+
+    pkcs11_dir=$(mktemp -d)
+    "$buck" run tine//tools:signing-server -- "$pkcs11_dir" > "$pkcs11_dir/log" 2>&1 &
+    server_pid=$!
+    trap pkcs11_cleanup EXIT
+    until [ -S "$pkcs11_dir/sock/pkcs11" ]; do
+        # Any setup failure exits the server before it gets to listen; its log then says why.
+        kill -0 "$server_pid" 2> /dev/null || return 1
+        sleep 0.5
+    done
+
+    # A prod build host materializes the signing coordinates in a file and points the build at it
+    cat > "$pkcs11_dir/signing.bcfg" <<EOF
+[signing]
+token = SecureBoot
+pcr-token = PcrPolicy
+pin-file = $pkcs11_dir/pin
+socket = $pkcs11_dir/sock/pkcs11
+EOF
+    local config=(--config-file "$pkcs11_dir/signing.bcfg")
+
+    "$buck" build "${config[@]}" tine//examples/image-secureboot:image
+    "$buck" build "${config[@]}" 'tine//examples/image-secureboot:image[uki]' --out "$pkcs11_dir/ukis"
+
+    # The public key the UKI hands the booted system must be the PcrPolicy token's, and not the
+    # Secure Boot one. Read each side into a variable first: a command substitution inside a `test`
+    # argument is exempt from errexit, so a certificate that cannot be read would yield an empty
+    # string and satisfy the inequality below without comparing anything.
+    local box=("$buck" run tine//box:swtpm-signing --) uki=("$pkcs11_dir"/ukis/*.efi)
+    local pcrpkey pcr_certificate secure_boot_certificate
+    # ukify takes the file before the options, per `ukify inspect --help`.
+    "${box[@]}" ukify inspect "${uki[0]}" --section ".pcrpkey:binary@$pkcs11_dir/pcrpkey"
+    pcrpkey=$("${box[@]}" openssl pkey -pubin -in "$pkcs11_dir/pcrpkey" -pubout)
+    pcr_certificate=$("${box[@]}" openssl x509 -in "$pkcs11_dir/PcrPolicy.crt" -pubkey -noout)
+    secure_boot_certificate=$("${box[@]}" openssl x509 -in "$pkcs11_dir/SecureBoot.crt" -pubkey -noout)
+    test "$pcrpkey" = "$pcr_certificate"
+    test "$pcrpkey" != "$secure_boot_certificate"
+
+    "$buck" run "${config[@]}" tine//examples/image-secureboot:vm-smoke
+}
+
 # First invocation fetches buck's pinned tools and builds the shared engine; kept its own group so
 # bootstrap time stays visible.
-group engine           -- "$buck" build tine//catalog:fedora.rawhide.engine
-group check            -- "$buck" run tine//tools:check
+group engine            -- "$buck" build tine//catalog:fedora.rawhide.engine
+group check             -- "$buck" run tine//tools:check
 # CentOS Stream mirrors are intentionally unpinned and drift, so only the rawhide engine is verifiable.
-group verify-catalog   -- "$buck" run tine//tools:verify-catalog -- --engine fedora.rawhide.engine
-group box              -- "$buck" build tine//examples/box:box
-group boot-demo-image  -- "$buck" build tine//examples/image:boot-demo
-group uki-modules      -- uki_modules
-group boot-demo-smoke  -- "$buck" run tine//examples/image:boot-demo-vm-smoke
-group rust-sbom        -- rust_sbom
-group go-sbom          -- go_sbom
-group secureboot-image -- "$buck" build tine//examples/image-secureboot:image
-group secureboot-sbom  -- secureboot_sbom
-group secureboot-smoke -- "$buck" run tine//examples/image-secureboot:vm-smoke
+group verify-catalog    -- "$buck" run tine//tools:verify-catalog -- --engine fedora.rawhide.engine
+group box               -- "$buck" build tine//examples/box:box
+group boot-demo-image   -- "$buck" build tine//examples/image:boot-demo
+group uki-modules       -- uki_modules
+group boot-demo-smoke   -- "$buck" run tine//examples/image:boot-demo-vm-smoke
+group rust-sbom         -- rust_sbom
+group go-sbom           -- go_sbom
+group secureboot-image  -- "$buck" build tine//examples/image-secureboot:image
+group secureboot-sbom   -- secureboot_sbom
+group secureboot-smoke  -- "$buck" run tine//examples/image-secureboot:vm-smoke
+group secureboot-pkcs11 -- secureboot_pkcs11
