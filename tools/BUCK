@@ -146,6 +146,13 @@ command_alias(
     exe = "tine//box:dev",
 )
 
+# Signing-token server for testing; see tools/signing-server.
+command_alias(
+    name = "signing-server",
+    args = ["$(source signing-server)"],
+    exe = "tine//box:swtpm-signing",
+)
+
 engine_unittest(
     name = "importer-test",
     engine = "//box:dev.engine",

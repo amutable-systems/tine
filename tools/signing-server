@@ -1,0 +1,91 @@
+#!/usr/bin/bash
+# Serve PKCS#11 signing tokens for testing a build, from a software TPM.
+#
+# Runs in the swtpm-signing box, so it needs nothing from the host. One argument: an empty state
+# directory on the host. Creates a swtpm instance and a tpm2-pkcs11 store with one token per signing
+# role, mints their certificates through the provider, and serves them on the p11-kit socket
+# <dir>/sock/pkcs11 until terminated. The daemons are its children and die with it, so the caller
+# waits for the socket, builds against it, and sends one TERM.
+set -euo pipefail
+
+dir=$1
+pin=1234
+
+cleanup() {
+    local pid
+    # A job that exited already makes kill fail, and the daemons still up must get the signal
+    # regardless, so this is one place where a failure is not worth reporting.
+    for pid in $(jobs -p); do kill "$pid" 2> /dev/null || :; done
+}
+trap cleanup EXIT
+trap exit TERM
+
+# Fail rather than wait forever: a daemon that never comes up would otherwise hang the caller until
+# its CI job times out, with no diagnosis.
+await() {
+    local what=$1 deadline=$((SECONDS + 30))
+    shift
+    until "$@" > /dev/null 2>&1; do
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            echo "signing-server: gave up waiting for $what" >&2
+            exit 1
+        fi
+        sleep 0.1
+    done
+}
+
+mkdir "$dir/tpm" "$dir/sock" "$dir/store"
+echo "$pin" > "$dir/pin"
+
+# The tss swtpm TCTI expects the control socket beside the server socket as <path>.ctrl. swtpm gives
+# no ordering guarantee between the two, and tpm2-abrmd below connects once, without retrying.
+swtpm socket --tpm2 --tpmstate "dir=$dir/tpm" \
+    --server "type=unixio,path=$dir/tpm.sock" \
+    --ctrl "type=unixio,path=$dir/tpm.sock.ctrl" \
+    --flags not-need-init,startup-clear &
+await "the TPM socket" test -S "$dir/tpm.sock"
+await "the TPM control socket" test -S "$dir/tpm.sock.ctrl"
+
+# The simulator has no resource manager and only three transient-object slots, which tpm2_ptool
+# overflows, so tpm2-abrmd manages them, reached over a private session bus.
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$dir/dbus.sock"
+dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --nofork &
+await "the private bus" test -S "$dir/dbus.sock"
+tpm2-abrmd --session --tcti="swtpm:path=$dir/tpm.sock" &
+
+# tpm2_ptool drives tpm2-tools binaries and the module reads its own variable, so point both at
+# the resource manager. The store holds the wrapped key blobs; the TPM state holds their parent.
+export TPM2TOOLS_TCTI="tabrmd:bus_type=session"
+export TPM2_PKCS11_TCTI="tabrmd:bus_type=session"
+export TPM2_PKCS11_STORE="$dir/store"
+await "the resource manager" tpm2_getcap properties-fixed
+
+########################################################################################################
+# Token and key creation: this performs what docs/signing-pkcs11.md documents as the manual setup:
+# "Backend: TPM 2.0 with tpm2-pkcs11" and "Giving the key a certificate".
+
+export PKCS11_PROVIDER_MODULE=/usr/lib64/pkcs11/libtpm2_pkcs11.so
+
+tpm2_ptool init
+for token in SecureBoot PcrPolicy; do
+    tpm2_ptool addtoken --pid=1 --label="$token" --sopin=12345678 --userpin="$pin"
+    tpm2_ptool addkey --label="$token" --key-label="$token" --userpin="$pin" --algorithm=rsa2048
+    openssl req -new -x509 -days 30 -sha256 \
+        -provider pkcs11 -provider default \
+        -key "pkcs11:token=$token;object=$token;type=private?pin-value=$pin" \
+        -subj "/CN=CI $token/" -out "$dir/$token.crt"
+    tpm2_ptool addcert --label="$token" --key-label="$token" "$dir/$token.crt"
+done
+
+########################################################################################################
+# "Serving the token" in docs/signing-pkcs11.md, with --foreground instead of daemonizing so that the
+# server stays this script's child.
+
+p11-kit server --foreground --provider "$PKCS11_PROVIDER_MODULE" \
+    --name "$dir/sock/pkcs11" \
+    "pkcs11:token=SecureBoot" "pkcs11:token=PcrPolicy" &
+
+# Wait for the server alone: a bare `wait` returns only once every daemon has exited, so a server
+# that dies immediately would leave this blocked on swtpm with nobody noticing. Interrupted by TERM,
+# upon which the EXIT trap takes every daemon down.
+wait $!
