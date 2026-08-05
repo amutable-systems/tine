@@ -1,6 +1,6 @@
 #!/bin/bash
 # The full CI pipeline
-set -euo pipefail
+set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 buck=tools/buck
 
@@ -40,24 +40,29 @@ banner() {
     hrule
 }
 
-# group LABEL -- CMD...: run one labelled step, fail-fast. On GitHub, close the group and surface an
-# ::error:: after it (a failure buried inside a collapsed group is invisible).
+# group LABEL -- CMD...: run one labelled step, fail-fast.
+#
+# Never test the step's status (`"$@" || rc=$?`): bash then ignores errexit for it, and for every
+# function it calls, so a step would run on past its own first failure and report the status of
+# whatever ran last. The GitHub failure path goes through the ERR trap below instead, and `step` is
+# global for the trap to name.
 group() {
-    local label=$1
+    step=$1
     shift 2
     case $mode in
-        github) printf '::group::%s\n' "$label" ;;
-        tty) banner "$label" "$@" ;;
-        plain) printf '\n=== %s ===\n' "$label" ;;
+        github) printf '::group::%s\n' "$step" ;;
+        tty) banner "$step" "$@" ;;
+        plain) printf '\n=== %s ===\n' "$step" ;;
     esac
-    local rc=0
-    "$@" || rc=$?
-    if [ "$mode" = github ]; then
-        printf '::endgroup::\n'
-        [ "$rc" -eq 0 ] || printf '::error::ci step %s failed\n' "$label"
-    fi
-    return "$rc"
+    "$@"
+    if [ "$mode" = github ]; then printf '::endgroup::\n'; fi
 }
+
+# On GitHub, close the group and surface an ::error:: after it (a failure buried inside a collapsed
+# group is invisible). errtrace (-E above) carries this into the step functions.
+if [ "$mode" = github ]; then
+    trap 'printf "::endgroup::\n::error::ci step %s failed\n" "$step"' ERR
+fi
 
 # Build the from-source Rust image's SBOM to stdout and assert the crate graph reached it. Captured on
 # its own line so `set -e` still catches a buck failure before grep runs.
