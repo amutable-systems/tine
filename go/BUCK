@@ -2,6 +2,14 @@
 
 load("//engine:test.bzl", "engine_unittest")
 
+# The project's source artifacts in, the module root its go.mod marks out.
+python_bootstrap_binary(
+    name = "workspace",
+    main = "workspace.py",
+    visibility = ["PUBLIC"],
+    deps = ["//:specs"],
+)
+
 # Runs inside the engine with the network: go.mod and go.sum in, the verified module cache out.
 python_bootstrap_binary(
     name = "fetch",
@@ -27,6 +35,8 @@ engine_unittest(
     srcs = [
         "build.py",
         "build_test.py",
+        "workspace.py",
+        "workspace_test.py",
     ],
     deps = [
         "//:specs",

@@ -421,7 +421,11 @@ compares them by. A build that finds no previous directory remains the reference
 ### Go source builds
 
 `go_package()` gives a checked-out Go project the same treatment, sources in and declared binaries out.
-But the pinning is delegated rather than translated: A `go.sum` records `h1:`
+The project carries no build file pointing at its own root, so a `go_workspace` action finds the `go.mod`
+among the built sources and a dynamic action declares the two steps below from what it reports; as with
+`cargo_package()`, that is what lets the sources be a fetched directory artifact rather than a checkout.
+Only the two files those steps read are taken back out of the sources, so the fetch still reruns for a
+dependency bump alone. But the pinning is delegated rather than translated: A `go.sum` records `h1:`
 dirhashes over each module's contents, not the hash of any bytes a proxy serves, so there is nothing a
 hash-verified `download_file` could check a download against. Deriving byte hashes would mean a second,
 generated lock to keep refreshed. Instead go itself is the verifier, and the build is two actions so the
