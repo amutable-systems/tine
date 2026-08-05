@@ -51,7 +51,6 @@ engine_unittest(
     name = "test",
     engine = "//box:dev.engine",
     srcs = ["kmod_test.py"],
-    visibility = ["tine//tools:check"],
     deps = [
         ":kmod",
         "//archive:cpio",
