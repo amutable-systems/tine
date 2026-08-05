@@ -31,7 +31,7 @@ class RootHash(TypedDict):
     kind: str
 
 
-class SecureBoot(TypedDict):
+class Key(TypedDict):
     private_key: str
     certificate: str
 
@@ -51,9 +51,9 @@ class Spec(finalize.ImageSpec):
     systemd_arch: str
     image_id: str
     version: str
-    secure_boot: SecureBoot | None
+    secure_boot: Key | None
     # Seals the expected-PCR policy; None leaves it unsealed.
-    sign_expected_pcr_private_key: str | None
+    sign_expected_pcr: Key | None
 
 
 def _kvers(tree: Path) -> list[str]:
@@ -106,9 +106,7 @@ def main(argv: list[str] | None = None) -> None:
     initrds = [Path(initrd) for initrd in spec["initrds"]]
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
     secure_boot = spec["secure_boot"]
-    key = secure_boot["private_key"] if secure_boot else None
-    certificate = secure_boot["certificate"] if secure_boot else None
-    pcr_key = spec["sign_expected_pcr_private_key"]
+    pcr = spec["sign_expected_pcr"]
 
     with (
         finalize.image(spec, program="uki") as tree,
@@ -166,22 +164,21 @@ def main(argv: list[str] | None = None) -> None:
             profile_pes.append(pe)
 
         signing = []
-        if key:
-            assert certificate is not None  # the spec pairs the key and the certificate
+        if secure_boot:
             signing = [
                 "--signtool", "systemd-sbsign",
-                "--secureboot-private-key", key,
-                "--secureboot-certificate", certificate,
+                "--secureboot-private-key", secure_boot["private_key"],
+                "--secureboot-certificate", secure_boot["certificate"],
                 "--sign-kernel",
             ]  # fmt: skip
         # ukify measures and signs the base and each joined profile separately. All profiles are
         # signed by default; the explicit --sign-profile list is only needed when one opts out. The
         # public key section (.pcrpkey) derives from the private key, so no --pcr-certificate is
         # needed.
-        if pcr_key:
+        if pcr:
             signing += [
                 "--pcr-banks", "sha256",
-                "--pcr-private-key", pcr_key,
+                "--pcr-private-key", pcr["private_key"],
             ]  # fmt: skip
             if not all(profile["sign_expected_pcr"] for profile in profiles):
                 signing += ["--sign-profile", "main"]
