@@ -29,7 +29,8 @@ _HOST_ETC = ("machine-id",)
 _BASE_ENV = {
     "PATH": "/usr/bin:/usr/sbin:/bin:/sbin",
     "HOME": "/root",
-    "TMPDIR": "/tmp",
+    # Large staging trees, so the disk-backed /var/tmp rather than the /tmp tmpfs.
+    "TMPDIR": "/var/tmp",
     "LANG": "C.UTF-8",
     "LC_ALL": "C.UTF-8",
     "TZ": "UTC",
@@ -206,23 +207,25 @@ def main(argv: list[str] | None = None) -> NoReturn:
     if not args.relaxed:
         out += ["--dev", "/dev"]
         out += ["--tmpfs", "/run"]
+        out += ["--tmpfs", "/tmp"]
 
-        # Back /tmp and /var/tmp with Buck's on-disk per-action scratch directory instead of a
-        # tmpfs. Staging trees run into gigabytes and should not go into RAM: it easily runs
-        # out, and Linux's page cache does a much better job of using it for performance.
+        # Everything large stages under /var/tmp, which TMPDIR points at: back it with Buck's
+        # on-disk per-action scratch directory rather than a tmpfs, since staging trees run into
+        # gigabytes and should not go into RAM. /tmp keeps the tmpfs above, for small and
+        # short-lived files only.
         #
-        # A sandbox entered outside an action has no scratch directory: `buck run` on an engine or
-        # its [resolve] subtarget. Those keep the tmpfs, which dies with the mount namespace.
+        # Entered outside a run action there is no scratch directory: `buck run` on an engine or
+        # its [resolve] subtarget, and every `buck test`. Those keep a tmpfs here too, which dies
+        # with the mount namespace.
         staging = None
         if cwd and "BUCK_SCRATCH_PATH" in os.environ:
             staging = Path(cwd, os.environ["BUCK_SCRATCH_PATH"])
-        for name in ("tmp", "var/tmp"):
-            if staging is None:
-                out += ["--tmpfs", "/" + name]
-                continue
-            backing = staging / name.replace("/", "-")
+        if staging is None:
+            out += ["--tmpfs", "/var/tmp"]
+        else:
+            backing = staging / "var-tmp"
             backing.mkdir(parents=True, exist_ok=True)
-            out += ["--bind", str(backing), "/" + name]
+            out += ["--bind", str(backing), "/var/tmp"]
 
     if args.source_date_epoch is not None:
         out += ["--setenv", "SOURCE_DATE_EPOCH", str(args.source_date_epoch)]

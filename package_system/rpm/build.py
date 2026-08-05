@@ -38,10 +38,10 @@ def main(argv: list[str] | None = None) -> int:
     if not spec["lower"]:
         raise SystemExit("build_rpm: the buildroot stack cannot be empty")
 
-    # Use action scratch space, which is what the sandbox backs /tmp with. Buck clears it before
-    # each execution, so a fixed name neither collides with a preserved failed tree nor
+    # Use action scratch space, which is what the sandbox backs /var/tmp with. Buck clears it
+    # before each execution, so a fixed name neither collides with a preserved failed tree nor
     # accumulates across builds.
-    topdir = Path("/tmp/topdir")
+    topdir = Path("/var/tmp/topdir")
     for d in ("SOURCES", "SPECS", "BUILD", "BUILDROOT", "RPMS", "SRPMS"):
         (topdir / d).mkdir(parents=True)
     spec_file = Path(spec["spec_file"])
