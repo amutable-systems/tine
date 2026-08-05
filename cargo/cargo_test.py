@@ -1,6 +1,6 @@
 """Tests for the Cargo.lock reader, the vendored crate tree, and the build driver's checks.
 
-    buck build tine//cargo:test
+    buck test tine//cargo:test
 
 lock.bzl is Starlark, but deliberately written in the subset that is also plain Python, so this
 suite runs it through exec() with buck's `fail` stubbed out. The vendor driver runs for real

@@ -21,9 +21,9 @@ that CI builds and boot-tests, plus a dev box. Package sources and targets live 
 consumes this cell, under `packages/` (built as `//packages/...`).
 
 Unit tests sit beside the driver they exercise as `<driver>_test.py`, run by an `engine_unittest`
-target in the same package (`tine//engine:test.bzl`). Cross-package sources reach a suite through
-`deps` on a `python_bootstrap_library`, never `export_file`. `tests` holds only the drivers shared
-across images, like the VM boot smoke.
+target in the same package (`tine//engine:test.bzl`), which only `buck test` runs. Cross-package
+sources reach a suite through `deps` on a `python_bootstrap_library`, never `export_file`. `tests`
+holds only the drivers shared across images, like the VM boot smoke.
 
 ## Commands
 
@@ -33,9 +33,9 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
 - **buck (whole project):** `buck build //...`.
 - **Lint (format, lint, type-check):** `buck run tine//tools:lint`
 - **Check (lint plus the hooked-in test suites):** `buck run tine//tools:check`
-- **Unit tests alone:** `buck build tine//cargo:test tine//go:test tine//image:test
-  tine//tools:version-test tine//tools:importer-test` — each is a cached build action, so a suite
-  only reruns when its own tests, the driver it exercises, or the dev box engine change.
+- **Unit tests:** `buck test tine//...` (one suite: `buck test tine//image:test`). Test targets are
+  not build artifacts, so `buck build` does not run them and there is no cached verdict: every
+  `buck test` reruns the suites it selects.
 - **Auto-format + auto-fix:** `buck run tine//tools:fmt`
 - **Refresh the catalog lock:** `buck run tine//tools:refresh-catalog`;
   `buck run tine//tools:verify-catalog` asserts the committed lock matches.

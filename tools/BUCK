@@ -107,40 +107,36 @@ command_alias(
     exe = ":bump-driver",
 )
 
-# Source lints; ty resolves imports against the engine root.
+# ty resolves imports against the engine root.
 # FIXME: type check python in every engine? Some python dependencies will only be
 # available in certain engines.
+_SOURCE_ARGS = [
+    "--buck",
+    "$(source buck)",
+    "--starlark-fmt",
+    "$(location :starlark-fmt)",
+    "--starlark-fmt-config",
+    "$(source starlark-fmt.json)",
+    "--ruff",
+    "$(location :ruff)",
+    "--ty",
+    "$(location :ty)",
+    "--engine",
+    "$(location tine//catalog:fedora.rawhide.engine)",
+]
+
 command_alias(
     name = "lint",
-    args = [
-        "lint",
-        "--buck",
-        "$(source buck)",
-        "--starlark-fmt",
-        "$(location :starlark-fmt)",
-        "--starlark-fmt-config",
-        "$(source starlark-fmt.json)",
-        "--ruff",
-        "$(location :ruff)",
-        "--ty",
-        "$(location :ty)",
-        "--engine",
-        "$(location tine//catalog:fedora.rawhide.engine)",
-    ],
+    args = ["lint"] + _SOURCE_ARGS,
     exe = ":dev",
 )
 
-# check = lint + the unit tests: each resource dependency builds (runs) one package's suite.
+# check = lint + `buck test tine//...`. The suites are test targets, not build artifacts, so they
+# cannot come in as `resources`; the driver nests the test run instead.
 command_alias(
     name = "check",
-    exe = ":lint",
-    resources = [
-        "tine//cargo:test",
-        "tine//go:test",
-        "tine//image:test",
-        ":importer-test",
-        ":version-test",
-    ],
+    args = ["check"] + _SOURCE_ARGS,
+    exe = ":dev",
 )
 
 # The rpm importer (see docs/importer.md): its verbs need the pinned rpm toolchain plus the

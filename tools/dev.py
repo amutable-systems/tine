@@ -115,6 +115,12 @@ def _lint(args: argparse.Namespace) -> None:
     _run([args.buck, "-v", "0", "starlark", "typecheck", *checkable], stderr=subprocess.DEVNULL)
 
 
+def _check(args: argparse.Namespace) -> None:
+    _lint(args)
+    _bold("unit tests")
+    _run([args.buck, "test", "tine//..."])
+
+
 def _fmt(args: argparse.Namespace) -> None:
     # Ask Buck everything before the formatters touch the tree. This runs under `buck run`, whose
     # command stays active for as long as the binary does, and buck2 only recognizes a nested
@@ -206,11 +212,15 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="dev")
     sub = p.add_subparsers(dest="command", required=True)
 
-    lint = sub.add_parser("lint", parents=[common, starlark], help="run the source lints (fmt fixes)")
-    for tool in ("ruff", "ty"):
-        lint.add_argument(f"--{tool}", required=True)
-    lint.add_argument("--engine", required=True, help="engine root for ty --python")
-    lint.set_defaults(func=_lint)
+    for name, func, help_text in (
+        ("lint", _lint, "run the source lints (fmt fixes)"),
+        ("check", _check, "run the source lints, then every unit-test suite"),
+    ):
+        verb = sub.add_parser(name, parents=[common, starlark], help=help_text)
+        for tool in ("ruff", "ty"):
+            verb.add_argument(f"--{tool}", required=True)
+        verb.add_argument("--engine", required=True, help="engine root for ty --python")
+        verb.set_defaults(func=func)
 
     fmt = sub.add_parser("fmt", parents=[common, starlark], help="auto-format and auto-fix lints")
     fmt.add_argument("--ruff", required=True)

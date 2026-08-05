@@ -1,6 +1,6 @@
 """Tests for the rpm importer
 
-    buck build tine//tools:importer-test
+    buck test tine//tools:importer-test
 
 These are integration tests: they stand up a local dist-git repo, build *real* rpms from it
 (so the metadata pipeline's `rpm -qp`/`rpmspec` calls run for real), and mock only the network

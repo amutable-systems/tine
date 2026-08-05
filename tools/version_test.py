@@ -1,6 +1,6 @@
 """Tests for the git-derived image version tool.
 
-    buck build tine//tools:version-test
+    buck test tine//tools:version-test
 
 Each test builds a real throwaway git repository; the tool's git calls run for real.
 """
