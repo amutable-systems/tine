@@ -3,96 +3,58 @@
 load("//:specs.bzl", "spec_args")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 
-_MODULE = "go.mod"
-_SUM = "go.sum"
+_PRIVATE = "__tine"
 
-# Output names the rule declares for itself. A binary sharing one collides in the output namespace,
-# which buck reports as a duplicate path in buck-out rather than as the declaration being wrong.
-_RESERVED = ("gocache", "module-cache", "src")
+# All machinery lives under one deliberately private output name. The public output namespace then
+# belongs to binaries, including names such as `src` that internals must not claim.
 
-def _named(srcs: list[Artifact], name: str) -> list[Artifact]:
-    return [src for src in srcs if src.short_path.rsplit("/", 1)[-1] == name]
+def _source(sources: dict[str, Artifact], path: str) -> Artifact:
+    """The artifact holding `path`, taken out of a directory source when it sits inside one.
 
-def _directory(src: Artifact, name: str) -> str:
-    return src.short_path[: -len(name)].rstrip("/")
-
-def _depth(directory: str) -> int:
-    return len(directory.split("/")) if directory else 0
-
-def _outermost(label: Label, modules: list[Artifact]) -> Artifact:
-    """The go.mod of the project, out of every go.mod the checkout carries.
-
-    A second one belongs to a module nested in the project -- a tools or testdata helper, common
-    enough in Go repositories -- and go leaves those out of a `./...` build by itself, so the one
-    containing all the others is the project's own.
+    Only these two files reach the fetch, rather than the tree they came with, so editing sources
+    never refetches. They are found in the sources themselves because the symlinked build tree
+    cannot be projected through the symlink standing in for a directory source.
     """
-    outer = modules[0]
-    for module in modules:
-        if _depth(_directory(module, _MODULE)) < _depth(_directory(outer, _MODULE)):
-            outer = module
-    root = _directory(outer, _MODULE)
-    inside = root + "/" if root else ""
-    strays = [src.short_path for src in modules if src != outer and not _directory(src, _MODULE).startswith(inside)]
-    if strays:
-        fail(
-            "go_package {}: {} is not nested in {}, so srcs hold no single project; narrow `srcs` to one module".format(
-                label.name,
-                strays,
-                outer.short_path,
-            )
-        )
-    return outer
+    if path in sources:
+        return sources[path]
+    for short_path, source in sources.items():
+        prefix = short_path + "/"
+        if path.startswith(prefix):
+            return source.project(path[len(prefix) :])
+    fail("go_package: {} is in none of the sources".format(path))
 
-def _workspace(label: Label, srcs: list[Artifact]) -> (Artifact, Artifact | None, str):
-    """The project's go.mod, its go.sum if it has one, and the module root directory.
-
-    A project is checked out, not written by us, so it carries no build file to point at its own
-    root; the go.mod marks it. The go.sum is optional because a module that resolves nothing has
-    nothing to pin.
-    """
-    if _named(srcs, "go.work"):
-        fail("go_package {}: go workspaces are not supported; keep go.work out of srcs".format(label.name))
-    modules = _named(srcs, _MODULE)
-    if not modules:
-        fail(
-            "go_package {}: srcs hold no {}; by default the checkout is expected in the {}/ directory, pass `srcs` when it lives elsewhere".format(
-                label.name,
-                _MODULE,
-                label.name,
-            )
-        )
-    module = _outermost(label, modules)
-    root = _directory(module, _MODULE)
-    sums = [sum for sum in _named(srcs, _SUM) if _directory(sum, _SUM) == root]
-    return module, sums[0] if sums else None, root
-
-def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
-    module, sum, root = _workspace(ctx.label, ctx.attrs.srcs)
-
-    # Symlinked, not copied: the build driver copies the tree into its scratch space anyway, and
-    # copying twice buys nothing.
-    src = ctx.actions.symlinked_dir("src", {source.short_path: source for source in ctx.attrs.srcs})
-    reserved = [name for name in ctx.attrs.binaries if name in _RESERVED]
-    if reserved:
-        fail("go_package {}: binaries may not be named {}".format(ctx.label.name, reserved))
-    outputs = {name: ctx.actions.declare_output(name) for name in ctx.attrs.binaries}
+def _go_build_impl(
+    actions: AnalysisActions,
+    binaries: dict[str, OutputArtifact],
+    build: RunInfo,
+    cgo: bool | None,
+    cgo_cflags: list[str],
+    fetch: RunInfo,
+    gocache: OutputArtifact,
+    sources: dict[str, Artifact],
+    src: Artifact,
+    tags: list[str],
+    workspace: ArtifactValue,
+) -> list[Provider]:
+    """Declare what the project's go.mod asks for, once it has been found and can be read."""
+    module = workspace.read_json()
 
     # The one online step: go downloads what go.mod names and verifies it against go.sum. Its
     # inputs are only those two files, so editing sources never refetches; and the cache is kept
     # across reruns, so a dependency bump downloads only what is missing from it.
     module_cache = None
-    if sum != None:
-        module_cache = ctx.actions.declare_output("module-cache", dir = True)
-        ctx.actions.run(
+    if module["sum"] != None:
+        module_cache = actions.declare_output(_PRIVATE + "/module-cache", dir = True)
+        actions.run(
             cmd_args(
-                chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = ctx.attrs._fetch, network = True),
+                fetch,
                 spec_args(
-                    ctx.actions,
-                    "go-fetch.spec.json",
+                    actions,
+                    _PRIVATE + "/go-fetch.spec.json",
                     {
-                        "mod": module,
+                        "mod": _source(sources, module["mod"]),
                         "module_cache_dir": module_cache.as_output(),
-                        "sum": sum,
+                        "sum": _source(sources, module["sum"]),
                     },
                 ),
             ),
@@ -101,29 +63,90 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             no_outputs_cleanup = True,
         )
 
-    # go's own build cache. An action's outputs are the only place it may leave state behind, and
-    # buck clears them before rerunning it unless told not to.
-    gocache = ctx.actions.declare_output("gocache", dir = True)
-    ctx.actions.run(
+    actions.run(
         cmd_args(
-            chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = ctx.attrs._build),
+            build,
             spec_args(
-                ctx.actions,
-                "go-build.spec.json",
+                actions,
+                _PRIVATE + "/go-build.spec.json",
                 {
-                    "binaries": {name: out.as_output() for name, out in outputs.items()},
-                    "cgo": ctx.attrs.cgo,
-                    "cgo_cflags": ctx.attrs.cgo_cflags,
-                    "gocache": gocache.as_output(),
+                    "binaries": binaries,
+                    "cgo": cgo,
+                    "cgo_cflags": cgo_cflags,
+                    "gocache": gocache,
                     "module_cache_dir": module_cache,
-                    "root": root,
+                    "root": module["root"],
                     "src": src,
-                    "tags": ctx.attrs.tags,
+                    "tags": tags,
                 },
             ),
         ),
         category = "go_build",
         no_outputs_cleanup = True,
+    )
+    return []
+
+_go_build = dynamic_actions(
+    impl = _go_build_impl,
+    attrs = {
+        "binaries": dynattrs.dict(str, dynattrs.output()),
+        "build": dynattrs.value(RunInfo),
+        "cgo": dynattrs.value(bool | None),
+        "cgo_cflags": dynattrs.value(list[str]),
+        "fetch": dynattrs.value(RunInfo),
+        "gocache": dynattrs.output(),
+        "sources": dynattrs.dict(str, dynattrs.value(Artifact)),
+        "src": dynattrs.value(Artifact),
+        "tags": dynattrs.value(list[str]),
+        "workspace": dynattrs.artifact_value(),
+    },
+)
+
+def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
+    sources = {source.short_path: source for source in ctx.attrs.srcs}
+
+    # Symlinked, not copied: the build driver copies the tree into its scratch space anyway, and
+    # copying twice buys nothing.
+    src = ctx.actions.symlinked_dir(_PRIVATE + "/src", sources)
+    reserved = [name for name in ctx.attrs.binaries if name == _PRIVATE or name.startswith(_PRIVATE + "/")]
+    if reserved:
+        fail("go_package {}: binaries may not be named {}".format(ctx.label.name, reserved))
+    outputs = {name: ctx.actions.declare_output(name) for name in ctx.attrs.binaries}
+
+    # go's own build cache. An action's outputs are the only place it may leave state behind, and
+    # buck clears them before rerunning it unless told not to.
+    gocache = ctx.actions.declare_output(_PRIVATE + "/gocache", dir = True)
+
+    workspace = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
+    ctx.actions.run(
+        cmd_args(
+            ctx.attrs._workspace[RunInfo],
+            spec_args(
+                ctx.actions,
+                _PRIVATE + "/go-workspace.spec.json",
+                {
+                    "name": ctx.label.name,
+                    "out": workspace.as_output(),
+                    "sources": sources,
+                },
+            ),
+        ),
+        category = "go_workspace",
+    )
+
+    ctx.actions.dynamic_output_new(
+        _go_build(
+            binaries = {name: out.as_output() for name, out in outputs.items()},
+            build = chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = ctx.attrs._build),
+            cgo = ctx.attrs.cgo,
+            cgo_cflags = ctx.attrs.cgo_cflags,
+            fetch = chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = ctx.attrs._fetch, network = True),
+            gocache = gocache.as_output(),
+            sources = sources,
+            src = src,
+            tags = ctx.attrs.tags,
+            workspace = workspace,
+        ),
     )
     sub_targets = {name: [DefaultInfo(default_output = out)] for name, out in outputs.items()}
     return [DefaultInfo(default_outputs = outputs.values(), sub_targets = sub_targets)]
@@ -139,20 +162,17 @@ _go_package = rule(
         "tags": attrs.list(attrs.string(), default = [], doc = "build tags selecting the project's optional files"),
         "_build": attrs.dep(providers = [RunInfo], default = "tine//go:build"),
         "_fetch": attrs.dep(providers = [RunInfo], default = "tine//go:fetch"),
+        "_workspace": attrs.exec_dep(providers = [RunInfo], default = "tine//go:workspace"),
     },
 )
 
 def go_package(name: str, binaries: list[str], srcs: list[str] | None = None, **kwargs) -> None:
     """Build a checked-out Go project against the modules its go.sum pins.
 
-    The sources default to the checkout named after the target. Each binary carries the name go
-    itself would install it under.
+    The sources default to the checkout named after the target. A go.mod among them marks the module
+    root, and is read once the sources have been built, so a project whose tree arrives from a fetch
+    needs nothing committed here. Each binary carries the name go itself would install it under.
     """
     if not binaries:
         fail("go_package {}: declare the binaries to take out of the build".format(name))
-    _go_package(
-        name = name,
-        binaries = binaries,
-        srcs = srcs if srcs != None else glob([name + "/**"]),
-        **kwargs,
-    )
+    _go_package(name = name, binaries = binaries, srcs = srcs if srcs != None else glob([name + "/**"]), **kwargs)
