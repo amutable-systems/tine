@@ -8,9 +8,6 @@ load("@tine//cargo:rules.bzl", "cargo_package")
 load("@tine//engine:build.bzl", "engine")
 load("@tine//image:defs.bzl", "copy", "install", "rootfs_archive")
 load("@tine//package:manager.bzl", "package_manager")
-# hello commits a Cargo.lock, passed to its build below as parse-time loaded data; data loads
-# dispatch on the file suffix, hence the format override.
-load("//examples/image-rust-project/hello:Cargo.lock?format=toml", _hello_lock = "value")
 
 # The build environment for our Rust projects; it never reaches an image.
 engine(
@@ -32,7 +29,6 @@ cargo_package(
     name = "hello",
     binaries = ["hello-cli"],
     engine = ":rust.engine",
-    lock = _hello_lock,
 )
 
 # A project with no dependencies at all, which therefore commits no Cargo.lock.

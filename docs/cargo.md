@@ -13,19 +13,17 @@ beside it, and an image carrying the resulting binaries.
 
 ```python
 load("@tine//cargo:rules.bzl", "cargo_package")
-load("//images/hello:Cargo.lock?format=toml", hello_lock = "value")
 
 cargo_package(
     name = "hello",
     binaries = ["hello-cli"],
     engine = ":rust.engine",
-    lock = hello_lock,
 )
 ```
 
-- `lock` is the project's own `Cargo.lock`, loaded as parse-time data with the `?format=toml` override,
-  because data loads otherwise dispatch on the file suffix. A project that commits a lock must pass it,
-  and one without a lock must not; mixing the two up is refused.
+- The project's own `Cargo.lock` is picked out of `srcs`; nothing declares it separately. A dynamic
+  action reads it once it has been built and declares the fetches it names from there, so the lock can be
+  a source file or an artifact another target produced, and the rule takes the same shape either way.
 - `srcs` defaults to `glob(["<name>/**"], exclude = ["<name>/target/**"])`: the checkout is expected in a
   directory named after the target. Pass `srcs` explicitly when it is called something else. Nothing needs
   to be added inside the checkout, i.e. a pristine project clone works.
@@ -74,7 +72,7 @@ engine(
 
 ## Git dependencies
 
-A crate that lives in git is pinned by the commit alone: every git source in the loaded lock, transitive
+A crate that lives in git is pinned by the commit alone: every git source in the lock, transitive
 dependencies included, becomes a fetch of exactly the locked commit, which the hash itself verifies.
 Nothing else has to be pinned or committed, and the manifest needs no particular spelling of the
 dependency.
@@ -112,6 +110,9 @@ How the crates are pinned, fetched and vendored is described under "Rust source 
   the daemon thousands of file change events to process before it can answer the next command.
 - **A cold daemon wants the network even when every crate is already cached**, because Buck asks the
   registry for sizes the lock does not record.
+- **Two projects sharing a crate download it twice.** Each project owns its downloads, and content-based
+  paths dedupe only within a target, so the copies are separate. A shared crate pool, along the lines of
+  the package pool a repository owns, would fix it.
 - **`cargo-auditable` is a pinned upstream binary**, not built from source, because building it from
   crates.io would need the mechanism it exists to serve. It is trusted like the pinned `buck2`, `python3`
   and `syft`.

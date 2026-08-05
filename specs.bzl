@@ -1,14 +1,15 @@
 """Hand a driver its whole invocation as one JSON spec."""
 
-def spec_args(ctx: AnalysisContext, name: str, spec: dict[str, typing.Any]) -> cmd_args:
+def spec_args(actions: AnalysisActions, name: str, spec: dict[str, typing.Any]) -> cmd_args:
     """Serialize one action's inputs, outputs, and configuration for its driver.
 
     Artifacts survive as their action paths, so a spec names declared outputs as readily as
-    inputs and neither has to be repeated on the command line.
+    inputs and neither has to be repeated on the command line. Takes the actions rather than the
+    context so that a dynamic action, which only ever sees the former, can write a spec too.
     """
     return cmd_args(
         "--spec",
-        ctx.actions.write_json(
+        actions.write_json(
             name,
             spec,
             with_inputs = True,

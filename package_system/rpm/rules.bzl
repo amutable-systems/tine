@@ -268,7 +268,7 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     build = cmd_args(
         chroot_run(engine = package_manager.engine[EngineInfo], exe = system.build),
         spec_args(
-            ctx,
+            ctx.actions,
             "build.spec.json",
             {
                 "dist": ctx.attrs.dist,

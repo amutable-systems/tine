@@ -99,7 +99,7 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
             cmd_args(
                 system.extract[RunInfo],
                 spec_args(
-                    ctx,
+                    ctx.actions,
                     "extract.spec.json",
                     {
                         "out": chroot1.as_output(),
@@ -124,7 +124,7 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
                 exe = system.install,
             ),
             spec_args(
-                ctx,
+                ctx.actions,
                 "install.spec.json",
                 {
                     "docs": True,

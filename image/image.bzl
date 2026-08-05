@@ -117,7 +117,7 @@ def _image_command(
     return cmd_args(
         chroot_run(engine = engine[EngineInfo], exe = exe),
         spec_args(
-            ctx,
+            ctx.actions,
             spec_path(identifier, driver),
             {"lower": layers, "tmpfiles": tmpfiles} | spec,
         ),
@@ -496,7 +496,7 @@ def declare_image(
             }
         cmd = cmd_args(
             chroot_run(engine = engine[EngineInfo], exe = tools.layer),
-            spec_args(ctx, spec_path(identifier, "layer"), spec),
+            spec_args(ctx.actions, spec_path(identifier, "layer"), spec),
         )
         ctx.actions.run(cmd, category = "image", identifier = identifier or "layer")
 

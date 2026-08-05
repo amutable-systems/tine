@@ -481,7 +481,7 @@ def declare_disk_conversion(
     cmd = cmd_args(
         chroot_run(engine = engine[EngineInfo], exe = ctx.attrs._tools[ImageToolsInfo].convert),
         spec_args(
-            ctx,
+            ctx.actions,
             spec_path(identifier, "convert"),
             {
                 "format": format,
