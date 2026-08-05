@@ -63,7 +63,7 @@ is described in [design.md](design.md).
 Everything below is re-exported from one facade, so a `BUCK` file needs a single load:
 
 ```python
-load("@tine//image:defs.bzl", "image", "install", "rootfs_archive", "run")
+load("@tine//image:defs.bzl", "image", "install_packages", "rootfs_archive", "run")
 ```
 
 The modules behind the facade (`image.bzl`, `compose.bzl`, and the `image_format` package) are
@@ -89,7 +89,7 @@ package_manager(
 image(
     name = "project.image",
     package_manager = ":project.package-manager",
-    ops = [install(["project"])],
+    ops = [install_packages(["project"])],
 )
 
 image(
@@ -119,7 +119,7 @@ resolve upstream (details in [design.md](design.md)).
 supplies `parent` and inherits that image's package manager and engine. A call with operations applies one
 ordered operation sequence in one action and persists exactly one delta:
 
-- `install([...])` installs native packages; `install_package_set("...")` resolves a symbolic package set
+- `install_packages([...])` installs native packages; `install_package_set("...")` resolves a symbolic package set
   through the image's package manager. One operation sequence may contain one install, at any position.
 - `run([...])` executes a command against the image. By default the engine supplies the userspace and
   the image is mounted at `/buildroot`; with `chroot = True` the command runs inside the image with its

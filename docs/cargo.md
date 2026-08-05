@@ -45,7 +45,7 @@ rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
     ops = [
-        install(["glibc"]),
+        install_packages(["glibc"]),
         copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
     ],
     format = "tar",

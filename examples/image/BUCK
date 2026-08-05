@@ -8,7 +8,7 @@ load(
     "image",
     "image_archive",
     "image_vm",
-    "install",
+    "install_packages",
     "mkdir",
     "python",
     "remove",
@@ -50,7 +50,7 @@ rootfs_archive(
         run(["/usr/bin/cp", "$(location :marker.txt)", "/buildroot/etc/tine/from-location"]),
         # copy() takes a source directly, so it needs no $(location) around the label.
         copy(":marker.txt", "/etc/tine/from-copy"),
-        install(["bash", "coreutils"]),
+        install_packages(["bash", "coreutils"]),
         # A chrooted command runs with the image's own binaries. Buck's macro parser claims
         # `$(...)`, so the shell substitution is escaped.
         run(["/usr/bin/bash", "-c", "echo built-by-\\$(echo tine) > /etc/tine/marker"], chroot = True),
@@ -77,7 +77,7 @@ rootfs_archive(
 rootfs_archive(
     name = "base",
     package_manager = ":image.package-manager",
-    ops = [install(["bash"])],
+    ops = [install_packages(["bash"])],
     format = "tar",
 )
 
@@ -86,7 +86,7 @@ image(
     name = "chained-base",
     package_manager = ":image.package-manager",
     ops = [
-        install(["bash", "coreutils"]),
+        install_packages(["bash", "coreutils"]),
         mkdir("/etc/tine"),
         run(
             [
@@ -119,7 +119,7 @@ image(
     name = "layered-install-base",
     package_manager = ":image.package-manager",
     ops = [
-        install(["bash"]),
+        install_packages(["bash"]),
         run(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"], chroot = True),
     ],
 )
@@ -128,7 +128,7 @@ image(
     name = "layered-install.layer",
     parent = ":layered-install-base",
     ops = [
-        install(["coreutils"]),
+        install_packages(["coreutils"]),
         run(["/usr/bin/bash", "-c", "ls /usr/bin/ls > /etc/from-child-install"], chroot = True),
     ],
 )
@@ -144,7 +144,7 @@ image(
     name = "escaped-base",
     package_manager = ":image.package-manager",
     ops = [
-        install(["bash", "coreutils"]),
+        install_packages(["bash", "coreutils"]),
         mkdir("/etc/tine"),
         run(
             [
@@ -179,7 +179,7 @@ bootable_disk_image(
     definitions = DEFAULT_USR_VERITY_PARTITIONS,
     version = read_config("demo", "image-version", "unversioned"),
     ops = [
-        install([
+        install_packages([
             "kernel-core",
             "systemd",
             "systemd-udev",
@@ -246,7 +246,7 @@ command_alias(
 sysext_image(
     name = "demo-ext",
     base = ":boot-demo",
-    ops = [install(["zsh"])],
+    ops = [install_packages(["zsh"])],
     install_docs = False,
 )
 
@@ -255,7 +255,7 @@ image(
     name = "opaque-base",
     package_manager = ":image.package-manager",
     ops = [
-        install(["bash", "coreutils"]),
+        install_packages(["bash", "coreutils"]),
         run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"], chroot = True),
     ],
 )
