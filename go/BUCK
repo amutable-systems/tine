@@ -28,7 +28,6 @@ engine_unittest(
         "build.py",
         "build_test.py",
     ],
-    visibility = ["tine//tools:check"],
     deps = [
         "//:specs",
         "//:util",

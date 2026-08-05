@@ -98,7 +98,6 @@ engine_unittest(
         "version.py",
         "version_test.py",
     ],
-    visibility = [":check"],
 )
 
 command_alias(
@@ -154,7 +153,6 @@ engine_unittest(
         "importer",
         "importer_test.py",
     ],
-    visibility = [":check"],
 )
 
 # BuildRequires cycle analysis of a branch (pass its label, e.g. //packages/fedora:rawhide's dir).

@@ -66,6 +66,21 @@ def _starlark_srcs(buck: str) -> list[Path]:
     ]
 
 
+def _orphan_tests(buck: str, cell: Path) -> list[Path]:
+    """Test files no engine_unittest lists in `srcs`, which `buck test` would never run.
+
+    Each suite names its sources explicitly, so a new file beside the code is invisible until it is
+    added to one; nothing else would report that.
+    """
+    targets = json.loads(
+        _buck_out(
+            buck, "-v", "0", "uquery", "kind('engine_unittest', tine//...)", "--output-attribute", "srcs"
+        )
+    )
+    claimed = {cell / src.split("//", 1)[1] for target in targets.values() for src in target["srcs"]}
+    return sorted(p for p in cell.rglob("*_test.py") if "buck-out" not in p.parts and p not in claimed)
+
+
 def _starlark_fmt(args: argparse.Namespace, *arguments: str | Path) -> list[str | Path]:
     return [args.starlark_fmt, "--config", args.starlark_fmt_config, *arguments]
 
@@ -82,6 +97,10 @@ def _fmt_diff(args: argparse.Namespace, src: Path) -> str:
 def _lint(args: argparse.Namespace) -> None:
     cell = _cell_root(args.buck, "tine")
     srcs = _starlark_srcs(args.buck)
+    _bold("test targets")
+    if orphans := _orphan_tests(args.buck, cell):
+        listing = "\n".join(f"  {p.relative_to(cell)}" for p in orphans)
+        raise SystemExit(f"no engine_unittest lists these, so they never run:\n{listing}")
     _bold("ruff")
     _run([args.ruff, "format", "--check", "--no-cache", cell])
     _run([args.ruff, "check", "--no-cache", cell])

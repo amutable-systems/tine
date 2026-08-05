@@ -30,7 +30,6 @@ engine_unittest(
         "lock.bzl",
         "vendor.py",
     ],
-    visibility = ["tine//tools:check"],
     deps = [
         "//:specs",
         "//:util",
