@@ -5,64 +5,10 @@ load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load(":lock.bzl", "crate_downloads", "git_sources")
 load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
 
-_LOCK = "Cargo.lock"
-_MANIFEST = "Cargo.toml"
-_RESOLVED = "lock.json"
+_PRIVATE = "__tine"
 
-# Output names the rule declares for itself, vendor.bzl's among them. A binary sharing one collides in
-# the output namespace, which buck reports as a duplicate path in buck-out rather than as the
-# declaration being wrong.
-_RESERVED = ("crate", "crates", "git", _RESOLVED, "src", "target", "vendor")
-
-def _named(srcs: list[Artifact], name: str) -> list[Artifact]:
-    return [src for src in srcs if src.short_path.rsplit("/", 1)[-1] == name]
-
-def _directory(src: Artifact, name: str) -> str:
-    return src.short_path[: -len(name)].rstrip("/")
-
-def _workspace(label: Label, srcs: list[Artifact]) -> (Artifact | None, str):
-    """The project's lock if it has one, and the workspace directory.
-
-    A project is checked out, not written by us, so it carries no build file to point at its own
-    root; cargo's workspace begins where its lock and manifest are. The lock is optional because a
-    project that resolves nothing has nothing to pin, but then only one manifest may claim to be
-    the root.
-    """
-    locks = _named(srcs, _LOCK)
-    if len(locks) > 1:
-        fail(
-            "cargo_package {}: srcs hold several {} files: {}".format(
-                label.name,
-                _LOCK,
-                [lock.short_path for lock in locks],
-            )
-        )
-    manifests = _named(srcs, _MANIFEST)
-    if locks:
-        root = _directory(locks[0], _LOCK)
-        manifests = [m for m in manifests if _directory(m, _MANIFEST) == root]
-    elif not manifests:
-        fail(
-            "cargo_package {}: srcs hold no {}; by default the checkout is expected in the {}/ directory, pass `srcs` when it lives elsewhere".format(
-                label.name,
-                _MANIFEST,
-                label.name,
-            )
-        )
-    elif len(manifests) == 1:
-        root = _directory(manifests[0], _MANIFEST)
-    else:
-        fail(
-            "cargo_package {}: srcs hold no {} and {} {} files; commit the lock".format(
-                label.name,
-                _LOCK,
-                len(manifests),
-                _MANIFEST,
-            )
-        )
-    if not manifests:
-        fail("cargo_package {}: srcs hold no {} beside the {}".format(label.name, _MANIFEST, _LOCK))
-    return (locks[0] if locks else None), root
+# All machinery lives under one deliberately private output name. The public output namespace then
+# belongs to binaries, including names such as `git` that internals must not claim.
 
 def _cargo_build_impl(
     actions: AnalysisActions,
@@ -72,19 +18,19 @@ def _cargo_build_impl(
     fetch: RunInfo,
     lock: ArtifactValue,
     name: str,
-    root: str,
     src: Artifact,
     target: OutputArtifact,
     vendor: RunInfo,
 ) -> list[Provider]:
     """Declare everything the lock names, once it has been built and can be read."""
-    resolved = lock.read_json()
+    workspace = lock.read_json()
+    resolved = workspace["lock"]
     repositories = {}
     for commit, fields in git_sources(name, resolved).items():
         # The prelude's git_fetch tool, run directly rather than through its rule: that rule hands
         # out the work tree, and cargo resolves a replaced git source against the repository.
-        git_dir = actions.declare_output("git", commit[:12] + ".git", dir = True)
-        work_tree = actions.declare_output("git", commit[:12] + ".work-tree", dir = True)
+        git_dir = actions.declare_output(_PRIVATE + "/git", commit[:12] + ".git", dir = True)
+        work_tree = actions.declare_output(_PRIVATE + "/git", commit[:12] + ".work-tree", dir = True)
         actions.run(
             cmd_args(
                 fetch,
@@ -104,15 +50,15 @@ def _cargo_build_impl(
             build,
             spec_args(
                 actions,
-                "cargo-build.spec.json",
+                _PRIVATE + "/cargo-build.spec.json",
                 {
                     "auditable": auditable,
                     "binaries": binaries,
                     "git": repositories,
-                    "root": root,
+                    "root": workspace["root"],
                     "src": src,
                     "target": target,
-                    "vendor": assemble_vendor(actions, vendor, crate_downloads(name, resolved)),
+                    "vendor": assemble_vendor(actions, vendor, crate_downloads(name, resolved), _PRIVATE),
                 },
             ),
         ),
@@ -130,7 +76,6 @@ _cargo_build = dynamic_actions(
         "fetch": dynattrs.value(RunInfo),
         "lock": dynattrs.artifact_value(),
         "name": dynattrs.value(str),
-        "root": dynattrs.value(str),
         "src": dynattrs.value(Artifact),
         "target": dynattrs.output(),
         "vendor": dynattrs.value(RunInfo),
@@ -138,29 +83,34 @@ _cargo_build = dynamic_actions(
 )
 
 def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
-    lock, root = _workspace(ctx.label, ctx.attrs.srcs)
-
     # Symlinked, not copied: the build driver copies the tree into its scratch space anyway, because
     # cargo needs it writable, and copying twice buys nothing.
-    src = ctx.actions.symlinked_dir("src", {source.short_path: source for source in ctx.attrs.srcs})
-    reserved = [name for name in ctx.attrs.binaries if name in _RESERVED]
+    src = ctx.actions.symlinked_dir(_PRIVATE + "/src", {source.short_path: source for source in ctx.attrs.srcs})
+    reserved = [name for name in ctx.attrs.binaries if name == _PRIVATE or name.startswith(_PRIVATE + "/")]
     if reserved:
         fail("cargo_package {}: binaries may not be named {}".format(ctx.label.name, reserved))
     outputs = {name: ctx.actions.declare_output(name) for name in ctx.attrs.binaries}
 
     # Cargo's own build directory. An action's outputs are the only place it may leave state behind,
     # and buck clears them before rerunning it unless told not to.
-    target = ctx.actions.declare_output("target", dir = True)
+    target = ctx.actions.declare_output(_PRIVATE + "/target", dir = True)
 
-    if lock != None:
-        resolved = ctx.actions.declare_output(_RESOLVED)
-        ctx.actions.run(
-            cmd_args(ctx.attrs._lock[RunInfo], lock, resolved.as_output()),
-            category = "cargo_lock",
-        )
-    else:
-        # A project that resolves nothing takes the same path, with nothing to fetch.
-        resolved = ctx.actions.write_json(_RESOLVED, {"package": []})
+    resolved = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
+    ctx.actions.run(
+        cmd_args(
+            ctx.attrs._lock[RunInfo],
+            spec_args(
+                ctx.actions,
+                _PRIVATE + "/cargo-lock.spec.json",
+                {
+                    "name": ctx.label.name,
+                    "out": resolved.as_output(),
+                    "sources": {source.short_path: source for source in ctx.attrs.srcs},
+                },
+            ),
+        ),
+        category = "cargo_lock",
+    )
 
     ctx.actions.dynamic_output_new(
         _cargo_build(
@@ -170,7 +120,6 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
             fetch = ctx.attrs._fetch[RunInfo],
             lock = resolved,
             name = ctx.label.name,
-            root = root,
             src = src,
             target = target.as_output(),
             vendor = ctx.attrs._vendor[RunInfo],

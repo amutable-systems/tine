@@ -2,11 +2,12 @@
 
 load("//engine:test.bzl", "engine_unittest")
 
-# The project's lock in, the JSON a dynamic action can read out.
+# The project's source artifacts in, its workspace root and resolved lock out.
 python_bootstrap_binary(
     name = "lock",
     main = "lock.py",
     visibility = ["PUBLIC"],
+    deps = ["//:specs"],
 )
 
 # The downloaded crates in, the directory cargo builds against out.
@@ -35,6 +36,7 @@ engine_unittest(
         "build.py",
         "cargo_test.py",
         "lock.bzl",
+        "lock.py",
         "vendor.py",
     ],
     deps = [

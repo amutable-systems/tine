@@ -372,19 +372,20 @@ engine, package system, and ordered package directories share one action.
 
 A consuming repository can build a Rust project it has checked out instead of packaging it first.
 `cargo_package()` takes the project's files as ordinary sources, so a clone needs nothing added to it, and
-the single `Cargo.lock` among them identifies the workspace root; the same lock, additionally passed as
-parse-time loaded data, declares what the build fetches. A project that resolves nothing carries
+the single `Cargo.lock` among them identifies the workspace root. An action discovers that lock after the
+sources have been built, so the checkout may itself be a fetched directory artifact; a dynamic action
+then reads the resolved lock and declares what the build fetches. A project that resolves nothing carries
 no lock, because cargo will not create one under `--locked` and there would be nothing in it to pin; its
 sole manifest identifies the root, `--locked` is dropped, and the empty vendored source plus the unshared
 network are what keep the build from resolving anything. The declaration contract is in
 [cargo.md](cargo.md).
 
-The loaded lock declares every fetch at parse time. A lock entry's `checksum` is the SHA-256 of its
-crates.io tarball and `static.crates.io` serves that tarball under a URL derived from name and version, so
-each registry crate becomes one hash-verified `download_file`, the same treatment as repository packages,
-and deriving them needs no network; a lock older than version 3 records no checksums and is rejected. A
-git dependency is pinned by the commit in its lock source and becomes a repository fetch instead,
-transitive dependencies included, since the lock always carries the full commit; each fetch
+A lock entry's `checksum` is the SHA-256 of its crates.io tarball and `static.crates.io` serves that
+tarball under a URL derived from name and version, so each registry crate becomes one hash-verified
+`download_file`, the same treatment as repository packages, and deriving them needs no network; a lock
+older than version 3 records no checksums and is rejected. A git dependency is pinned by the commit in its
+lock source and becomes a repository fetch instead, transitive dependencies included, since the lock
+always carries the full commit; each fetch
 shallow-fetches its commit and fails unless `FETCH_HEAD` is exactly that hash, so the commit itself is
 the integrity check. Anything from another registry is rejected with the package named.
 
