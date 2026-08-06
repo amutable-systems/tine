@@ -230,12 +230,25 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     if not system_definitions or not boot_definitions:
         fail("bootable_disk_image: definitions must include system and ESP partitions")
 
+    # An option set for a filesystem this disk never formats would go nowhere: repart reads the
+    # variable named after the filesystem it is about to create and ignores the rest.
+    formatted = {definition["filesystem"]: True for definition in definitions if definition["filesystem"]}
+    unknown = [name for name in sorted(ctx.attrs.mkfs_options) if name not in formatted]
+    if unknown:
+        fail(
+            "bootable_disk_image: mkfs_options for {}, which no partition of this disk formats; it formats {}".format(
+                unknown,
+                sorted(formatted),
+            )
+        )
+
     system = declare_repart(
         ctx,
         definitions = system_definitions,
         disk = False,
         identifier = "system",
         image = identity,
+        mkfs_options = ctx.attrs.mkfs_options,
         seed = ctx.attrs.disk_seed,
         split = True,
         strip_pkgdb = ctx.attrs.strip_pkgdb,
@@ -286,6 +299,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         image = esp,
         imported = [system.info],
         imported_root_hash = system.info.root_hash,
+        mkfs_options = ctx.attrs.mkfs_options,
         output_size = ctx.attrs.output_size,
         seed = ctx.attrs.disk_seed,
         split = True,
@@ -353,6 +367,12 @@ _bootable_disk_image = rule(
             attrs.dep(providers = [ImageInfo]),
             default = None,
             doc = ("logical image to archive and use as the initrd; " + "defaults to the release initrd package set"),
+        ),
+        "mkfs_options": attrs.dict(
+            attrs.string(),
+            attrs.list(attrs.string()),
+            default = {},
+            doc = "filesystem -> the options mkfs is given when formatting a partition of that type",
         ),
         "output_size": attrs.option(
             attrs.string(),

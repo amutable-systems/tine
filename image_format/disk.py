@@ -3,6 +3,7 @@
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -48,6 +49,8 @@ class Spec(finalize.ImageSpec):
     root_hash_out: str | None
     # Image paths holding the package database, stripped from the partitions.
     pkgdb_paths: list[str]
+    # Filesystem -> the options mkfs is given for it.
+    mkfs_options: dict[str, list[str]]
 
 
 @dataclass(frozen=True)
@@ -311,7 +314,12 @@ def main(argv: list[str] | None = None) -> None:
             cmd += ["--private-key", spec["private_key"]]
         if spec["certificate"]:
             cmd += ["--certificate", spec["certificate"]]
-        result = subprocess.run([*cmd, str(disk)], check=True, stdout=subprocess.PIPE, text=True)
+        # repart reads one variable per filesystem it formats and splits each on whitespace.
+        env = os.environ | {
+            f"SYSTEMD_REPART_MKFS_OPTIONS_{filesystem.upper()}": " ".join(options)
+            for filesystem, options in spec["mkfs_options"].items()
+        }
+        result = subprocess.run([*cmd, str(disk)], check=True, env=env, stdout=subprocess.PIPE, text=True)
         rows: list[dict[str, Any]] = json.loads(result.stdout)
 
         for output in outputs:

@@ -248,6 +248,7 @@ def declare_repart(
     verity_key: SigningKeyInfo | None = None,
     output_size: str | None = None,
     strip_pkgdb: bool = False,
+    mkfs_options: dict[str, list[str]] = {},
     basename: str = "image",
     identifier: str | None = None,
 ) -> RepartOutput:
@@ -272,6 +273,18 @@ def declare_repart(
         if not regex_match(SIZE_PATTERN, output_size):
             fail("repart: invalid output_size {!r}".format(output_size))
 
+    # repart hands mkfs one variable per filesystem and splits it on whitespace, so an option
+    # carrying any would silently arrive as two.
+    for filesystem, options in mkfs_options.items():
+        for option in options:
+            if " " in option or "\t" in option:
+                fail(
+                    "repart: {} mkfs option {!r} holds whitespace, which repart splits on".format(
+                        filesystem,
+                        option,
+                    )
+                )
+
     imported_partitions = []
     for info in imported:
         imported_partitions.extend(info.partitions)
@@ -290,6 +303,7 @@ def declare_repart(
         "certificate": verity_key.certificate if verity_key else None,
         "definitions": decoded,
         "identity": "{}[{}]".format(ctx.label, identifier or "repart"),
+        "mkfs_options": mkfs_options,
         "out": None,
         "output_size": output_size,
         "partitions": [
@@ -397,6 +411,7 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
         image = ctx.attrs.image[ImageInfo],
         imported = imported,
         imported_root_hash = imported_root_hash,
+        mkfs_options = ctx.attrs.mkfs_options,
         seed = ctx.attrs.seed,
         split = ctx.attrs.split,
         strip_pkgdb = ctx.attrs.strip_pkgdb,
@@ -411,6 +426,12 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
 REPART_ATTRS = {
     "basename": attrs.string(default = "image", doc = "file name of the composed disk, without extension"),
     "definitions": attrs.list(attrs.string(), doc = "serialized partition definitions"),
+    "mkfs_options": attrs.dict(
+        attrs.string(),
+        attrs.list(attrs.string()),
+        default = {},
+        doc = "filesystem -> the options mkfs is given when formatting a partition of that type",
+    ),
     "output_size": attrs.option(
         attrs.string(),
         default = None,

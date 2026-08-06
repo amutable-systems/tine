@@ -235,7 +235,8 @@ when needed:
 - `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
   GPT disk and independent partition artifacts in one `RepartInfo`; its disk field is absent for a
   split-only invocation, `output_size` composes the disk with free space behind its partitions, and
-  `strip_pkgdb` leaves the package database out of them;
+  `strip_pkgdb` leaves the package database out of them, and `mkfs_options` tunes the filesystems it
+  creates;
 - `disk_convert` re-encodes a raw disk with an explicitly selected engine and provides `DiskConversionInfo`;
 - `bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
@@ -303,6 +304,16 @@ Optional attributes:
   the composed file is enlarged behind the last one, so the added room costs nothing on disk and, as with
   `image_vm`'s `grow`, sits past the GPT backup header until something rewrites the table. A size the
   partitions do not fit in fails the build.
+- `mkfs_options` (dict of filesystem to option list, default `{}`): Options `mkfs` is given when
+  creating a partition of that filesystem, passed on to `repart()`, which hands each list to
+  `systemd-repart` as `SYSTEMD_REPART_MKFS_OPTIONS_<FSTYPE>`. Naming a filesystem the disk never formats
+  fails the build rather than going nowhere, and an option holding whitespace is refused because repart
+  splits the variable on it. This is where a disk's compression is really decided: a `partition()`'s
+  `compression` only picks the algorithm, so an erofs partition left at the defaults comes out
+  substantially larger than one built the way `image_sysext` builds its own, which is
+  `["-zzstd,level=3", "-C524288", "-Efragments,ztailpacking,dedupe"]`. `["--invariant"]` for vfat makes an
+  ESP byte-stable across rebuilds, which `mkfs.fat` otherwise is not, because it stamps the volume label
+  entry with the wall clock even under `SOURCE_DATE_EPOCH`.
 - `strip_pkgdb` (bool, default `False`): Leaves the package database out of the system partitions, for a
   system that ships without its package manager and never resolves a package again; passed on to
   `repart()`. The logical image keeps it, so `[pkgdb]` still captures the database and `[sbom]` still
