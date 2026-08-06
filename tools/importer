@@ -201,6 +201,28 @@ def urlopen_retry(url: str) -> bytes:
         time.sleep(delay)
 
 
+def git_net(*args: str) -> str:
+    """Run a git command with retrying failures with exponential back-off.
+
+    git has no distinct exit code for a transport error: every persistent ("branch does not exist") or
+    transient ("Connection reset by peer") fatal condition is 128.
+
+    The reason reaches us only as free-form localized stderr text. Matching that is brittle, so instead
+    retry *any* failure. Use this only for operations whose sole job is to reach the remote.
+
+    clone removes the destination it created, so a retry needs no cleanup.
+    """
+    for attempt in range(HTTP_RETRIES):
+        try:
+            return git(*args)
+        except subprocess.CalledProcessError as e:
+            delay = HTTP_BACKOFF * 2 ** attempt
+            logging.warning('git %s failed (exit %d); retrying in %.0fs (%d/%d)',
+                            ' '.join(args), e.returncode, delay, attempt + 1, HTTP_RETRIES)
+            time.sleep(delay)
+    return git(*args)  # out of retries: this attempt's failure is the caller's
+
+
 def ensure_worktree() -> Path:
     """Return a checkout of the upstream-rpm branch. Fail if the branch is absent."""
     assert git('branch', '--list', 'upstream-rpm', cwd=ROOT).strip(), \
@@ -628,7 +650,7 @@ def import_upstream(distro: str, branch: str, packagename: str, sha: str | None)
     koji = xmlrpc.client.ServerProxy(DISTROS[distro]['koji_hub'], allow_none=True)
     with tempfile.TemporaryDirectory() as tmp:
         clone = Path(tmp) / 'clone'
-        git('clone', '--quiet', '--branch', branch, '--single-branch', url, str(clone))
+        git_net('clone', '--quiet', '--branch', branch, '--single-branch', url, str(clone))
         if sha:
             build = find_build(koji, distro, packagename, url, sha, branch)
             if not (build and is_published(koji, distro, branch, build)):
@@ -663,13 +685,13 @@ def update_upstreams() -> None:
         url = DISTROS[distro]['dist_git'] + packagename + '.git'
         last = last_imported_sha(wt, distro, branch, packagename)
         # Cheap pre-check: a single ls-remote tells us whether the branch moved at all.
-        remote_head = git('ls-remote', url, f'refs/heads/{branch}').split()[0]
+        remote_head = git_net('ls-remote', url, f'refs/heads/{branch}').split()[0]
         if remote_head == last:
             logging.info('%s/%s/%s: up to date (%s)', distro, branch, packagename, last[:12])
             continue
         with tempfile.TemporaryDirectory() as tmp:
             clone = Path(tmp) / 'clone'
-            git('clone', '--quiet', '--branch', branch, '--single-branch', url, str(clone))
+            git_net('clone', '--quiet', '--branch', branch, '--single-branch', url, str(clone))
             target = latest_published_commit(koji, clone, distro, packagename, url, branch, since=last)
             if not target:
                 logging.info('%s/%s/%s: new commits, but none published yet', distro, branch, packagename)
