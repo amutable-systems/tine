@@ -13,7 +13,7 @@ beside it, and an image carrying the resulting binaries.
 
 ## Declaring a build
 
-```python
+```Starlark
 load("@tine//go:rules.bzl", "go_package")
 
 go_package(
@@ -57,7 +57,7 @@ The binaries are ordinary artifacts, so an image installs one with a `copy()` op
 
 ## What the builder engine needs
 
-```python
+```Starlark
 engine(
     name = "go.engine",
     packages = ["ca-certificates", "golang", "python3"],

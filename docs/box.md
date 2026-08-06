@@ -2,7 +2,7 @@
 
 Declare a project development environment in the project-root `BUCK` file:
 
-```python
+```Starlark
 load("@tine//box:rules.bzl", "box")
 
 box(

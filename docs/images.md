@@ -62,7 +62,7 @@ is described in [design.md](design.md).
 
 Everything below is re-exported from one facade, so a `BUCK` file needs a single load:
 
-```python
+```Starlark
 load("@tine//image:defs.bzl", "image", "install_packages", "rootfs_archive", "run")
 ```
 
@@ -74,7 +74,7 @@ inherits it and its engine. Take a catalog package manager, optionally extend it
 and create the initial image. For example, a project can expose locally built packages without adding them
 to its OS release:
 
-```python
+```Starlark
 local_repository(
     name = "project.repository",
     packages = ["//packages:project"],
@@ -101,7 +101,7 @@ image(
 
 A package manager may instead attach a branch's generated local-packages universe:
 
-```python
+```Starlark
 package_manager(
     name = "image.package-manager",
     base = "tine//catalog:fedora.rawhide.package-manager",
@@ -148,7 +148,7 @@ Materialize a complete logical image explicitly with `image_directory`.
 How a project installs is a property of the project, not of each image carrying it. `image_install()`
 attaches operations to a target, and an image applies them with one `install_from()`:
 
-```python
+```Starlark
 image_install(
     name = "project.install",
     ops = [
@@ -177,7 +177,7 @@ A project that expects its build system to fill in a prefix or a port commits th
 `sed` in its install recipe. `substitute()` runs that expansion as a build action, so the values live in
 the declaration that installs the file and the result is an artifact like any other:
 
-```python
+```Starlark
 substitute(
     name = "project-http.service",
     src = ":project.checkout[contrib/project-http.service.in]",
@@ -407,7 +407,7 @@ shell works. It does not cover enterprise storage controllers such as SAS and RA
 filesystem reached over the network, or any device whose driver needs firmware. An appliance that boots
 through one of those has to name it:
 
-```python
+```Starlark
 bootable_disk_image(
     # The core set, plus a controller this appliance boots from, minus a filesystem it never mounts.
     initrd_modules = DEFAULT_INITRD_MODULES + ["mpt3sas", "-btrfs"],
@@ -452,7 +452,7 @@ counts as it builds, since the names are all here.
 A version derived from the current commit or any other dynamic query cannot be computed inside the build
 graph, so it gets passed as explicit build configuration. An image's BUCK file reads a config key like:
 
-```python
+```Starlark
 version = read_config("demo", "image-version", "unversioned")
 ```
 

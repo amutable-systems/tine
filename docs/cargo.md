@@ -11,7 +11,7 @@ beside it, and an image carrying the resulting binaries.
 
 ## Declaring a build
 
-```python
+```Starlark
 load("@tine//cargo:rules.bzl", "cargo_package")
 
 cargo_package(
@@ -40,7 +40,7 @@ cargo_package(
 
 The binaries are ordinary artifacts, so an image installs one with a `copy()` operation:
 
-```python
+```Starlark
 rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
@@ -54,7 +54,7 @@ rootfs_archive(
 
 ## What the builder engine needs
 
-```python
+```Starlark
 engine(
     name = "rust.engine",
     packages = ["cargo", "gcc", "python3", "rust"],
