@@ -18,23 +18,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # buck's mkosi-sandbox needs unprivileged user namespaces (unshare(CLONE_NEWUSER)); Ubuntu
-      # restricts them via AppArmor, so lift the restriction.
-      - name: Allow unprivileged user namespaces
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
-      - name: Set up /dev/kvm
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm --settle
-          ls -l /dev/kvm
-
-      # verify-catalog shells out to `git -C <catalog>`, which trips git's safe.directory guard on a
-      # checkout owned by another uid.
-      - name: Set up git
-        run: git config --global --add safe.directory '*'
+      - uses: ./.github/actions/ci-setup
 
       # the actual pipeline (bootstrap, linters, catalog, image builds, and VM boot smokes)
       # emits a log group per step
