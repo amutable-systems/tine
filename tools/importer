@@ -199,7 +199,6 @@ def urlopen_retry(url: str) -> bytes:
         logging.warning('%s failed (%s); retrying in %.0fs (%d/%d)',
                         url, reason, delay, attempt + 1, HTTP_RETRIES)
         time.sleep(delay)
-    raise AssertionError('unreachable')  # range() is non-empty, so the loop always returns or raises
 
 
 def ensure_worktree() -> Path:
