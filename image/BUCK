@@ -23,6 +23,7 @@ python_bootstrap_binary(
     name = "layer",
     main = "layer.py",
     deps = [
+        ":finalize",
         "//:specs",
         "//:util",
         "//package:installer",
@@ -60,6 +61,7 @@ engine_unittest(
     name = "test",
     engine = "//box:dev.engine",
     srcs = [
+        "finalize_test.py",
         "kmod_test.py",
         "substitute.py",
         "substitute_test.py",

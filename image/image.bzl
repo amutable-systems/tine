@@ -294,6 +294,22 @@ def merge_os_release(fields: dict[str, str]) -> LayerOperation:
     """Merge quoted KEY="value" assignments into the image's /usr/lib/os-release."""
     return ("os_release", fields)
 
+def depmod() -> LayerOperation:
+    """Rebuild the module indexes for every kernel the image installs, with the image's depmod."""
+    return ("depmod",)
+
+def hwdb(usr: bool = True, strict: bool = True) -> LayerOperation:
+    """Compile the image's hwdb.d into the binary database udev reads.
+
+    It lands in /usr, where the image ships it and nothing writable shadows it; `usr = False`
+    writes the /etc copy instead. `strict` refuses a source file the image cannot parse.
+    """
+    return ("hwdb", usr, strict)
+
+def locale_gen() -> LayerOperation:
+    """Generate the locales the image's /etc/locale.gen asks for, with its own locale-gen."""
+    return ("locale_gen",)
+
 def sign_systemd_boot(key: SigningKeyInfo, arch: str) -> list[LayerOperation]:
     """Return operations that sign the image's systemd-boot binary as a `.signed` sibling.
 
@@ -625,6 +641,13 @@ IMAGE_OPERATION_ATTR = attrs.one_of(
         attrs.enum(["os_release"]),
         attrs.dict(attrs.string(), attrs.string()),
     ),
+    attrs.tuple(attrs.enum(["depmod"])),
+    attrs.tuple(
+        attrs.enum(["hwdb"]),
+        attrs.bool(),
+        attrs.bool(),
+    ),
+    attrs.tuple(attrs.enum(["locale_gen"])),
 )
 
 # The layer attributes every rule that builds a logical image from operations shares.
