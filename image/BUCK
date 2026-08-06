@@ -25,6 +25,7 @@ python_bootstrap_binary(
     deps = [
         "//:specs",
         "//:util",
+        "//package:installer",
         "//rootfs:rootfs",
     ],
     visibility = ["PUBLIC"],

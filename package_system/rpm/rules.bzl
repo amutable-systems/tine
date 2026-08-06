@@ -11,18 +11,14 @@ load(
     "PackageArtifactInfo",
     "PackagePoolInfo",
     "PackagePoolValueInfo",
-    "PackageRepresentationInfo",
+    "REMOTE_REPOSITORY_ATTRS",
+    "pool_transports",
     "remote_repository_base",
+    "snapshot_data",
 )
 load("//package:system.bzl", "PackageSystemInfo")
 
 _RPM_PACKAGE_SYSTEM = "@tine//package_system/rpm:package_system"
-
-def _snapshot_data(snapshot: ArtifactValue, id: str) -> dict:
-    data = snapshot.read_json()
-    if type(data) != type({}):
-        fail("repository '{}' snapshot is not an object; run refresh-catalog".format(id))
-    return data
 
 def _materialize_repodata_impl(
     actions: AnalysisActions,
@@ -30,7 +26,7 @@ def _materialize_repodata_impl(
     repo: OutputArtifact,
     snapshot: ArtifactValue,
 ) -> list[Provider]:
-    data = _snapshot_data(snapshot, id)
+    data = snapshot_data(snapshot, id)
     repomd_xml = data.get("repomd", "")
     if not repomd_xml:
         fail(
@@ -60,46 +56,14 @@ _materialize_repodata = dynamic_actions(
     },
 )
 
-def _retained_packages(id: str, engine_locks: list[ArtifactValue]) -> dict[str, dict]:
-    retained = {}
-    for lock in engine_locks:
-        for entry in lock.read_json():
-            if entry["source"] != "repo" or entry["repo"] != id:
-                continue
-
-            pkgid = entry["pkg_checksum"]
-            package = {"size": entry["size"], "url": entry["url"]}
-            previous = retained.get(pkgid)
-            if previous != None and previous["size"] != package["size"]:
-                fail("repository '{}': retained package {} has conflicting sizes".format(id, pkgid))
-
-            # More than one engine may retain the same content through different mirrors.
-            if previous == None or package["url"] < previous["url"]:
-                retained[pkgid] = package
-    return retained
-
 def _materialize_package_pool_impl(
     actions: AnalysisActions,
     baseurl: str,
-    decompress: RunInfo,
     engine_locks: list[ArtifactValue],
     id: str,
     snapshot: ArtifactValue,
 ) -> list[Provider]:
-    data = _snapshot_data(snapshot, id)
-    packages = _retained_packages(id, engine_locks)
-    for pkgid, package in data.get("packages", {}).items():
-        retained = packages.get(pkgid)
-        if retained != None and retained["size"] != package["size"]:
-            fail("repository '{}': package {} has conflicting snapshot and lock sizes".format(id, pkgid))
-
-        # Prefer the repository's current route while it still advertises this content. The lock
-        # transport remains the fallback after the package leaves the current snapshot.
-        packages[pkgid] = {
-            "size": package["size"],
-            "url": baseurl.rstrip("/") + "/" + package["location"],
-        }
-
+    packages = pool_transports(id, baseurl, snapshot, engine_locks)
     rpms = {}
     for pkgid, package in packages.items():
         url = package["url"]
@@ -108,28 +72,16 @@ def _materialize_package_pool_impl(
             raw,
             url,
             sha256 = pkgid,
-            size_bytes = package["size"],
+            # A repository may serve a package larger than a Starlark i32, which arrives as a float.
+            size_bytes = int(package["size"]),
         )
-        payload = actions.declare_output("payloads", pkgid + ".cpio", has_content_based_path = True)
-        actions.run(
-            cmd_args(decompress, raw, payload.as_output()),
-            category = "rpm_payload",
-            identifier = pkgid,
-        )
-        rpms[pkgid] = PackageArtifactInfo(
-            artifact = raw,
-            name = url.rsplit("/", 1)[-1],
-            representations = {
-                "payload": PackageRepresentationInfo(artifact = payload, suffix = ".cpio"),
-            },
-        )
+        rpms[pkgid] = PackageArtifactInfo(artifact = raw, name = url.rsplit("/", 1)[-1])
     return [PackagePoolValueInfo(packages = rpms)]
 
 _materialize_package_pool = dynamic_actions(
     impl = _materialize_package_pool_impl,
     attrs = {
         "baseurl": dynattrs.value(str),
-        "decompress": dynattrs.value(RunInfo),
         "engine_locks": dynattrs.list(dynattrs.artifact_value()),
         "id": dynattrs.value(str),
         "snapshot": dynattrs.artifact_value(),
@@ -151,7 +103,6 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     pool = ctx.actions.dynamic_output_new(
         _materialize_package_pool(
             baseurl = ctx.attrs.baseurl,
-            decompress = ctx.attrs._decompress[RunInfo],
             engine_locks = ctx.attrs.engine_locks,
             id = ctx.label.name,
             snapshot = snapshot,
@@ -163,21 +114,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
 
 _remote_repository = rule(
     impl = _remote_repository_impl,
-    attrs = {
-        "baseurl": attrs.string(),
-        "engine_locks": attrs.list(
-            attrs.source(),
-            default = [],
-            doc = "frozen engine transactions whose remote package transports remain available",
-        ),
-        "labels": attrs.list(attrs.string(), default = []),
-        "package_system": attrs.dep(providers = [PackageSystemInfo]),
-        "snapshot": attrs.option(attrs.source(), default = None),
-        "_decompress": attrs.exec_dep(
-            default = "tine//package_system/rpm:decompress",
-            providers = [RunInfo],
-        ),
-    },
+    attrs = REMOTE_REPOSITORY_ATTRS,
 )
 
 def rpm_remote_repository(
@@ -220,7 +157,7 @@ def rpm_remote_repository(
         name = name,
         baseurl = baseurl,
         engine_locks = glob(["snapshot/engine/*.json"]),
-        labels = ["tine:rpm-remote-repository"] + labels,
+        labels = ["tine:remote-repository", "tine:rpm-remote-repository"] + labels,
         metadata = metadata,
         package_system = _RPM_PACKAGE_SYSTEM,
         snapshot = snapshot,
@@ -232,6 +169,8 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     package_manager_dep = base_buildroot.package_manager
     package_manager = package_manager_dep[PackageManagerInfo]
     system = package_manager.package_system[PackageSystemInfo]
+    if system.build == None:
+        fail("rpm_package: package system {} builds no packages".format(package_manager.package_system.label))
 
     # Share the base buildroot; add package-specific BuildRequires as a delta.
     buildroot = [base_buildroot.root]

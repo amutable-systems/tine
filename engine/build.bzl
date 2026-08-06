@@ -48,16 +48,20 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     resolve = None
     if ctx.attrs.resolver_engine != None:
         resolver_engine = ctx.attrs.resolver_engine[EngineInfo]
-        solver_caches = [
-            solver_cache(
-                ctx,
-                ctx.attrs.resolver_engine,
-                release.package_system,
-                repository,
-                ctx.attrs.arch,
-            )
-            for repository in configured_repositories
-        ]
+        solver_caches = (
+            [
+                solver_cache(
+                    ctx,
+                    ctx.attrs.resolver_engine,
+                    release.package_system,
+                    repository,
+                    ctx.attrs.arch,
+                )
+                for repository in configured_repositories
+            ]
+            if system.solver_cache
+            else []
+        )
         resolve = solve_command(
             ctx = ctx,
             engine = resolver_engine,
@@ -76,8 +80,8 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
         resolve.add("--out", transaction.as_output())
         ctx.actions.run(resolve, category = "engine_resolve")
 
-    # A predecessor installs the transaction directly. Only a root engine must bootstrap an
-    # installer-capable chroot from package payloads before it can perform the authoritative install.
+    # A predecessor installs the transaction directly. Only a root engine must first unpack that
+    # same closure into an installer-capable chroot, without metadata or scriptlets.
     packages = select_package_artifacts(
         ctx,
         transaction,
@@ -86,14 +90,6 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
     )
     installer_engine = resolver_engine
     if installer_engine == None:
-        payloads = select_package_artifacts(
-            ctx,
-            transaction,
-            name = "extract.closure",
-            repositories = repositories,
-            suffix = system.package_suffix,
-            representation = "payload",
-        )
         chroot1 = ctx.actions.declare_output("chroot1", dir = True)
         ctx.actions.run(
             cmd_args(
@@ -103,7 +99,7 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
                     "extract.spec.json",
                     {
                         "out": chroot1.as_output(),
-                        "packages": [payloads],
+                        "packages": [packages],
                     },
                 ),
             ),
@@ -127,6 +123,7 @@ def _engine_impl(ctx: AnalysisContext) -> list[Provider]:
                 ctx.actions,
                 "install.spec.json",
                 {
+                    "arch": ctx.attrs.arch,
                     "docs": True,
                     "engine_config": True,
                     "installroot": None,

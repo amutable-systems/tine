@@ -13,10 +13,14 @@ from typing import TypedDict, cast
 import specs
 import util
 
+import installer
 import rootfs
 
 
-class InstallSpec(TypedDict):
+class LayerInstall(TypedDict):
+    """What a layer adds to the install request it writes: which installer, and what to hide."""
+
+    arch: str
     installer: str
     packages_dir: str
     langs: list[str]
@@ -27,7 +31,7 @@ class Spec(TypedDict):
     lower: list[str]
     out: str
     work: str | None
-    install: InstallSpec | None
+    install: LayerInstall | None
     operations: list[object]
 
 
@@ -140,21 +144,20 @@ def _apply_filesystem(operation: list[object]) -> None:
             raise SystemExit(f"invalid image filesystem op: {operation!r}")
 
 
-def _install(install: InstallSpec, target: Path, scratch: Path) -> None:
+def _install(install: LayerInstall, target: Path, scratch: Path) -> None:
     """Install the layer's package closure into the mounted root."""
-    spec = specs.write(
-        scratch / "install.spec.json",
-        {
-            "packages_dir": str(Path(install["packages_dir"]).absolute()),
-            "target": None,
-            "installroot": str(target),
-            "lower": [],
-            "work": None,
-            "engine_config": False,
-            "langs": install["langs"],
-            "docs": install["docs"],
-        },
+    request = installer.InstallSpec(
+        arch=install["arch"],
+        packages_dir=str(Path(install["packages_dir"]).absolute()),
+        target=None,
+        installroot=str(target),
+        lower=[],
+        work=None,
+        engine_config=False,
+        langs=install["langs"],
+        docs=install["docs"],
     )
+    spec = specs.write(scratch / "install.spec.json", dict(request))
     rc = subprocess.run([install["installer"], "--spec", str(spec)]).returncode
     if rc != 0:
         raise SystemExit(f"image package installation failed (rc={rc})")
@@ -163,7 +166,7 @@ def _install(install: InstallSpec, target: Path, scratch: Path) -> None:
 def _apply(
     value: object,
     target: Path,
-    install: InstallSpec | None,
+    install: LayerInstall | None,
     scratch: Path,
 ) -> None:
     """Apply one operation with its requested view of the mounted root."""

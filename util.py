@@ -1,8 +1,13 @@
 """Generic helpers shared by tine's Python entry points."""
 
+import bz2
+import compression.zstd
 import errno
 import fcntl
+import gzip
 import http.client
+import io
+import lzma
 import os
 import shutil
 import stat
@@ -14,7 +19,7 @@ import urllib.request
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TextIO, cast
+from typing import IO, TextIO, cast
 
 # Fall back only when the filesystem does not support cloning or linking.
 _CLONE_FALLBACK_ERRNOS = frozenset({errno.ENOTTY, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV})
@@ -22,6 +27,33 @@ _LINK_FALLBACK_ERRNOS = frozenset({errno.EMLINK, errno.EOPNOTSUPP, errno.EXDEV})
 
 _TRANSIENT_HTTP_STATUS = frozenset((408, 429, 500, 502, 503, 504))
 _FETCH_ATTEMPTS = 4
+
+
+# What a compressed stream starts with, and what opens it. A file's name is not authoritative
+# about how it was compressed, and a repository is free to change compressor between releases,
+# so every reader here selects one from the bytes instead.
+_COMPRESSORS = (
+    (b"\x28\xb5\x2f\xfd", lambda stream: compression.zstd.ZstdFile(stream, mode="rb")),
+    (b"\x1f\x8b", lambda stream: gzip.GzipFile(fileobj=stream, mode="rb")),
+    (b"\xfd7zXZ\x00", lambda stream: lzma.LZMAFile(stream, mode="rb")),
+    (b"BZh", lambda stream: bz2.BZ2File(stream, mode="rb")),
+)
+
+# Enough leading bytes to tell every compressor above apart.
+MAGIC = 6
+
+
+def decompressor(magic: bytes) -> Callable[[IO[bytes]], io.BufferedIOBase] | None:
+    """What opens a stream beginning with `magic`, or None where it names no compression.
+
+    What an uncompressed stream is then taken to be is the caller's: each reader here expects a
+    different thing underneath, and treating the wrong one as valid is how a corrupt download
+    becomes a confusing parse error instead of an honest one.
+    """
+    for prefix, opener in _COMPRESSORS:
+        if magic.startswith(prefix):
+            return opener
+    return None
 
 
 def urlopen(url: str, *, agent: str) -> http.client.HTTPResponse:

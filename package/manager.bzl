@@ -158,7 +158,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
             priority = priority,
             baseurl = baseurl,
         )
-        if rid not in configured_by_id:
+        if rid not in configured_by_id and package_system[PackageSystemInfo].solver_cache:
             solver_caches.append(
                 solver_cache(
                     ctx,
