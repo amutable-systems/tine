@@ -1,0 +1,25 @@
+name: CI setup
+description: Prepare an ubuntu-latest runner for tools/ci.sh.
+
+runs:
+  using: composite
+  steps:
+    # buck's mkosi-sandbox needs unprivileged user namespaces (unshare(CLONE_NEWUSER)); Ubuntu
+    # restricts them via AppArmor, so lift the restriction.
+    - name: Allow unprivileged user namespaces
+      shell: bash
+      run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+    - name: Set up /dev/kvm
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm --settle
+        ls -l /dev/kvm
+
+    # verify-catalog shells out to `git -C <catalog>`, which trips git's safe.directory guard on a
+    # checkout owned by another uid.
+    - name: Set up git
+      shell: bash
+      run: git config --global --add safe.directory '*'
