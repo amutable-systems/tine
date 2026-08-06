@@ -1,7 +1,6 @@
 name: ci
 
 on:
-  # TODO: narrow to pull_request once we move from pushing branches to PRs.
   push:
 
 permissions:
