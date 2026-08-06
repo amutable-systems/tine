@@ -13,6 +13,8 @@ load(
     "terminal_image_command",
 )
 load("//image:sign.bzl", "SigningKeyInfo", "resolve_signing_key")
+load("//package:manager.bzl", "PackageManagerInfo")
+load("//package:system.bzl", "PackageSystemInfo")
 
 Partition = dict[str, typing.Any]
 
@@ -245,10 +247,16 @@ def declare_repart(
     seed: str | None = None,
     verity_key: SigningKeyInfo | None = None,
     output_size: str | None = None,
+    strip_pkgdb: bool = False,
     basename: str = "image",
     identifier: str | None = None,
 ) -> RepartOutput:
-    """Declare repart actions from resolved image and partition providers."""
+    """Declare repart actions from resolved image and partition providers.
+
+    With strip_pkgdb, the partitions omit the package database wherever the image's package system
+    keeps it, for a system nothing ever resolves packages in. The image's `[pkgdb]` and `[sbom]`
+    subtargets still capture it from the tree itself.
+    """
     decoded = [json.decode(value) for value in definitions]
     encode_definitions(
         decoded,
@@ -272,6 +280,12 @@ def declare_repart(
     if len(names) != len({name: True for name in names}):
         fail("repart: new and imported partition names must be unique")
 
+    # An image without a package manager installed no packages, so it has no database to strip.
+    pkgdb_paths = []
+    if strip_pkgdb and image.package_manager != None:
+        system = image.package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
+        pkgdb_paths = system.database_paths
+
     spec = {
         "certificate": verity_key.certificate if verity_key else None,
         "definitions": decoded,
@@ -286,6 +300,7 @@ def declare_repart(
             }
             for value in imported_partitions
         ],
+        "pkgdb_paths": pkgdb_paths,
         "private_key": verity_key.private_key if verity_key else None,
         "root_hash_out": None,
         "seed": seed,
@@ -384,6 +399,7 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
         imported_root_hash = imported_root_hash,
         seed = ctx.attrs.seed,
         split = ctx.attrs.split,
+        strip_pkgdb = ctx.attrs.strip_pkgdb,
         verity_key = resolve_signing_key(ctx.attrs.verity_key),
         output_size = ctx.attrs.output_size,
     )
@@ -404,6 +420,10 @@ REPART_ATTRS = {
         attrs.string(),
         default = None,
         doc = "explicit GPT/partition UUID seed; by default derive one from target identity and definitions",
+    ),
+    "strip_pkgdb": attrs.bool(
+        default = False,
+        doc = "leave the package database out of the partitions; the image still carries it",
     ),
     "verity_key": attrs.option(
         attrs.dep(providers = [SigningKeyInfo]),

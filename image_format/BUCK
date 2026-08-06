@@ -17,6 +17,7 @@ python_bootstrap_binary(
     main = "disk.py",
     deps = [
         "//:specs",
+        "//:util",
         "//image:finalize",
     ],
     visibility = ["PUBLIC"],

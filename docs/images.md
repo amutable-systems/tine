@@ -234,7 +234,8 @@ when needed:
   per profile with `sign_expected_pcr`);
 - `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
   GPT disk and independent partition artifacts in one `RepartInfo`; its disk field is absent for a
-  split-only invocation, and `output_size` composes the disk with free space behind its partitions;
+  split-only invocation, `output_size` composes the disk with free space behind its partitions, and
+  `strip_pkgdb` leaves the package database out of them;
 - `disk_convert` re-encodes a raw disk with an explicitly selected engine and provides `DiskConversionInfo`;
 - `bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
@@ -302,6 +303,11 @@ Optional attributes:
   the composed file is enlarged behind the last one, so the added room costs nothing on disk and, as with
   `image_vm`'s `grow`, sits past the GPT backup header until something rewrites the table. A size the
   partitions do not fit in fails the build.
+- `strip_pkgdb` (bool, default `False`): Leaves the package database out of the system partitions, for a
+  system that ships without its package manager and never resolves a package again; passed on to
+  `repart()`. The logical image keeps it, so `[pkgdb]` still captures the database and `[sbom]` still
+  reports every installed package rather than what a binary scan can guess. The ESP carries no database
+  either way.
 - `sign_expected_pcr_key` (target providing `SigningKeyInfo`): Seals the expected-PCR policy; without one
   the policy is not sealed. See "Secure Boot signing" below.
 - `initrd` (target label providing `ImageInfo`): A logical image whose tree becomes the initrd, replacing

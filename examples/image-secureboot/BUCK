@@ -50,6 +50,9 @@ bootable_disk_image(
     # the verity root hash. For a key that caches across workspaces, see pem_signing_key() under
     # "Secure Boot signing" in images.md.
     secure_boot_key = ":signing",
+    # A signed /usr is read-only and carries no package manager, so the database in it would only be
+    # weight under verity. `:image[pkgdb]` still captures it from the image itself.
+    strip_pkgdb = True,
     verity_key = ":signing",
     sign_expected_pcr_key = ":pcr-signing",
 )
@@ -84,6 +87,10 @@ command_alias(
         # binary would fail Secure Boot verification on the next reboot.
         "--check",
         "test -e /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed",
+        # `strip_pkgdb` leaves the package database out of the partitions, so nothing under the
+        # signed /usr carries one; the path is the rpm package system's `database_paths`.
+        "--check",
+        "test ! -e /usr/lib/sysimage/rpm",
         # The disk carries the signature over the verity root hash, which is what lets anything
         # receiving this image as an update verify it before trusting it.
         "--check",

@@ -86,6 +86,19 @@ go_sbom() {
     grep -q 'pkg:golang/golang.org/x/text@' <<< "$sbom"
 }
 
+# The secure-boot image strips the package database from its partitions, so only the logical image
+# still carries one for syft to read. Assert the rpm packages still reach its SBOM: without the
+# database syft falls back to what it can guess from binaries, which reports a fraction of them.
+secureboot_sbom() {
+    local sbom
+    sbom=$("$buck" build 'tine//examples/image-secureboot:image[sbom][cyclonedx]' --out -)
+    grep -q 'pkg:rpm/fedora/systemd@' <<< "$sbom"
+    grep -q 'pkg:rpm/fedora/kernel-core@' <<< "$sbom"
+    # No binary to guess from: only the database reports these.
+    grep -q 'pkg:rpm/fedora/fedora-release@' <<< "$sbom"
+    grep -q 'pkg:rpm/fedora/filesystem@' <<< "$sbom"
+}
+
 # Assert the UKI's module selection still carries what the demo image boots through. The smokes below
 # prove the same thing by booting, but this pins it against the real kernel without a VM, so a change to
 # the default list that drops one of these fails here with the module named.
@@ -114,4 +127,5 @@ group boot-demo-smoke  -- "$buck" run tine//examples/image:boot-demo-vm-smoke
 group rust-sbom        -- rust_sbom
 group go-sbom          -- go_sbom
 group secureboot-image -- "$buck" build tine//examples/image-secureboot:image
+group secureboot-sbom  -- secureboot_sbom
 group secureboot-smoke -- "$buck" run tine//examples/image-secureboot:vm-smoke
