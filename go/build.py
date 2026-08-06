@@ -25,6 +25,8 @@ class Spec(TypedDict):
     cgo_cflags: list[str]
     # go's build cache, kept from the previous build of this project.
     gocache: str
+    # Flags for the Go linker, passed as -ldflags.
+    linker_flags: list[str]
     # The fetched module cache directory, or None for a project without a go.sum.
     module_cache_dir: str | None
     # Where the module sits inside `src`, empty when the project is its own root.
@@ -74,6 +76,18 @@ def _select(binaries: list[str], packages: dict[str, list[str]], tags: list[str]
             + "; ".join(f"{name}: {', '.join(packages[name])}" for name in ambiguous)
         )
     return sorted(packages[name][0] for name in binaries)
+
+
+def _build_command(binaries: Path, packages: list[str], linker_flags: list[str]) -> list[str]:
+    """The `go build` invocation producing the selected packages' binaries.
+
+    The linker flags ride on the command line rather than in GOFLAGS, which go splits on spaces and
+    which therefore cannot carry a flag whose value holds any.
+    """
+    cmd = ["go", "build", "-o", f"{binaries}/"]
+    if linker_flags:
+        cmd.append("-ldflags=" + " ".join(linker_flags))
+    return cmd + packages
 
 
 def _main_packages(workspace: Path, env: dict[str, str]) -> dict[str, list[str]]:
@@ -161,7 +175,7 @@ def main(argv: list[str] | None = None) -> None:
     # Build only the declared binaries.
     packages = _select(list(spec["binaries"]), _main_packages(workspace, env), spec["tags"])
     subprocess.run(
-        ["go", "build", "-o", f"{binaries}/", *packages],
+        _build_command(binaries, packages, spec["linker_flags"]),
         check=True,
         cwd=workspace,
         env=env,
