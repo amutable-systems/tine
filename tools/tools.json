@@ -1,64 +1,64 @@
 {
   "buck2": {
     "repository": "daandemeyer/buck2",
-    "release": "2026-07-31-09.50.04",
+    "release": "2026-07-31-18.59.08",
     "platforms": {
       "Linux-aarch64": {
         "artifact": "buck2-aarch64-unknown-linux-musl.zst",
-        "sha256": "bab3ea5380192ca77341a7ee9bdba4c0165f3814bd9146e82f2187f1a3b97816"
+        "sha256": "7f04b5d8348403ce2b5ee4d723e8b2fc4ce071de74d7153db7fb7d72c9b99419"
       },
       "Linux-riscv64": {
         "artifact": "buck2-riscv64gc-unknown-linux-gnu.zst",
-        "sha256": "9175e49f8730e4c179d92e7276c3908c4eedaab5f0002bb929e1ab3a78aade09"
+        "sha256": "a4a5708b6ffe576ffaf9d7293ab4efbc2a97031de6296b9077ae42247d9e72a5"
       },
       "Linux-x86_64": {
         "artifact": "buck2-x86_64-unknown-linux-musl.zst",
-        "sha256": "ab9d045bf43e83d45cf0a9694d8c0818a7d2d9909fcd6a601fd6a139ef6c755b"
+        "sha256": "1120f17a4708ce77c3de51d43ba5a1230f0bec9d4c22520ad4cffd2aa7864046"
       }
     }
   },
   "starlark-fmt": {
     "repository": "daandemeyer/buck2",
-    "release": "2026-07-31-09.50.04",
+    "release": "2026-07-31-18.59.08",
     "platforms": {
       "aarch64": {
         "artifact": "starlark_fmt-aarch64-unknown-linux-musl.zst",
-        "sha256": "4454fca4cd00b73a0d1a857ef2f6b40a5b9554ae0085af93bf133c4a559a631a"
+        "sha256": "bad1e40021d9d955326ff7a735ea13eb439ed4d5dde9f57f6084458650b49ec3"
       },
       "x86_64": {
         "artifact": "starlark_fmt-x86_64-unknown-linux-musl.zst",
-        "sha256": "0897fc55ec26e2d6aa9ab9f7c2398ac20058a531524b181e0a9298d2b610253a"
+        "sha256": "a420bae61dd6c5327c12b0f57c06f6b9b309588cdcc8fdce4dd6e19df4d02482"
       }
     }
   },
   "python3": {
     "repository": "astral-sh/python-build-standalone",
-    "release": "20260728",
+    "release": "20260805",
     "platforms": {
       "aarch64": {
-        "artifact": "cpython-3.14.6+20260728-aarch64-unknown-linux-gnu-install_only.tar.gz",
-        "sha256": "1001d13aaccbb3d1a855ec450e0f058f6501259011b74d5b1d086441b21c0dbe",
+        "artifact": "cpython-3.14.7+20260805-aarch64-unknown-linux-gnu-install_only.tar.gz",
+        "sha256": "90e4d9b59c587651f9eb081d79b0bb899e5c1705acf4fb537f4eb674b5309135",
         "strip_prefix": "python"
       },
       "x86_64": {
-        "artifact": "cpython-3.14.6+20260728-x86_64-unknown-linux-gnu-install_only.tar.gz",
-        "sha256": "b1ff3bb3ca58e2af9f1cb2be63cd9ef00a6f60ed50bba77bab189a9a3df13675",
+        "artifact": "cpython-3.14.7+20260805-x86_64-unknown-linux-gnu-install_only.tar.gz",
+        "sha256": "64ebb7e4ef74b03e8038ba07209ab1fce62fcbe4afafbbce5a27216fbffde5ff",
         "strip_prefix": "python"
       }
     }
   },
   "ruff": {
     "repository": "astral-sh/ruff",
-    "release": "0.15.22",
+    "release": "0.16.1",
     "platforms": {
       "aarch64": {
         "artifact": "ruff-aarch64-unknown-linux-musl.tar.gz",
-        "sha256": "88feb2dc2fafb92482185201f4d483134fbaab10370c79512d3dd372f1d3f28b",
+        "sha256": "5929d9f37fc518a3825f33a76ad8092c0555ca045ca1dbf5e680038a402c840c",
         "strip_prefix": "ruff-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "ruff-x86_64-unknown-linux-musl.tar.gz",
-        "sha256": "853462df618fb9f156a9f04d9d899d9e5a9e1a43fbffaec72df4bb159348e71b",
+        "sha256": "23469683052cd2db1589f15032dd1751b2a3f212062e9fc901b0776d25fb36bc",
         "strip_prefix": "ruff-x86_64-unknown-linux-musl"
       }
     }
