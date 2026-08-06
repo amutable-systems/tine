@@ -7,6 +7,9 @@ Statements under **Current architecture** describe code that exists. **Roadmap**
 possible future work and labels open questions explicitly. When implementation and this document disagree,
 the implementation is authoritative and this document should be corrected.
 
+Anything specific to one native package system belongs to that system's own section. The rest of this
+document describes machinery that does not know which system it is driving, and names none.
+
 User-facing guides live alongside this document: [images.md](images.md) covers building and running
 images, and [importer.md](importer.md) covers maintaining packages with the importer.
 
@@ -16,10 +19,10 @@ Tine uses Buck2 to build native packages and compose operating-system images. Th
 monorepo in which a useful core package set is rebuilt from source, scheduled in dependency order, cached
 by content, and suitable for remote execution. The current implementation already provides:
 
-- pinned RPM repositories and a repository-owned RPM artifact pool;
+- pinned package repositories, each with a repository-owned package artifact pool;
 - bootstrap engine roots containing the pinned userspace used by build actions;
-- configured package managers and shared buildroots for Fedora and CentOS Stream;
-- RPM builds from imported spec/source metadata, including self-hosted buildroot dependencies;
+- configured package managers and shared buildroots for several OS releases;
+- package builds from imported source metadata, including self-hosted buildroot dependencies;
 - layered filesystem images, deterministic archives, bootable GPT disks, and a VM runner.
 
 The system does not yet claim complete source provenance, production signing, remote execution, or a full
@@ -33,12 +36,13 @@ This repository is the `tine` cell; a consuming project registers it as an exter
 package tree:
 
 ```text
-//packages/               (consuming project) independently versioned package specs, sources, and BUCK files
-//examples/image-local-packages/  (consuming project) bootable image from self-built packages
+//packages/               (consuming project) independently versioned package sources and BUCK files
+//examples/image-local-packages/ (consuming project) bootable image from self-built packages
 tine//examples/image/     image smoke targets
 tine//examples/box/       pinned interactive development environment
 tine//package/            package-system-neutral providers and installation flow
-tine//package_system/rpm/ RPM repository, resolver, installer, extractor, and builder
+tine//package_system/     one directory per package system: its repository, resolver, installer,
+                          extractor, indexer, and optional builder
 tine//engine/             engine bootstrap and sandbox command construction
 tine//rootfs/             bind/overlay mounting and stored-delta translation
 tine//image/              layers, boot artifacts, composition macros, and VM runners
@@ -50,12 +54,12 @@ tine//tools/              pinned development and catalog-refresh commands
 ```
 
 The default `tine//catalog` package owns its release selection, mirrors, engine choice, repository additions,
-and policy overrides. Projects can instead declare their own catalog package with Tine's reusable RPM-family
-macros or low-level rules. The project's `//buildroots` package maps importer-generated names such as
-`//buildroots/fedora:rawhide` to catalog targets.
+and policy overrides. Projects can instead declare their own catalog package with Tine's reusable family
+macros or low-level rules. The project's `//buildroots` package maps importer-generated
+`//buildroots/<family>:<release>` names to catalog targets.
 
-Catalog targets use `<family>.<release>[.<component>].<role>` names. A rolling channel such as Rawhide
-occupies the release segment. Singular `.repository` targets own remotes, plural `.repositories` targets
+Catalog targets use `<family>.<release>[.<component>].<role>` names. A rolling channel occupies the release
+segment like any other release. Singular `.repository` targets own remotes, plural `.repositories` targets
 define universes, and release, engine, package-manager, and buildroot targets use their corresponding
 suffixes. Low-level declaration macros require the suffix appropriate to their role. The family catalog
 macros instead take a `<family>.<release>` prefix and declare the complete repository, universe, release,
@@ -71,34 +75,36 @@ independently of build machinery.
 The package model separates identity and policy from the exact inputs used by an action:
 
 ```text
-PackageSystemInfo (RPM drivers)
+PackageSystemInfo (one package system's drivers)
         │
         ├── PackageRepositoryInfo ──┐
         │                           ├── RepositoryUniverseInfo
         │                           │          │
         └───────────────────────────┴── OsReleaseInfo
-                                               ├── engine transaction ── EngineInfo ──┬── rpm_package
+                                               ├── engine transaction ── EngineInfo ──┬── package build
                                                │                                     ├── image tooling
                                                │                                     │
                                                └─────────────────────────────────────┴── PackageManagerInfo
                                                                                    ├── image installation
                                                                                    └── BuildrootInfo
-                                                                                          └── rpm_package
+                                                                                          └── package build
 ```
 
 The providers have deliberately narrow roles:
 
 - `PackageSystemInfo` bundles the drivers for one native binary-package ecosystem: snapshot, extract,
-  install, package database capture, repository indexing, plan, and build, plus the paths that database
-  occupies in an installed root and the file suffix of an installable package. RPM is the only
-  implementation today.
+  install, package database capture, repository indexing, plan, and optionally build, plus the paths
+  that database occupies in an installed root, the file suffix a selected package is named with,
+  and whether its planner reuses prebuilt repository metadata. The builder is optional, and a system
+  whose repository metadata is already what its resolver reads declines the cache instead of leaving
+  it on. A package build declared against a manager whose system has no builder is refused by name.
 - `PackageRepositoryInfo` represents one repository and binds it to a package system. Its target name is
   the repository ID; remote declarations also expose their pinned directory and base URL. Priority is
   configuration policy, not an intrinsic repository property. A repository is not inherently owned by an
   OS release.
 - `LocalPackageRepositoryInfo` identifies a repository assembled from package artifacts in the build graph.
   It carries package directories, not the engine that produced them; a consuming package manager generates
-  repodata with its own engine.
+  its repository metadata with its own engine.
 - `RepositoryUniverseInfo` defines one homogeneous solve universe: required repositories, named optional
   groups, and groups enabled by default. Selection preserves declaration order, de-duplicates identical
   targets, and rejects conflicting repository IDs.
@@ -121,13 +127,13 @@ Solver caches are anonymous targets keyed by resolver engine, package system, co
 architecture, and execution platform. Matching engines and package managers therefore consume one shared
 cache artifact, while distinct solver contexts remain isolated.
 
-This split is visible in the default catalog. Fedora 44, Rawhide, and CentOS Stream 10 are separate OS
-releases. Their package managers solve against their own repositories while sharing the Rawhide engine.
-CentOS models BaseOS as required, AppStream as a default repository group, and CRB as an optional group
-enabled by the current package manager. `fedora_release()` and `centos_stream_release()` declare these
-standard target bundles and package sets while accepting overrides for mirrors, repositories, priorities,
-and package policy. Their buildroots resolve the release's `buildroot` package set rather than duplicating
-native package names in the buildroot declaration.
+This split is visible in the default catalog. Several releases of one family are separate OS releases whose
+package managers solve against their own repositories while sharing one engine, and a release may model
+some of its repositories as required, some as a default group, and some as an optional group a package
+manager enables. A family macro declares that whole standard target bundle and its package sets while
+accepting overrides for mirrors, repositories, priorities, and package policy. Buildroots resolve the
+release's `buildroot` package set rather than duplicating native package names in the buildroot
+declaration.
 
 An initial image normally fixes one package manager for the lifetime of the logical image and derives its
 engine from that manager. Every derived image and terminal output inherits both. Engine-only images are also
@@ -139,8 +145,12 @@ root, not OS identity alone, is its relevant input.
 Normal builds do not resolve against live network repositories. The catalog contains one required and one
 optional generated form:
 
-- `snapshot/repo/<name>.json` pins filtered `repomd.xml`, the primary/filelists/group streams needed by
-  libdnf5, and the complete primary-metadata package inventory keyed by SHA-256 checksum;
+- `snapshot/repo/<name>.json` pins one repository's build metadata and its complete package inventory,
+  keyed by SHA-256 checksum. What that metadata is belongs to the package system. Where the mirror
+  itself names metadata by content, the snapshot pins each stream by its own checksum and drops the
+  ones the resolver will not read; where it does not, the snapshot pins the bytes the refresh saw,
+  which stays buildable only against a mirror that serves immutable snapshots and not against an
+  ordinary rolling one;
 - `snapshot/engine/<name>.json` optionally freezes an engine transaction. Remote records contain
   `{source, repo, pkg_checksum, package_id, url, size}`: the checksum verifies the bytes, while `url` and
   `size` record the last known transport after rolling repository metadata stops advertising that package.
@@ -155,21 +165,28 @@ when its authored policy, resolver engine, or pinned repository inputs change.
 phases. Pass another catalog package after `--`, for example
 `tools/buck run tine//tools:refresh-catalog -- my_project//catalog`:
 
-0. Advance every repository pinned to an rpmrepo mirror (declared through
-   `rpm_remote_repository()`'s `rpmrepo_mirror`/`rpmrepo_snapshot`, which a release macro forwards
-   for the repository it owns, and carried on the target as `rpmrepo.*` metadata) to the
-   newest snapshot its gateway enumerates, by rewriting the declared `rpmrepo_snapshot` in place.
-   `verify-catalog` skips this phase and checks the committed pins.
-1. Run every remote repository's `[snapshot]` sub-target on the host. `snapshot.py` downloads and verifies
-   repodata, drops unused streams, validates package locations, and atomically writes deterministic, pure
-   snapshot JSON. It does not carry packages forward from an earlier snapshot.
+0. Advance every repository pinned to a mirror that publishes snapshots, by rewriting the pin in the
+   declaration. A remote repository rule owns its own pin arguments and carries them as metadata under a
+   namespace it owns, so a package system joins this phase by declaring a pin. How the newest snapshot is
+   found is the mirror's business: one enumerates its snapshots through a gateway, while another publishes
+   a tree per day and exposes no index at all, so it is walked back from the present, up to a bounded
+   number of steps, until a snapshot the whole pin group serves turns up. Repositories sharing one pin
+   advance together, because a release's repositories are only guaranteed to solve together when they come
+   from the same snapshot, and a pin never moves backwards. A release macro forwards its own pin arguments
+   to the repositories it owns, and overriding a release's mirrors is all or nothing for the same reason.
+   Advancing is scoped to the repositories the same run is about to re-snapshot: a base URL from one
+   snapshot composing package locations pinned in another builds nothing. `verify-catalog` skips this
+   phase and checks the committed pins.
+1. Run every remote repository's `[snapshot]` sub-target on the host. The snapshot driver downloads and
+   verifies repository metadata, drops unused streams, validates package locations, and atomically writes
+   deterministic, pure snapshot JSON. It does not carry packages forward from an earlier snapshot.
 2. Run the selected engines' `[resolve]` sub-targets against the freshly pinned repository trees and
    atomically replace their optional frozen transactions. The target engine's release, repository
    selection, package list, and architecture define the solve.
 
 The catalog tool asks Buck for the selected package's canonical targets and derives the snapshot directory
-from their canonical cell and package. `--engine` limits which engine transactions are resolved; repository
-snapshots are always refreshed together.
+from their canonical cell and package. `--engine` limits which engine transactions are resolved, and scopes
+the repositories refreshed to those the selected engines depend on.
 
 A committed engine lock retains any package transport needed to build that exact transaction. The repository
 package pool combines those retained transports with its current snapshot, so every intermediate refresh
@@ -184,11 +201,14 @@ that availability can be supplied independently without changing the solve.
 `verify-catalog` performs the same generation and fails when committed JSON differs. Repository snapshots
 are ordinary Buck source inputs, so changes invalidate only consumers of the changed data.
 
-`rpm_remote_repository()` derives its optional snapshot by stripping `.repository` from the target name and
-looking under `snapshot/repo/`. This lets a new repository target analyze before its first refresh;
+The catalog tool asks Buck for the targets carrying each role's label, so a package system joins the
+refresh by labelling its repositories, not by being named in the tool.
+
+A remote repository declaration derives its optional snapshot by stripping `.repository` from the target
+name and looking under `snapshot/repo/`. This lets a new repository target analyze before its first refresh;
 consuming its empty package pool fails with an explicit instruction to refresh the catalog. An engine that
 resolves itself needs a usable committed bootstrap transaction. A new engine instead names a working
-`resolver_engine`; the predecessor supplies only the execution environment for `plan.py`, while the new
+`resolver_engine`; the predecessor supplies only the execution environment for the planner, while the new
 engine's release, repositories, packages, and architecture define the generated transaction. Refreshing the
 catalog is optional for that engine and freezes the generated result at the conventional lock path.
 
@@ -198,43 +218,46 @@ target-name-derived paths and the package-local optional `snapshot/engine/*.json
 
 ### Authoritative repository package pools
 
-Each `rpm_remote_repository()` target owns separate dynamic values for its pinned repodata and package pool.
+Each remote repository target owns separate dynamic values for its pinned metadata and package pool.
 The pool expands the union of the current snapshot inventory and remote transports retained by committed
-engine locks into:
+engine locks into one digest-checked package artifact per checksum, and nothing else: a package is
+installed, and bootstrapped from, exactly as its repository serves it. A selected package is named with the
+one suffix its package system declares, whatever a repository happens to serve it under: an ecosystem that
+has changed compressors may still carry a package built before the change, and the byte content, not the
+extension, is what a checksum-keyed pool identifies.
 
-- one digest-checked raw RPM artifact per checksum;
-- one decompressed cpio payload representation per RPM.
-
-The raw RPM and derived payload are alternative representations of the same `PackageArtifactInfo` record. The
-repository target is their canonical action owner, so engines, buildroots, and images share its downloads
-and decompression actions. A package removed from the latest snapshot remains in the pool while a committed
-engine lock references its pinned URL and size.
+The repository target is the canonical action owner, so engines, buildroots, and images share its downloads.
+A package removed from the latest snapshot remains in the pool while a committed engine lock references its
+pinned URL and size.
 
 `select_package_artifacts()` reads a resolved transaction, looks up each `(repository, checksum)` in the
 authoritative pool, and creates a symlinked directory containing the requested representation. It never
 creates a second download. Buck materializes only artifacts selected by a consuming transaction, while every
 consumer shares their owning actions.
 
-Local RPMs produced by this repository use transaction entries with `source = "local"` and a location into
-an input RPM directory. They are projected directly from the producing target rather than copied into a
+Packages built in this repository use transaction entries with `source = "local"` and a location into an
+input package directory. They are projected directly from the producing target rather than copied into a
 second pool.
 
 Why repository ownership matters:
 
-- one digest and one action graph node define each upstream RPM;
-- raw, verified, decompressed, or future representations have a natural shared owner;
+- one digest and one action graph node define each upstream package;
+- a future derived form, such as a signature-verified one, has a natural shared owner;
 - engine, buildroot, and image closures become cheap selectors;
 - repository snapshot skew fails at the lookup boundary instead of silently downloading different bytes.
 
 ### Engine bootstrap
 
-An engine is a reproducible execution environment built from one base OS release. It supplies rpm, Python,
-libdnf5, `createrepo_c`, core utilities, sandbox dependencies, and currently the image-building/VM tools.
-The base release identifies where this userspace came from, not the only release it may operate on.
+An engine is a reproducible execution environment built from one base OS release. It supplies its package
+system's own resolver, installer and indexer, Python, core utilities, sandbox dependencies, and currently
+the image-building tools; a VM runner takes its engine explicitly, so only an engine asked for one carries
+that stack. The base release identifies where this userspace came from, not the only release it may
+operate on.
 
-A lockless engine uses `resolver_engine` to produce its build transaction and perform the authoritative RPM
+A lockless engine uses `resolver_engine` to produce its build transaction and perform the authoritative
 installation. Its target root therefore contains only the requested packages and their dependencies; it
-does not need Python, libdnf5, rpm, or other construction tools unless they are part of its intended runtime.
+does not need Python, package-manager libraries, or other construction tools unless they are part of its
+intended runtime.
 A locked engine can use its own completed root to run the explicit `[resolve]` update command; during a
 bootstrap or tooling transition, a predecessor may run that command instead. This edge is deliberately
 one-way: it changes where resolution and installation execute, not the repositories, requested packages,
@@ -243,19 +266,24 @@ policy; its repositories use the native default priority until bootstrap needs a
 
 Only a root engine without a predecessor bootstraps its own installation tools in two stages:
 
-1. The repository pool supplies pre-decompressed payload cpio artifacts for the effective engine transaction.
-   The minimal `extract.py`/`cpio.py` path unpacks them into `chroot1` without running scriptlets or creating
-   an rpmdb.
-2. The package-system installer runs from `chroot1` and properly installs the raw RPM closure into
-   `chroot2`, including scriptlets and the rpmdb. `chroot2` becomes the reusable `EngineInfo` root.
+1. The minimal extractor unpacks the same package closure into `chroot1` without running scriptlets
+   or creating a package database. An extractor reads the packages its repository serves, whatever
+   framing they carry, so the pool never has to derive a second form for the bootstrap.
+2. The package-system installer runs from `chroot1` and properly installs the closure into `chroot2`,
+   including scriptlets and the package database. `chroot2` becomes the reusable `EngineInfo` root.
+
+A first lock is the one thing a root engine cannot produce for itself, since resolving needs an
+engine to resolve in. Pointing the new engine's `resolver_engine` at an existing engine that can run
+its package system's planner breaks that cycle for one refresh; removing `resolver_engine`
+afterwards leaves the engine self-sufficient. This is a one-time exposure per new root engine, not a
+standing dependency.
 
 Engine configuration prefers a target-provided systemd factory `nsswitch.conf`, but writes a deterministic
 files/DNS fallback for minimal roots. Resolver integration and target configuration therefore do not impose
 specific implementation packages on a derived engine.
 
-The bootstrap extractor currently supports the RPM v4/newc form used by the pinned Fedora repository. It
-does not implement RPM v6's index-based payload metadata. The second-stage install is authoritative for
-package metadata, ownership behavior available through the unprivileged sandbox, and scriptlets.
+The second-stage install is authoritative for package metadata, ownership behavior available through the
+unprivileged sandbox, and scriptlets.
 
 The host contract is intentionally small; its short list of requirements is documented in
 [images.md](images.md).
@@ -272,7 +300,7 @@ The sandbox only creates the execution environment. Drivers own their target-roo
 
 - a fresh install or image layer binds an output directory at `/buildroot`;
 - an incremental install or image layer mounts an ordered lower stack plus a persisted upper;
-- an RPM build mounts its buildroot stack with an ephemeral upper and binds action scratch at `/build`;
+- a package build mounts its buildroot stack with an ephemeral upper and binds action scratch at `/build`;
 - pack/disk operations merge a stack with an ephemeral upper so cleanup does not modify stored layers.
 
 This division keeps one namespace boundary while letting each driver express the root it needs. Nesting a
@@ -296,25 +324,33 @@ Native package installation has three phases shared by buildroots and images:
 2. **Select.** Use the resulting transaction to select raw package files from repository pools, named with
    the package system's declared suffix so its installer finds them. A local repository is materialized by
    an anonymous indexing target using the consuming package manager's engine. The same path handles
-   package-build inputs and lets the libdnf5 solve choose between local and upstream packages.
+   package-build inputs and lets the solve choose between local and upstream packages.
    Extra packages arrive on two mutually exclusive paths: a package build passes its explicit
    `buildroot_deps` outputs, while a package manager with attached `local_packages` computes the request's
    runtime closure at analysis time from imported metadata and offers exactly the locally built packages
    in it. Buildroots reject managers with local packages, because buildroot contents must come from the
    explicit, cycle-checked self-hosting locks.
-3. **Install.** Run `PackageSystemInfo.install` over the exact package directory. `install_packages()` owns a
-   fresh root or incremental buildroot delta. An image layer instead invokes the same installer against its
-   already-mounted root so package and filesystem operations have one output owner.
+3. **Install.** Run `PackageSystemInfo.install` over the exact package directory, whose file names carry
+   the package system's suffix. `install_packages()` owns a fresh root or incremental buildroot delta. An
+   image layer instead invokes the same installer against its already-mounted root so package and
+   filesystem operations have one output owner.
+
+What a request looks like, rather than how one package system answers it, belongs to the neutral layer:
+`package/transaction.py` owns the transaction schema both planners write and Starlark reads back, and
+`package/installer.py` mounts the root an install spec names and captures it afterwards, so a driver is
+left with its own transaction and nothing else. `package/repository.bzl` owns the pool merge, whose
+rule (the repository's current route wins while it carries the content, a lock's transport is the
+fallback once it does not, and a size that disagrees is skew) is stated once for both.
 
 The package manager assigns default priorities when it configures repositories: local repositories use 50
 and remote repositories use 99, with target-specific overrides applied by `package_manager()`. A planner
 action carries its repositories as `{id, directory, priority, baseurl}` objects in its spec.
 `encode_repositories()` projects them from `ConfiguredPackageRepositoryInfo`; the record's `dependency` is
 deliberately stripped because Buck dependencies are analysis-only and not JSON-serializable. `plan.py`
-reads each object into its `Repository` named tuple. The directory selects pinned local repodata, while the
-base URL records the transport for remote packages selected into a transaction.
+reads each object into its `Repository` named tuple. The directory selects the pinned local repository
+metadata, while the base URL records the transport for remote packages selected into a transaction.
 
-Package-specific `buildroot_deps` use the same representation. Their ordered RPM directories are
+Package-specific `buildroot_deps` use the same representation. Their ordered package directories are
 materialized as an anonymous repository with ID `extra`, local priority, no base URL, and no declaration
 dependency. Transaction selection maps its local locations directly back to the producing package outputs.
 
@@ -323,12 +359,46 @@ package inputs. Buck therefore shares the base buildroot analysis/action graph a
 same build profile. Package-specific BuildRequires layers remain inline and are installed over the shared
 base.
 
-After installation, `install.py` checkpoints and vacuums the SQLite rpmdb, removes WAL/SHM/lock files, and
-scrubs libdnf5/ldconfig bookkeeping that would otherwise make identical roots differ. The action that owns
-the root then captures names and overlay metadata into Buck-storable form. A fresh root receives mkosi's
-`uninitialized` machine-id marker; incremental installs preserve any existing machine ID.
+After installation, the installer parks the package database and scrubs the package-manager and ldconfig
+bookkeeping that would otherwise make identical roots differ; what parking takes is each package system's
+own business. The action that owns the root then captures names and overlay metadata into Buck-storable
+form. A fresh root receives mkosi's `uninitialized` machine-id marker; incremental installs preserve any
+existing machine ID.
 
-### RPM import and build flow
+`LocalPackageInfo` intentionally does not carry the producer's engine. `local_repository` checks that its
+packages use one native package system and remains an engine-independent declaration. The consuming package
+manager materializes deterministic repository metadata with its own engine; anonymous materializations with
+the same engine, package system, and ordered package directories share one action.
+
+### The RPM package system
+
+The one implementation of `PackageSystemInfo` today covers the RPM family. Everything below is confined
+to its drivers under `package_system/rpm/` and to the catalog policy that selects them.
+
+libdnf5 resolves and rpm installs. A repository's build metadata is a filtered `repomd.xml` plus the
+primary, filelists, and group streams libdnf5 needs, each named by its own checksum, so a snapshot pins
+content rather than bytes and drops the streams nothing will read. Parsing it is expensive enough that the
+planner reuses it across solves: the `make-cache` verb prebuilds one cache per configured repository, which
+is why this system leaves `solver_cache` at its default. Packages end in `.rpm` and the database lives at
+the usr-merged `/usr/lib/sysimage/rpm`. A repository pinned with `rpm_remote_repository()`'s
+`rpmrepo_mirror`/`rpmrepo_snapshot` carries that pin as `rpmrepo.*` metadata and advances to the newest
+snapshot its gateway enumerates.
+
+The bootstrap extractor frames the header off a package and decompresses the payload itself, so it reads
+exactly what the repository serves. It supports the v4/newc payload form the pinned repositories use and
+does not implement RPM v6's index-based payload metadata.
+
+After installation the driver checkpoints and vacuums the SQLite rpmdb, removes its WAL/SHM/lock files, and
+scrubs libdnf5 and ldconfig bookkeeping. Documentation and language filtering are rpm's own `nodocs` and
+`_install_langs`. A locally built package keeps the `<directory>/<file>` location convention that maps it
+back to the input directory it came from.
+
+The default catalog declares Fedora 44, Rawhide, and CentOS Stream 10 as separate OS releases whose package
+managers solve against their own repositories while sharing `fedora.rawhide.engine`. CentOS models BaseOS
+as required, AppStream as a default repository group, and CRB as an optional group enabled by the current
+package manager. `fedora_release()` and `centos_stream_release()` declare those standard target bundles.
+
+#### Import and build flow
 
 The OS.git repository's `packages/` tree contains imported source-package metadata and generated BUCK
 files. The importer emits data; the Starlark in `package_system/rpm/generated.bzl` validates that data and
@@ -363,10 +433,19 @@ The build currently uses `--nocheck`. Automatically generated debuginfo/debugsou
 directory output but are tolerated rather than exposed as declared sub-targets. Successful build scratch is
 discarded; failed scratch remains available for diagnosis.
 
-`LocalPackageInfo` intentionally does not carry the producer's engine. `local_repository` checks that its
-packages use one native package system and remains an engine-independent declaration. The consuming package
-manager materializes deterministic repodata with its own engine; anonymous materializations with the same
-engine, package system, and ordered package directories share one action.
+#### Limitations
+
+- Generated package metadata is fixed to `x86_64`.
+- The imported self-host dependency graph is inferred from stored BuildRequires/Provides/file metadata; it
+  does not run RPM's dynamic BuildRequires protocol.
+- Build cycles fall back to upstream RPMs for ordinary intra-SCC edges, so the package set is not a fully
+  self-hosted fixed point.
+- Builds use `--nocheck`; package test policy is not implemented.
+- Debuginfo/debugsource outputs are not first-class declared sub-targets.
+- The bootstrap extractor supports the pinned v4/newc payload form, not RPM v6 metadata.
+
+Entry points: `package_system/rpm/{rules,catalog,generated}.bzl` and
+`package_system/rpm/{snapshot,plan,install,pkgdb,createrepo,build,extract,rpmfile}.py`.
 
 ### Rust source builds
 
@@ -532,7 +611,7 @@ Package installation and image tooling remain separate concerns:
 - the bootstrap `package_manager` determines what native packages can be resolved;
 - that manager's `engine` supplies every layer driver and terminal image tool;
 - `local_repository` declares compatible package outputs and infers their package system from
-  `LocalPackageInfo`; a consuming package manager materializes deterministic repodata with its own engine;
+  `LocalPackageInfo`; a consuming package manager materializes its repository metadata with its own engine;
 - a derived package manager adds such repositories to a base manager's configured selection;
 - a manager's `local_packages` instead selects locally built packages per install by runtime closure.
 
@@ -580,8 +659,8 @@ assembly epoch. The cpio reader/writer aligns regular-file payloads and uses `co
 so large archives can share extents on reflink-capable filesystems. `compression = "zstd"` compresses the
 finished archive in the same action, so the uncompressed form never becomes a Buck artifact; zstd's
 multi-threaded output is byte-identical to its single-threaded output, so this stays reproducible. The initrd
-uses it, while the kernel-modules cpio that `uki.py` appends stays raw because Fedora already ships each
-module compressed; the kernel unpacks the concatenation as independently compressed segments.
+uses it, while the kernel-modules cpio that `uki.py` appends stays raw because the distribution already
+ships each module compressed; the kernel unpacks the concatenation as independently compressed segments.
 
 `repart` deliberately distinguishes `definitions` from `partitions`. Definitions describe new partitions
 to populate directly from `ImageInfo`: repart mounts the delta stack with a disposable overlay upper instead
@@ -773,12 +852,12 @@ Reproducibility is both a release property and a caching requirement. Current me
 - repository metadata, package bytes, and source archives pinned by SHA-256;
 - generated or committed engine transactions containing repository/package identities;
 - a fixed assembly `SOURCE_DATE_EPOCH` for roots that should be shared across consumers;
-- per-package source date epochs for RPM output timestamps and build headers;
-- a fixed `_buildhost` and frozen rpmautospec macros;
-- parked/vacuumed rpmdbs and scrubbed package-manager caches;
+- per-package source date epochs for build output timestamps and headers;
+- a fixed build host and frozen release-numbering macros;
+- parked package databases and scrubbed package-manager caches;
 - sorted transaction JSON, archive entries, source staging, and output collection;
 - target/configuration-derived partition UUID seeding and normalized archive metadata;
-- content-based paths for repository-owned RPM and payload artifacts.
+- content-based paths for repository-owned package artifacts.
 
 These measures make action-cache reuse meaningful and prepare the graph for remote execution. The repository
 does not yet run a systematic build-twice reproducibility audit, and raw filesystem image byte-for-byte
@@ -792,10 +871,10 @@ to them belongs in commit history or focused notes; this section records the dur
 ### Use Buck2 as the graph and cache
 
 Buck2 was chosen because package builds benefit from content-addressed artifacts, lazy action execution,
-sub-target providers for binary RPM outputs, and a test protocol that can later host the Barrage executor.
-Its lack of an implicit local sandbox also lets Tine use the same mkosi-sandbox boundary locally and on
-future remote workers. Bazel's broader language-rule ecosystem mattered less than these properties for an
-RPM-heavy repository.
+sub-target providers for a build's binary outputs, and a test protocol that can later host the Barrage
+executor. Its lack of an implicit local sandbox also lets Tine use the same mkosi-sandbox boundary locally
+and on future remote workers. Bazel's broader language-rule ecosystem mattered less than these properties
+for a package-heavy repository.
 
 Buck cannot add ordinary target dependencies discovered from an action output. Dynamic actions may select
 among declared inputs but cannot turn newly discovered BuildRequires into a new static graph. Therefore
@@ -832,31 +911,33 @@ The current vocabulary follows the actual responsibilities:
   repositories and priority overrides without changing their inherited release or engine;
 - the buildroot materializes the shared base packages.
 
-This is also why a release is not called a distribution target: Fedora 44 and CentOS Stream 10 are release
-identities, while repositories and engines can be reused across those identities when compatible.
+This is also why a release is not called a distribution target: two releases of one family are separate
+release identities, while repositories and engines can be reused across those identities when compatible.
 
 ### Keep native package managers homogeneous
 
-Every repository universe and package manager belongs to one native package system. RPM and a future DEB
-system must not participate in one dependency solve. Supplemental content systems such as Flatpak may
-eventually coexist with RPM in an image, but compatibility rules are deliberately deferred until a second
-system exists. `PackageSystemInfo` is for native binary package ecosystems, not every possible image
-content type.
+Every repository universe and package manager belongs to one native package system. Two native systems
+must not participate in one dependency solve. The neutral rules need no notion of which system they are
+driving, and two could never meet in a solve, because a universe, a release, and a manager each belong to
+exactly one. Supplemental content
+systems such as Flatpak may eventually coexist with a native one in an image, but compatibility rules
+are deliberately deferred until that is a real requirement. `PackageSystemInfo` is for native binary
+package ecosystems, not every possible image content type.
 
 ### Separate an engine's base release from its target releases
 
 An engine is a tools root with a concrete OS userspace, so its base release records where its packages and
-identity came from. That does not make it part of a package manager's target OS identity: the Rawhide engine
-can still operate on Fedora 44 and CentOS Stream. An image normally obtains this explicit engine dependency
+identity came from. That does not make it part of a package manager's target OS identity: one engine can
+still operate on every compatible release. An image normally obtains this explicit engine dependency
 through its package manager, making reuse visible and content-keyed while avoiding duplicated compatible
 tooling roots. Engine-only images remain available when no native package resolution is needed.
 
 ### Use one sandbox boundary and let drivers mount target roots
 
 The engine userspace must be pinned, the host environment must not leak into builds, and package scriptlets
-need unprivileged fakeroot semantics. Vendored mkosi-sandbox supplies those properties without host RPM,
-mock, bwrap, or a second nested sandbox. Drivers mount their own target roots because install, build, image,
-pack, and disk actions need different layouts.
+need unprivileged fakeroot semantics. Vendored mkosi-sandbox supplies those properties without host package
+tooling, a build-chroot manager, bwrap, or a second nested sandbox. Drivers mount their own target roots
+because install, build, image, pack, and disk actions need different layouts.
 
 ### Pass drivers one JSON spec
 
@@ -868,12 +949,10 @@ profiles, repository selections, subpackage outputs) stays structured, and a dri
 rule owns instead of revalidating an argument grammar. A driver that invokes another driver does the same:
 the image layer driver writes an install spec for the package installer.
 
-Three exceptions are deliberate. The planner keeps its `solve`/`make-cache` verb on the command line, since
-each verb has its own spec schema. Both it and the snapshot driver keep `--out` there too: their `[resolve]`
-and `[snapshot]` run targets let a caller name the file to write, and one calling convention per driver
-beats splitting the destination by verb. The RPM payload decompressor keeps its two positional paths: it is
-declared once per package in a repository pool, where a spec file per package would double that part of the
-graph for a driver that has no configuration at all.
+Two exceptions are deliberate. A planner keeps its verb on the command line, since each verb has its own
+spec schema. Both it and the snapshot driver keep `--out` there too: their `[resolve]` and `[snapshot]` run
+targets let a caller name the file to write, and one calling convention per driver beats splitting the
+destination by verb.
 
 ### Store image layers as deltas
 
@@ -883,16 +962,17 @@ directories as regular files keeps those deltas compatible with Buck's artifact/
 
 ### Prefer exact transactions over package-manager network access
 
-Resolution uses pinned local repodata; installation consumes an exact directory of already selected RPMs.
+Resolution uses pinned local repository metadata; installation consumes an exact directory of already
+selected packages.
 This keeps network out of build actions, makes the transaction an inspectable early-cutoff boundary, and
 separates “which packages?” from “apply these packages and scriptlets.” Weak dependencies are disabled to
 match buildroot policy and avoid unreviewed closure growth.
 
 ### Build each source package once and expose subpackages
 
-One `rpmbuild -ba` naturally emits all binary subpackages and the source RPM. Running it once avoids repeated
-work and inconsistent sibling outputs. Buck sub-targets give downstream packages addressable binary outputs
-without pretending each subpackage is a separate build action.
+One build invocation naturally emits every binary subpackage and the source package. Running it once avoids
+repeated work and inconsistent sibling outputs. Buck sub-targets give downstream packages addressable binary
+outputs without pretending each subpackage is a separate build action.
 
 ### Keep static local repositories and closure-selected local packages separate
 
@@ -912,18 +992,15 @@ Host requirements, the wrapper commands, and representative smoke builds are doc
 
 ## Current limitations
 
-These are properties of the implementation today, not merely ideas for future optimization:
+These are properties of the implementation today, not merely ideas for future optimization. Limitations that
+belong to one package system are listed in its own section instead:
 
-- RPM is the only package system, and generated package metadata is fixed to `x86_64`.
-- The imported self-host dependency graph is inferred from stored BuildRequires/Provides/file metadata; it
-  does not run RPM's dynamic BuildRequires protocol.
-- Build cycles fall back to upstream RPMs for ordinary intra-SCC edges, so the package set is not a fully
-  self-hosted fixed point.
+- A transaction describes packages to add. An install that would have to remove or replace something a
+  lower layer carries is refused rather than expressed.
 - Image installs select source-built packages through the imported-metadata runtime closure of
   `local_packages`. The walk follows local-to-local edges only, so a local package reachable only through
   an upstream intermediate silently resolves upstream, and there is still no per-package source/prebuilt
   choice under one shared version pin.
-- RPM builds use `--nocheck`; package test policy is not implemented.
 - Rust source builds cover crates.io and git sources; another registry is rejected. A git dependency's
   integrity rests on the commit hash the lock records: SHA-1 for ordinary repositories, which is weaker
   than the SHA-256 pinning everything else here uses.
@@ -934,10 +1011,8 @@ These are properties of the implementation today, not merely ideas for future op
   fetch, whose integrity rests on the committed `go.sum` as go enforces it at build time.
 - Crate downloads carry no recorded size, so Buck learns it from an HTTP HEAD whenever a download action
   executes. A cold daemon therefore needs the network even when every crate is already cached.
-- Debuginfo/debugsource outputs are not first-class declared sub-targets.
 - Upstream package signatures are not verified. SHA-256 pinning gives integrity after refresh, not
   authenticity at refresh time.
-- The bootstrap extractor supports the pinned RPM v4/newc payload form, not RPM v6 metadata.
 - Archive ownership is intentionally normalized to uid/gid zero. Capabilities, xattrs, and SELinux labels do
   not survive as Buck directory metadata; deferred tmpfiles can restore xattrs at terminal assembly, and tar
   preserves them in PAX headers, but newc cpio cannot represent general xattrs.
@@ -957,17 +1032,18 @@ section is approximate and should follow the next concrete product need.
 ### Package graph and self-hosting
 
 1. Replace the current metadata intersection with a generated package lock that records precise direct
-   BuildRequires and binary/runtime relationships. Use RPM's exit-11 dynamic BuildRequires protocol for
-   packages that generate requirements during `%prep`.
+   BuildRequires and binary/runtime relationships. Use the package system's dynamic BuildRequires protocol
+   for packages that generate requirements while preparing their sources.
 2. Introduce the source/prebuilt package-provider model only when an image or buildroot needs to choose
    backing per package. Preserve one coherent version pin so upstream and source-built variants have the
    same dependency graph.
 3. Model runtime closures at binary-subpackage granularity and make debuginfo/debugsource outputs explicit
    where consumers or publishing require them.
 4. Extend importer/build configuration beyond the fixed `x86_64` slice.
-5. Add RPM v6 bootstrap extraction when a pinned repository requires it.
-6. Decide and implement `%check` policy. Because successful build scratch is discarded, checks most likely
-   belong in the primary RPM action with per-package opt-outs for broken or prohibitively expensive suites.
+5. Extend bootstrap extraction to a newer package format when a pinned repository requires it.
+6. Decide and implement build-time test policy. Because successful build scratch is discarded, checks most
+   likely belong in the primary build action with per-package opt-outs for broken or prohibitively
+   expensive suites.
 
 The durable self-hosting rule remains: invoked build tools may come from the pinned seed, while libraries
 linked into shipped outputs should come from source-built packages once their graph is available. Cycles
@@ -978,18 +1054,19 @@ must be explicit; silently pretending a cyclic source graph is acyclic is not ac
 The accepted direction for upstream authenticity is:
 
 1. Pin reviewed distribution signing keys in repository snapshots.
-2. Add a repository-owned verified RPM representation using libdnf5/rpm signature verification.
-3. Make installation select verified artifacts while preserving raw and payload representations.
+2. Add a repository-owned verified package representation, using each package system's own
+   signature verification.
+3. Make installation select verified artifacts while preserving the raw form a repository serves.
 4. Handle engine trust inductively: an existing trusted engine verifies the inputs of its successor rather
    than allowing a new engine to vouch for itself.
 
-The exact Rawhide key policy and first-trust/bootstrap procedure remain open. HTTPS plus committed SHA-256
+The exact key policy and first-trust/bootstrap procedure remain open. HTTPS plus committed SHA-256
 locks currently provides reviewable integrity but is not a substitute for signature verification.
 
-A later release pipeline needs repository composition, comps metadata, source/debuginfo publication policy,
-provenance/attestations, and signing. Secure Boot signing should use deterministic RSA PKCS#1 v1.5 without
-timestamps. Development keys can be declared/cacheable inputs; production keys should be exposed through a
-restricted signing service/PKCS#11 boundary and run as non-cacheable release actions.
+A later release pipeline needs repository composition, package-group metadata, source/debuginfo publication
+policy, provenance/attestations, and signing. Secure Boot signing should use deterministic RSA PKCS#1 v1.5
+without timestamps. Development keys can be declared/cacheable inputs; production keys should be exposed
+through a restricted signing service/PKCS#11 boundary and run as non-cacheable release actions.
 
 ### Image hardening and formats
 
@@ -1020,27 +1097,27 @@ unnecessary unless real composition requirements appear.
 - Replace the pinned `cargo-auditable` binary with a source-built one once that no longer depends on
   itself existing, and map commits to tarballs for whatever forge a dependency turns up on next. Add
   C/C++ equivalents only when in-repository builds need them.
-- Define the upstream-update workflow: import Fedora changes, rebase local patches, refresh snapshots and
+- Define the upstream-update workflow: import upstream changes, rebase local patches, refresh snapshots and
   generated metadata, and verify that version skew has not invalidated source/upstream interchangeability.
 
 ## Reference points
 
 Useful implementation entry points:
 
-- `package/{system,repository,release,manager,solver,buildroot,install}.bzl`
-- `package_system/rpm/rules.bzl` and
-  `package_system/rpm/{snapshot,plan,install,pkgdb,createrepo,build,extract,decompress}.py`
+- `package/{system,repository,release,manager,solver,buildroot,install}.bzl` and
+  `package/{href,installer,transaction}.py`
+- each package system's `rules.bzl` and drivers under `package_system/`, listed in its own section above
 - `engine/{build,runtime}.bzl`, `engine/sandbox.py`, and `rootfs/rootfs.py`
 - `image/{image,compose,defs,sign,vm}.bzl` and `image_format/{archive,boot,disk,sysext,uki}.bzl`
 - `cargo/{rules,lock,vendor}.bzl` and `cargo/{vendor,build}.py`
 - `go/rules.bzl` and `go/{fetch,build}.py`
 - `tools/catalog.py` and `catalog/BUCK`
-- the generated `packages/*/*/BUCK` and `package_system/rpm/generated.bzl`
+- the generated `packages/*/*/BUCK` and the importer-facing Starlark that validates it
 
 External projects that informed the design:
 
 - Buck2 for action/dynamic-dependency semantics, sub-targets, content-based paths, and test execution;
-- rpm and libdnf5 for build, resolution, transaction, and signature behavior;
+- the native package managers Tine drives, for build, resolution, transaction, and signature behavior;
 - mkosi/mkosi-sandbox for user-namespace isolation, root mounting, UKIs, and repart-based images;
 - Barrage for the planned streamed integration-test executor;
 - Siguldry for a possible production PKCS#11 signing boundary.

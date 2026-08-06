@@ -11,31 +11,14 @@ import sqlite3
 import sys
 import tempfile
 from pathlib import Path
-from typing import TypedDict
 
 import libdnf5
-import specs
 
-import rootfs
+import installer
 
 DBPATH = "usr/lib/sysimage/rpm"
 
-# A fixed install path avoids embedding Buck hashes and supports scriptlet chroots.
-BUILDROOT = "/buildroot"
-
 CACHEDIR = Path("/var/tmp/install-cache")
-
-
-class Spec(TypedDict):
-    packages_dir: str
-    # Either an output root, bound at /buildroot to install into, or a root the caller mounted.
-    target: str | None
-    installroot: str | None
-    lower: list[str]
-    work: str | None
-    engine_config: bool
-    langs: list[str]
-    docs: bool
 
 
 MINIMAL_NSSWITCH = """\
@@ -164,76 +147,29 @@ def install_into_root(
     langs: list[str] | None = None,
     docs: bool = True,
 ) -> None:
-    # Leave a fresh root for systemd to initialize on first boot without resetting existing images.
-    etc = installroot / "etc"
-    etc.mkdir(exist_ok=True)
-    machine_id = etc / "machine-id"
-    initialize_machine_id = not machine_id.exists()
-    if initialize_machine_id:
-        machine_id.write_text("uninitialized\n")
-
-    install(packages_dir, installroot, CACHEDIR, system=system, langs=langs, docs=docs)
-    if initialize_machine_id:
-        # Packages may replace the marker during the transaction.
-        machine_id.write_text("uninitialized\n")
+    with installer.fresh_machine_id(installroot):
+        install(packages_dir, installroot, CACHEDIR, system=system, langs=langs, docs=docs)
     parkdb(installroot)
     scrub(installroot)
     if engine_config:
         configure_engine(installroot)
 
 
+def _install(packages_dir: Path, installroot: Path, spec: installer.InstallSpec, layered: bool) -> None:
+    install_into_root(
+        packages_dir,
+        installroot,
+        # Installed packages satisfy dependencies for an incremental install; a root the caller
+        # mounted says so by already carrying an rpmdb.
+        system=layered or (installroot / DBPATH / "rpmdb.sqlite").exists(),
+        engine_config=spec["engine_config"],
+        langs=spec["langs"],
+        docs=spec["docs"],
+    )
+
+
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("install", argv)
-    packages_dir = Path(spec["packages_dir"]).absolute()
-
-    if spec["installroot"] is not None:
-        if spec["target"] is not None or spec["lower"] or spec["work"] is not None:
-            raise SystemExit("install: installroot excludes target, lower, and work")
-        installroot = Path(spec["installroot"]).absolute()
-        install_into_root(
-            packages_dir,
-            installroot,
-            system=(installroot / DBPATH / "rpmdb.sqlite").exists(),
-            engine_config=spec["engine_config"],
-            langs=spec["langs"],
-            docs=spec["docs"],
-        )
-        return
-
-    if spec["target"] is None:
-        raise SystemExit("install: one of target and installroot is required")
-
-    # libdnf5 needs absolute paths, and bind sources must exist.
-    target = Path(spec["target"]).absolute()
-    target.mkdir(parents=True, exist_ok=True)
-
-    incremental = bool(spec["lower"])
-    if incremental:
-        if spec["work"] is None:
-            raise SystemExit("install: lower needs a work overlay directory")
-        root = rootfs.rootfs(
-            BUILDROOT,
-            lowers=spec["lower"],
-            upperdir=target,
-            workdir=Path(spec["work"]).absolute(),
-            apivfs=True,
-        )
-    else:
-        root = rootfs.rootfs(BUILDROOT, bind=target, apivfs=True)
-
-    with root:
-        install_into_root(
-            packages_dir,
-            Path(BUILDROOT),
-            system=incremental,
-            engine_config=spec["engine_config"],
-            langs=spec["langs"],
-            docs=spec["docs"],
-        )
-
-    if not incremental:
-        # Capture after teardown so the walk cannot descend into apivfs mounts.
-        rootfs.capture(target)
+    installer.run("install", _install, argv)
 
 
 if __name__ == "__main__":

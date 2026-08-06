@@ -1,7 +1,7 @@
 """Bootstrap an engine by extracting RPM v4 newc payloads without RPM tooling.
 
-Repository pools normally provide pre-decompressed cpio, while raw RPM support
-keeps the tool usable alone. Metadata and scriptlets are deferred to the real install.
+An rpm is read as its repository serves it: the header is framed off, the payload decompressed,
+and the cpio unpacked. Metadata and scriptlets are deferred to the real install.
 """
 
 import mmap

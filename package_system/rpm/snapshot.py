@@ -5,12 +5,8 @@ The snapshot contains filtered repomd, pinned streams, and a pkgid-keyed package
 """
 
 import argparse
-import bz2
-import compression.zstd
-import gzip
 import hashlib
 import json
-import lzma
 import string
 import sys
 import tempfile
@@ -18,10 +14,11 @@ import xml.etree.ElementTree as ET
 from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
 from typing import Protocol, TypedDict
-from urllib.parse import unquote, urlsplit
 
 import specs
-from util import atomic_text_writer, urlopen, with_retries
+from util import MAGIC, atomic_text_writer, decompressor, urlopen, with_retries
+
+from href import relative_href
 
 _REPOMD_NS = "http://linux.duke.edu/metadata/repo"
 _PRIMARY_NS = "http://linux.duke.edu/metadata/common"
@@ -60,37 +57,6 @@ class BinaryReader(Protocol):
     def read(self, size: int = -1, /) -> bytes: ...
 
 
-def _relative_href(rid: str, what: str, href: str | None) -> str:
-    """Validate a repository-owned URL path before joining it to the base URL."""
-    if not href:
-        raise SystemExit(f"{rid}: {what} has an empty location")
-    parsed = urlsplit(href)
-
-    # Decode to a fixed point so nested escapes cannot conceal traversal or separators.
-    decoded = href
-    while True:
-        expanded = unquote(decoded)
-        if expanded == decoded:
-            break
-        decoded = expanded
-
-    parts = decoded.split("/")
-    external = bool(parsed.scheme or parsed.netloc or parsed.query or parsed.fragment)
-    invalid_path = (
-        decoded.startswith("/")
-        or decoded.endswith("/")
-        # Reject encoded slashes that would change the path after URL handling.
-        or decoded.count("/") != href.count("/")
-        or any(part in ("", ".", "..") for part in parts)
-        or "\\" in decoded
-    )
-    non_ascii = any(ord(character) > 127 for character in href)
-    control_character = any(ord(character) < 32 or ord(character) == 127 for character in decoded)
-    if external or invalid_path or non_ascii or control_character:
-        raise SystemExit(f"{rid}: {what} has unsupported location {href!r}")
-    return href
-
-
 def _location_href(rid: str, what: str, location: ET.Element | None) -> str:
     """Read a location that is relative to the repository root."""
     href = location.get("href") if location is not None else None
@@ -99,7 +65,7 @@ def _location_href(rid: str, what: str, location: ET.Element | None) -> str:
     )
     if location_base is not None:
         raise SystemExit(f"{rid}: {what} has unsupported location {href!r}")
-    return _relative_href(rid, what, href)
+    return relative_href(rid, what, href)
 
 
 def _sha256(rid: str, what: str, value: str | None) -> str:
@@ -199,18 +165,12 @@ def _load_package_index(rid: str, stream: RepositoryStream) -> dict[str, Package
         with_retries(f"{rid}: {stream['out']}", download)
 
         compressed.seek(0)
-        magic = compressed.read(6)
+        magic = compressed.read(MAGIC)
         compressed.seek(0)
-        # Metadata names are not authoritative; select the decoder from file contents.
+        open_compressed = decompressor(magic)
         with ExitStack() as stack:
-            if magic.startswith(b"\x28\xb5\x2f\xfd"):
-                source = stack.enter_context(compression.zstd.ZstdFile(compressed, mode="rb"))
-            elif magic.startswith(b"\x1f\x8b"):
-                source = stack.enter_context(gzip.GzipFile(fileobj=compressed, mode="rb"))
-            elif magic.startswith(b"\xfd7zXZ\x00"):
-                source = stack.enter_context(lzma.LZMAFile(compressed, mode="rb"))
-            elif magic.startswith(b"BZh"):
-                source = stack.enter_context(bz2.BZ2File(compressed, mode="rb"))
+            if open_compressed is not None:
+                source = stack.enter_context(open_compressed(compressed))
             elif magic.lstrip().startswith(b"<"):
                 source = compressed
             else:

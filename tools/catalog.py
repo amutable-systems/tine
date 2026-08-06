@@ -1,7 +1,8 @@
 """Refresh pure catalog snapshots, then resolve engine transactions against those pins.
 
-Repositories pinned to an rpmrepo mirror first advance their declared snapshot to the newest
-one the gateway enumerates by rewriting their declaration; roll back by hand-editing the pin.
+Repositories pinned to a mirror that publishes snapshots first advance their declaration to the
+newest one the mirror offers. Repositories sharing one pin advance together, and rolling back
+means editing the pin.
 
 Remote engine-lock entries retain their package transports, so a repository's package pool keeps
 the committed engine available after its repodata advances.
@@ -15,12 +16,14 @@ import contextlib
 import json
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from util import urlopen, with_retries
 
 DEFAULT_CATALOG = "tine//catalog"
 ENGINE_LABEL = "tine:engine"
+REMOTE_REPOSITORY_LABEL = "tine:remote-repository"
 RPM_REMOTE_REPOSITORY_LABEL = "tine:rpm-remote-repository"
 
 
@@ -75,28 +78,98 @@ def _run(buck: str, target: str, args: list[str]) -> None:
     subprocess.run([buck, "-v", "0", "run", target, "--console", "none", "--", *args], check=True)
 
 
-def _rpmrepo_repositories(buck: str, catalog: str) -> dict[str, tuple[str, str]]:
-    """Map repository targets carrying an rpmrepo pin in their metadata to (mirror, snapshot)."""
+def _pinned_repositories(buck: str, catalog: str, label: str, prefix: str) -> dict[str, dict[str, str]]:
+    """Map repository targets carrying a `<prefix>.*` pin to that pin's metadata."""
     out = _buck_out(
         buck,
         "uquery",
         "--json",
         "--output-attribute=^metadata$",
-        f"attrfilter(labels, '{RPM_REMOTE_REPOSITORY_LABEL}', {catalog})",
+        f"attrfilter(labels, '{label}', {catalog})",
     )
     repositories = {}
     for target, attributes in json.loads(out).items():
         metadata = attributes.get("metadata") or {}
-        mirror = metadata.get("rpmrepo.mirror")
-        snapshot = metadata.get("rpmrepo.snapshot")
-        if mirror is not None and snapshot is not None:
-            repositories[target] = (mirror, snapshot)
+        pin = {
+            key.removeprefix(f"{prefix}."): value
+            for key, value in metadata.items()
+            if key.startswith(f"{prefix}.")
+        }
+        if "snapshot" in pin and "mirror" in pin:
+            repositories[target] = pin
     return repositories
+
+
+def _rewrite_pin(declaration: Path, attribute: str, current: str, wanted: str) -> None:
+    """Repoint every declaration carrying one pin at its successor.
+
+    Every occurrence moves, which is why only a whole pin group is ever advanced: repositories
+    written from one literal cannot be moved apart by rewriting it.
+    """
+    pin = f'{attribute} = "{current}"'
+    content = declaration.read_text(encoding="utf-8")
+    if pin not in content:
+        raise SystemExit(f"catalog: expected {pin!r} in {declaration}")
+    declaration.write_text(content.replace(pin, f'{attribute} = "{wanted}"'), encoding="utf-8")
+
+
+def _advance(
+    repositories: dict[str, dict[str, str]],
+    selected: set[str],
+    newest: Callable[[dict[str, dict[str, str]]], str],
+    declaration: Path,
+    attribute: str,
+) -> None:
+    """Advance each distinct pin once, so repositories sharing one stay on one snapshot."""
+    groups: dict[str, dict[str, dict[str, str]]] = {}
+    for target, pin in sorted(repositories.items()):
+        groups.setdefault(pin["snapshot"], {})[target] = pin
+
+    advances = {}
+    for current, pins in sorted(groups.items()):
+        # Grouping is over the whole catalog, not the selection, because rewriting the literal
+        # moves every repository written from it. A group the caller is not about to re-snapshot
+        # in full therefore has to stay where it is.
+        names = ", ".join(_name_of(target) for target in sorted(pins))
+        if not set(pins) <= selected:
+            print(f"==> leaving {names} on {current} (outside this refresh)", file=sys.stderr)
+            continue
+        wanted = newest(pins)
+        if wanted != current:
+            advances[current] = (wanted, names)
+
+    # Landing on a literal another group holds, or is about to, merges the two: from then on one
+    # rewrite moves both and neither can advance alone again. Refuse before rewriting anything, so
+    # a deliberately lagging release is never silently collapsed into its sibling and no advance is
+    # left half applied.
+    for current, (wanted, names) in advances.items():
+        others = set(groups) - {current}
+        others.update(planned for other, (planned, _) in advances.items() if other != current)
+        if wanted in others:
+            raise SystemExit(
+                f"catalog: {names} would advance onto {wanted!r}, which {attribute} pins "
+                "elsewhere; refresh those together"
+            )
+
+    for current, (wanted, names) in advances.items():
+        print(f"==> advancing {names} to {wanted} (from {current})", file=sys.stderr)
+        _rewrite_pin(declaration, attribute, current, wanted)
 
 
 def _series(snapshot: str) -> str:
     """A snapshot id's series: everything before the trailing datestamp (rpmrepo's naming)."""
     return snapshot.rsplit("-", 1)[0]
+
+
+def _newest_rpmrepo_snapshot(pins: dict[str, dict[str, str]]) -> str:
+    """The newest snapshot every repository sharing one rpmrepo pin can move to."""
+    wanted = {
+        _newest_snapshot(_name_of(target), pin["mirror"], _series(pin["snapshot"]))
+        for target, pin in pins.items()
+    }
+    if len(wanted) != 1:
+        raise SystemExit(f"catalog: {sorted(pins)} disagree on their successor: {sorted(wanted)}")
+    return wanted.pop()
 
 
 def _newest_snapshot(repository: str, mirror: str, series: str) -> str:
@@ -117,20 +190,20 @@ def _newest_snapshot(repository: str, mirror: str, series: str) -> str:
     return max(matches)
 
 
-def _advance_snapshots(buck: str, catalog: str, catalog_dir: Path) -> None:
-    """Advance rpmrepo-mirrored repositories to the newest snapshot their gateway enumerates."""
+def _advance_snapshots(buck: str, catalog: str, catalog_dir: Path, selected: list[str]) -> None:
+    """Advance the selected mirror-pinned repositories to the newest snapshot their mirror offers.
+
+    Advancing a pin without re-snapshotting the repository it belongs to would leave a base URL
+    from one snapshot composing package locations from another, so this stays inside the selection the
+    caller is about to snapshot.
+    """
     declaration = catalog_dir / "BUCK"
-    for target, (mirror, current) in sorted(_rpmrepo_repositories(buck, catalog).items()):
-        repository = _name_of(target)
-        wanted = _newest_snapshot(repository, mirror, _series(current))
-        if wanted == current:
-            continue
-        pin = f'rpmrepo_snapshot = "{current}"'
-        content = declaration.read_text(encoding="utf-8")
-        if content.count(pin) != 1:
-            raise SystemExit(f"{repository}: expected exactly one {pin!r} in {declaration}")
-        print(f"==> advancing {repository} to {wanted} (from {current})", file=sys.stderr)
-        declaration.write_text(content.replace(pin, f'rpmrepo_snapshot = "{wanted}"'), encoding="utf-8")
+    wanted = set(selected)
+    for label, prefix, attribute, newest in (
+        (RPM_REMOTE_REPOSITORY_LABEL, "rpmrepo", "rpmrepo_snapshot", _newest_rpmrepo_snapshot),
+    ):
+        pinned = _pinned_repositories(buck, catalog, label, prefix)
+        _advance(pinned, wanted, newest, declaration, attribute)
 
 
 def _snapshot(buck: str, target: str, catalog_dir: Path) -> None:
@@ -165,9 +238,9 @@ def _select_engines(all_resolves: list[str], selected_engines: list[str] | None)
 
 
 def _repositories_for_engines(buck: str, engines: list[str]) -> list[str]:
-    """rpm-remote-repository targets reachable from the given engine targets."""
+    """Remote repository targets reachable from the given engine targets."""
     engine_set = " ".join(engines)
-    query = f"attrfilter(labels, '{RPM_REMOTE_REPOSITORY_LABEL}', deps(set({engine_set})))"
+    query = f"attrfilter(labels, '{REMOTE_REPOSITORY_LABEL}', deps(set({engine_set})))"
     return sorted(_buck_out(buck, "uquery", query).split())
 
 
@@ -187,7 +260,7 @@ def _refresh(
     resolves = _select_engines(all_resolves, selected_engines)
 
     if selected_engines is None:
-        snapshots = _targets_with_label(buck, catalog, RPM_REMOTE_REPOSITORY_LABEL)
+        snapshots = _targets_with_label(buck, catalog, REMOTE_REPOSITORY_LABEL)
     else:
         snapshots = _repositories_for_engines(buck, resolves)
     targets = all_resolves + snapshots
@@ -195,7 +268,7 @@ def _refresh(
         raise SystemExit(f"catalog: no repository/engine refresh targets found in {catalog}")
     catalog_dir = _catalog_directory(buck, targets)
     if advance_snapshots:
-        _advance_snapshots(buck, catalog, catalog_dir)
+        _advance_snapshots(buck, catalog, catalog_dir, snapshots)
 
     written = []
     for target in snapshots:

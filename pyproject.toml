@@ -5,7 +5,17 @@ target-version = "py314"
 line-length = 109
 # Exclude build outputs and the verbatim vendored sandbox.
 extend-exclude = ["buck-out", "vendor/mkosi/sandbox.py"]
-src = ["archive", "cargo", "engine", "image", "image_format", "package_system/rpm", "rootfs", "vendor"]
+src = [
+    "archive",
+    "cargo",
+    "engine",
+    "image",
+    "image_format",
+    "package",
+    "package_system/rpm",
+    "rootfs",
+    "vendor",
+]
 lint.select = [
     "E",    # pycodestyle
     "W",    # pycodestyle (trailing whitespace)
@@ -23,7 +33,17 @@ lint.select = [
 [tool.ty.environment]
 python-version = "3.14"
 # Runtime trees use a flat import namespace; third-party imports come from `--python`.
-extra-paths = ["archive", "cargo", "engine", "image", "image_format", "package_system/rpm", "rootfs", "vendor"]
+extra-paths = [
+    "archive",
+    "cargo",
+    "engine",
+    "image",
+    "image_format",
+    "package",
+    "package_system/rpm",
+    "rootfs",
+    "vendor",
+]
 
 [tool.ty.src]
 # Verbatim vendored modules do not follow Tine's project-specific type rules.

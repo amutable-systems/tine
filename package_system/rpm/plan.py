@@ -7,19 +7,17 @@ record their input location. `make-cache` amortizes metadata parsing across solv
 """
 
 import argparse
-import json
 import sys
 from contextlib import ExitStack
 from pathlib import Path
-from typing import Literal, NamedTuple, NotRequired, TypedDict
 
 import libdnf5
 import libdnf5.comps
 import libdnf5.conf
 import specs
-from util import atomic_text_writer
 
 import rootfs
+import transaction
 
 # A multilib package in a pinned-arch transaction indicates a bad solve.
 MULTILIB_ARCHES = ("i686", "i386", "i586")
@@ -27,64 +25,21 @@ MULTILIB_ARCHES = ("i686", "i386", "i586")
 CACHEDIR = Path("/var/tmp/plan-cache")
 
 
-class Repository(NamedTuple):
-    id: str
-    path: Path
-    priority: int
-    baseurl: str | None
-
-
-class RepositorySpec(TypedDict):
-    id: str
-    directory: str
-    priority: int
-    baseurl: str | None
-
-
-class Spec(TypedDict):
-    arch: str
-    repositories: list[RepositorySpec]
-
-
-class SolveSpec(Spec):
+class SolveSpec(transaction.Spec):
     install: list[str]
     lower: list[str]
     # Prebuilt repository caches (make-cache outputs) seeding this solve.
     cache: list[str]
 
 
-class TransactionPackage(TypedDict):
-    package_id: str
-    repo: str
-    pkg_checksum: str
-    source: Literal["local", "repo"]
-    location: NotRequired[str]
-    size: NotRequired[int]
-    url: NotRequired[str]
-
-
-def load_repositories(spec: Spec) -> list[Repository]:
+def load_repositories(spec: transaction.Spec) -> list[transaction.Repository]:
     """Read the configured repositories a solve or cache build runs against."""
-    return [
-        Repository(
-            repository["id"],
-            Path(repository["directory"]).absolute(),  # libdnf5 needs absolute paths
-            repository["priority"],
-            repository["baseurl"],
-        )
-        for repository in spec["repositories"]
-    ]
-
-
-def write_transaction(path: Path, transaction: list[TransactionPackage]) -> None:
-    """Atomically write deterministic transaction JSON."""
-    with atomic_text_writer(path) as output:
-        json.dump(transaction, output, indent=2)
-        output.write("\n")
+    # libdnf5 needs absolute paths.
+    return transaction.load_repositories(spec, absolute=True)
 
 
 def load_base(
-    repos: list[Repository],
+    repos: list[transaction.Repository],
     cachedir: Path,
     installroot: Path | None,
     arch: str,
@@ -132,13 +87,13 @@ def load_base(
 
 
 def plan(
-    repos: list[Repository],
+    repos: list[transaction.Repository],
     install: list[str],
     cachedir: Path,
     installroot: Path | None,
     arch: str,
     seeds: list[Path],
-) -> list[TransactionPackage]:
+) -> list[transaction.TransactionPackage]:
     base = load_base(repos, cachedir, installroot, arch, seeds)
     repositories = {repo.id: repo for repo in repos}
 
@@ -160,7 +115,7 @@ def plan(
         raise SystemExit("plan resolution failed:\n  " + "\n  ".join(problems))
 
     # Only inbound transaction items need downloading.
-    resolved: list[TransactionPackage] = []
+    resolved: list[transaction.TransactionPackage] = []
     for tp in tx.get_transaction_packages():
         if not libdnf5.transaction.transaction_item_action_is_inbound(tp.get_action()):
             continue
@@ -170,36 +125,16 @@ def plan(
         chk = pkg.get_checksum()
         if chk.get_type_str() != "sha256":
             raise SystemExit(f"expected sha256 repodata checksum for {pkg.get_nevra()}")
-        rid = pkg.get_repo_id()
-        repo = repositories[rid]
-        checksum = chk.get_checksum().lower()
-        if len(checksum) != 64 or any(character not in "0123456789abcdef" for character in checksum):
-            raise SystemExit(f"invalid sha256 checksum for {pkg.get_nevra()}: {checksum!r}")
-        entry = TransactionPackage(
-            package_id=pkg.get_nevra(),
-            repo=rid,
-            pkg_checksum=checksum,
-            source="local" if repo.baseurl is None else "repo",
+        repo = repositories[pkg.get_repo_id()]
+        resolved.append(
+            transaction.entry(
+                pkg.get_nevra(),
+                repo,
+                chk.get_checksum(),
+                pkg.get_location(),
+                pkg.get_download_size(),
+            )
         )
-        if repo.baseurl is None:
-            entry["location"] = pkg.get_location()
-        else:
-            location = pkg.get_location()
-            size = pkg.get_download_size()
-            if size <= 0:
-                raise SystemExit(f"invalid download size for {pkg.get_nevra()}: {size}")
-            entry["size"] = size
-            entry["url"] = repo.baseurl.rstrip("/") + "/" + location.lstrip("/")
-        resolved.append(entry)
-    resolved.sort(
-        key=lambda entry: (
-            entry["repo"],
-            entry["package_id"],
-            entry["pkg_checksum"],
-            entry.get("location", ""),
-            entry.get("url", ""),
-        )
-    )
     print(f"plan: resolved {len(resolved)} packages", file=sys.stderr)
     return resolved
 
@@ -223,7 +158,7 @@ def main(argv: list[str] | None = None) -> None:
     args = p.parse_args(argv)
 
     if args.command == "make-cache":
-        spec: Spec = specs.load(args.spec, prog="plan")
+        spec: transaction.Spec = specs.load(args.spec, prog="plan")
         repos = load_repositories(spec)
         out = Path(args.out)
         out.mkdir(parents=True, exist_ok=True)
@@ -250,7 +185,7 @@ def main(argv: list[str] | None = None) -> None:
             solve_spec["arch"],
             seeds,
         )
-    write_transaction(Path(args.out), tx)
+    transaction.write(Path(args.out), tx)
 
 
 if __name__ == "__main__":

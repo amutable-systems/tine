@@ -512,6 +512,7 @@ def declare_image(
         }
         if installer != None:
             spec["install"] = {
+                "arch": engine[EngineInfo].arch,
                 "docs": install_docs,
                 "installer": executable(installer),
                 "langs": install_langs,
