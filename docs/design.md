@@ -40,6 +40,7 @@ package tree:
 //examples/image-local-packages/ (consuming project) bootable image from self-built packages
 tine//examples/image/     image smoke targets
 tine//examples/box/       pinned interactive development environment
+tine//distribution/       the axis an image's distribution is selected on
 tine//package/            package-system-neutral providers and installation flow
 tine//package_system/     one directory per package system: its repository, resolver, installer,
                           extractor, indexer, and optional builder
@@ -567,6 +568,49 @@ not preserve general ownership, capabilities, xattrs, or every mode bit. Authore
 recreate paths, modes, and xattrs during terminal assembly. Ownership is deliberately normalized to uid/gid
 zero rather than reconstructed. SELinux labels are not currently produced.
 
+### Selecting a distribution
+
+Which distribution an image is built from is a configuration, and the target carries it.
+`tine//distribution` owns one constraint setting; a catalog release declares one value of it beside its
+other role targets, as `<family>.<release>.distribution`. That single target answers both questions asked
+of a distribution: it is the key a `select()` branches on, and it is the incoming transition that puts the
+value in place. Nothing in this cell knows which distributions exist, because a consumer maps values to
+package managers itself:
+
+```Starlark
+package_manager(
+    name = "image.package-manager",
+    base = select({
+        "//catalog:<family>.<release>.distribution": "//catalog:<family>.<release>.package-manager",
+    }),
+)
+```
+
+Every rule that declares a logical image accepts a `distribution`. A target that names none is
+buildable under any its package serves, and the rule declares one alias per distribution to say which,
+so the names are never a list kept beside the images. `distribution_alias()` does the same for a target
+tine does not own. The transition sets the constraint only where nothing has set it, so the
+target being built decides and everything under it follows: an image's `parent` chain is not a
+distribution of its own, it is whatever the leaf pulling it in is. One declaration therefore serves every
+distribution, and only the alias names are per-distribution.
+
+What varies between distributions stays where it belongs. A release names the packages a bootable system
+of its own family needs, so an image asks for the `bootable` package set rather than for concrete package
+names. Where a genuine difference remains, it is an ordinary select on the same constraint.
+
+Nothing supplies a default. A target declared for no distribution in particular names none of them in
+its `select()`, and is `target_compatible_with` a value no platform carries wherever none was chosen,
+so a build that has chosen one resolves, `//...` skips the rest, and naming one directly fails as
+incompatible rather than quietly picking, reporting the missing choice by name. A default
+would decide which distribution actually gets built and leave the others to rot. A package declares
+that list once in its `PACKAGE` file and every image rule defaults to it, because the failure mode of
+repeating it per target is a target that forgets: being compatible while depending on something
+incompatible is an error rather than a skip.
+
+This is deliberately not a buckconfig. A distribution is a property of the image, so it belongs in the
+declaration, where it is visible to `buck2 uquery`, can differ between two targets in one build, and does
+not reconfigure the world when it changes.
+
 ### Image construction
 
 The `image` rule creates either an initial image from a package manager or engine, or a derived image from
@@ -1089,9 +1133,6 @@ unnecessary unless real composition requirements appear.
   byte-identical. Track known exceptions explicitly rather than weakening all comparisons.
 - Integrate Barrage through Buck2's external test executor so many image/integration tests can share one
   streamed process while still reporting per-test results.
-- Add leaf-selected OS/package-manager transitions when consumers need one target graph to build against
-  multiple releases. The transition must select existing provider boundaries rather than reintroduce a
-  monolithic distribution object.
 - Replace the pinned `cargo-auditable` binary with a source-built one once that no longer depends on
   itself existing, and map commits to tarballs for whatever forge a dependency turns up on next. Add
   C/C++ equivalents only when in-repository builds need them.

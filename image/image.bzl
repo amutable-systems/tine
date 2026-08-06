@@ -1,6 +1,7 @@
 """Logical filesystem images built as ordered overlay deltas."""
 
 load("//:specs.bzl", "executable", "spec_args", "spec_argument")
+load("//distribution:defs.bzl", "distribution_aliases", "distribution_attr")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//package:install.bzl", "resolve_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
@@ -669,6 +670,7 @@ def _image_impl(ctx: AnalysisContext) -> list[Provider]:
 
 _image = rule(
     impl = _image_impl,
+    supports_incoming_transition = True,
     attrs = IMAGE_ATTRS
     | {
         "engine": attrs.option(
@@ -701,4 +703,5 @@ def flatten_operations(ops: list[LayerOperationTree]) -> list[LayerOperation]:
 
 def image(name: str, ops: list[LayerOperationTree] = [], **kwargs) -> None:
     """Create an initial image or apply one delta to a parent image."""
-    _image(name = name, ops = flatten_operations(ops), **kwargs)
+    distribution_aliases(name, kwargs)
+    _image(name = name, ops = flatten_operations(ops), **distribution_attr(kwargs))

@@ -1,5 +1,6 @@
 """Archive and materialized-directory image outputs."""
 
+load("//distribution:defs.bzl", "distribution_aliases", "distribution_attr")
 load(
     "//image:image.bzl",
     "IMAGE_TOOLS_ATTR",
@@ -88,7 +89,7 @@ ARCHIVE_ATTRS = {
     "format": attrs.enum(["tar", "cpio"], default = "tar"),
 }
 
-image_archive = rule(
+_image_archive = rule(
     impl = _image_archive_impl,
     attrs = ARCHIVE_ATTRS
     | {
@@ -125,10 +126,20 @@ def _image_directory_impl(ctx: AnalysisContext) -> list[Provider]:
     info = declare_image_directory(ctx, image = ctx.attrs.image[ImageInfo])
     return [DefaultInfo(default_output = info.directory), info]
 
-image_directory = rule(
+_image_directory = rule(
     impl = _image_directory_impl,
     attrs = {
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image to materialize"),
     }
     | IMAGE_TOOLS_ATTR,
 )
+
+def image_archive(name: str, **kwargs) -> None:
+    """Declare one, compatible with the distributions its package serves."""
+    distribution_aliases(name, kwargs)
+    _image_archive(name = name, **distribution_attr(kwargs))
+
+def image_directory(name: str, **kwargs) -> None:
+    """Declare one, compatible with the distributions its package serves."""
+    distribution_aliases(name, kwargs)
+    _image_directory(name = name, **distribution_attr(kwargs))

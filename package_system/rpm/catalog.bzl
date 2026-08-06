@@ -1,5 +1,6 @@
 """Opinionated RPM-family catalog declarations."""
 
+load("//distribution:defs.bzl", "distribution")
 load("//package:buildroot.bzl", "buildroot")
 load("//package:manager.bzl", "package_manager")
 load("//package:release.bzl", "os_release")
@@ -9,11 +10,33 @@ load(":rules.bzl", "rpm_remote_repository")
 _RPM = "@tine//package_system/rpm:package_system"
 
 _FEDORA_PACKAGE_SETS = {
+    "bootable": [
+        "bash",
+        "coreutils",
+        "dbus-broker",
+        "fedora-release",
+        "kernel-core",
+        "systemd",
+        "systemd-boot-unsigned",
+        "systemd-udev",
+        "util-linux",
+    ],
     "buildroot": ["@buildsys-build"],
     "initrd": ["bash", "kmod", "systemd", "systemd-udev", "veritysetup"],
 }
 
 _CENTOS_STREAM_PACKAGE_SETS = {
+    "bootable": [
+        "bash",
+        "centos-stream-release",
+        "coreutils",
+        "dbus-broker",
+        "kernel-core",
+        "systemd",
+        "systemd-boot-unsigned",
+        "systemd-udev",
+        "util-linux",
+    ],
     "buildroot": [
         "bash",
         "bzip2",
@@ -85,6 +108,7 @@ def fedora_release(
         package_system = _RPM,
         required_repositories = [":" + name + ".repository"],
     )
+    distribution(name = name + ".distribution", visibility = visibility)
     os_release(
         name = name + ".release",
         repository_universe = ":" + name + ".repositories",
@@ -147,6 +171,7 @@ def centos_stream_release(
         },
         default_repository_groups = ["appstream"],
     )
+    distribution(name = name + ".distribution", visibility = visibility)
     os_release(
         name = name + ".release",
         repository_universe = ":" + name + ".repositories",

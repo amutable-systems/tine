@@ -1,5 +1,6 @@
 """Convenience compositions for image products."""
 
+load("//distribution:defs.bzl", "distribution_aliases", "distribution_attr")
 load(
     "//image_format:archive.bzl",
     "ARCHIVE_ATTRS",
@@ -89,6 +90,7 @@ def _rootfs_archive_impl(ctx: AnalysisContext) -> list[Provider]:
 
 _rootfs_archive = rule(
     impl = _rootfs_archive_impl,
+    supports_incoming_transition = True,
     attrs = IMAGE_ATTRS
     | ARCHIVE_ATTRS
     | {
@@ -122,6 +124,7 @@ def _sysext_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
 _sysext_image = rule(
     impl = _sysext_image_impl,
+    supports_incoming_transition = True,
     attrs = IMAGE_ATTRS
     | SYSEXT_ATTRS
     | {
@@ -350,6 +353,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
 _bootable_disk_image = rule(
     impl = _bootable_disk_image_impl,
+    supports_incoming_transition = True,
     attrs = IMAGE_ATTRS
     | UKI_ATTRS
     | {
@@ -396,11 +400,13 @@ _bootable_disk_image = rule(
 
 def rootfs_archive(name: str, ops: list[LayerOperationTree] = [], **kwargs) -> None:
     """Build one logical image from operations and emit it as an archive."""
-    _rootfs_archive(name = name, ops = flatten_operations(ops), **kwargs)
+    distribution_aliases(name, kwargs)
+    _rootfs_archive(name = name, ops = flatten_operations(ops), **distribution_attr(kwargs))
 
 def sysext_image(name: str, ops: list[LayerOperationTree] = [], **kwargs) -> None:
     """Build one logical image from operations and package it as a system-extension DDI."""
-    _sysext_image(name = name, ops = flatten_operations(ops), **kwargs)
+    distribution_aliases(name, kwargs)
+    _sysext_image(name = name, ops = flatten_operations(ops), **distribution_attr(kwargs))
 
 def bootable_disk_image(
     name: str,
@@ -418,6 +424,7 @@ def bootable_disk_image(
     key auto-enrollment files for firmware in setup mode. With sign_expected_pcr_key, the UKIs carry
     a signed expected-PCR policy.
     """
+    distribution_aliases(name, kwargs)
     _bootable_disk_image(
         name = name,
         # The rule renders label placeholders from its own identity during analysis.
@@ -434,5 +441,5 @@ def bootable_disk_image(
         secure_boot_key = secure_boot_key,
         sign_expected_pcr_key = sign_expected_pcr_key,
         verity_key = verity_key,
-        **kwargs,
+        **distribution_attr(kwargs),
     )

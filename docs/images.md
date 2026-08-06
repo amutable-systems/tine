@@ -548,7 +548,7 @@ GPT backup header until something rewrites the table. Use it to give a guest mor
 disk carries; a disk that should always carry that room sets `output_size` on the image instead.
 
 ```sh
-tools/buck run //examples/image:boot-demo-vm
+tools/buck run //examples/image:boot-demo-vm.fedora
 ```
 
 The example image uses a tmpfs root with `mount.usr=dissect`; SELinux is disabled because the build does not
@@ -559,12 +559,12 @@ yet produce filesystem labels. Ephemeral mode preserves the Buck disk artifact.
 Representative builds are:
 
 ```sh
-tools/buck build //examples/image:demo
-tools/buck build //examples/image:layered-install
-tools/buck build //examples/image:boot-demo
-tools/buck build '//examples/image:boot-demo[uki]'
-tools/buck build '//examples/image:boot-demo[partitions][usr]'
-tools/buck build //examples/image:demo-ext
+tools/buck build //examples/image:demo.fedora
+tools/buck build //examples/image:layered-install.fedora
+tools/buck build //examples/image:boot-demo.fedora
+tools/buck build '//examples/image:boot-demo.fedora[uki]'
+tools/buck build '//examples/image:boot-demo.fedora[partitions][usr]'
+tools/buck build //examples/image:demo-ext.fedora
 ```
 
 These validate package installation and commands sharing one delta, incremental layering, archive packing,
@@ -572,6 +572,83 @@ versioned UKI creation, semantic boot-artifact extraction, ESP-layer assembly, a
 `demo-ext` is a system-extension DDI on top of `boot-demo`. Running `boot-demo-vm` validates the interactive
 VM runner; it exposes `demo-ext` under `/var/lib/extensions` in the guest, which validates the sysext merge
 at boot.
+
+### Choosing a distribution
+
+An image's distribution is a configuration its target carries, so one declaration serves every
+distribution the catalog offers. An image rule names itself once per distribution its package
+serves, so declaring `boot-demo` also declares `boot-demo.fedora` with nothing further to write. A
+rule tine does not own says so itself:
+
+```Starlark
+distribution_alias(
+    name = "boot-demo-vm-smoke.fedora",
+    actual = ":boot-demo-vm-smoke",
+    distribution = "//catalog:<family>.<release>.distribution",
+)
+```
+
+An image can also name its own distribution instead of being aliased into one:
+
+```Starlark
+bootable_disk_image(
+    name = "appliance",
+    distribution = "//catalog:<family>.<release>.distribution",
+    ops = [install_package_set("bootable")],
+    ...
+)
+```
+
+Either way the package manager comes from a `select()` on that distribution, and the package names come
+from the release's package sets, so moving an image between distributions changes neither its operations
+nor the rules underneath. The mechanism is described in [design.md](design.md#selecting-a-distribution).
+
+The examples deliberately have no default. `//examples/image:boot-demo` is declared for no distribution
+in particular, so building it by that name fails as incompatible and `//examples/image/...` skips it;
+the per-distribution aliases such as `:boot-demo.fedora` are what build. A default would make whichever distribution it
+named the only one anybody builds, and the other one would rot. A package gets that behaviour by
+saying once, in its `PACKAGE` file, which distributions its images serve:
+
+```Starlark
+load("@tine//distribution:defs.bzl", "set_distributions_for_package")
+
+set_distributions_for_package({
+    "<name>": {
+        "distribution": "//catalog:<family>.<release>.distribution",
+        "package_manager": "//catalog:<family>.<release>.package-manager",
+    },
+})
+```
+
+Only the `distribution` key is tine's business. Everything beside it is whatever the package needs
+to know per distribution, read back with `distributions_for_package()`, so a BUCK file selects its
+package manager and names its aliases from the same table and one place adds a distribution.
+
+Every image rule then defaults its `target_compatible_with` to them, so no target repeats it and none
+can forget it: a target that is itself unconstrained while its image is incompatible is an error
+rather than a skip, which is exactly the mistake the per-package declaration prevents. A rule tine
+does not own, such as a prelude `command_alias` over an image, has no macro to inherit through and
+asks with `distribution_compatibility()`.
+
+Building one of those targets without choosing says so by name:
+
+```text
+tine//examples/image:boot-demo is incompatible with prelude//platforms:default
+    (tine//distribution:no-distribution-chosen unsatisfied)
+```
+
+A distribution is also a platform, so a developer who builds one of them all day can name it as the
+default for unqualified targets in `.buckconfig.local`, which is git-ignored and belongs to the
+checkout rather than the repository:
+
+```ini
+[parser]
+target_platform_detector_spec = target:tine//...->//catalog:<family>.<release>.distribution
+```
+
+That platform is the base one plus the distribution's constraint, so choosing a distribution does not
+drop the cpu and os the base platform carries. Nothing in the repository sets it: an unqualified target
+means "no distribution chosen" everywhere except a checkout that has said otherwise.
 
 A consuming project adds `//packages/fedora/rawhide:zlib-ng`, which validates package import,
 package-manager selection, buildroot assembly and RPM collection (packages with `buildroot_deps`
