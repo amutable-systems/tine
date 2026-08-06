@@ -19,7 +19,7 @@ Tine uses Buck2 to build native packages and compose operating-system images. Th
 monorepo in which a useful core package set is rebuilt from source, scheduled in dependency order, cached
 by content, and suitable for remote execution. The current implementation already provides:
 
-- pinned package repositories, each with a repository-owned package artifact pool;
+- two native package systems, each with pinned repositories and a repository-owned package artifact pool;
 - bootstrap box roots containing the pinned userspace used by build actions;
 - configured package managers and shared buildroots for several OS releases;
 - package builds from imported source metadata, including self-hosted buildroot dependencies;
@@ -38,7 +38,7 @@ package tree:
 ```text
 //packages/               (consuming project) independently versioned package sources and BUCK files
 //examples/image-local-packages/ (consuming project) bootable image from self-built packages
-tine//examples/image/     image smoke targets
+tine//examples/image/     image smoke targets, built for each distribution
 tine//examples/box/       pinned interactive development environment
 tine//distribution/       the axis an image's distribution is selected on
 tine//package/            package-system-neutral providers and installation flow
@@ -285,10 +285,13 @@ two stages:
 2. The package-system installer runs from `stage1` and properly installs the closure into `stage2`,
    including scriptlets and the package database. `stage2` becomes the reusable `BoxInfo` root.
 
+Both catalog boxes are root boxes.
+
 A first lock is the one thing a root box cannot produce for itself, since resolving needs a box to
-resolve in. Pointing the new box's `resolver_box` at an existing box that can run its package system's
-planner breaks that cycle for one refresh; making it `root` afterwards leaves the box
-self-sufficient. This is a one-time exposure per new root box, not a standing dependency.
+resolve in. Pointing the new box's `resolver_box` at an existing box that can run the new package
+system's planner breaks that cycle for one refresh; making it `root` afterwards leaves the box
+self-sufficient. That predecessor has to carry the new system's package manager, which a different
+family may well package. This is a one-time exposure per new root box, not a standing dependency.
 
 Box configuration prefers a target-provided systemd factory `nsswitch.conf`, but writes a deterministic
 files/DNS fallback for minimal roots. Resolver integration and target configuration therefore do not impose
@@ -384,8 +387,8 @@ the same box, package system, and ordered package directories share one action.
 
 ### The RPM package system
 
-The one implementation of `PackageSystemInfo` today covers the RPM family. Everything below is confined
-to its drivers under `package_system/rpm/` and to the catalog policy that selects them.
+The first implementation of `PackageSystemInfo` covers the RPM family. Everything below is confined to its
+drivers under `package_system/rpm/` and to the catalog policy that selects them.
 
 libdnf5 resolves and rpm installs. A repository's build metadata is a filtered `repomd.xml` plus the
 primary, filelists, and group streams libdnf5 needs, each named by its own checksum, so a snapshot pins
@@ -458,6 +461,103 @@ discarded; failed scratch remains available for diagnosis.
 
 Entry points: `package_system/rpm/{rules,catalog,generated}.bzl` and
 `package_system/rpm/{snapshot,plan,install,pkgdb,createrepo,build,extract,rpmfile}.py`.
+
+### The alpm package system
+
+The second implementation of `PackageSystemInfo` covers Arch Linux. It declares no rule of its own:
+the repository rule, how a pinned repository is materialized, and how one is declared are all neutral,
+so what a package system adds is its pin, whatever else its snapshot driver needs to name its metadata,
+and the drivers themselves.
+
+libalpm resolves and pacman installs. `alpm.py` binds libalpm through ctypes, the way `kmod.py`
+binds libkmod, and `plan.py` drives a transaction against the pinned databases with it; `install.py` runs
+`pacman --upgrade` over the exact closure that produced. Both are the same library, so a plan and
+its installation cannot disagree about which package provides a capability or which version is
+newer, and none of those semantics are reimplemented here.
+
+Binding the library rather than driving its front end is what makes the plan a data structure
+instead of text. A resolved package carries its own checksum, size and file name, so a transaction
+is written from what resolved it rather than from a second pass over the databases. Removals are
+visible, and since a transaction is a set of packages to add and nothing downstream can express
+one, an install that would remove something a lower layer carries is refused by name rather than
+silently dropped. And a capability more than one package provides arrives as a callback rather
+than a prompt with nobody to answer it: the solve records the providers and fails naming them,
+because a build cannot be asked and a snapshot advance could otherwise change the choice silently.
+Naming the wanted provider among the install specs settles it. The one capability an image here
+would otherwise have to choose a provider for is `initramfs`, which `linux` requires: the solve is
+told to assume it installed instead, because tine builds the initrd itself and a generator's
+install hook would only write one into a tree that discards it.
+
+The soname is the one the box pins, so a pacman major release fails to load with that name in
+the message rather than resolving against a different ABI. Applying a transaction stays with the
+command: it needs no structured result, only an exit code, and driving a commit through the
+library would mean owning its progress, conflict and scriptlet callbacks for nothing.
+
+What the planner owns is the frame: the pinned databases are staged where alpm looks for them, the
+layer stack below becomes the root the solve resolves against, and each resolved package is named
+by the content checksum its repository published. Nothing is fetched and only the throwaway root
+staged below is written to, so a solve stays a pure function of the pins.
+
+A package is a tar under whichever compressor its era used, but the graph names selected packages
+`.pkg.tar.zst` and nothing else. Arch has served zstd for years; one package left in `extra` under
+the old `.xz` is recognized where a database is read, is never in a closure, and is due to be
+rebuilt. Telling a package from its detached signature is a separate question from naming one, and
+only the first has to accept an older compressor.
+
+`alpm.py` also reads and writes the formats around that library: what a repository database says
+about a package, how to write one, and how to open a package's tar. That is not a duplicate of what
+the library does but a consequence of where it runs, since the snapshot and extract drivers are host
+tools and the host contract does not include libalpm. Two constraints of the format shape the
+drivers. alpm reserves every top-level entry beginning with a dot for its own metadata, so the
+bootstrap extractor skips all of them rather than a fixed list. And alpm refuses a `%FILENAME%`
+containing a separator, so the `<directory>/<file>` location convention that maps a locally built
+package back to its input directory cannot be a path here: `index.py` encodes the directory in the
+file name instead, and `plan.py` decodes it.
+
+A repository database carries no checksum of its own and no content-addressed name, so its snapshot
+pins the bytes the refresh saw. That is what makes the Arch Linux Archive's dated trees the usable
+mirror and an ordinary rolling one unusable: `pacman_remote_repository()`'s
+`archive_mirror`/`archive_snapshot` pin, carried as `archlinux.*` metadata, names a day, and since
+the archive publishes a tree per day rather than an index to enumerate, the refresh reads the marker
+recording when it last finished one.
+
+Installation runs hooks and install scriptlets as they would run on a real system. Documentation and
+language filtering map onto `NoExtract`, which is where pacman expresses them. The architecture is
+pinned from the spec rather than taken from the build host's uname, and the hook directory is named
+explicitly, because alpm rebases its system hook directory onto the target root but not the
+administrator's, and the box's must not run against the image. Afterwards the driver replaces the
+wall-clock `%INSTALLDATE%` alpm records with the assembly epoch, and drops ldconfig's auxiliary
+cache, the sync databases and the transaction log.
+It rewrites only the entries that actually change: alpm keeps one file per package, so rewriting an
+entry a lower layer already parked would copy that whole database up into this layer's delta.
+
+The database stays at Arch's own `/var/lib/pacman`, since Arch has no usr-merged location for it. The
+package-database artifact is read from the assembled layer stack rather than from a terminal output,
+so a `/usr`-only disk does not affect it. Each entry's `mtree` is dropped from that capture: it is
+what pacman alone reads to verify an installed tree, and it is the largest part of an entry after the
+file list.
+
+alpm needs no prebuilt solver cache. A repository database is the metadata pacman reads directly,
+not a format to convert in advance, so this package system declares `solver_cache = False` and no
+cache target is created for it. There is no package builder either: `arch_release()` defines a
+`buildroot` package set, but no `makepkg` rule consumes it, so `PackageSystemInfo.build` is unset.
+
+`arch.rolling.box` is the one that made this second package system prove itself. It is a root box:
+bootstrapping it is an alpm extraction followed by a pacman install, and it then resolves its own
+lock from its own root. Its first lock could not come from itself, so one refresh pointed
+`resolver_box` at the RPM box, which packages pacman; making it `root` afterwards left the box
+self-sufficient.
+
+Limitations specific to this system:
+
+- It cannot build packages, so an Arch image can only install upstream ones and no target builds a
+  local alpm repository. The local-package naming rule is unit-tested, but nothing exercises that
+  path end to end.
+- Pinning a database by content means a rolling mirror goes stale the moment it advances; only an
+  archive with immutable dated trees is usable as a pinned repository.
+
+Entry points: `package_system/pacman/{rules,catalog}.bzl` and
+`package_system/pacman/{alpm,snapshot,plan,install,pkgdb,index,extract}.py`.
 
 ### Rust source builds
 
@@ -701,8 +801,9 @@ needed. The catalog of terminal rules (`image_archive`, `image_directory`, `uki`
 composition rules are documented in [images.md](images.md). All of them, with the operation helpers and the
 conventional partition layouts, are re-exported from `tine//image:defs.bzl`; that facade is the public API,
 and the modules behind it are implementation structure. Every cell a consuming project loads from has one:
-`box`, `cargo`, `go`, `package`, `package_system/rpm` and `distribution` each re-export theirs the same way. Every rule resolves its drivers through one
-`ImageToolsInfo` bundle at `tine//image:tools` instead of a private attribute per driver.
+`box`, `cargo`, `go`, `package`, `package_system/rpm`, `package_system/pacman` and `distribution` each
+re-export theirs the same way. Every rule resolves its drivers through one `ImageToolsInfo` bundle at
+`tine//image:tools` instead of a private attribute per driver.
 
 The package database and SBOMs are supply-chain outputs read from the assembled image, never shipped in it.
 Declaring any logical image declares both lazy facets, so compositions inherit them rather than repeating a
@@ -1023,10 +1124,10 @@ release identities, while repositories and boxes can be reused across those iden
 
 ### Keep native package managers homogeneous
 
-Every repository universe and package manager belongs to one native package system. Two native systems
-must not participate in one dependency solve. The neutral rules need no notion of which system they are
-driving, and two could never meet in a solve, because a universe, a release, and a manager each belong to
-exactly one. Supplemental content
+Every repository universe and package manager belongs to one native package system. Two native systems must
+not participate in one dependency solve, and neither must a third. Adding the second one bore this
+out: the neutral rules needed no notion of which system they were driving, and the two never meet in
+a solve because a universe, a release, and a manager each belong to exactly one. Supplemental content
 systems such as Flatpak may eventually coexist with a native one in an image, but compatibility rules
 are deliberately deferred until that is a real requirement. `PackageSystemInfo` is for native binary
 package ecosystems, not every possible image content type.
@@ -1102,6 +1203,7 @@ Host requirements, the wrapper commands, and representative smoke builds are doc
 These are properties of the implementation today, not merely ideas for future optimization. Limitations that
 belong to one package system are listed in its own section instead:
 
+- Two native package systems are implemented, and only one of them can build packages.
 - A transaction describes packages to add. An install that would have to remove or replace something a
   lower layer carries is refused rather than expressed.
 - Image installs select source-built packages through the imported-metadata runtime closure of

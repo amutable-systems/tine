@@ -17,6 +17,7 @@ src = [
     "image",
     "image_format",
     "package",
+    "package_system/pacman",
     "package_system/rpm",
     "rootfs",
     "vendor",

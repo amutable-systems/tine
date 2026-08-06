@@ -24,27 +24,29 @@ a developer pins their own Buck2 in, and caches it under
 A **catalog** is a Buck package that declares which OS releases are available to build against. For each
 release it bundles the repository definitions, the release identity and its package sets, a package
 manager (the pinned solve environment that images start from), a buildroot for package builds, and a
-box. The default catalog is [`tine//catalog`](../catalog/BUCK) and currently declares two releases:
+box. The default catalog is [`tine//catalog`](../catalog/BUCK) and currently declares three releases:
 
 - `fedora.rawhide`: pinned to an rpmrepo compose snapshot, so packages never vanish underneath the pins
 - `fedora.44`
+- `arch.rolling`: pinned to a day in the Arch Linux Archive, whose dated trees serve databases that never
+  change under a committed pin
 
 Every one of them is pinned to a mirror that publishes immutable snapshots, which is what a release has to
 have to be buildable from a committed pin at all.
 
 Each release consists of targets named `<family>.<release>.<role>`, for example
-`tine//catalog:fedora.rawhide.package-manager` or `tine//catalog:fedora.44.release`. The pins live
+`tine//catalog:fedora.rawhide.package-manager` or `tine//catalog:arch.rolling.release`. The pins live
 as committed snapshots under [`catalog/snapshot/`](../catalog/snapshot/): repository metadata in
 `snapshot/repo/*.json` and frozen box transactions in `snapshot/box/*.json`. Normal builds therefore
 never touch the network; `refresh-catalog` (below) advances the pins. A project can instead declare its
 own `//catalog` package with the same macros. The naming scheme and the pinning mechanism are described in
 [design.md](design.md).
 
-A **box** is a pinned, reproducible execution environment that runs every build action. It supplies rpm,
-Python, libdnf5, `createrepo_c`, core utilities, and the image assembly and VM tools; these tools stay in the
-box and out of the built images. All current releases share `tine//catalog:fedora.rawhide.box`. A box's base
-release only records where its userspace came from: the Rawhide box also serves Fedora 44. How a box
-bootstraps itself is described in [design.md](design.md).
+A **box** is a pinned, reproducible execution environment that runs every build action. It supplies its
+package system's own tools, Python, core utilities, and the image assembly tools; these stay in the box
+and out of the built images. Both RPM releases share `tine//catalog:fedora.rawhide.box`, while
+`arch.rolling` has its own. A box's base release only records where its userspace came from: the Rawhide
+box also serves Fedora 44. How a box bootstraps itself is described in [design.md](design.md).
 
 ## Commands
 
@@ -837,12 +839,24 @@ directions — the signed extension merges, and the unsigned `demo-ext-unsigned`
 a policy the signature is decorative: systemd-sysext's default policy merges unsigned images, and falls back
 to plain verity when a signature fails to validate.
 
+The same targets build over Arch Linux through their `.arch` aliases, which is the second native package
+system end to end:
+
+```sh
+tine buck build //examples/image:demo.arch
+tine buck build //examples/image:layered-install.arch
+tine buck build //examples/image:boot-demo.arch
+tine buck run //examples/image:boot-demo-vm-smoke.arch
+```
+
+Nothing in the declarations names pacman, and nothing is written twice.
+
 ### Choosing a distribution
 
 An image's distribution is a configuration its target carries, so one declaration serves every
 distribution the catalog offers. An image rule names itself once per distribution its package
-serves, so declaring `boot-demo` also declares `boot-demo.fedora` with nothing further to write. A
-rule tine does not own says so itself:
+serves, so declaring `boot-demo` also declares `boot-demo.fedora` and `boot-demo.arch` with nothing
+further to write. A rule tine does not own says so itself:
 
 ```Starlark
 distribution_alias(
@@ -869,7 +883,7 @@ nor the rules underneath. The mechanism is described in [design.md](design.md#se
 
 The examples deliberately have no default. `//examples/image:boot-demo` is declared for no distribution
 in particular, so building it by that name fails as incompatible and `//examples/image/...` skips it;
-the per-distribution aliases such as `:boot-demo.fedora` are what build. A default would make whichever distribution it
+`:boot-demo.fedora` and `:boot-demo.arch` are what build. A default would make whichever distribution it
 named the only one anybody builds, and the other one would rot. A package gets that behaviour by
 saying once, in its `PACKAGE` file, which distributions its images serve:
 
