@@ -185,8 +185,9 @@ EOF
 # bootstrap time stays visible.
 group engine            -- "$buck" build tine//catalog:fedora.rawhide.engine
 group check             -- "$buck" run tine//tools:check
-# CentOS Stream mirrors are intentionally unpinned and drift, so only the rawhide engine is verifiable.
-group verify-catalog    -- "$buck" run tine//tools:verify-catalog -- --engine fedora.rawhide.engine
+# Every repository the catalog declares is pinned to a mirror serving immutable snapshots, so the whole
+# catalog is verifiable rather than the engines that happen to be pinned.
+group verify-catalog    -- "$buck" run tine//tools:verify-catalog
 group box               -- "$buck" build tine//examples/box:box
 group boot-demo-image   -- "$buck" build tine//examples/image:boot-demo.fedora
 group uki-modules       -- uki_modules

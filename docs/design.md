@@ -394,10 +394,10 @@ scrubs libdnf5 and ldconfig bookkeeping. Documentation and language filtering ar
 `_install_langs`. A locally built package keeps the `<directory>/<file>` location convention that maps it
 back to the input directory it came from.
 
-The default catalog declares Fedora 44, Rawhide, and CentOS Stream 10 as separate OS releases whose package
-managers solve against their own repositories while sharing `fedora.rawhide.engine`. CentOS models BaseOS
-as required, AppStream as a default repository group, and CRB as an optional group enabled by the current
-package manager. `fedora_release()` and `centos_stream_release()` declare those standard target bundles.
+The default catalog declares Fedora 44 and Rawhide as separate OS releases whose package managers solve
+against their own repositories while sharing `fedora.rawhide.engine`, both from the one `fedora_release()`
+bundle. It offers no CentOS Stream release: nothing publishes immutable CentOS Stream composes, so its
+pinned metadata stops resolving the moment the mirror advances, which is not a repository this can pin.
 
 #### Import and build flow
 
