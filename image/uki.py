@@ -18,9 +18,6 @@ import cpio
 import finalize
 import kmod
 
-# ukify lives outside PATH in the engine.
-UKIFY = "/usr/lib/systemd/ukify"
-
 
 class Profile(TypedDict):
     id: str
@@ -158,7 +155,7 @@ def main(argv: list[str] | None = None) -> None:
             profile_cmdline.write_text(" ".join(([base] if base else []) + profile["cmdline"]) + "\x00")
             pe = scratch / f"{profile['id']}.efi"
             cmd = [
-                UKIFY, "build",
+                "ukify", "build",
                 "--profile", f"@{section}",
                 "--cmdline", f"@{profile_cmdline}",
                 "--stub", str(addon_stub),
@@ -206,7 +203,7 @@ def main(argv: list[str] | None = None) -> None:
         )
 
         output = out / f"{spec['image_id']}_{spec['version']}_{spec['systemd_arch']}.efi"
-        cmd = [UKIFY, "build", "--linux", str(tree / prefix / "vmlinuz")]
+        cmd = ["ukify", "build", "--linux", str(tree / prefix / "vmlinuz")]
         for initrd in [*initrds, modules]:
             cmd += ["--initrd", str(initrd)]
         cmd += [
