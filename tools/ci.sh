@@ -109,7 +109,7 @@ secureboot_sbom() {
 # the default list that drops one of these fails here with the module named.
 uki_modules() {
     local manifest
-    manifest=$("$buck" build 'tine//examples/image:boot-demo[uki][modules]' --out -)
+    manifest=$("$buck" build 'tine//examples/image:boot-demo.fedora[uki][modules]' --out -)
     # Only modules Fedora builds as modules: it links dm-mod, ext4, virtio_blk, virtio_pci, ahci and
     # sd_mod into the kernel, so no initrd carries those and the smokes cover them instead.
     local module
@@ -188,9 +188,9 @@ group check             -- "$buck" run tine//tools:check
 # CentOS Stream mirrors are intentionally unpinned and drift, so only the rawhide engine is verifiable.
 group verify-catalog    -- "$buck" run tine//tools:verify-catalog -- --engine fedora.rawhide.engine
 group box               -- "$buck" build tine//examples/box:box
-group boot-demo-image   -- "$buck" build tine//examples/image:boot-demo
+group boot-demo-image   -- "$buck" build tine//examples/image:boot-demo.fedora
 group uki-modules       -- uki_modules
-group boot-demo-smoke   -- "$buck" run tine//examples/image:boot-demo-vm-smoke
+group boot-demo-smoke   -- "$buck" run tine//examples/image:boot-demo-vm-smoke.fedora
 group rust-sbom         -- rust_sbom
 group go-sbom           -- go_sbom
 group secureboot-image  -- "$buck" build tine//examples/image-secureboot:image

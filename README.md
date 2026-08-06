@@ -17,19 +17,19 @@ fetched and cached by Buck itself.
 Build a minimal tar image with a few packages and custom files:
 
 ```sh
-tools/buck build //examples/image:demo
+tools/buck build //examples/image:demo.fedora
 ```
 
 Build a bootable GPT disk with a unified kernel image and dm-verity protected `/usr`:
 
 ```sh
-tools/buck build //examples/image:boot-demo
+tools/buck build //examples/image:boot-demo.fedora
 ```
 
 Boot it in an ephemeral VM:
 
 ```sh
-tools/buck run //examples/image:boot-demo-vm
+tools/buck run //examples/image:boot-demo-vm.fedora
 ```
 
 Images are declared in ordinary `BUCK` files ([examples/image/BUCK](examples/image/BUCK) has the complete

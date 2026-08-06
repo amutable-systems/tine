@@ -1,0 +1,19 @@
+"""The axis an image's distribution is selected on."""
+
+load("@prelude//:rules.bzl", "constraint_setting", "constraint_value")
+
+constraint_setting(
+    name = "distribution",
+    visibility = ["PUBLIC"],
+)
+
+# No platform ever carries this value, so requiring it is how a target says it cannot be built.
+# It exists to be named in an error: an image asks for it wherever no distribution has been chosen,
+# and buck then reports that by name rather than by whichever distribution it checked first.
+constraint_setting(name = "choice")
+
+constraint_value(
+    name = "no-distribution-chosen",
+    constraint_setting = ":choice",
+    visibility = ["PUBLIC"],
+)

@@ -1,5 +1,6 @@
 """Interactive virtual-machine image runners."""
 
+load("//distribution:defs.bzl", "distribution_aliases", "distribution_attr")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//image_format:disk.bzl", "RepartInfo", "SIZE_PATTERN")
 load("//image_format:sysext.bzl", "SysextImageInfo")
@@ -71,7 +72,7 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
         run.add("--set-credential={}:{}".format(name, ctx.attrs.credentials[name]))
     return [DefaultInfo(), RunInfo(args = run)]
 
-image_vm = rule(
+_image_vm = rule(
     impl = _image_vm_impl,
     attrs = {
         "autologin": attrs.option(
@@ -103,3 +104,8 @@ image_vm = rule(
         ),
     },
 )
+
+def image_vm(name: str, **kwargs) -> None:
+    """Declare one, compatible with the distributions its package serves."""
+    distribution_aliases(name, kwargs)
+    _image_vm(name = name, **distribution_attr(kwargs))
