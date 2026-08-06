@@ -25,45 +25,6 @@ _FEDORA_PACKAGE_SETS = {
     "initrd": ["bash", "kmod", "systemd", "systemd-udev", "veritysetup"],
 }
 
-_CENTOS_STREAM_PACKAGE_SETS = {
-    "bootable": [
-        "bash",
-        "centos-stream-release",
-        "coreutils",
-        "dbus-broker",
-        "kernel-core",
-        "systemd",
-        "systemd-boot-unsigned",
-        "systemd-udev",
-        "util-linux",
-    ],
-    "buildroot": [
-        "bash",
-        "bzip2",
-        "centos-stream-release",
-        "coreutils",
-        "cpio",
-        "diffutils",
-        "findutils",
-        "gawk",
-        "glibc-minimal-langpack",
-        "grep",
-        "gzip",
-        "info",
-        "patch",
-        "redhat-rpm-config",
-        "rpm-build",
-        "sed",
-        "shadow-utils",
-        "tar",
-        "unzip",
-        "util-linux",
-        "which",
-        "xz",
-    ],
-    "initrd": ["bash", "kmod", "systemd", "systemd-udev", "veritysetup"],
-}
-
 def _merge_package_sets(
     defaults: dict[str, list[str]],
     overrides: dict[str, list[str]],
@@ -119,71 +80,6 @@ def fedora_release(
         name = name + ".package-manager",
         release = ":" + name + ".release",
         engine = engine,
-        additional_repositories = additional_repositories,
-        repository_priorities = repository_priorities,
-        visibility = visibility,
-    )
-    buildroot(
-        name = name + ".buildroot",
-        package_manager = ":" + name + ".package-manager",
-        package_set = "buildroot",
-        visibility = visibility,
-    )
-
-def centos_stream_release(
-    name: str,
-    version: str,
-    engine: str,
-    repository_urls: dict[str, str] = {},
-    package_set_overrides: dict[str, list[str]] = {},
-    enable_repository_groups: list[str] = ["crb"],
-    disable_repository_groups: list[str] = [],
-    additional_repositories: list[str] = [],
-    repository_priorities: dict[str, int] = {},
-    visibility: list[str] | None = None,
-) -> None:
-    """Declare the conventional CentOS Stream release target bundle."""
-    _check_name(name, "centos", version)
-    components = {
-        "appstream": "AppStream",
-        "baseos": "BaseOS",
-        "crb": "CRB",
-    }
-    unknown = [component for component in repository_urls if component not in components]
-    if unknown:
-        fail("centos_stream_release: unknown repository components {}".format(sorted(unknown)))
-    for component, path in components.items():
-        rpm_remote_repository(
-            name = "{}.{}.repository".format(name, component),
-            baseurl = repository_urls.get(
-                component,
-                "https://mirror.stream.centos.org/{}/{}/x86_64/os/".format(version, path),
-            ),
-        )
-
-    repository_universe(
-        name = name + ".repositories",
-        package_system = _RPM,
-        required_repositories = [":" + name + ".baseos.repository"],
-        optional_repository_groups = {
-            "appstream": [":" + name + ".appstream.repository"],
-            "crb": [":" + name + ".crb.repository"],
-        },
-        default_repository_groups = ["appstream"],
-    )
-    distribution(name = name + ".distribution", visibility = visibility)
-    os_release(
-        name = name + ".release",
-        repository_universe = ":" + name + ".repositories",
-        package_sets = _merge_package_sets(_CENTOS_STREAM_PACKAGE_SETS, package_set_overrides),
-        visibility = visibility,
-    )
-    package_manager(
-        name = name + ".package-manager",
-        release = ":" + name + ".release",
-        engine = engine,
-        enable_repository_groups = enable_repository_groups,
-        disable_repository_groups = disable_repository_groups,
         additional_repositories = additional_repositories,
         repository_priorities = repository_priorities,
         visibility = visibility,

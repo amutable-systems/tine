@@ -4,7 +4,7 @@
 # with a resolver can derive their transaction during the build; refresh the catalog to freeze one as a
 # retained lock.
 load("//engine:build.bzl", "engine")
-load("//package_system/rpm:catalog.bzl", "centos_stream_release", "fedora_release")
+load("//package_system/rpm:catalog.bzl", "fedora_release")
 
 fedora_release(
     name = "fedora.44",
@@ -21,13 +21,6 @@ fedora_release(
     engine = ":fedora.rawhide.engine",
     rpmrepo_mirror = "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45",
     rpmrepo_snapshot = "f45-x86_64-rawhide-20260729",
-    visibility = ["PUBLIC"],
-)
-
-centos_stream_release(
-    name = "centos.10-stream",
-    version = "10-stream",
-    engine = ":fedora.rawhide.engine",
     visibility = ["PUBLIC"],
 )
 

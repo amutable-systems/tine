@@ -21,14 +21,16 @@ under `${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2`; cached invocations work offl
 A **catalog** is a Buck package that declares which OS releases are available to build against. For each
 release it bundles the repository definitions, the release identity and its package sets, a package
 manager (the pinned solve environment that images start from), a buildroot for package builds, and an
-engine. The default catalog is [`tine//catalog`](../catalog/BUCK) and currently declares three releases:
+engine. The default catalog is [`tine//catalog`](../catalog/BUCK) and currently declares two releases:
 
 - `fedora.rawhide`: pinned to an rpmrepo compose snapshot, so packages never vanish underneath the pins
 - `fedora.44`
-- `centos.10-stream`
+
+Every one of them is pinned to a mirror that publishes immutable snapshots, which is what a release has to
+have to be buildable from a committed pin at all.
 
 Each release consists of targets named `<family>.<release>.<role>`, for example
-`tine//catalog:fedora.rawhide.package-manager` or `tine//catalog:centos.10-stream.release`. The pins live
+`tine//catalog:fedora.rawhide.package-manager` or `tine//catalog:fedora.44.release`. The pins live
 as committed snapshots under [`catalog/snapshot/`](../catalog/snapshot/): repository metadata in
 `snapshot/repo/*.json` and frozen engine transactions in `snapshot/engine/*.json`. Normal builds therefore
 never touch the network; `refresh-catalog` (below) advances the pins. A project can instead declare its
@@ -39,7 +41,7 @@ An **engine** is a pinned, reproducible execution environment that runs every bu
 rpm, Python, libdnf5, `createrepo_c`, core utilities, and the image assembly and VM tools; these tools
 stay in the engine and out of the built images. All current releases share
 `tine//catalog:fedora.rawhide.engine`. An engine's base release only records where its userspace came
-from: the Rawhide engine also serves Fedora 44 and CentOS Stream. How an engine bootstraps itself is
+from: the Rawhide engine also serves Fedora 44. How an engine bootstraps itself is
 described in [design.md](design.md).
 
 ## Commands

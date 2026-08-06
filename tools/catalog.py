@@ -253,8 +253,7 @@ def _refresh(
     """Snapshot repositories and resolve selected engines; return the catalog dir and written files.
 
     Selecting engines also scopes the snapshotted repositories to those the engines depend on, so a
-    partial refresh or verify never touches repositories outside the selection (e.g. the deliberately
-    unpinned CentOS mirrors, which drift and are not meant to be verified).
+    partial refresh or verify never touches a repository outside the selection.
     """
     all_resolves = _targets_with_label(buck, catalog, ENGINE_LABEL)
     resolves = _select_engines(all_resolves, selected_engines)
