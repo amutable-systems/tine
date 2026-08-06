@@ -2,15 +2,9 @@
 
 load(":system.bzl", "PackageSystemInfo")
 
-PackageRepresentationInfo = record(
-    artifact = Artifact,
-    suffix = str,
-)
-
 PackageArtifactInfo = record(
     artifact = Artifact,
     name = str,
-    representations = dict[str, PackageRepresentationInfo],
 )
 
 PackagePoolInfo = provider(
@@ -22,6 +16,52 @@ PackagePoolValueInfo = provider(
     doc = "A resolved authoritative package pool keyed by stable package id.",
     fields = {"packages": provider_field(dict[str, PackageArtifactInfo])},
 )
+
+def snapshot_data(snapshot: ArtifactValue, id: str) -> dict:
+    """Read one repository's committed snapshot."""
+    data = snapshot.read_json()
+    if type(data) != type({}):
+        fail("repository '{}' snapshot is not an object; run refresh-catalog".format(id))
+    return data
+
+def _retained_transports(id: str, engine_locks: list[ArtifactValue]) -> dict[str, dict]:
+    """The remote transports committed engine locks still need from this repository."""
+    retained = {}
+    for lock in engine_locks:
+        for entry in lock.read_json():
+            if entry["source"] != "repo" or entry["repo"] != id:
+                continue
+
+            checksum = entry["pkg_checksum"]
+            package = {"size": entry["size"], "url": entry["url"]}
+            previous = retained.get(checksum)
+            if previous != None and previous["size"] != package["size"]:
+                fail("repository '{}': retained package {} has conflicting sizes".format(id, checksum))
+
+            # More than one engine may retain the same content through different mirrors.
+            if previous == None or package["url"] < previous["url"]:
+                retained[checksum] = package
+    return retained
+
+def pool_transports(id: str, baseurl: str, snapshot: ArtifactValue, engine_locks: list[ArtifactValue]) -> dict[str, dict]:
+    """Where every package this repository owns can be fetched from, keyed by checksum.
+
+    The pool is the union of what the repository advertises now and what committed engine locks
+    still need from it. The repository's current route wins while it still carries the content,
+    so an advancing snapshot re-routes a package rather than duplicating it, and a lock's
+    transport remains the fallback once the package leaves the snapshot. A size that disagrees
+    between the two is skew this cannot paper over.
+    """
+    packages = _retained_transports(id, engine_locks)
+    for checksum, package in snapshot_data(snapshot, id).get("packages", {}).items():
+        retained = packages.get(checksum)
+        if retained != None and retained["size"] != package["size"]:
+            fail("repository '{}': package {} has conflicting snapshot and lock sizes".format(id, checksum))
+        packages[checksum] = {
+            "size": package["size"],
+            "url": baseurl.rstrip("/") + "/" + package["location"],
+        }
+    return packages
 
 PackageRepositoryInfo = provider(
     doc = "A repository belonging to one native package system.",
@@ -40,6 +80,19 @@ ConfiguredPackageRepositoryInfo = record(
     priority = int,
     baseurl = field(str | None, default = None),
 )
+
+# What every remote repository declares, whichever package system owns it.
+REMOTE_REPOSITORY_ATTRS = {
+    "baseurl": attrs.string(),
+    "engine_locks": attrs.list(
+        attrs.source(),
+        default = [],
+        doc = "frozen engine transactions whose remote package transports remain available",
+    ),
+    "labels": attrs.list(attrs.string(), default = []),
+    "package_system": attrs.dep(providers = [PackageSystemInfo]),
+    "snapshot": attrs.option(attrs.source(), default = None),
+}
 
 LocalPackageInfo = provider(
     doc = "Built native packages and their native package system.",
@@ -224,13 +277,24 @@ def repository_universe(name: str, **kwargs) -> None:
         fail("repository_universe name must end with '.repositories': {}".format(name))
     _repository_universe(name = name, **kwargs)
 
-def remote_repository_base(ctx: AnalysisContext, repo_dir: Artifact) -> list[Provider]:
-    """Register the package-system-neutral interface to a remote repository."""
+def remote_repository_base(
+    ctx: AnalysisContext,
+    repo_dir: Artifact,
+    snapshot_spec: dict[str, typing.Any] = {},
+) -> list[Provider]:
+    """Register the package-system-neutral interface to a remote repository.
+
+    `snapshot_spec` carries whatever else one package system's snapshot driver needs to name
+    its metadata; the identity and base URL every repository has are supplied here.
+    """
     rid = ctx.label.name
     system = ctx.attrs.package_system[PackageSystemInfo]
+    reserved = [key for key in snapshot_spec if key in ("baseurl", "id")]
+    if reserved:
+        fail("remote_repository_base: {} are supplied by the neutral spec".format(reserved))
     spec = ctx.actions.write_json(
         "snapshot.spec.json",
-        {"baseurl": ctx.attrs.baseurl, "id": rid},
+        dict(snapshot_spec, baseurl = ctx.attrs.baseurl, id = rid),
         has_content_based_path = False,
     )
     sub_targets = {
@@ -274,7 +338,6 @@ def _select_package_artifacts_impl(
     output: OutputArtifact,
     local_packages: dict[str, list[Artifact]],
     pools: dict[str, ResolvedDynamicValue],
-    representation: str,
     suffix: str,
 ) -> list[Provider]:
     # Select already-owned artifacts; the transaction never creates new downloads.
@@ -307,9 +370,6 @@ def _select_package_artifacts_impl(
         if type(checksum) != type("") or len(checksum) != 64 or checksum != checksum.lower() or not _contains_only(checksum, "0123456789abcdef"):
             fail("transaction entry has invalid pkg_checksum: {}".format(entry))
         if source == "local":
-            if representation != "installable":
-                fail("local packages do not expose the {!r} representation".format(representation))
-
             package_dirs = local_packages.get(rid)
             if package_dirs == None:
                 fail("local transaction entry names non-local repository '{}': {}".format(rid, entry))
@@ -333,7 +393,8 @@ def _select_package_artifacts_impl(
         size = entry.get("size")
         if type(url) != type("") or not url:
             fail("remote transaction entry has invalid url: {}".format(entry))
-        if type(size) != type(0) or size <= 0:
+        # A repository may serve a package larger than a Starlark i32, which arrives as a float.
+        if type(size) not in (type(0), type(0.0)) or size <= 0:
             fail("remote transaction entry has invalid size: {}".format(entry))
 
         if rid not in by_repo or checksum not in by_repo[rid]:
@@ -341,18 +402,9 @@ def _select_package_artifacts_impl(
                 ("{} ({}/{}) is absent from the pinned repository package pool; " + "run refresh-catalog").format(package_id, rid, checksum),
             )
         package = by_repo[rid][checksum]
-        if representation == "installable":
-            artifact = package.artifact
-            extension = suffix
-        else:
-            derived = package.representations.get(representation)
-            if derived == None:
-                fail("{} ({}/{}) has no {!r} representation".format(package_id, rid, checksum, representation))
-            artifact = derived.artifact
-            extension = derived.suffix
-        output_name = _closure_name(package.name, checksum, extension)
+        output_name = _closure_name(package.name, checksum, suffix)
         if output_name not in artifacts:
-            artifacts[output_name] = artifact
+            artifacts[output_name] = package.artifact
 
     actions.symlinked_dir(output, artifacts)
     return []
@@ -363,7 +415,6 @@ _select_package_artifacts_action = dynamic_actions(
         "local_packages": dynattrs.value(dict[str, list[Artifact]]),
         "output": dynattrs.output(),
         "pools": dynattrs.dict(str, dynattrs.dynamic_value()),
-        "representation": dynattrs.value(str),
         "suffix": dynattrs.value(str),
         "tx": dynattrs.artifact_value(),
     },
@@ -376,9 +427,8 @@ def select_package_artifacts(
     suffix: str,
     extra_packages: list[Artifact] = [],
     name: str = "install.closure",
-    representation: str = "installable",
 ) -> Artifact:
-    """Select one representation of each transaction package into a directory."""
+    """Select each transaction package's artifact into a directory."""
     output = ctx.actions.declare_output(name, dir = True)
     pools = {repository.label.name: repository[PackagePoolInfo].value for repository in repositories if repository.get(PackagePoolInfo) != None}
     local_packages = {
@@ -394,7 +444,6 @@ def select_package_artifacts(
             output = output.as_output(),
             local_packages = local_packages,
             pools = pools,
-            representation = representation,
             suffix = suffix,
         )
     )

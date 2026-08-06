@@ -3,13 +3,12 @@
 This stdlib-only path lets the bootstrap extractor read RPMs without the RPM stack.
 """
 
-import compression.zstd
-import gzip
-import lzma
 import shutil
 import struct
 from collections.abc import Buffer
 from typing import BinaryIO, NamedTuple
+
+import util
 
 MAGIC = b"\x8e\xad\xe8\x01"
 LEAD = 96
@@ -54,18 +53,13 @@ def headers(data: Buffer) -> tuple[Header, Header]:
 def decompress_stream(source: BinaryIO, output: BinaryIO) -> None:
     """Stream one payload from `source`'s current offset into an uncompressed cpio."""
     start = source.tell()
-    magic = source.read(6)
+    magic = source.read(util.MAGIC)
     source.seek(start)
-    if magic[:4] == b"\x28\xb5\x2f\xfd":
-        reader = compression.zstd.ZstdFile(source, mode="rb")
-    elif magic == b"\xfd7zXZ\x00":
-        reader = lzma.LZMAFile(source, mode="rb")
-    elif magic[:2] == b"\x1f\x8b":
-        reader = gzip.GzipFile(fileobj=source, mode="rb")
-    elif magic == CPIO_MAGIC:
+    open_compressed = util.decompressor(magic)
+    if open_compressed is None:
+        if not magic.startswith(CPIO_MAGIC):
+            raise SystemExit(f"unknown payload compressor (magic {magic.hex()})")
         shutil.copyfileobj(source, output, length=1024 * 1024)
         return
-    else:
-        raise SystemExit(f"unknown payload compressor (magic {magic.hex()})")
-    with reader:
+    with open_compressed(source) as reader:
         shutil.copyfileobj(reader, output, length=1024 * 1024)

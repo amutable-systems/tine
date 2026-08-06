@@ -105,15 +105,17 @@ def _install_actions(
 ) -> Artifact:
     package_manager = package_manager_dep[PackageManagerInfo]
     system = package_manager.package_system[PackageSystemInfo]
+    engine = package_manager.engine[EngineInfo]
     closure = resolve_packages(ctx, package_manager_dep, install, stack, extra_packages)
     out = ctx.actions.declare_output("install.delta" if stack else "root", dir = True)
     work = ctx.actions.declare_output("install.work", dir = True) if stack else None
     cmd = cmd_args(
-        chroot_run(engine = package_manager.engine[EngineInfo], exe = system.install),
+        chroot_run(engine = engine, exe = system.install),
         spec_args(
             ctx.actions,
             "install.spec.json",
             {
+                "arch": engine.arch,
                 "docs": True,
                 "engine_config": False,
                 "installroot": None,

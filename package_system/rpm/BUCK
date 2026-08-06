@@ -4,7 +4,7 @@ load("//package:system.bzl", "package_system")
 
 # Host tools bootstrap the engine; remaining drivers run inside it.
 
-python_bootstrap_library(name = "rpmfile", srcs = ["rpmfile.py"])
+python_bootstrap_library(name = "rpmfile", srcs = ["rpmfile.py"], deps = ["//:util"])
 
 python_bootstrap_binary(
     name = "extract",
@@ -12,24 +12,21 @@ python_bootstrap_binary(
     deps = [":rpmfile", "//:specs", "//archive:cpio", "//rootfs:rootfs"],
 )
 
-python_bootstrap_binary(
-    name = "decompress",
-    main = "decompress.py",
-    deps = [":rpmfile"],
-    visibility = ["PUBLIC"],
-)
-
-python_bootstrap_binary(name = "install", main = "install.py", deps = ["//:specs", "//rootfs:rootfs"])
+python_bootstrap_binary(name = "install", main = "install.py", deps = ["//package:installer"])
 
 # The capture driver implements the terminal-image contract, so it takes that library.
 python_bootstrap_binary(name = "pkgdb", main = "pkgdb.py", deps = ["//:specs", "//image:finalize"])
 python_bootstrap_binary(name = "createrepo", main = "createrepo.py", deps = ["//:specs"])
-python_bootstrap_binary(name = "plan", main = "plan.py", deps = ["//:specs", "//:util", "//rootfs:rootfs"])
+python_bootstrap_binary(
+    name = "plan",
+    main = "plan.py",
+    deps = ["//:specs", "//package:transaction", "//rootfs:rootfs"],
+)
 python_bootstrap_binary(name = "build", main = "build.py", deps = ["//:specs", "//:util", "//rootfs:rootfs"])
 
 python_bootstrap_binary(
     name = "snapshot",
-    deps = ["//:specs", "//:util"],
+    deps = ["//:specs", "//:util", "//package:href"],
     main = "snapshot.py",
 )
 
