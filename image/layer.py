@@ -13,6 +13,7 @@ from typing import TypedDict, cast
 import specs
 import util
 
+import finalize
 import installer
 import rootfs
 
@@ -51,15 +52,19 @@ def _operation(value: object) -> list[object]:
     return cast(list[object], value)
 
 
+def _mapping(tag: str, field: str, raw: object) -> dict[str, str]:
+    if not isinstance(raw, dict) or not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in raw.items()
+    ):
+        raise SystemExit(f"image op {tag!r} has invalid {field}: {raw!r}")
+    return cast(dict[str, str], raw)
+
+
 def _run(tag: str, raw_cmd: object, raw_env: object, cwd: str | None = None) -> None:
     if not isinstance(raw_cmd, list) or not raw_cmd or not all(isinstance(arg, str) for arg in raw_cmd):
         raise SystemExit(f"image op {tag!r} has invalid cmd: {raw_cmd!r}")
-    if not isinstance(raw_env, dict) or not all(
-        isinstance(key, str) and isinstance(value, str) for key, value in raw_env.items()
-    ):
-        raise SystemExit(f"image op {tag!r} has invalid env: {raw_env!r}")
     cmd = cast(list[str], raw_cmd)
-    env = cast(dict[str, str], raw_env)
+    env = _mapping(tag, "env", raw_env)
     rc = subprocess.run(cmd, env=os.environ | env, cwd=cwd).returncode
     if rc != 0:
         raise SystemExit(f"image op `{tag} {cmd}` failed (rc={rc})")
@@ -101,11 +106,7 @@ def _copy(source: Path, destination: Path) -> None:
 
 def _merge_os_release(tree: Path, raw_fields: object) -> None:
     """Merge quoted KEY="value" assignments into /usr/lib/os-release, replacing existing keys."""
-    if not isinstance(raw_fields, dict) or not all(
-        isinstance(key, str) and isinstance(value, str) for key, value in raw_fields.items()
-    ):
-        raise SystemExit(f"image op 'os_release' has invalid fields: {raw_fields!r}")
-    fields = dict(cast(dict[str, str], raw_fields))
+    fields = dict(_mapping("os_release", "fields", raw_fields))
     for key, value in fields.items():
         if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
             raise SystemExit(f"image op 'os_release' has invalid key: {key!r}")
@@ -186,6 +187,12 @@ def _apply(
             _copy(Path(source), _destination(target, destination))
         case ["os_release", raw_fields]:
             _merge_os_release(target, raw_fields)
+        case ["depmod"]:
+            finalize.depmod(target)
+        case ["hwdb", bool(usr), bool(strict)]:
+            finalize.hwdb(target, usr=usr, strict=strict)
+        case ["locale_gen"]:
+            finalize.locale_gen(target)
         case ["mkdir", _, _] | ["symlink", _, _] | ["remove", _]:
             with rootfs.chroot(target):
                 _apply_filesystem(operation)

@@ -889,6 +889,36 @@ The image build tools live in the engine and are not installed into the image me
 `run` operations intentionally use the image's own binaries; non-chrooted runs explicitly use engine tools
 against `/buildroot`.
 
+### Generating derived state
+
+A package installs configuration that describes state rather than carrying it: module directories with no
+index, `hwdb.d` with no compiled database, a locale list with no archive. On a running system scriptlets and
+boot-time units produce it; an image being assembled is neither, so tine builds it explicitly. Each generator
+is an operation of its own rather than a step of one pass, so it is positioned where the image wants it,
+configured on its own terms, and adopted one at a time; what it writes persists into the delta that captures
+it, so it is built once and cached with the layer rather than repeated by every terminal output. An `image`
+gets the content its operations ask for and nothing else, which is the same reason terminal rules leave
+package state alone.
+
+Each generator is a no-op for an image that carries none of what it acts on, so none of them needs
+per-distribution knowledge: `depmod()` is silent without kernels, `hwdb()` without `hwdb.d`, `locale_gen()`
+without an `/etc/locale.gen` asking for something. That is what lets the compositions, which declare a whole
+product rather than one layer, end every image they build with all three at their defaults without knowing
+what went into it. A generator named in `ops` replaces the composition's copy instead of adding a second, so
+placing or configuring one stays possible. `sysext_image` is the exception that generates nothing: an
+extension merges onto a system it does not own, where a database built from the extension's own tree would
+shadow that system's while describing only what the extension carries, exactly as its package database
+would.
+
+Their tools are the engine's, applied to the mounted image through the `--root` interface systemd gives them,
+which is the same relationship every other layer driver has to the image and is what lets an image that
+installs no systemd still be finalized. Two cannot work that way and use the image's own binaries in a
+chroot: `locale-gen` is a distribution's own script over its own sources, and `depmod` resolves its
+search-order configuration from absolute paths that `--basedir` does not relocate, so an engine-side run
+would silently apply the wrong module ordering. Its index format is its own kmod's to define as well, and an
+engine older than the image would leave out index files the image's modprobe expects. Both report the
+missing binary by name rather than skipping.
+
 ### Reproducibility and caching
 
 Reproducibility is both a release property and a caching requirement. Current mechanisms include:
@@ -1061,8 +1091,12 @@ belong to one package system are listed in its own section instead:
   not survive as Buck directory metadata; deferred tmpfiles can restore xattrs at terminal assembly, and tar
   preserves them in PAX headers, but newc cpio cannot represent general xattrs.
 - Directory image output cannot represent backslashes in names; archive outputs should be used instead.
-- The default `/usr`-only disk has a volatile root. Package and authored state outside `/usr` is not yet
-  translated into factory defaults or another persistent partition.
+- The default `/usr`-only disk has a volatile root, so the `/etc` a build writes is not what such an image
+  boots with; first-boot defaults come from credentials instead. Package and authored state outside `/usr`
+  is not yet translated into factory defaults or another persistent partition.
+- The generators cover the databases under `/usr`. System users, volatile files and directories, and unit
+  presets are left to the boot-time units systemd ships for them, so an image whose `/etc` is created at
+  first boot gets them then and one that ships a populated `/etc` does not get them at all.
 - Bootable images currently disable SELinux.
 - Remote execution, Barrage integration, release publishing, and systematic reproducibility audits are not
   wired into CI.
@@ -1115,7 +1149,9 @@ outside the build, addressed by URI over a PKCS#11 socket, see [signing-pkcs11.m
 
 Near-term image gaps are:
 
-- offline SELinux labeling instead of `selinux=0`;
+- offline SELinux labeling instead of `selinux=0`, as one more generator;
+- build-time `systemd-sysusers`, `systemd-tmpfiles` and `systemctl preset-all`, once their single-UID/GID
+  and volatile-`/etc` behavior is settled;
 - deterministic ext4/FAT byte-level validation and any required normalization;
 - OCI, confext, ESP, and other terminal formats as real consumers require them;
 - sysext verity signing;

@@ -193,6 +193,7 @@ bootable_disk_image(
     definitions = DEFAULT_USR_VERITY_PARTITIONS,
     version = read_config("demo", "image-version", "unversioned"),
     # The release names what a bootable system of its own family needs, so this stays symbolic.
+    # The composition generates the databases those packages only describe, hwdb's among them.
     ops = [install_package_set("bootable")],
     profiles = [
         uki_profile(
@@ -242,6 +243,10 @@ command_alias(
         select({d["distribution"]: "grep -q '^ID={}$' /etc/os-release".format(d["os_release_id"]) for d in DISTRIBUTIONS.values()}),
         "--check",
         "bootctl | grep -F 'Secure Boot: disabled (setup)'",
+        # The build compiled the hardware database into /usr, which is read-only here, so a guest
+        # that has it got it from the build rather than from a boot-time regeneration.
+        "--check",
+        "test -s /usr/lib/udev/hwdb.bin",
         # The guest sees the disk at its output_size, and the partitions it boots from still
         # occupy only the front of it.
         "--check",

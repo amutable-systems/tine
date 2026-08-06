@@ -38,11 +38,14 @@ load(
     "check_name",
     "copy",
     "declare_image",
+    "depmod",
     "flatten_operations",
+    "hwdb",
     "image_metadata_subtargets",
     "image_providers",
     "install_package_set",
     "install_systemd_boot",
+    "locale_gen",
     "merge_os_release",
     "remove",
     "sign_systemd_boot",
@@ -62,13 +65,29 @@ InitrdInfo = provider(
     },
 )
 
-def _composed_image(ctx: AnalysisContext, **kwargs) -> ImageInfo:
+# A composition builds a whole product rather than one layer, so it generates the state its packages
+# only describe instead of leaving that to its caller. Each generator is a no-op on an image carrying
+# none of what it acts on, so the same three fit every composition, last: they act on everything the
+# operations before them installed or removed.
+_GENERATORS = [depmod(), hwdb(), locale_gen()]
+
+def _generated(ops: list[LayerOperation]) -> list[LayerOperation]:
+    # No operations at all declares no layer, and leaves nothing installed to generate from.
+    if not ops:
+        return ops
+
+    # A generator the caller placed itself stays the only one of its kind: it was placed there, and
+    # configured, on purpose.
+    placed = {operation[0]: True for operation in ops}
+    return ops + [generator for generator in _GENERATORS if generator[0] not in placed]
+
+def _composed_image(ctx: AnalysisContext, generate: bool = True, **kwargs) -> ImageInfo:
     return declare_image(
         ctx,
         identifier = "image",
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
-        ops = ctx.attrs.ops,
+        ops = _generated(ctx.attrs.ops) if generate else ctx.attrs.ops,
         tmpfiles = ctx.attrs.tmpfiles,
         version = ctx.attrs.version,
         **kwargs,
@@ -102,11 +121,14 @@ def _sysext_image_impl(ctx: AnalysisContext) -> list[Provider]:
     if (ctx.attrs.base == None) == (ctx.attrs.package_manager == None):
         fail("sysext_image: exactly one of base and package_manager is required")
 
+    # An extension merges onto a system it does not own, so it generates nothing: a database built
+    # from its own tree would shadow that system's while describing only what the extension carries,
+    # exactly as its package database would.
     base = ctx.attrs.base[ImageInfo] if ctx.attrs.base != None else None
     if base != None:
-        image = _composed_image(ctx, parent = base)
+        image = _composed_image(ctx, generate = False, parent = base)
     else:
-        image = _composed_image(ctx, package_manager = ctx.attrs.package_manager)
+        image = _composed_image(ctx, generate = False, package_manager = ctx.attrs.package_manager)
 
     sysext = declare_image_sysext(
         ctx,
@@ -136,17 +158,18 @@ _sysext_image = rule(
     },
 )
 
-_DEFAULT_INITRD_OPS = [
+_DEFAULT_INITRD_OPS = flatten_operations([
     install_package_set("initrd"),
     symlink("/usr/lib/systemd/systemd", "/init"),
     symlink("/etc/os-release", "/etc/initrd-release"),
-    # udev reads its binary hardware database at run time, not the sources installed with it.
+    _GENERATORS,
+    # udev reads its binary hardware database at run time, not the sources it was compiled from.
     remove("/usr/lib/udev/hwdb.d"),
     # These databases serve humans and service-name resolution, neither of which happens in the initrd.
     remove("/usr/lib/systemd/catalog"),
     remove("/var/lib/systemd/catalog"),
     remove("/etc/services"),
-]
+])
 
 def _esp_operations(
     ctx: AnalysisContext,
@@ -194,7 +217,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         identifier = "root",
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
-        ops = ctx.attrs.ops,
+        ops = _generated(ctx.attrs.ops),
         package_manager = ctx.attrs.package_manager,
         tmpfiles = ctx.attrs.tmpfiles,
         version = version,

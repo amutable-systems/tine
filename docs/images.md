@@ -139,11 +139,60 @@ ordered operation sequence in one action and persists exactly one delta:
   delta, because the project bind carrying it lives under `/run`.
 - `copy` introduces a declared Buck artifact at an absolute image path; `mkdir`, `symlink`, and `remove`
   mutate the same root.
+- `depmod()`, `hwdb()` and `locale_gen()` build the state installed packages only describe (below).
 - `install_from` applies the operations another target attaches to itself (see below).
 
 `image()` recursively flattens operation lists, allowing reusable helpers to return ordered groups of
 operations; `rootfs_archive`, `sysext_image`, and `bootable_disk_image` accept the same nested groups.
 Materialize a complete logical image explicitly with `image_directory`.
+
+### Generating what packages only describe
+
+Installing a package leaves state described but not built: modprobe reads depmod's binary indexes,
+udev reads a compiled hardware database and never the sources beside it, and some distributions
+generate their locale archive from a list. On a running system scriptlets and boot-time units produce
+that; an image being assembled has neither, so each generator is an operation of its own, placed after
+whatever it acts on. The compositions run all three for you (below); an `image()` places them itself:
+
+```Starlark
+image(
+    name = "appliance",
+    package_manager = ":image.package-manager",
+    ops = [
+        install_package_set("bootable"),
+        install_from(":project.install"),
+        depmod(),
+        hwdb(),
+    ],
+)
+```
+
+- `depmod()` rebuilds `modules.dep` and its `.bin` indexes for every kernel the image installs, and
+  does nothing for an image that installs none. It runs the image's own `depmod`, because the tool
+  reads its search-order configuration from absolute paths that `--basedir` does not move, and writes
+  index files whose compatibility is its own kmod's business. An image with modules but no `depmod`
+  fails the build by name rather than shipping a stale index.
+- `hwdb(usr = True, strict = True)` compiles `hwdb.d` into the binary database udev actually reads. It
+  writes `/usr/lib/udev/hwdb.bin`, where the image ships it and nothing writable shadows it, and drops
+  the `/etc` copy; `usr = False` writes that copy instead. `strict = False` accepts a source file the
+  image cannot parse. An image with no `hwdb.d` is left alone.
+- `locale_gen()` runs the image's own `locale-gen` when `/etc/locale.gen` asks for something, which is
+  how Debian and Arch generate locales; a distribution that ships them as packages has no such file and
+  the operation does nothing.
+
+`hwdb()` is the one that runs an engine tool against the mounted image, exactly as `run()` does by
+default, so an image that installs no systemd of its own still gets a database; the other two must be
+the image's own. What they write is captured by the layer that runs them, so it is built once and
+cached rather than repeated by every terminal output.
+
+`rootfs_archive` and `bootable_disk_image` (its root filesystem and its default initrd both) end their
+operations with `depmod()`, `hwdb()` and `locale_gen()` at their defaults, because a composition builds a
+whole product rather than one layer: the three cover everything a package can leave described, and each
+does nothing on an image carrying none of it. Naming one in `ops` overrides its copy rather than adding
+a second, so a composition takes `hwdb(usr = False)`, or a `depmod()` placed before the operations that
+strip modules, exactly as written. `sysext_image` runs none of them: an extension merges onto a system it
+does not own, where a database built from the extension's own tree would shadow that system's while
+describing only what the extension carries.
 
 ### Attaching install operations to a target
 

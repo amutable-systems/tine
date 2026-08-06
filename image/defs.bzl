@@ -52,11 +52,14 @@ load(
     _ImageInstallInfo = "ImageInstallInfo",
     _ImageSbomInfo = "ImageSbomInfo",
     _copy = "copy",
+    _depmod = "depmod",
+    _hwdb = "hwdb",
     _image = "image",
     _install_from = "install_from",
     _install_package_set = "install_package_set",
     _install_packages = "install_packages",
     _install_systemd_boot = "install_systemd_boot",
+    _locale_gen = "locale_gen",
     _merge_os_release = "merge_os_release",
     _mkdir = "mkdir",
     _python = "python",
@@ -89,6 +92,9 @@ remove = _remove
 copy = _copy
 merge_os_release = _merge_os_release
 install_systemd_boot = _install_systemd_boot
+depmod = _depmod
+hwdb = _hwdb
+locale_gen = _locale_gen
 
 # Terminal outputs.
 image_archive = _image_archive
