@@ -4,6 +4,7 @@
 # with a resolver can derive their transaction during the build; refresh the catalog to freeze one as a
 # retained lock.
 load("//box:defs.bzl", "box")
+load("//distribution:arch.bzl", "arch_release")
 load("//distribution:fedora.bzl", "fedora_release")
 
 fedora_release(
@@ -63,6 +64,51 @@ box(
         "openssh",
     ],
     release = ":fedora.rawhide.release",
+    root = True,
+    visibility = ["PUBLIC"],
+)
+
+# Arch has no numbered releases, so the catalog pins a day in the Arch Linux Archive: its dated
+# trees serve databases that never change under a committed pin, which a rolling mirror cannot.
+# refresh-catalog advances every repository sharing this pin to the newest complete day.
+arch_release(
+    name = "arch.rolling",
+    archive_snapshot = "2026/07/01",
+    box = ":arch.rolling.box",
+    visibility = ["PUBLIC"],
+)
+
+# The alpm box. It is a root box: extracting alpm packages needs no package tooling, so it
+# bootstraps its own pacman rather than borrowing another box's. It carries the image assembly
+# tools every rule resolves through an image's own manager, under Arch's names for them. The VM
+# stack stays out: `image_vm` takes its box explicitly, so a second qemu/OVMF/swtpm userspace
+# would be built for nothing.
+box(
+    name = "arch.rolling.box",
+    packages = [
+        "pacman",
+        "python",
+        "bash",
+        "coreutils",
+        "libseccomp",
+        "ca-certificates",
+        # the uki driver resolves module dependencies through libkmod
+        "kmod",
+        # udev, repart, tmpfiles, sysusers and bootctl all ship here
+        "systemd",
+        "systemd-ukify",
+        # ukify needs these to sign UKIs and parse PEs, but they are only optional dependencies
+        "python-cryptography",
+        "python-pefile",
+        "e2fsprogs",
+        "erofs-utils",
+        # veritysetup
+        "cryptsetup",
+        "dosfstools",
+        "mtools",
+        "zstd",
+    ],
+    release = ":arch.rolling.release",
     root = True,
     visibility = ["PUBLIC"],
 )

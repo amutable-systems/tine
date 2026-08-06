@@ -1,6 +1,6 @@
 """The distributions the images in this package are built for.
 
-The one place a distribution is named. What each is called here names its targets (`:demo.fedora`),
+The one place a distribution is named. What each is called here names its targets (`:demo.arch`),
 selects the package manager the images solve with, and is what a build has to choose between:
 naming no distribution is not a build, so `//...` skips these images and building one by its bare
 name says so rather than picking one.
@@ -9,6 +9,11 @@ name says so rather than picking one.
 load("@tine//distribution:defs.bzl", "set_distributions_for_package")
 
 set_distributions_for_package({
+    "arch": {
+        "distribution": "tine//catalog:arch.rolling.distribution",
+        "os_release_id": "arch",
+        "package_manager": "tine//catalog:arch.rolling.package-manager",
+    },
     "fedora": {
         "distribution": "tine//catalog:fedora.rawhide.distribution",
         "os_release_id": "fedora",

@@ -1,8 +1,8 @@
 """Refresh pure catalog snapshots, then resolve box transactions against those pins.
 
 Repositories pinned to a mirror that publishes snapshots first advance their declaration to the
-newest one the mirror offers. Repositories sharing one pin advance together, and rolling back
-means editing the pin.
+newest one: an rpmrepo gateway enumerates them, while the Arch Linux Archive publishes a tree
+per day. Repositories sharing one pin advance together, and rolling back means editing the pin.
 
 Remote box-lock entries retain their package transports, so a repository's package pool keeps
 the committed box available after its repodata advances.
@@ -21,6 +21,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 from util import atomic_write_text, urlopen, with_retries
@@ -29,6 +30,7 @@ DEFAULT_CATALOG = "tine//catalog"
 BOX_LABEL = "tine:box"
 REMOTE_REPOSITORY_LABEL = "tine:remote-repository"
 RPM_REMOTE_REPOSITORY_LABEL = "tine:rpm-remote-repository"
+PACMAN_REMOTE_REPOSITORY_LABEL = "tine:pacman-remote-repository"
 
 
 def _buck_out(buck: str, *args: str) -> str:
@@ -201,17 +203,38 @@ def _newest_snapshot(repository: str, mirror: str, series: str) -> str:
     return max(matches)
 
 
+def _newest_archive_snapshot(pins: dict[str, dict[str, str]]) -> str:
+    """The newest day the archive has finished publishing.
+
+    The archive publishes a tree per day rather than an index to enumerate, but it does record when
+    it last finished one, which is the only thing that says a day is complete rather than half
+    written. Every repository in a group shares the pin, so one marker answers for all of them.
+    """
+    pin = next(iter(pins.values()))
+    # Keep in sync with pacman_remote_repository's base URL, whose mirror this is rooted at.
+    url = pin["mirror"].rstrip("/") + "/last/lastsync"
+
+    def lastsync() -> str:
+        with urlopen(url, agent="tine-catalog") as response:
+            synced = datetime.fromtimestamp(int(response.read().strip()), UTC)
+        return synced.strftime("%Y/%m/%d")
+
+    # An advance never moves a pin backwards.
+    return max(with_retries("archive: lastsync", lastsync), pin["snapshot"])
+
+
 def _advance_snapshots(buck: str, catalog: str, catalog_dir: Path, selected: list[str]) -> None:
     """Advance the selected mirror-pinned repositories to the newest snapshot their mirror offers.
 
     Advancing a pin without re-snapshotting the repository it belongs to would leave a base URL
-    from one snapshot composing package locations from another, so this stays inside the selection the
+    from one day composing package locations from another, so this stays inside the selection the
     caller is about to snapshot.
     """
     declaration = catalog_dir / "BUCK"
     wanted = set(selected)
     for label, prefix, attribute, newest in (
         (RPM_REMOTE_REPOSITORY_LABEL, "rpmrepo", "rpmrepo_snapshot", _newest_rpmrepo_snapshot),
+        (PACMAN_REMOTE_REPOSITORY_LABEL, "archlinux", "archive_snapshot", _newest_archive_snapshot),
     ):
         pinned = _pinned_repositories(buck, catalog, label, prefix)
         _advance(pinned, wanted, newest, declaration, attribute)

@@ -132,6 +132,8 @@ group graph             -- "${buck[@]}" bxl tine//tools/graph.bxl:analyze
 # First invocation fetches buck's pinned tools and builds the shared box; kept its own group so
 # bootstrap time stays visible.
 group box               -- "${buck[@]}" build tine//catalog:fedora.rawhide.box
+# The second package system's box is a root box of its own, so its bootstrap is its own step.
+group arch-box          -- "${buck[@]}" build tine//catalog:arch.rolling.box
 group check             -- "${buck[@]}" run tine//tools:check
 # Every repository the catalog declares is pinned to a mirror serving immutable snapshots, so the whole
 # catalog is verifiable rather than the boxes that happen to be pinned.
@@ -143,3 +145,9 @@ group build             -- "${buck[@]}" build tine//...
 # what the images above produced. Adding one is declaring it, not naming it here as well.
 group image-tests       -- "${buck[@]}" test tine//... --include image
 group secureboot-pkcs11 -- secureboot_pkcs11
+# The same example images over the second native package system, through the distribution aliases.
+# `:layered-install` installs over an existing package database, the path with the least in common
+# with a fresh install.
+group arch-images       -- "${buck[@]}" build tine//examples/image:demo.arch tine//examples/image:layered-install.arch
+group arch-boot-image   -- "${buck[@]}" build tine//examples/image:boot-demo.arch
+group arch-boot-smoke   -- "${buck[@]}" run tine//examples/image:boot-demo-vm-smoke.arch
