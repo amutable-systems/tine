@@ -35,7 +35,7 @@ tools/buck run //examples/image:boot-demo-vm
 Images are declared in ordinary `BUCK` files ([examples/image/BUCK](examples/image/BUCK) has the complete
 demos):
 
-```python
+```Starlark
 load("@tine//image:defs.bzl", "chroot", "install_packages", "rootfs_archive")
 
 rootfs_archive(
