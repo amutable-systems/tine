@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Self, TypedDict
 
 import specs
+import util
 
 import finalize
 
@@ -45,6 +46,8 @@ class Spec(finalize.ImageSpec):
     partitions: list[ImportedPartitionSpec]
     split_outputs: list[SplitOutputSpec]
     root_hash_out: str | None
+    # Image paths holding the package database, stripped from the partitions.
+    pkgdb_paths: list[str]
 
 
 @dataclass(frozen=True)
@@ -265,6 +268,11 @@ def main(argv: list[str] | None = None) -> None:
         finalize.image(spec, program="repart", binds=binds) as tree,
         tempfile.TemporaryDirectory(prefix="repart.") as scratch_dir,
     ):
+        # The package database is a supply-chain artifact that the image's `[pkgdb]` and `[sbom]`
+        # subtargets capture from the tree, so partitions nothing resolves packages in can drop it.
+        for relative in spec["pkgdb_paths"]:
+            util.remove_path(tree / relative, with_parents=True)
+
         scratch = Path(scratch_dir)
         repart_definitions = scratch / "repart.d"
         repart_definitions.mkdir()

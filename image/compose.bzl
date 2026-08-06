@@ -238,6 +238,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         image = identity,
         seed = ctx.attrs.disk_seed,
         split = True,
+        strip_pkgdb = ctx.attrs.strip_pkgdb,
         verity_key = resolve_signing_key(ctx.attrs.verity_key),
     )
 
@@ -359,6 +360,10 @@ _bootable_disk_image = rule(
             doc = 'size to compose the disk at, e.g. "20G"; the room past the partitions stays free',
         ),
         "package_manager": attrs.dep(providers = [PackageManagerInfo]),
+        "strip_pkgdb": attrs.bool(
+            default = False,
+            doc = "leave the package database out of the system partitions; the image still carries it",
+        ),
         "verity_key": attrs.option(
             attrs.dep(providers = [SigningKeyInfo]),
             default = None,
