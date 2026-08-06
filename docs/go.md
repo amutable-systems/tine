@@ -46,6 +46,11 @@ go_package(
 - `tags` are Go build tags: a `//go:build <tag>` line decides whether a file compiles at all. Nothing
   declares which tags a project defines, and one tag set applies to every module in the build, so this
   list has to come from the project's own build recipe.
+- `linker_flags` are passed to the Go linker as `-ldflags`, the same list the Buck prelude's `go_binary`
+  takes. Nothing is passed by default. `["-s", "-w"]` drops the symbol table and DWARF, which is what a
+  distribution's packaging does to a binary before shipping it and takes roughly a third off a Go binary;
+  the SBOM is unaffected, because the module list lives in `.go.buildinfo` and survives. `-X` stamps a
+  variable at link time, and `-extldflags` reaches the C linker of a cgo build.
 - `cgo_cflags` adds C compiler flags for a cgo build, on top of the `-O2 -g` the driver always passes. A
   project needs one when a dependency's headers do not compile as the engine's compiler defaults.
 - `cgo` forces cgo on or off. Unset, the engine toolchain's own default decides, as it would for a

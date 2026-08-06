@@ -103,3 +103,18 @@ class TestMainPackages(unittest.TestCase):
             "go-build: no main package builds gated with tags [http insecure]; "
             "the module's commands are: mycmd, tool",
         )
+
+
+class TestBuildCommand(unittest.TestCase):
+    def test_builds_the_selected_packages(self) -> None:
+        self.assertEqual(
+            build._build_command(Path("/var/tmp/binaries"), ["example.com/mycmd/v2"], []),
+            ["go", "build", "-o", "/var/tmp/binaries/", "example.com/mycmd/v2"],
+        )
+
+    def test_linker_flags_become_one_argument(self) -> None:
+        """go splits GOFLAGS on spaces, which is why these ride on the command line instead."""
+        self.assertEqual(
+            build._build_command(Path("/var/tmp/binaries"), ["example.com/p"], ["-s", "-w"]),
+            ["go", "build", "-o", "/var/tmp/binaries/", "-ldflags=-s -w", "example.com/p"],
+        )
