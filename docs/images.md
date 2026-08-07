@@ -595,6 +595,14 @@ Runtime and execution policy live on the `image_vm` target, not in the disk prov
 supplies the VM stack, its `autologin` option provisions a locked root password and runtime `login.noauth`,
 and arbitrary non-secret system credentials configure settings such as first-boot locale and timezone.
 
+`cmdline_extra` appends kernel command line arguments to the ones the image already boots with, for
+settings a run needs and the image should not carry: `["systemd.firstboot=headless"]` keeps a first boot
+from stopping at an interactive enrollment prompt, and `["systemd.log_level=debug"]` makes one boot
+verbose without rebuilding the UKI. They are handed to `systemd-vmspawn` as its own trailing arguments,
+which is where it takes extra kernel command line arguments, so it picks how to deliver them: a booted
+image takes its command line from its own UKI, and vmspawn writes them as the SMBIOS OEM strings the stub
+and the boot loader read (`io.systemd.stub.kernel-cmdline-extra` and its `boot` counterpart).
+
 `grow` enlarges the disk file to a given size before boot (vmspawn's `--grow-image`), which is how an
 ephemeral guest is given room the built partitions do not occupy; the guest claims that room itself, for
 example with `systemd-repart`. vmspawn grows the built artifact in place, and the added space sits past the

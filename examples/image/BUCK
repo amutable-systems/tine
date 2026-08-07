@@ -215,6 +215,9 @@ bootable_disk_image(
 image_vm(
     name = "boot-demo-vm",
     autologin = "root",
+    # A run-only kernel command line argument: the UKI carries a fixed one, so this can only arrive
+    # through the channel vmspawn picks for its trailing arguments. The smoke asserts it landed.
+    cmdline_extra = ["tine.smoke=1"],
     credentials = {
         "firstboot.locale": "C.UTF-8",
         "firstboot.timezone": "UTC",
@@ -247,6 +250,9 @@ command_alias(
         # that has it got it from the build rather than from a boot-time regeneration.
         "--check",
         "test -s /usr/lib/udev/hwdb.bin",
+        # The runner's cmdline_extra reached the kernel the UKI booted.
+        "--check",
+        "grep -q tine.smoke=1 /proc/cmdline",
         # The guest sees the disk at its output_size, and the partitions it boots from still
         # occupy only the front of it.
         "--check",

@@ -70,6 +70,15 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
         if not name or ":" in name:
             fail("image_vm: invalid credential name {!r}".format(name))
         run.add("--set-credential={}:{}".format(name, ctx.attrs.credentials[name]))
+
+    # vmspawn takes extra kernel command line arguments as its own trailing arguments, and picks how
+    # to deliver them from what it is booting: an SMBIOS OEM string each for the stub and the boot
+    # loader for a UKI, `-append` for a bare kernel image. Handing it the arguments rather than the
+    # OEM strings also lets it read them, which is how it knows not to add a root= of its own.
+    for argument in ctx.attrs.cmdline_extra:
+        if not argument:
+            fail("image_vm: cmdline_extra arguments cannot be empty")
+        run.add(argument)
     return [DefaultInfo(), RunInfo(args = run)]
 
 _image_vm = rule(
@@ -79,6 +88,11 @@ _image_vm = rule(
             attrs.string(),
             default = None,
             doc = "user to log in automatically without authentication",
+        ),
+        "cmdline_extra": attrs.list(
+            attrs.string(),
+            default = [],
+            doc = "kernel command line arguments appended to the ones the image boots with",
         ),
         "credentials": attrs.dict(
             key = attrs.string(),
