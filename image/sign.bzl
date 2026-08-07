@@ -52,6 +52,13 @@ def signing_key_spec(key: SigningKeyInfo | None) -> dict[str, typing.Any] | None
         return None
     return {"certificate": key.certificate, "private_key": key.private_key, "source": key.source}
 
+# The verity signing role, spelled once for every rule that produces a verity-signed artifact.
+VERITY_KEY_ATTR = attrs.option(
+    attrs.dep(providers = [SigningKeyInfo]),
+    default = None,
+    doc = "key signing the verity signature partition",
+)
+
 SigningAccess = record(
     # What the sandbox running the signing tool must be given.
     ro_binds = field(dict[str, str]),

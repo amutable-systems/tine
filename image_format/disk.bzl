@@ -15,6 +15,7 @@ load(
 load(
     "//image:sign.bzl",
     "SigningKeyInfo",
+    "VERITY_KEY_ATTR",
     "external_signing_execution",
     "merge_signing_access",
     "resolve_signing_key",
@@ -455,11 +456,7 @@ REPART_ATTRS = {
         default = False,
         doc = "leave the package database out of the partitions; the image still carries it",
     ),
-    "verity_key": attrs.option(
-        attrs.dep(providers = [SigningKeyInfo]),
-        default = None,
-        doc = "key signing the verity signature partition",
-    ),
+    "verity_key": VERITY_KEY_ATTR,
 }
 
 _repart = rule(
