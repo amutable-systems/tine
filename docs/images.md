@@ -187,14 +187,46 @@ default, so an image that installs no systemd of its own still gets a database; 
 the image's own. What they write is captured by the layer that runs them, so it is built once and
 cached rather than repeated by every terminal output.
 
-`rootfs_archive` and `bootable_disk_image` (its root filesystem and its default initrd both) end their
-operations with `depmod()`, `hwdb()` and `locale_gen()` at their defaults, because a composition builds a
-whole product rather than one layer: the three cover everything a package can leave described, and each
-does nothing on an image carrying none of it. Naming one in `ops` overrides its copy rather than adding
-a second, so a composition takes `hwdb(usr = False)`, or a `depmod()` placed before the operations that
-strip modules, exactly as written. `sysext_image` runs none of them: an extension merges onto a system it
-does not own, where a database built from the extension's own tree would shadow that system's while
+`rootfs_archive`, `bootable_disk_image`'s root filesystem, and `initrd_image` end their operations with
+`depmod()`, `hwdb()` and `locale_gen()` at their defaults, because a composition declares a whole product
+rather than one layer: the three cover everything a package can leave described, and each does nothing on
+an image carrying none of it. An initrd generates before it prunes, so it ships the compiled database
+rather than the sources it was compiled from. Naming a generator in `ops` overrides the composition's copy
+instead of adding a second, so `hwdb(usr = False)`, or a `depmod()` placed before the operations that strip
+modules, is taken exactly as written. `sysext_image` runs none of them: an extension merges onto a system
+it does not own, where a database built from the extension's own tree would shadow that system's while
 describing only what the extension carries.
+
+### Declaring the initrd
+
+`bootable_disk_image` declares a conventional initrd for itself, so nothing is required to get one.
+Declare an `initrd_image()` and pass it when you want to change what is in it or how it is packed:
+
+```Starlark
+initrd_image(
+    name = "os.initrd",
+    package_manager = ":image.package-manager",
+    packages = ["cryptsetup"],
+    ops = [copy(":modprobe.conf", "/usr/lib/modprobe.d/local.conf")],
+    compression = "none",
+)
+
+bootable_disk_image(
+    name = "os",
+    initrd = ":os.initrd",
+    ...
+)
+```
+
+`packages`, `package_sets`, and `ops` are added to the defaults, never replace them: the release's `initrd`
+package set and the operations every initrd needs (`/init`, `/etc/initrd-release`, and the databases an
+initrd never reads) apply either way. `compression` picks how the cpio the UKI carries is packed, default
+`zstd`, and `strip_pkgdb` (default true) keeps the package database out of it while `[pkgdb]` still reports
+it from the tree. `install_docs` and `install_langs` default the other way round from an OS image, since
+documentation and translations only cost an initrd boot memory.
+
+The target is an ordinary image: it builds on its own, publishes `[pkgdb]` and `[sbom]`, and one initrd can
+be shared by several disk images.
 
 ### Attaching install operations to a target
 
@@ -265,7 +297,7 @@ selecting either nested SBOM format runs one shared scan of the completed stack.
 `image` also takes `install_langs`: keep translated files only for these languages, instead of all of them.
 Nothing matches a value that is not a language, so `install_langs = ["C.UTF-8"]` installs no translations
 at all. `install_docs = False` likewise installs no documentation, keeping the licenses that packages ship.
-The default initrd sets both. Both configure an install, so a layer that installs nothing ignores them.
+`initrd_image()` defaults to both. Both configure an install, so a layer that installs nothing ignores them.
 
 ## Terminal outputs
 
@@ -336,7 +368,7 @@ it is requested, so declaring these views costs nothing on a default build.
 
 ### bootable_disk_image
 
-`bootable_disk_image()` composes the default initrd, versioned UKIs, the ESP, and a verity-protected
+`bootable_disk_image()` composes the initrd, versioned UKIs, the ESP, and a verity-protected
 `/usr` into a GPT disk. Most attributes parameterize the terminal rules described above.
 
 Required attributes:
@@ -378,12 +410,12 @@ Optional attributes:
   either way.
 - `sign_expected_pcr_key` (target providing `SigningKeyInfo`): Seals the expected-PCR policy; without one
   the policy is not sealed. See "Secure Boot signing" below.
-- `initrd` (target label providing `ImageInfo`): A logical image whose tree becomes the initrd, replacing
-  the default initrd package image. The rule consumes the resolved provider, archives it into the
-  zstd-compressed cpio itself, and republishes the package database and SBOM that image already carries.
-  The cpio removes the package database, since nothing in an initrd reads it; `[initrd][pkgdb]` still
-  captures it from the image's own tree. It needs no kernel modules: `initrd_modules` selects those and
-  the UKI carries them in an initrd of its own.
+- `initrd` (target label providing `InitrdInfo`): The initrd to boot, normally an `initrd_image()` (see
+  below). Given none, `<name>.initrd` is declared for you with the conventional defaults, inheriting this
+  target's package manager, version, and distribution. The rule republishes the package database and SBOM
+  the initrd image already carries. The cpio omits the package database, since nothing in an initrd reads
+  it; `[initrd][pkgdb]` still captures it from the image's own tree. It needs no kernel modules:
+  `initrd_modules` selects those and the UKI carries them in an initrd of its own.
 - `cmdline` (string list): Kernel command line arguments, default
   `["root=tmpfs", "mount.usr=dissect", "rw"]`; passed on to `uki()`.
 - `initrd_modules` (glob pattern list): The kernel modules the UKI carries, default
@@ -392,8 +424,8 @@ Optional attributes:
 - `arch` (string): Architecture; only `x86_64` is supported right now; passed on to `uki()`.
 - `esp_files` (dict): Map from an absolute image path (under `/boot` or `/efi`, the trees the ESP
   partition carries) to a source target copied onto the ESP.
-- `install_docs` (boolean): Passed to the root filesystem layer; the default initrd never installs
-  documentation regardless.
+- `install_docs` (boolean): Passed to the root filesystem layer only; an `initrd_image()` carries its
+  own, defaulting to no documentation.
 - `image_id` (string): The image identity, stamped into the image's os-release as `IMAGE_ID`.
   Defaults to the target name; a product should set it explicitly so that renaming a Buck target
   cannot re-identify the installed OS (systemd-sysupdate matches partitions and UKIs by this

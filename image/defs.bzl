@@ -41,7 +41,6 @@ load(
 )
 load(
     ":compose.bzl",
-    _InitrdInfo = "InitrdInfo",
     _bootable_disk_image = "bootable_disk_image",
     _rootfs_archive = "rootfs_archive",
     _sysext_image = "sysext_image",
@@ -65,6 +64,7 @@ load(
     _run = "run",
     _symlink = "symlink",
 )
+load(":initrd.bzl", _InitrdInfo = "InitrdInfo", _initrd_image = "initrd_image")
 load(":install.bzl", _image_install = "image_install")
 load(
     ":sign.bzl",
@@ -116,6 +116,7 @@ SigningKeyInfo = _SigningKeyInfo
 rootfs_archive = _rootfs_archive
 sysext_image = _sysext_image
 bootable_disk_image = _bootable_disk_image
+initrd_image = _initrd_image
 
 # The core kernel modules a UKI carries unless a target says otherwise; extend it with `+`.
 DEFAULT_INITRD_MODULES = _DEFAULT_INITRD_MODULES

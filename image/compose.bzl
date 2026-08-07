@@ -4,7 +4,6 @@ load("//distribution:defs.bzl", "distribution_aliases", "distribution_attr")
 load(
     "//image_format:archive.bzl",
     "ARCHIVE_ATTRS",
-    "ImageArchiveInfo",
     "declare_image_archive",
     "declare_image_directory",
 )
@@ -38,18 +37,15 @@ load(
     "check_name",
     "copy",
     "declare_image",
-    "depmod",
     "flatten_operations",
-    "hwdb",
+    "generated",
     "image_metadata_subtargets",
     "image_providers",
     "install_systemd_boot",
-    "locale_gen",
     "merge_os_release",
-    "remove",
     "sign_systemd_boot",
-    "symlink",
 )
+load(":initrd.bzl", "InitrdInfo", "initrd_image")
 load(
     ":sign.bzl",
     "SigningKeyInfo",  # @unused Used as a function argument type.
@@ -57,38 +53,13 @@ load(
     "resolve_signing_key",
 )
 
-InitrdInfo = provider(
-    doc = "A logical initrd image and its derived cpio archive.",
-    fields = {
-        "cpio": provider_field(ImageArchiveInfo),
-        "image": provider_field(ImageInfo),
-    },
-)
-
-# A composition builds a whole product rather than one layer, so it generates the state its packages
-# only describe instead of leaving that to its caller. Each generator is a no-op on an image carrying
-# none of what it acts on, so the same three fit every composition, last: they act on everything the
-# operations before them installed or removed.
-_GENERATORS = [depmod(), hwdb(), locale_gen()]
-
-def _generated(ops: list[LayerOperation], installs: list[str]) -> list[LayerOperation]:
-    # A layer that installs nothing and does nothing is never declared, and has nothing to generate
-    # from either.
-    if not ops and not installs:
-        return ops
-
-    # A generator the caller placed itself stays the only one of its kind: it was placed there, and
-    # configured, on purpose.
-    placed = {operation[0]: True for operation in ops}
-    return ops + [generator for generator in _GENERATORS if generator[0] not in placed]
-
 def _composed_image(ctx: AnalysisContext, generate: bool = True, **kwargs) -> ImageInfo:
     return declare_image(
         ctx,
         identifier = "image",
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
-        ops = _generated(ctx.attrs.ops, ctx.attrs.packages + ctx.attrs.package_sets) if generate else ctx.attrs.ops,
+        ops = generated(ctx.attrs.ops, ctx.attrs.packages + ctx.attrs.package_sets) if generate else ctx.attrs.ops,
         package_sets = ctx.attrs.package_sets,
         packages = ctx.attrs.packages,
         tmpfiles = ctx.attrs.tmpfiles,
@@ -162,21 +133,6 @@ _sysext_image = rule(
     },
 )
 
-# The release names what an initrd of its own family needs, so this stays symbolic.
-_DEFAULT_INITRD_PACKAGE_SETS = ["initrd"]
-
-_DEFAULT_INITRD_OPS = flatten_operations([
-    symlink("/usr/lib/systemd/systemd", "/init"),
-    symlink("/etc/os-release", "/etc/initrd-release"),
-    _GENERATORS,
-    # udev reads its binary hardware database at run time, not the sources it was compiled from.
-    remove("/usr/lib/udev/hwdb.d"),
-    # These databases serve humans and service-name resolution, neither of which happens in the initrd.
-    remove("/usr/lib/systemd/catalog"),
-    remove("/var/lib/systemd/catalog"),
-    remove("/etc/services"),
-])
-
 def _esp_operations(
     ctx: AnalysisContext,
     ukis: Artifact,
@@ -204,27 +160,15 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
     secure_boot_key = resolve_signing_key(ctx.attrs.secure_boot_key)
 
-    if ctx.attrs.initrd != None:
-        initrd = ctx.attrs.initrd[ImageInfo]
-    else:
-        initrd = declare_image(
-            ctx,
-            identifier = "initrd",
-            install_docs = False,
-            install_langs = ["C.UTF-8"],
-            ops = _DEFAULT_INITRD_OPS,
-            package_manager = ctx.attrs.package_manager,
-            package_sets = _DEFAULT_INITRD_PACKAGE_SETS,
-            source_name = ctx.label.name + ".initrd",
-            version = version,
-        )
+    initrd_info = ctx.attrs.initrd[InitrdInfo]
+    initrd = initrd_info.image
 
     root = declare_image(
         ctx,
         identifier = "root",
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
-        ops = _generated(ctx.attrs.ops, ctx.attrs.packages + ctx.attrs.package_sets),
+        ops = generated(ctx.attrs.ops, ctx.attrs.packages + ctx.attrs.package_sets),
         package_manager = ctx.attrs.package_manager,
         package_sets = ctx.attrs.package_sets,
         packages = ctx.attrs.packages,
@@ -291,16 +235,6 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         verity_key = resolve_signing_key(ctx.attrs.verity_key),
     )
 
-    # An initrd never resolves a dependency or verifies a package, and the kernel unpacks the whole
-    # cpio into tmpfs, so the package database only costs boot memory here.
-    initrd_archive = declare_image_archive(
-        ctx,
-        compression = "zstd",
-        format = "cpio",
-        identifier = "initrd",
-        image = initrd,
-        strip_pkgdb = True,
-    )
     uki = declare_uki(
         ctx,
         arch = ctx.attrs.arch,
@@ -309,7 +243,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         image = identity,
         image_id = image_id,
         initrd_modules = ctx.attrs.initrd_modules,
-        initrds = [initrd_archive],
+        initrds = [initrd_info.cpio],
         profiles = ctx.attrs.profiles,
         root_hash = system.info.root_hash if verity else None,
         secure_boot_key = secure_boot_key,
@@ -357,13 +291,12 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         for format in DISK_FORMATS
     ]
 
-    initrd_info = InitrdInfo(cpio = initrd_archive, image = initrd)
     sub_targets = dict(disk.sub_targets)
     sub_targets.update({
         "directory": [DefaultInfo(default_output = directory.directory), directory],
         "initrd": [
             DefaultInfo(
-                default_output = initrd_archive.archive,
+                default_output = initrd_info.cpio.archive,
                 sub_targets = image_metadata_subtargets(initrd),
             ),
             initrd_info,
@@ -401,10 +334,9 @@ _bootable_disk_image = rule(
             default = {},
         ),
         "image_id": attrs.option(attrs.string(), default = None),
-        "initrd": attrs.option(
-            attrs.dep(providers = [ImageInfo]),
-            default = None,
-            doc = ("logical image to archive and use as the initrd; " + "defaults to the release initrd package set"),
+        "initrd": attrs.dep(
+            providers = [InitrdInfo],
+            doc = "the initrd to boot; the declaration macro declares a conventional one when given none",
         ),
         "mkfs_options": attrs.dict(
             attrs.string(),
@@ -446,15 +378,31 @@ def bootable_disk_image(
     sign_expected_pcr_key: str | None = None,
     **kwargs,
 ) -> None:
-    """Compose the default initrd, versioned UKIs, the ESP, and system partitions into a disk.
+    """Compose the initrd, versioned UKIs, the ESP, and system partitions into a disk.
+
+    Without `initrd`, a conventional `initrd_image()` is declared as `<name>.initrd` and booted;
+    declare one yourself to configure its packages, operations, or compression.
 
     With secure_boot_key, the UKIs and systemd-boot are signed for Secure Boot, and the ESP receives
     key auto-enrollment files for firmware in setup mode. With sign_expected_pcr_key, the UKIs carry
     a signed expected-PCR policy.
     """
+    initrd = kwargs.pop("initrd", None)
+    if initrd == None:
+        initrd = ":{}.initrd".format(name)
+        initrd_image(
+            name = name + ".initrd",
+            package_manager = kwargs["package_manager"],
+            version = kwargs.get("version", "0"),
+            visibility = kwargs.get("visibility"),
+            # The image naming a distribution of its own makes its initrd that distribution too;
+            # otherwise the leaf pulling it in decides, exactly as a parent chain does.
+            distribution = kwargs.get("distribution"),
+        )
     distribution_aliases(name, kwargs)
     _bootable_disk_image(
         name = name,
+        initrd = initrd,
         # The rule renders label placeholders from its own identity during analysis.
         definitions = encode_definitions(
             definitions,
