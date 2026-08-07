@@ -65,7 +65,7 @@ is described in [design.md](design.md).
 Everything below is re-exported from one facade, so a `BUCK` file needs a single load:
 
 ```Starlark
-load("@tine//image:defs.bzl", "image", "install_packages", "rootfs_archive", "run")
+load("@tine//image:defs.bzl", "image", "rootfs_archive", "run")
 ```
 
 The modules behind the facade (`image.bzl`, `compose.bzl`, and the `image_format` package) are
@@ -91,7 +91,7 @@ package_manager(
 image(
     name = "project.image",
     package_manager = ":project.package-manager",
-    ops = [install_packages(["project"])],
+    packages = ["project"],
 )
 
 image(
@@ -121,8 +121,10 @@ resolve upstream (details in [design.md](design.md)).
 supplies `parent` and inherits that image's package manager and engine. A call with operations applies one
 ordered operation sequence in one action and persists exactly one delta:
 
-- `install_packages([...])` installs native packages; `install_package_set("...")` resolves a symbolic package set
-  through the image's package manager. One operation sequence may contain one install, at any position.
+- `packages` and `package_sets` are rule attributes rather than operations: a layer installs them as one
+  request before any of its operations run, so every operation sees what the layer adds. `package_sets`
+  names symbolic sets the image's OS release supplies and `packages` names concrete ones; a layer may use
+  both, and duplicates between them collapse.
 - `run([...])` executes a command against the image. By default the engine supplies the userspace and
   the image is mounted at `/buildroot`; with `chroot = True` the command runs inside the image with its
   own binaries instead. Either takes an `env` argument that overlays variables on that command's
@@ -140,7 +142,7 @@ ordered operation sequence in one action and persists exactly one delta:
 - `copy` introduces a declared Buck artifact at an absolute image path; `mkdir`, `symlink`, and `remove`
   mutate the same root.
 - `depmod()`, `hwdb()` and `locale_gen()` build the state installed packages only describe (below).
-- `install_from` applies the operations another target attaches to itself (see below).
+- `install_from` installs what another target needs and applies the operations it attaches (see below).
 
 `image()` recursively flattens operation lists, allowing reusable helpers to return ordered groups of
 operations; `rootfs_archive`, `sysext_image`, and `bootable_disk_image` accept the same nested groups.
@@ -158,8 +160,8 @@ whatever it acts on. The compositions run all three for you (below); an `image()
 image(
     name = "appliance",
     package_manager = ":image.package-manager",
+    package_sets = ["bootable"],
     ops = [
-        install_package_set("bootable"),
         install_from(":project.install"),
         depmod(),
         hwdb(),
@@ -197,11 +199,12 @@ describing only what the extension carries.
 ### Attaching install operations to a target
 
 How a project installs is a property of the project, not of each image carrying it. `image_install()`
-attaches operations to a target, and an image applies them with one `install_from()`:
+attaches packages and operations to a target, and an image applies both with one `install_from()`:
 
 ```Starlark
 image_install(
     name = "project.install",
+    packages = ["glibc"],
     ops = [
         copy(":project[project-cli]", "/usr/bin/project-cli"),
         copy(":project.checkout[tmpfiles.d]", "/usr/lib/tmpfiles.d"),
@@ -210,17 +213,17 @@ image_install(
 
 bootable_disk_image(
     name = "os",
-    ops = [
-        install_packages([...]),
-        install_from(":project.install"),
-    ],
+    package_sets = ["bootable"],
+    ops = [install_from(":project.install")],
     ...
 )
 ```
 
-Any operation may be attached, not only copies, and the operations are spliced in place, so the image
-still decides where in its own order they land. An `image_install` target may itself `install_from()`
-another, which composes; a cycle is rejected by Buck as a target cycle.
+A target declaring its own `packages` is what keeps every image carrying it from having to know: they
+join the installing layer's own request, so two targets that both need packages compose without the
+caller merging anything. Any operation may be attached, not only copies, and the operations are spliced
+in place, so the image still decides where in its own order they land. An `image_install` target may
+itself `install_from()` another, which composes; a cycle is rejected by Buck as a target cycle.
 
 ### Installing a file a project ships as a template
 
@@ -655,7 +658,7 @@ An image can also name its own distribution instead of being aliased into one:
 bootable_disk_image(
     name = "appliance",
     distribution = "//catalog:<family>.<release>.distribution",
-    ops = [install_package_set("bootable")],
+    package_sets = ["bootable"],
     ...
 )
 ```

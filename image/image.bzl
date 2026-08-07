@@ -197,8 +197,11 @@ def image_providers(
     ] + extra
 
 ImageInstallInfo = provider(
-    doc = "Operations a target contributes to any image installing it.",
-    fields = {"operations": provider_field(list[typing.Any])},
+    doc = "Packages and operations a target contributes to any image installing it.",
+    fields = {
+        "operations": provider_field(list[typing.Any]),
+        "packages": provider_field(list[str], default = []),
+    },
 )
 
 LayerOperation = tuple
@@ -244,18 +247,6 @@ def python(cmd: list[str | Artifact], env: dict[str, str] = {}, chroot: bool = F
 def _environment(env: dict[str, str]) -> dict[str, str]:
     return {name: env[name] for name in sorted(env)}
 
-def install_packages(packages: list[str]) -> LayerOperation:
-    """Install native packages using the layer's package manager."""
-    if not packages:
-        fail("install_packages: packages must not be empty")
-    return ("install_packages", sorted(packages))
-
-def install_package_set(name: str) -> LayerOperation:
-    """Install a package set supplied by the image's OS release."""
-    if not name:
-        fail("install_package_set: name cannot be empty")
-    return ("install_package_set", name)
-
 def mkdir(path: str, mode: str | None = None) -> LayerOperation:
     """Create a directory in the image, with `mode` when given."""
     return ("mkdir", path, mode)
@@ -273,22 +264,25 @@ def copy(source: str | Artifact, destination: str) -> LayerOperation:
     return ("copy", source, destination)
 
 def install_from(target: str) -> LayerOperation:
-    """Apply the operations an `image_install()` target attaches to itself."""
+    """Install what an `image_install()` target needs and apply the operations it attaches."""
     return ("install_from", target)
 
-def expand_install_operations(ops: list[typing.Any]) -> list[typing.Any]:
-    """Splice each install_from target's own operations in place.
+def expand_install_from(ops: list[typing.Any]) -> (list[str], list[typing.Any]):
+    """Collect each install_from target's packages and splice its operations in place.
 
     One pass suffices at every level: a target's provider already carries expanded operations, and
     Starlark has neither recursion nor a while loop to do it any other way.
     """
+    packages = []
     expanded = []
     for operation in ops:
         if operation[0] == "install_from":
-            expanded += operation[1][ImageInstallInfo].operations
+            info = operation[1][ImageInstallInfo]
+            packages += info.packages
+            expanded += info.operations
         else:
             expanded.append(operation)
-    return expanded
+    return packages, expanded
 
 def merge_os_release(fields: dict[str, str]) -> LayerOperation:
     """Merge quoted KEY="value" assignments into the image's /usr/lib/os-release."""
@@ -384,21 +378,24 @@ def _encode_operation(operation: LayerOperation) -> LayerOperation:
         operation[3],
     )
 
-def _install_specs(operation: tuple, package_sets: dict[str, list[str]] | None) -> list[str] | None:
-    if operation[0] != "install_packages":
-        if operation[0] != "install_package_set":
-            return None
-        if package_sets == None:
-            fail("image: install_package_set requires an image with a package manager")
-        name = operation[1]
-        packages = package_sets.get(name)
-        if packages == None:
+def _install_specs(
+    packages: list[str],
+    package_sets: list[str],
+    available: dict[str, list[str]] | None,
+) -> list[str]:
+    """Resolve a layer's requested packages and symbolic sets into one deduplicated request."""
+    specs = list(packages)
+    for name in package_sets:
+        if available == None:
+            fail("image: package_sets requires an image with a package manager")
+        members = available.get(name)
+        if members == None:
             fail("image: unknown package set {!r}".format(name))
-    else:
-        packages = operation[1]
-    if not packages:
-        fail("image install operation has invalid packages: {}".format(packages))
-    return sorted(packages)
+        specs += members
+    for spec in specs:
+        if not spec:
+            fail("image: package names must not be empty")
+    return sorted({spec: None for spec in specs})
 
 def _declare_pkgdb(
     ctx: AnalysisContext,
@@ -462,6 +459,8 @@ def declare_image(
     ctx: AnalysisContext,
     *,
     ops: list[LayerOperation],
+    packages: list[str] = [],
+    package_sets: list[str] = [],
     identifier: str | None = None,
     parent: ImageInfo | None = None,
     engine: Dependency | None = None,
@@ -473,10 +472,11 @@ def declare_image(
     version: str = "0",
     keys: list[SigningKeyInfo | None] = [],
 ) -> ImageInfo:
-    """Declare one logical image layer from resolved providers and operations.
+    """Declare one logical image layer from resolved providers, packages, and operations.
 
-    `keys` names the signing keys this layer's operations use, so that the action can reach one held
-    outside the build.
+    The layer installs `packages` and `package_sets` as one request before its operations run, so
+    every operation sees the packages this layer adds. `keys` names the signing keys this layer's
+    operations use, so that the action can reach one held outside the build.
     """
     tools = ctx.attrs._tools[ImageToolsInfo]
     if parent != None:
@@ -503,27 +503,18 @@ def declare_image(
         layers = []
         parent_install_specs = []
 
-    package_sets = None
+    available_sets = None
     if package_manager != None:
-        package_sets = package_manager[PackageManagerInfo].package_sets
-    install_specs = None
-    operations = []
-    for operation in expand_install_operations(ops):
-        specs = _install_specs(operation, package_sets)
-        if specs == None:
-            operations.append(operation)
-            continue
-        if install_specs != None:
-            fail("image: at most one install operation is allowed per layer")
-        install_specs = specs
-        operations.append(("install_packages", specs))
+        available_sets = package_manager[PackageManagerInfo].package_sets
+    from_targets, operations = expand_install_from(ops)
+    install_specs = _install_specs(packages + from_targets, package_sets, available_sets)
 
-    if ops:
+    if operations or install_specs:
         closure = None
         installer = None
-        if install_specs != None:
+        if install_specs:
             if package_manager == None:
-                fail("image: install requires an image with a package manager")
+                fail("image: installing packages requires an image with a package manager")
             package_manager_info = package_manager[PackageManagerInfo]
             closure = resolve_packages(
                 ctx,
@@ -565,7 +556,7 @@ def declare_image(
         ctx.actions.run(cmd, category = "image", identifier = identifier or "layer", **external_signing_execution(signing_access))
 
         layers = layers + [delta]
-        install_specs = parent_install_specs + (install_specs if install_specs != None else [])
+        install_specs = parent_install_specs + install_specs
     else:
         install_specs = parent_install_specs
 
@@ -605,14 +596,6 @@ IMAGE_OPERATION_ATTR = attrs.one_of(
         attrs.list(attrs.arg()),
         attrs.dict(attrs.string(), attrs.string()),
         attrs.bool(),
-    ),
-    attrs.tuple(
-        attrs.enum(["install_packages"]),
-        attrs.list(attrs.string()),
-    ),
-    attrs.tuple(
-        attrs.enum(["install_package_set"]),
-        attrs.string(),
     ),
     attrs.tuple(
         attrs.enum(["mkdir"]),
@@ -664,7 +647,17 @@ IMAGE_ATTRS = {
     "ops": attrs.list(
         IMAGE_OPERATION_ATTR,
         default = [],
-        doc = "ordered operations generated by the public helpers",
+        doc = "ordered operations generated by the public helpers, applied after the install",
+    ),
+    "package_sets": attrs.list(
+        attrs.string(),
+        default = [],
+        doc = "symbolic package sets the image's OS release names, installed with `packages`",
+    ),
+    "packages": attrs.list(
+        attrs.string(),
+        default = [],
+        doc = "native packages to install before this layer's operations run",
     ),
     "tmpfiles": attrs.list(
         attrs.string(),
@@ -682,6 +675,8 @@ def _image_impl(ctx: AnalysisContext) -> list[Provider]:
         install_langs = ctx.attrs.install_langs,
         ops = ctx.attrs.ops,
         package_manager = ctx.attrs.package_manager,
+        package_sets = ctx.attrs.package_sets,
+        packages = ctx.attrs.packages,
         parent = ctx.attrs.parent[ImageInfo] if ctx.attrs.parent != None else None,
         tmpfiles = ctx.attrs.tmpfiles,
         version = ctx.attrs.version,

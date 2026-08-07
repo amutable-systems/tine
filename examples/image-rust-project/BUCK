@@ -6,7 +6,7 @@ it builds. `hello/` plays that checkout.
 
 load("@tine//cargo:rules.bzl", "cargo_package")
 load("@tine//engine:build.bzl", "engine")
-load("@tine//image:defs.bzl", "copy", "image_install", "install_from", "install_packages", "mkdir", "rootfs_archive")
+load("@tine//image:defs.bzl", "copy", "image_install", "install_from", "mkdir", "rootfs_archive")
 load("@tine//package:manager.bzl", "package_manager")
 
 # The build environment for our Rust projects; it never reaches an image.
@@ -59,6 +59,9 @@ cargo_package(
 # installs them. Any image operation may be attached, not only copies.
 image_install(
     name = "demo.install",
+    # The target declares what it needs, so no image installing it has to know. Rust links
+    # against glibc.
+    packages = ["glibc"],
     ops = [
         copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
         copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
@@ -75,10 +78,6 @@ package_manager(
 rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
-    ops = [
-        # Rust links against glibc.
-        install_packages(["glibc"]),
-        install_from(":demo.install"),
-    ],
+    ops = [install_from(":demo.install")],
     format = "tar",
 )
