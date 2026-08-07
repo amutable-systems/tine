@@ -2,8 +2,10 @@
 
 The driver authors `usr/lib/extension-release.d/extension-release.<name>`, drops the base
 os-release, and runs `systemd-repart --make-ddi=sysext` for a GPT image holding an erofs data
-partition plus its verity hash (unsigned for now). With `base`, only the delta layered above
-that image is packaged, and the extension-release pins the base's ID/VERSION_ID.
+partition plus its verity hash. With `verity_key`, a third partition carries a signature over
+the verity root hash, which a host can verify against the key's certificate in its `verity.d`
+before merging. With `base`, only the delta layered above that image is packaged, and the
+extension-release pins the base's ID/VERSION_ID.
 """
 
 load(
@@ -12,6 +14,15 @@ load(
     "ImageInfo",
     "ImageToolsInfo",
     "terminal_image_command",
+)
+load(
+    "//image:sign.bzl",
+    "SigningKeyInfo",
+    "VERITY_KEY_ATTR",
+    "external_signing_execution",
+    "merge_signing_access",
+    "resolve_signing_key",
+    "signing_key_spec",
 )
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
@@ -33,6 +44,7 @@ def declare_image_sysext(
     base: ImageInfo | None = None,
     release: dict[str, str] = {},
     seed: str | None = None,
+    verity_key: SigningKeyInfo | None = None,
 ) -> SysextImageInfo:
     """Declare a system-extension DDI from resolved logical images."""
     out = ctx.actions.declare_output(extension + ".raw")
@@ -59,8 +71,10 @@ def declare_image_sysext(
         system = image.package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
         pkgdb_paths = system.database_paths
 
+    signing_access = merge_signing_access([verity_key])
     cmd = terminal_image_command(
         ctx,
+        signing_access = signing_access,
         # The DDI is named after the extension, so one composition can declare several.
         driver = "sysext-" + extension,
         exe = ctx.attrs._tools[ImageToolsInfo].sysext,
@@ -73,9 +87,16 @@ def declare_image_sysext(
             "pkgdb_paths": pkgdb_paths,
             "release": {key: release_fields[key] for key in sorted(release_fields)},
             "seed": seed,
+            "signing": signing_key_spec(verity_key),
         },
     )
-    ctx.actions.run(cmd, category = "image_sysext")
+    ctx.actions.run(
+        cmd,
+        category = "image_sysext",
+        # The category must be unique per target and a composition can declare several extensions.
+        identifier = extension,
+        **external_signing_execution(signing_access),
+    )
 
     return SysextImageInfo(engine = image.engine, extension = extension, image = out)
 
@@ -87,6 +108,7 @@ def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
         image = ctx.attrs.image[ImageInfo],
         release = ctx.attrs.release,
         seed = ctx.attrs.seed,
+        verity_key = resolve_signing_key(ctx.attrs.verity_key),
     )
     return [DefaultInfo(default_output = info.image), info]
 
@@ -102,6 +124,7 @@ SYSEXT_ATTRS = {
         default = None,
         doc = "explicit GPT/partition UUID seed; by default derive one from the target identity",
     ),
+    "verity_key": VERITY_KEY_ATTR,
 }
 
 image_sysext = rule(

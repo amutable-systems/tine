@@ -12,6 +12,7 @@ import specs
 import util
 
 import finalize
+import repart_signing
 import rootfs
 
 
@@ -25,6 +26,7 @@ class Spec(finalize.ImageSpec):
     release: dict[str, str]
     # Image paths holding the package database, stripped from the DDI.
     pkgdb_paths: list[str]
+    signing: repart_signing.KeySpec | None
     out: str
 
 
@@ -103,15 +105,19 @@ def main(argv: list[str] | None = None) -> None:
             "systemd-repart",
             "--make-ddi=sysext",
             f"--copy-source={tree}",
-            # Unsigned for now: erofs data plus verity hash, no signature partition.
-            "--exclude-partitions=root-verity-sig",
             "--dry-run=no",
             "--offline=yes",
             "--no-pager",
             "--seed",
             str(seed),
-            str(out),
         ]
+        # The built-in sysext definitions always include the signature partition, and repart
+        # refuses to fill it without a key, so an unsigned DDI must drop it instead.
+        if spec["signing"]:
+            cmd += repart_signing.key_arguments(spec["signing"])
+        else:
+            cmd.append("--exclude-partitions=root-verity-sig")
+        cmd.append(str(out))
         env = os.environ | {"SYSTEMD_REPART_MKFS_OPTIONS_EROFS": _MKFS_OPTIONS_EROFS}
         subprocess.run(cmd, check=True, env=env)
 

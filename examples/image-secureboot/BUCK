@@ -5,6 +5,10 @@ nothing secret is committed. With `signing.*` configuration, the same image sign
 tokens instead; see docs/signing-pkcs11.md. Real OS images should follow this shape: one definition
 serves both, and only the certificate copies below differ, since a token's certificate is a URI
 rather than an artifact.
+
+The signed demo-ext system extension shows verity signing for a sysext DDI (always with a
+generated key, see below), with the image enforcing the signature through its sysext.conf image
+policy.
 """
 
 load(
@@ -13,8 +17,11 @@ load(
     "bootable_disk_image",
     "config_signing_key",
     "copy",
+    "generate_signing_key",
     "image_vm",
     "install_packages",
+    "mkdir",
+    "sysext_image",
 )
 load("@tine//package:manager.bzl", "package_manager")
 
@@ -62,7 +69,15 @@ bootable_disk_image(
         ]
         if not _EXTERNAL
         else []
-    ),
+    )
+    + [
+        # demo-ext's signature verifies against this certificate; the sysext.conf policy next to
+        # it makes that verification a requirement rather than opportunistic.
+        copy(":demo-ext-signing[cert]", "/usr/lib/verity.d/demo-ext.crt"),
+        copy("sysext.conf", "/usr/lib/systemd/sysext.conf"),
+        # Plain data for the boot smoke's negative proof: a DDI the policy must refuse.
+        copy(":demo-ext-unsigned", "/usr/share/tine-example/demo-ext-unsigned.raw"),
+    ],
     # This key signs the UKIs and systemd-boot, puts auto-enrollment files onto the ESP, and signs
     # the verity root hash. For a key that caches across workspaces, see pem_signing_key() under
     # "Secure Boot signing" in images.md.
@@ -85,6 +100,30 @@ bootable_disk_image(
     sign_expected_pcr_key = ":pcr-signing",
 )
 
+# System-extension DDI extending :image, signed so the strict policy in sysext.conf accepts the
+# merge. Its own generated key rather than :signing: the consuming image must carry the
+# certificate as a file, and with `signing.token` configured :signing's certificate is a URI.
+sysext_image(
+    name = "demo-ext",
+    base = ":image",
+    ops = [install_packages(["zsh"])],
+    install_docs = False,
+    verity_key = ":demo-ext-signing",
+)
+
+generate_signing_key(name = "demo-ext-signing")
+
+# What the policy protects against: the same extension shape without a signature. Standalone
+# (extension-release ID=_any) rather than based on :image, which carries this DDI as smoke test
+# data and may not depend on it circularly. Refusal happens at dissection, before content
+# matters; the marker is for the smoke test's permissive counter-check.
+sysext_image(
+    name = "demo-ext-unsigned",
+    package_manager = ":image.package-manager",
+    ops = [mkdir("/usr/share/tine-unsigned")],
+    install_docs = False,
+)
+
 image_vm(
     name = "vm",
     autologin = "root",
@@ -97,6 +136,7 @@ image_vm(
     # select setup-mode firmware, so sd-boot enrolls the keys from the ESP on first
     # boot; VM then enforces Secure Boot.
     secure_boot = True,
+    sysexts = [":demo-ext"],
 )
 
 # Boot smoke test: enrolls keys on first boot, settles under Secure Boot with a vTPM, then powers
@@ -126,6 +166,33 @@ command_alias(
         # The stub hands the booted system the public key the expected-PCR policy is sealed with.
         "--check",
         "test -s /run/systemd/tpm2-pcr-public-key.pem",
+        # The extension merged with sysext.conf's strict "signed" image policy. Proves
+        # its signature verified against the certificate in /usr/lib/verity.d.
+        "--check",
+        "systemd-sysext status --no-pager | grep -F demo-ext",
+        "--check",
+        "test -x /usr/bin/zsh",
+        # The same policy refuses an extension without a signature: refresh fails, and must
+        # change nothing -- the unsigned extension appears neither in the list nor in the
+        # merged file system, and the previous merge stays in place (the dissection failure
+        # precedes the unmerge).
+        "--check",
+        "mkdir -p /run/extensions && cp /usr/share/tine-example/demo-ext-unsigned.raw /run/extensions/",
+        "--check",
+        "! systemd-sysext refresh",
+        "--check",
+        "! systemd-sysext status --no-pager | grep -F demo-ext-unsigned",
+        "--check",
+        "test ! -d /usr/share/tine-unsigned && test -x /usr/bin/zsh",
+        # ...and only with a relaxed policy the same DDI merges fine.
+        "--check",
+        "systemd-sysext refresh '--image-policy=root=verity+signed+unprotected+absent:usr=verity+signed+unprotected+absent:=ignore'",
+        "--check",
+        "systemd-sysext status --no-pager | grep -F demo-ext-unsigned && test -d /usr/share/tine-unsigned",
+        # Undo the relaxed merge: without the unsigned DDI the strict refresh succeeds again,
+        # demo-ext stays, and the unsigned marker vanishes.
+        "--check",
+        "rm /run/extensions/demo-ext-unsigned.raw && systemd-sysext refresh && test -x /usr/bin/zsh && test ! -d /usr/share/tine-unsigned",
     ]
     + (
         [

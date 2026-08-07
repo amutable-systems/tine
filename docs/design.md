@@ -1154,7 +1154,6 @@ Near-term image gaps are:
   and volatile-`/etc` behavior is settled;
 - deterministic ext4/FAT byte-level validation and any required normalization;
 - OCI, confext, ESP, and other terminal formats as real consumers require them;
-- sysext verity signing;
 - richer ordered operations for setting file metadata directly;
 - deciding whether package installation and image tooling eventually need distinct compatible engines.
 

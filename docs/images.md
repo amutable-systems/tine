@@ -291,9 +291,12 @@ when needed:
 - `disk_convert` re-encodes a raw disk with an explicitly selected engine and provides `DiskConversionInfo`;
 - `bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
-- `image_sysext` builds a systemd-sysext(8) DDI (unsigned for now) with `systemd-repart`, containing
-  `/usr`, `/opt`, and `extension-release.<name>`, and provides `SysextImageInfo`; with `base`, only the
-  delta layered above that image is packaged, and the extension-release pins the base's `ID`/`VERSION_ID`;
+- `image_sysext` builds a systemd-sysext(8) DDI with `systemd-repart`, containing `/usr`, `/opt`, and
+  `extension-release.<name>`, and provides `SysextImageInfo`; with `base`, only the delta layered above that
+  image is packaged, and the extension-release pins the base's `ID`/`VERSION_ID`; with `verity_key` (a
+  target providing `SigningKeyInfo`), the DDI carries a signature over its verity root hash, which a host
+  validates against the key's certificate in its `/usr/lib/verity.d/` (enforced only where the host's
+  sysext image policy says so, see "Example targets" below);
 - `image_vm` runs the raw image ephemerally with its explicitly selected engine's `systemd-vmspawn`, QEMU,
   and OVMF stack,
   and binds all given `sysexts` DDIs into the guest at `/var/lib/extensions`, where systemd-sysext merges
@@ -623,6 +626,13 @@ versioned UKI creation, semantic boot-artifact extraction, ESP-layer assembly, a
 `demo-ext` is a system-extension DDI on top of `boot-demo`. Running `boot-demo-vm` validates the interactive
 VM runner; it exposes `demo-ext` under `/var/lib/extensions` in the guest, which validates the sysext merge
 at boot.
+
+The signed variant lives in `//examples/image-secureboot`: its `demo-ext` signs the verity root hash with a
+generated key, the image ships that key's certificate in `/usr/lib/verity.d/` and a
+`/usr/lib/systemd/sysext.conf` whose `ImagePolicy` grants `signed` only, and its `vm-smoke` proves both
+directions — the signed extension merges, and the unsigned `demo-ext-unsigned` DDI is refused. Without such
+a policy the signature is decorative: systemd-sysext's default policy merges unsigned images, and falls back
+to plain verity when a signature fails to validate.
 
 ### Choosing a distribution
 
