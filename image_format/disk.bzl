@@ -18,6 +18,7 @@ load(
     "external_signing_execution",
     "merge_signing_access",
     "resolve_signing_key",
+    "signing_key_spec",
 )
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
@@ -306,7 +307,6 @@ def declare_repart(
         pkgdb_paths = system.database_paths
 
     spec = {
-        "certificate": verity_key.certificate if verity_key else None,
         "definitions": decoded,
         "identity": "{}[{}]".format(ctx.label, identifier or "repart"),
         "mkfs_options": mkfs_options,
@@ -321,10 +321,9 @@ def declare_repart(
             for value in imported_partitions
         ],
         "pkgdb_paths": pkgdb_paths,
-        "private_key": verity_key.private_key if verity_key else None,
         "root_hash_out": None,
         "seed": seed,
-        "source": verity_key.source if verity_key else None,
+        "signing": signing_key_spec(verity_key),
         "split_outputs": [],
     }
 
