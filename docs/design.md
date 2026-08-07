@@ -621,18 +621,27 @@ composition cannot silently switch package sources or tooling environments betwe
 be supplied directly for an initial image that never installs native packages.
 
 Each `image` call applies one ordered operation sequence in one action and persists exactly one overlay
-upper. It may contain one `install` or `install_package_set` operation at any position; the selected
-package-system installer operates on the already-mounted root, while `run`, `copy`, `mkdir`, `symlink`, and
-`remove` mutate the same root. A package-set operation resolves its symbolic name through the image's package
-manager during analysis, then becomes an ordinary install operation. `copy` introduces a declared Buck
-artifact at an absolute image path, preserving its position relative to the other operations. `run` executes
-the image's own tools in a chroot by default; `chroot = False` instead executes engine tooling with the image
-available at `/buildroot`. Its `env` argument overlays variables on the engine or image environment for that
-command. Package installation and copying always run outside the chroot. The `image()` declaration macro
-recursively flattens operation lists, allowing reusable helpers to return ordered groups of operations.
-Every rule that accepts operations is wrapped in a declaration macro that flattens them the same way, so a
-helper returning an ordered group works identically in `image()` and in a composition; the underlying
-attribute stays a flat, typed list so Buck can track every embedded source dependency.
+upper. A layer's `packages` and `package_sets` are rule attributes rather than operations: it installs them
+as one request before any operation runs, while `run`, `copy`, `mkdir`, `symlink`, and `remove` mutate the
+same root afterwards. A package set resolves its symbolic name through the image's package manager during
+analysis and joins the concrete names in the same request, deduplicated. Installation is a property of the
+layer rather than a position in it because a layer resolves one closure at analysis time over the stack below
+it: a second install could only ever be solved blind to what the first one added, so there is nothing an
+ordering could mean. Making it an attribute is also what lets operation sequences compose, since two lists
+that both need packages no longer collide, and what lets a sequence name a package set and extra packages
+together, which a set alone cannot express because its members are known only during analysis. Installing
+against the result of an earlier install is a second layer, which is where a closure resolved over that
+result becomes available. `copy` introduces a declared Buck artifact at an absolute image path, preserving
+its position relative to the other operations. `run` executes the image's own tools in a chroot by default;
+`chroot = False` instead executes engine tooling with the image available at `/buildroot`. Its `env` argument
+overlays variables on the engine or image environment for that command. Package installation and copying
+always run outside the chroot. The `image()` declaration macro recursively flattens operation lists, allowing
+reusable helpers to return ordered groups of operations. Every rule that accepts operations is wrapped in a
+declaration macro that flattens them the same way, so a helper returning an ordered group works identically
+in `image()` and in a composition; the underlying attribute stays a flat, typed list so Buck can track every
+embedded source dependency. An `image_install()` target carries `packages` beside its operations, so a
+reusable target declares what it needs and `install_from()` folds that into the installing layer's own
+request.
 
 `install_langs` narrows the install to the translated files of the named languages, and `install_docs`
 drops documentation while keeping licenses. Neither ever enters the tree, so the package database records

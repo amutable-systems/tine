@@ -164,19 +164,10 @@ def _install(install: LayerInstall, target: Path, scratch: Path) -> None:
         raise SystemExit(f"image package installation failed (rc={rc})")
 
 
-def _apply(
-    value: object,
-    target: Path,
-    install: LayerInstall | None,
-    scratch: Path,
-) -> None:
+def _apply(value: object, target: Path) -> None:
     """Apply one operation with its requested view of the mounted root."""
     operation = _operation(value)
     match operation:
-        case ["install_packages", _packages]:
-            if install is None:
-                raise SystemExit("image install operation has no package installer")
-            _install(install, target, scratch)
         case ["run", raw_cmd, raw_env, bool(chroot)]:
             if not chroot:
                 _run("run", raw_cmd, raw_env)
@@ -212,11 +203,6 @@ def main(argv: list[str] | None = None) -> None:
         if operation[0] == "copy" and len(operation) == 3 and isinstance(operation[1], str):
             operation[1] = str(Path(operation[1]).absolute())
     install = spec["install"]
-    install_count = sum(operation[0] == "install_packages" for operation in operations)
-    if install_count > 1:
-        raise SystemExit("image layer allows at most one install operation")
-    if bool(install_count) != (install is not None):
-        raise SystemExit("image install operation and package installer require each other")
 
     # A chrooted command names an artifact exactly as an engine command does, so the project is
     # mounted for the whole layer whenever one asks for it.
@@ -240,8 +226,11 @@ def main(argv: list[str] | None = None) -> None:
         mounted = rootfs.rootfs("/buildroot", bind=out, apivfs=True, binds=binds)
 
     with mounted as target, tempfile.TemporaryDirectory(prefix="layer.") as scratch:
+        # Packages land before the operations so every one of them sees what this layer installs.
+        if install is not None:
+            _install(install, target, Path(scratch))
         for operation in operations:
-            _apply(operation, target, install, Path(scratch))
+            _apply(operation, target)
 
     if not lower:
         rootfs.capture(out)

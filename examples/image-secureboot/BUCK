@@ -19,7 +19,6 @@ load(
     "copy",
     "generate_signing_key",
     "image_vm",
-    "install_packages",
     "mkdir",
     "sysext_image",
 )
@@ -46,20 +45,18 @@ bootable_disk_image(
     name = "image",
     package_manager = ":image.package-manager",
     definitions = DEFAULT_SIGNED_USR_VERITY_PARTITIONS,
-    ops = [
-        install_packages([
-            "kernel-core",
-            "systemd",
-            "systemd-udev",
-            "systemd-boot-unsigned",
-            "fedora-release",
-            "bash",
-            "coreutils",
-            "util-linux",
-            "dbus-broker",
-        ]),
-    ]
-    + (
+    packages = [
+        "kernel-core",
+        "systemd",
+        "systemd-udev",
+        "systemd-boot-unsigned",
+        "fedora-release",
+        "bash",
+        "coreutils",
+        "util-linux",
+        "dbus-broker",
+    ],
+    ops = (
         [
             # The smoke test compares this against the public key the stub hands the booted system, to
             # tell which key sealed the expected-PCR policy. Sealed under verity, so it cannot be
@@ -106,7 +103,7 @@ bootable_disk_image(
 sysext_image(
     name = "demo-ext",
     base = ":image",
-    ops = [install_packages(["zsh"])],
+    packages = ["zsh"],
     install_docs = False,
     verity_key = ":demo-ext-signing",
 )

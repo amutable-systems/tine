@@ -16,8 +16,6 @@ load(
     "image",
     "image_archive",
     "image_vm",
-    "install_package_set",
-    "install_packages",
     "mkdir",
     "python",
     "remove",
@@ -59,12 +57,12 @@ export_file(
 rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
+    packages = ["bash", "coreutils"],
     ops = [
         run(["/usr/bin/mkdir", "-p", "/buildroot/etc/tine"]),
         run(["/usr/bin/cp", "$(location :marker.txt)", "/buildroot/etc/tine/from-location"]),
         # copy() takes a source directly, so it needs no $(location) around the label.
         copy(":marker.txt", "/etc/tine/from-copy"),
-        install_packages(["bash", "coreutils"]),
         # A chrooted command runs with the image's own binaries. Buck's macro parser claims
         # `$(...)`, so the shell substitution is escaped.
         run(["/usr/bin/bash", "-c", "echo built-by-\\$(echo tine) > /etc/tine/marker"], chroot = True),
@@ -91,7 +89,7 @@ rootfs_archive(
 rootfs_archive(
     name = "base",
     package_manager = ":image.package-manager",
-    ops = [install_packages(["bash"])],
+    packages = ["bash"],
     format = "tar",
 )
 
@@ -99,8 +97,8 @@ rootfs_archive(
 image(
     name = "chained-base",
     package_manager = ":image.package-manager",
+    packages = ["bash", "coreutils"],
     ops = [
-        install_packages(["bash", "coreutils"]),
         mkdir("/etc/tine"),
         run(
             [
@@ -132,8 +130,8 @@ image_archive(
 image(
     name = "layered-install-base",
     package_manager = ":image.package-manager",
+    packages = ["bash"],
     ops = [
-        install_packages(["bash"]),
         run(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"], chroot = True),
     ],
 )
@@ -141,8 +139,8 @@ image(
 image(
     name = "layered-install.layer",
     parent = ":layered-install-base",
+    packages = ["coreutils"],
     ops = [
-        install_packages(["coreutils"]),
         run(["/usr/bin/bash", "-c", "ls /usr/bin/ls > /etc/from-child-install"], chroot = True),
     ],
 )
@@ -157,8 +155,8 @@ image_archive(
 image(
     name = "escaped-base",
     package_manager = ":image.package-manager",
+    packages = ["bash", "coreutils"],
     ops = [
-        install_packages(["bash", "coreutils"]),
         mkdir("/etc/tine"),
         run(
             [
@@ -194,7 +192,8 @@ bootable_disk_image(
     version = read_config("demo", "image-version", "unversioned"),
     # The release names what a bootable system of its own family needs, so this stays symbolic.
     # The composition generates the databases those packages only describe, hwdb's among them.
-    ops = [install_package_set("bootable")],
+    package_sets = ["bootable"],
+    packages = ["less"],
     profiles = [
         uki_profile(
             id = "debug",
@@ -273,7 +272,7 @@ command_alias(
 sysext_image(
     name = "demo-ext",
     base = ":boot-demo",
-    ops = [install_packages(["zsh"])],
+    packages = ["zsh"],
     install_docs = False,
 )
 
@@ -281,8 +280,8 @@ sysext_image(
 image(
     name = "opaque-base",
     package_manager = ":image.package-manager",
+    packages = ["bash", "coreutils"],
     ops = [
-        install_packages(["bash", "coreutils"]),
         run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"], chroot = True),
     ],
 )

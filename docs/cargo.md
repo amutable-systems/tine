@@ -44,10 +44,8 @@ The binaries are ordinary artifacts, so an image installs one with a `copy()` op
 rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
-    ops = [
-        install_packages(["glibc"]),
-        copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
-    ],
+    packages = ["glibc"],
+    ops = [copy(":hello[hello-cli]", "/usr/bin/hello-cli")],
     format = "tar",
 )
 ```

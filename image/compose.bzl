@@ -43,7 +43,6 @@ load(
     "hwdb",
     "image_metadata_subtargets",
     "image_providers",
-    "install_package_set",
     "install_systemd_boot",
     "locale_gen",
     "merge_os_release",
@@ -72,9 +71,10 @@ InitrdInfo = provider(
 # operations before them installed or removed.
 _GENERATORS = [depmod(), hwdb(), locale_gen()]
 
-def _generated(ops: list[LayerOperation]) -> list[LayerOperation]:
-    # No operations at all declares no layer, and leaves nothing installed to generate from.
-    if not ops:
+def _generated(ops: list[LayerOperation], installs: list[str]) -> list[LayerOperation]:
+    # A layer that installs nothing and does nothing is never declared, and has nothing to generate
+    # from either.
+    if not ops and not installs:
         return ops
 
     # A generator the caller placed itself stays the only one of its kind: it was placed there, and
@@ -88,7 +88,9 @@ def _composed_image(ctx: AnalysisContext, generate: bool = True, **kwargs) -> Im
         identifier = "image",
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
-        ops = _generated(ctx.attrs.ops) if generate else ctx.attrs.ops,
+        ops = _generated(ctx.attrs.ops, ctx.attrs.packages + ctx.attrs.package_sets) if generate else ctx.attrs.ops,
+        package_sets = ctx.attrs.package_sets,
+        packages = ctx.attrs.packages,
         tmpfiles = ctx.attrs.tmpfiles,
         version = ctx.attrs.version,
         **kwargs,
@@ -160,8 +162,10 @@ _sysext_image = rule(
     },
 )
 
+# The release names what an initrd of its own family needs, so this stays symbolic.
+_DEFAULT_INITRD_PACKAGE_SETS = ["initrd"]
+
 _DEFAULT_INITRD_OPS = flatten_operations([
-    install_package_set("initrd"),
     symlink("/usr/lib/systemd/systemd", "/init"),
     symlink("/etc/os-release", "/etc/initrd-release"),
     _GENERATORS,
@@ -210,6 +214,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
             install_langs = ["C.UTF-8"],
             ops = _DEFAULT_INITRD_OPS,
             package_manager = ctx.attrs.package_manager,
+            package_sets = _DEFAULT_INITRD_PACKAGE_SETS,
             source_name = ctx.label.name + ".initrd",
             version = version,
         )
@@ -219,8 +224,10 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         identifier = "root",
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
-        ops = _generated(ctx.attrs.ops),
+        ops = _generated(ctx.attrs.ops, ctx.attrs.packages + ctx.attrs.package_sets),
         package_manager = ctx.attrs.package_manager,
+        package_sets = ctx.attrs.package_sets,
+        packages = ctx.attrs.packages,
         tmpfiles = ctx.attrs.tmpfiles,
         version = version,
     )
