@@ -46,6 +46,12 @@ def resolve_signing_key(dep: Dependency | None) -> SigningKeyInfo | None:
     """Read an optional signing key attribute, None meaning the role is unsigned."""
     return dep[SigningKeyInfo] if dep != None else None
 
+def signing_key_spec(key: SigningKeyInfo | None) -> dict[str, typing.Any] | None:
+    """The key as one driver-spec object (repart_signing.py's KeySpec), None when unsigned."""
+    if key == None:
+        return None
+    return {"certificate": key.certificate, "private_key": key.private_key, "source": key.source}
+
 SigningAccess = record(
     # What the sandbox running the signing tool must be given.
     ro_binds = field(dict[str, str]),

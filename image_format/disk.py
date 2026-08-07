@@ -18,6 +18,7 @@ import specs
 import util
 
 import finalize
+import repart_signing
 
 _SEED_NAMESPACE = uuid.UUID("5af2de99-4f9f-4e0b-a04b-bde36b068c4f")
 
@@ -40,10 +41,7 @@ class Spec(finalize.ImageSpec):
     identity: str
     output_size: str | None
     seed: str | None
-    private_key: str | None
-    certificate: str | None
-    # OpenSSL key source in systemd's spelling, None for key material in the build graph.
-    source: str | None
+    signing: repart_signing.KeySpec | None
     definitions: list[dict[str, Any]]
     # Independent partitions copied into the result, and the new ones written out.
     partitions: list[ImportedPartitionSpec]
@@ -312,12 +310,7 @@ def main(argv: list[str] | None = None) -> None:
         ]
         if outputs:
             cmd.append("--split=yes")
-        if spec["private_key"]:
-            cmd += ["--private-key", spec["private_key"]]
-        if spec["certificate"]:
-            cmd += ["--certificate", spec["certificate"]]
-        if spec["source"]:
-            cmd += ["--private-key-source", spec["source"], "--certificate-source", spec["source"]]
+        cmd += repart_signing.key_arguments(spec["signing"])
         # repart reads one variable per filesystem it formats and splits each on whitespace.
         env = os.environ | {
             f"SYSTEMD_REPART_MKFS_OPTIONS_{filesystem.upper()}": " ".join(options)
