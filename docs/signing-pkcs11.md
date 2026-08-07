@@ -59,7 +59,7 @@ Signing coordinates are host-specific, so they are not committed. The `config_si
 declares a key that uses a PKCS#11 token when doing the build with appropriate configuration (see below),
 and falls back to generating a development key pair without it. So one image definition serves both:
 
-```python
+```Starlark
 load("@tine//image:defs.bzl", "bootable_disk_image", "config_signing_key")
 
 # section defaults to "signing", token_key defaults to "token"
