@@ -115,6 +115,45 @@ def _provider_options(source: str) -> list[str]:
     ]  # fmt: skip
 
 
+def _signing_arguments(secure_boot: Key | None, pcr: Key | None, profiles: list[Profile]) -> list[str]:
+    """ukify's arguments for the two independent signing roles, empty for an unsigned UKI.
+
+    The Secure Boot key signs the UKI and the kernel in it, the expected-PCR key seals the policy
+    the booted system unseals its secrets against. Either can be absent.
+    """
+    signing = []
+    if secure_boot:
+        signing = [
+            "--signtool", "systemd-sbsign",
+            "--secureboot-private-key", secure_boot["private_key"],
+            "--secureboot-certificate", secure_boot["certificate"],
+            "--sign-kernel",
+        ]  # fmt: skip
+        if secure_boot["source"]:
+            signing += _provider_options(secure_boot["source"])
+    # ukify measures and signs the base and each joined profile separately. All profiles are
+    # signed by default; the explicit --sign-profile list is only needed when one opts out. The
+    # base profile is named "main": ukify defaults it to that when anything is joined.
+    if pcr:
+        signing += [
+            "--pcr-banks", "sha256",
+            "--pcr-private-key", pcr["private_key"],
+        ]  # fmt: skip
+        if pcr["source"]:
+            # Only the provider path passes the certificate: ukify's systemd-measure call requires
+            # one there. Everywhere else ukify derives the public key section (.pcrpkey) from the
+            # private key, which cannot mismatch, and passing the certificate instead would be a
+            # risk: nothing checks that certificate and key match, and a mismatch poisons .pcrpkey
+            # and the sealed policy without failing the build, surfacing only at unsealing.
+            signing += ["--pcr-certificate", pcr["certificate"]]
+        if not all(profile["sign_expected_pcr"] for profile in profiles):
+            signing += ["--sign-profile", "main"]
+            for profile in profiles:
+                if profile["sign_expected_pcr"]:
+                    signing += ["--sign-profile", profile["id"]]
+    return signing
+
+
 def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("uki", argv)
 
@@ -181,35 +220,7 @@ def main(argv: list[str] | None = None) -> None:
             subprocess.run(cmd, check=True)
             profile_pes.append(pe)
 
-        signing = []
-        if secure_boot:
-            signing = [
-                "--signtool", "systemd-sbsign",
-                "--secureboot-private-key", secure_boot["private_key"],
-                "--secureboot-certificate", secure_boot["certificate"],
-                "--sign-kernel",
-            ]  # fmt: skip
-            if secure_boot["source"]:
-                signing += _provider_options(secure_boot["source"])
-        # ukify measures and signs the base and each joined profile separately. All profiles are
-        # signed by default; the explicit --sign-profile list is only needed when one opts out.
-        if pcr:
-            signing += [
-                "--pcr-banks", "sha256",
-                "--pcr-private-key", pcr["private_key"],
-            ]  # fmt: skip
-            if pcr["source"]:
-                # Only the provider path passes the certificate: ukify's systemd-measure call requires
-                # one there. Everywhere else ukify derives the public key section (.pcrpkey) from the
-                # private key, which cannot mismatch, and passing the certificate instead would be a
-                # risk: nothing checks that certificate and key match, and a mismatch poisons .pcrpkey
-                # and the sealed policy without failing the build, surfacing only at unsealing.
-                signing += ["--pcr-certificate", pcr["certificate"]]
-            if not all(profile["sign_expected_pcr"] for profile in profiles):
-                signing += ["--sign-profile", "main"]
-                for profile in profiles:
-                    if profile["sign_expected_pcr"]:
-                        signing += ["--sign-profile", profile["id"]]
+        signing = _signing_arguments(secure_boot, pcr, profiles)
 
         modules = scratch / f"modules-{kver}.cpio"
         prefix = f"usr/lib/modules/{kver}"

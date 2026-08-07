@@ -62,8 +62,11 @@ engine_unittest(
         "kmod_test.py",
         "substitute.py",
         "substitute_test.py",
+        "uki.py",
+        "uki_test.py",
     ],
     deps = [
+        ":finalize",
         ":kmod",
         "//:specs",
         "//archive:cpio",
