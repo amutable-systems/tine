@@ -51,6 +51,7 @@ load(
 load(
     ":sign.bzl",
     "SigningKeyInfo",  # @unused Used as a function argument type.
+    "VERITY_KEY_ATTR",
     "resolve_signing_key",
 )
 
@@ -390,11 +391,7 @@ _bootable_disk_image = rule(
             default = False,
             doc = "leave the package database out of the system partitions; the image still carries it",
         ),
-        "verity_key": attrs.option(
-            attrs.dep(providers = [SigningKeyInfo]),
-            default = None,
-            doc = "key signing the verity signature partition",
-        ),
+        "verity_key": VERITY_KEY_ATTR,
     },
 )
 
