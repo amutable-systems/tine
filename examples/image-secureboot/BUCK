@@ -19,6 +19,7 @@ load(
     "copy",
     "generate_signing_key",
     "image_vm",
+    "initrd_image",
     "mkdir",
     "sysext_image",
 )
@@ -41,9 +42,18 @@ config_signing_key(
     token_key = "pcr-token",
 )
 
+# Declaring the initrd instead of letting the disk image declare one is what makes it configurable:
+# its packages, its operations, and how the cpio the UKI carries is compressed.
+initrd_image(
+    name = "image.initrd",
+    package_manager = ":image.package-manager",
+    compression = "none",
+)
+
 bootable_disk_image(
     name = "image",
     package_manager = ":image.package-manager",
+    initrd = ":image.initrd",
     definitions = DEFAULT_SIGNED_USR_VERITY_PARTITIONS,
     packages = [
         "kernel-core",

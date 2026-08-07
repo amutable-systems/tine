@@ -304,6 +304,24 @@ def locale_gen() -> LayerOperation:
     """Generate the locales the image's /etc/locale.gen asks for, with its own locale-gen."""
     return ("locale_gen",)
 
+# Every generator, for the compositions: they declare a whole product rather than one layer, so they
+# generate the state its packages only describe instead of leaving that to their caller. Each is a
+# no-op on an image carrying none of what it acts on, so the same three fit every composition.
+_GENERATORS = [depmod(), hwdb(), locale_gen()]
+
+def generated(ops: list[LayerOperation], installs: list[str]) -> list[LayerOperation]:
+    """Append the generators `ops` does not already place, which is what a composition ends with."""
+
+    # A layer that installs nothing and does nothing is never declared, and has nothing to generate
+    # from either.
+    if not ops and not installs:
+        return ops
+
+    # A generator the caller placed itself stays the only one of its kind: it was placed there, and
+    # configured, on purpose.
+    placed = {operation[0]: True for operation in ops}
+    return ops + [generator for generator in _GENERATORS if generator[0] not in placed]
+
 def sign_systemd_boot(key: SigningKeyInfo, arch: str) -> list[LayerOperation]:
     """Return operations that sign the image's systemd-boot binary as a `.signed` sibling.
 

@@ -771,19 +771,24 @@ command line embeds the root hash, so it can only exist after `/usr` is sealed, 
 the ESP. The verity partition itself stays unsigned in this scheme: the signed UKI command line pins the
 verity root hash, so its trust derives from the Secure Boot signature.
 
-By default, the base initrd is a separate package image with `/init` pointing to systemd and
-`/etc/initrd-release` pointing to `/etc/os-release`, installing the release's `initrd` package set, so family
-catalog policy supplies concrete native package names. Callers can instead supply any target providing
-`ImageInfo`; the rule consumes the resolved provider and skips the default initrd image entirely. It does
-not require `InitrdInfo` as an input or infer cpio, SBOM, or pkgdb target names. Instead, it terminalizes the
-supplied logical image itself: it creates the zstd cpio consumed by the UKI and republishes the package
-database and SBOM that same `ImageInfo` already carries. That cpio omits the database from the paths the
-image's package system declares: nothing in an initrd resolves a dependency or verifies a package, and the
-kernel unpacks the whole cpio into tmpfs, so shipping it would only cost boot memory. The `[pkgdb]` and
-`[sbom]` views read the tree rather than the archive, so they still describe the complete installed set.
-It then combines that image and the derived `ImageArchiveInfo` into `InitrdInfo`. The composition returns
-this provider directly and publishes the same instance from `[initrd]`, so both interfaces describe exactly
-the same initrd.
+`initrd_image()` declares the conventional initrd as a target of its own: a package image with `/init`
+pointing to systemd and `/etc/initrd-release` pointing to `/etc/os-release`, installing the release's
+`initrd` package set, so family catalog policy supplies concrete native package names. Its `packages`,
+`package_sets`, and `ops` are added to those defaults rather than replacing them, so extending an initrd
+never means restating what it already does, and `install_docs` and `install_langs` invert the defaults an OS
+image wants, since documentation and translations only cost an initrd boot memory. It generates before it
+prunes, so the hardware database it ships is compiled from the sources it then drops. The rule archives the
+image into the cpio itself, at the `compression` it declares, and returns both as `InitrdInfo` alongside the
+image's own providers. That cpio omits the package database from the paths the image's package system
+declares: nothing in an initrd resolves a dependency or verifies a package, and the kernel unpacks the whole
+cpio into tmpfs, so shipping it would only cost boot memory. The `[pkgdb]` and `[sbom]` views read the tree
+rather than the archive, so they still describe the complete installed set. `bootable_disk_image` consumes
+`InitrdInfo` rather than a bare `ImageInfo`, so the archive is the initrd target's own output and its
+compression is declared where the initrd is. A composition given no `initrd` declares `<name>.initrd` for
+itself through the same macro, inheriting its package manager, version, and distribution; the default is
+therefore an ordinary target that can be built and inspected on its own rather than an anonymous step inside
+the disk image. The composition publishes the provider it was given from `[initrd]` and returns the same
+instance directly, so both interfaces describe exactly the same initrd.
 
 `uki.py` appends the kernel-modules cpio and runs `ukify`. That cpio carries the modules `initrd_modules`
 selects, closed over their dependencies and their firmware with libkmod, which reads the image's own depmod
@@ -873,12 +878,13 @@ returns `ImageInfo` alongside its terminal provider, so consumers never depend o
 functions.
 
 The disk, directory, package database, and SBOM derive from the same ESP layer. The initrd is a second
-logical image with its own package closure, so the composition creates its cpio from that `ImageInfo` and
-republishes the package database and SBOM the image carries. The `[initrd]` subtarget exposes only the
-encompassing `InitrdInfo` as its typed contract, plus the image's metadata as nested subtargets. The main
-target returns that same `InitrdInfo` directly. Supplying a custom initrd therefore requires only one
-regular logical-image target and never a family of conventionally named siblings. VM runners remain separate
-targets because execution policy and credentials are behavior, not facets of the image artifact.
+logical image with its own package closure, declared and archived by its own target, so the composition
+republishes the package database and SBOM that image carries rather than deriving anything. The `[initrd]`
+subtarget exposes only the encompassing `InitrdInfo` as its typed contract, plus the image's metadata as
+nested subtargets. The main target returns that same `InitrdInfo` directly. Supplying a custom initrd
+therefore requires only one regular target and never a family of conventionally named siblings. VM runners
+remain separate targets because execution policy and credentials are behavior, not facets of the image
+artifact.
 
 The standalone `bootable` rule extracts semantic boot artifacts lazily from a completed logical image
 rather than forwarding whichever intermediate target created them; it earns its keep on images whose
