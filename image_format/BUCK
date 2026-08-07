@@ -40,6 +40,7 @@ python_bootstrap_binary(
     name = "sysext",
     main = "sysext.py",
     deps = [
+        ":repart_signing",
         "//:specs",
         "//:util",
         "//image:finalize",

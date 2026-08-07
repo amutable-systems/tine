@@ -13,7 +13,12 @@ Three signing roles can each take such a key, independently:
 |--------------|------------------------------------------------------|-----------------------------|
 | Secure Boot  | the UKI, its kernel, systemd-boot, ESP enrollment    | `systemd-sbsign`, `bootctl` |
 | expected PCR | the TPM policy sealing PCR 11, per UKI profile       | `systemd-measure`           |
-| verity       | the `usr-verity-sig` partition that gates an update  | `systemd-repart`            |
+| verity       | disk/sysext `*-verity-sig` partitions                | `systemd-repart`            |
+
+`image_sysext`/`sysext_image` take a verity-role key for their DDI as well. The host merging the extension
+validates the signature against the certificates in its `/usr/lib/verity.d/`; these must be files: a
+token's certificate is a URI, extract it with `/usr/lib/systemd/systemd-keyutil extract-certificate
+--certificate-source provider:pkcs11 --certificate '<uri>'` (PEM on stdout).
 
 ## How the pieces connect
 

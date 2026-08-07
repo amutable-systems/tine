@@ -1118,7 +1118,6 @@ Near-term image gaps are:
 - offline SELinux labeling instead of `selinux=0`;
 - deterministic ext4/FAT byte-level validation and any required normalization;
 - OCI, confext, ESP, and other terminal formats as real consumers require them;
-- sysext verity signing;
 - richer ordered operations for setting file metadata directly;
 - deciding whether package installation and image tooling eventually need distinct compatible engines.
 

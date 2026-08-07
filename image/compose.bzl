@@ -116,6 +116,7 @@ def _sysext_image_impl(ctx: AnalysisContext) -> list[Provider]:
         image = image,
         release = ctx.attrs.release,
         seed = ctx.attrs.seed,
+        verity_key = resolve_signing_key(ctx.attrs.verity_key),
     )
     return image_providers(
         default_outputs = [sysext.image],
