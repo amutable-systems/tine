@@ -410,6 +410,14 @@ Optional attributes:
   either way.
 - `sign_expected_pcr_key` (target providing `SigningKeyInfo`): Seals the expected-PCR policy; without one
   the policy is not sealed. See "Secure Boot signing" below.
+- `parent` (target label providing `ImageInfo`): The logical image the disk extends, instead of the
+  `package_manager` it would otherwise start one from; exactly one of the two is required. This is what
+  lets something else build on the same content the disk boots: a `sysext_image()` whose `base` is that
+  image extends what the disk carries, and the disk can then ship the resulting DDI through `esp_files`,
+  where making the extension's base the disk itself would be a dependency cycle. A disk extending a parent
+  declares its own `initrd`, because the conventional one is declared from a package manager it no longer
+  names, and the parent places the generators below itself, because only a composition places them for a
+  caller.
 - `initrd` (target label providing `InitrdInfo`): The initrd to boot, normally an `initrd_image()` (see
   below). Given none, `<name>.initrd` is declared for you with the conventional defaults, inheriting this
   target's package manager, version, and distribution. The rule republishes the package database and SBOM
