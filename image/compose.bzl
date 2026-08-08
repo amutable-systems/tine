@@ -232,8 +232,13 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
             )
         )
 
+    # Everything this composition publishes is named after the image identity: the disk, the UKI,
+    # and every split partition, which repart names after the image it writes them out of.
+    basename = "{}_{}_{}".format(image_id, version, ARCHES[ctx.attrs.arch].systemd)
+
     system = declare_repart(
         ctx,
+        basename = basename,
         definitions = system_definitions,
         disk = False,
         identifier = "system",
@@ -269,9 +274,6 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         version = version,
     )
 
-    # The disk file leaves the build as an update or installation medium, so it carries the image
-    # identity in its name, exactly like the UKI.
-    basename = "{}_{}_{}".format(image_id, version, ARCHES[ctx.attrs.arch].systemd)
     disk = declare_repart(
         ctx,
         basename = basename,
