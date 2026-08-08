@@ -472,6 +472,10 @@ views and supply-chain artifacts are lazy subtargets:
 │   └── [sbom]
 │       ├── [spdx]
 │       └── [cyclonedx]
+├── [boot]
+│   ├── [kernel]
+│   ├── [initrd]
+│   └── [uki]
 ├── [roothash]
 └── [partitions]
     ├── [usr]
@@ -493,6 +497,13 @@ the sole typed provider published by `[initrd]`. Merely carrying an artifact in 
 optional actions run only when a consumer uses the artifact or a user selects its subtarget.
 `[directory]` has the same representability limit as `image_directory`: it fails when the completed tree
 contains a path, such as a systemd-escaped unit name, that Buck directory artifacts cannot store.
+
+`[boot]` is what the disk boots, as files: the `bootable` rule run against the composition's own ESP, so a
+direct kernel boot or a publisher needs no second target pointing back at it. Its `[kernel]` and `[initrd]`
+come out of the selected UKI's PE sections, which is why `[boot][initrd]` and `[initrd]` differ: the latter
+is the initrd image this composition was given, while the former also carries the kernel modules the UKI
+adds for the kernel it selected. `[boot][uki]` is the single selected UKI, where `[uki]` is the directory of
+every UKI the image ships.
 
 The nested metadata describes the initrd, which resolves its own package closure and may therefore contain
 packages that the root filesystem does not install. Nothing scans the initrd once it is a cpio inside the
