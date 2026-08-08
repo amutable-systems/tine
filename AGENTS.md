@@ -59,6 +59,15 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
   feeds partition UUIDs), mark it `# @unsorted-dict-items`.
 - It drops load symbols it cannot see used; annotate type-only imports `# @unused`.
 
+## Declaration macros
+
+A macro that hands its arguments straight to a rule forwards them as `**kwargs`. An argument the macro
+*reads* is a typed parameter instead, never a `kwargs` lookup: the signature is where a caller finds out
+that an argument exists. For the same reason a helper takes those values as parameters rather than the
+whole `kwargs` dict. Buck reads `None` as "use the attribute's default", so such a parameter defaults to
+`None` rather than restating the rule's default, and one a caller may reach with a `select()` is annotated
+`X | Select`.
+
 ## Architecture
 
 See [the design plan](docs/design.md).

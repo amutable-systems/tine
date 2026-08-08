@@ -1,6 +1,6 @@
 """Archive and materialized-directory image outputs."""
 
-load("//distribution:defs.bzl", "distribution_aliases", "distribution_attr")
+load("//distribution:defs.bzl", "distribution_aliases", "distribution_attrs")
 load(
     "//image:image.bzl",
     "IMAGE_TOOLS_ATTR",
@@ -134,12 +134,12 @@ _image_directory = rule(
     | IMAGE_TOOLS_ATTR,
 )
 
-def image_archive(name: str, **kwargs) -> None:
+def image_archive(name: str, distribution: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
     """Declare one, compatible with the distributions its package serves."""
-    distribution_aliases(name, kwargs)
-    _image_archive(name = name, **distribution_attr(kwargs))
+    distribution_aliases(name, distribution, visibility)
+    _image_archive(name = name, **(distribution_attrs(distribution, visibility) | kwargs))
 
-def image_directory(name: str, **kwargs) -> None:
+def image_directory(name: str, distribution: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
     """Declare one, compatible with the distributions its package serves."""
-    distribution_aliases(name, kwargs)
-    _image_directory(name = name, **distribution_attr(kwargs))
+    distribution_aliases(name, distribution, visibility)
+    _image_directory(name = name, **(distribution_attrs(distribution, visibility) | kwargs))

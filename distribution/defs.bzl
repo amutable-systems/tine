@@ -112,33 +112,36 @@ def distribution_compatibility():
     targets = [described["distribution"] for described in declared.values()]
     return select({target: [] for target in targets} | {"DEFAULT": [_UNCHOSEN]})
 
-def distribution_attr(kwargs: dict) -> dict:
+def distribution_attrs(distribution: str | None = None, visibility: list[str] | None = None) -> dict:
     """Resolve what a package declares about distributions into the attributes rules take."""
-    distribution = kwargs.pop("distribution", None)
+    attributes = {"visibility": visibility}
     if distribution != None:
-        kwargs["incoming_transition"] = distribution
+        attributes["incoming_transition"] = distribution
 
     # A package that declares none leaves compatibility alone, which is every package that has not
     # opted into building for a distribution at all.
     compatibility = distribution_compatibility()
     if compatibility:
-        kwargs.setdefault("target_compatible_with", compatibility)
-    return kwargs
+        attributes["target_compatible_with"] = compatibility
+    return attributes
 
-def distribution_aliases(name: str, kwargs: dict) -> None:
+def distribution_aliases(name: str, distribution: str | None = None, visibility: list[str] | None = None) -> None:
     """Name one target once per distribution its package serves.
 
     A target that names no distribution of its own is buildable under every one of them, so the
     names that say which are declared beside it rather than listed again somewhere else. A target
     that does name one is already the distribution it is, and gets no aliases.
     """
-    if kwargs.get("distribution") != None:
+    if distribution != None:
         return
     declared = distributions_for_package()
-    visibility = kwargs.get("visibility")
     for suffix in sorted(declared):
-        alias = {"visibility": visibility} if visibility != None else {}
-        distribution_alias(name = "{}.{}".format(name, suffix), actual = ":" + name, distribution = declared[suffix]["distribution"], **alias)
+        distribution_alias(
+            name = "{}.{}".format(name, suffix),
+            actual = ":" + name,
+            distribution = declared[suffix]["distribution"],
+            visibility = visibility,
+        )
 
 def _distribution_alias_impl(ctx: AnalysisContext) -> list[Provider]:
     return ctx.attrs.actual.providers
@@ -149,11 +152,11 @@ _distribution_alias = rule(
     supports_incoming_transition = True,
 )
 
-def distribution_alias(name: str, actual: str, distribution: str, **kwargs) -> None:
+def distribution_alias(name: str, actual: str, distribution: str, visibility: list[str] | None = None) -> None:
     """The same target, built for another distribution.
 
     Everything below it is reconfigured, so one declaration serves every distribution rather than
     being written out once per distribution. The alias itself stays compatible with anything: it is
     what chooses, so requiring a choice of it would be circular.
     """
-    _distribution_alias(name = name, actual = actual, incoming_transition = distribution, **kwargs)
+    _distribution_alias(name = name, actual = actual, incoming_transition = distribution, visibility = visibility)
