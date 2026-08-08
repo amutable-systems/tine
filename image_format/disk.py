@@ -37,6 +37,8 @@ class SplitOutputSpec(TypedDict):
 
 class Spec(finalize.ImageSpec):
     out: str | None
+    # What the artifacts of this invocation are named after, extension aside.
+    basename: str
     # Stable target identity the seed derives from, unless one is given outright.
     identity: str
     output_size: str | None
@@ -96,7 +98,11 @@ class Definition:
         for copy in self.copy_files:
             lines.append(f"CopyFiles={copy}")
         if split:
-            lines.append(f"SplitName={self.name}")
+            # repart resolves this against the name of the image it writes, so a split artifact
+            # leaves the run already named the way it is published: %t is the partition type and
+            # %U the UUID it generated, which systemd-sysupdate reads back out of the name as @u
+            # to give the partition it writes that same UUID.
+            lines.append("SplitName=%t.%U")
         return "\n".join(lines) + "\n"
 
     def render_import(self, blocks: Path, metadata: dict[str, Any]) -> str:
@@ -202,6 +208,7 @@ def _copy_partition(row: dict[str, Any], output: SplitOutput) -> None:
 
     metadata = {
         "label": row.get("label"),
+        "published": source.name,
         "raw_size": raw_size,
         "type": row["type"],
         "uuid": row["uuid"],
@@ -292,7 +299,9 @@ def main(argv: list[str] | None = None) -> None:
             else _derived_seed(spec["identity"], raw_definitions, partitions)
         )
         out = Path(spec["out"]) if spec["out"] else None
-        disk = scratch / "image.raw" if outputs else out
+        # A split artifact is named after the image repart writes, so the scratch file carries the
+        # published basename even when only the partitions leave this invocation.
+        disk = scratch / f"{spec['basename']}.raw" if outputs else out
         assert disk is not None  # one of a disk output and split outputs is required
         cmd = [
             "systemd-repart",

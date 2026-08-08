@@ -308,6 +308,7 @@ def declare_repart(
         pkgdb_paths = system.database_paths
 
     spec = {
+        "basename": basename,
         "definitions": decoded,
         "identity": "{}[{}]".format(ctx.label, identifier or "repart"),
         "mkfs_options": mkfs_options,
@@ -434,7 +435,10 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
     ]
 
 REPART_ATTRS = {
-    "basename": attrs.string(default = "image", doc = "file name of the composed disk, without extension"),
+    "basename": attrs.string(
+        default = "image",
+        doc = "what the composed disk and its split partitions are named after, without extension",
+    ),
     "definitions": attrs.list(attrs.string(), doc = "serialized partition definitions"),
     "mkfs_options": attrs.dict(
         attrs.string(),
