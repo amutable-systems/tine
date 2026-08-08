@@ -150,6 +150,9 @@ def _esp_operations(
     return operations
 
 def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
+    if (ctx.attrs.parent == None) == (ctx.attrs.package_manager == None):
+        fail("bootable_disk_image: exactly one of parent and package_manager is required")
+
     image_id = check_name(
         "bootable_disk_image image_id",
         ctx.attrs.image_id or ctx.label.name,
@@ -171,6 +174,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         ops = generated(ctx.attrs.ops, ctx.attrs.packages + ctx.attrs.package_sets),
         package_manager = ctx.attrs.package_manager,
         package_sets = ctx.attrs.package_sets,
+        parent = ctx.attrs.parent[ImageInfo] if ctx.attrs.parent != None else None,
         packages = ctx.attrs.packages,
         tmpfiles = ctx.attrs.tmpfiles,
         version = version,
@@ -349,7 +353,15 @@ _bootable_disk_image = rule(
             default = None,
             doc = 'size to compose the disk at, e.g. "20G"; the room past the partitions stays free',
         ),
-        "package_manager": attrs.dep(providers = [PackageManagerInfo]),
+        "package_manager": attrs.option(
+            attrs.dep(providers = [PackageManagerInfo]),
+            default = None,
+        ),
+        "parent": attrs.option(
+            attrs.dep(providers = [ImageInfo]),
+            default = None,
+            doc = "the logical image the disk extends instead of starting one of its own",
+        ),
         "strip_pkgdb": attrs.bool(
             default = False,
             doc = "leave the package database out of the system partitions; the image still carries it",
@@ -381,7 +393,8 @@ def bootable_disk_image(
     """Compose the initrd, versioned UKIs, the ESP, and system partitions into a disk.
 
     Without `initrd`, a conventional `initrd_image()` is declared as `<name>.initrd` and booted;
-    declare one yourself to configure its packages, operations, or compression.
+    declare one yourself to configure its packages, operations, or compression, which a disk
+    extending `parent` has to do because the initrd takes its package manager from the disk.
 
     With secure_boot_key, the UKIs and systemd-boot are signed for Secure Boot, and the ESP receives
     key auto-enrollment files for firmware in setup mode. With sign_expected_pcr_key, the UKIs carry
@@ -389,6 +402,11 @@ def bootable_disk_image(
     """
     initrd = kwargs.pop("initrd", None)
     if initrd == None:
+        if "package_manager" not in kwargs:
+            fail(
+                "bootable_disk_image {}: declare an `initrd_image()` and pass it as `initrd`; ".format(name)
+                + "a disk extending `parent` names no package manager to declare one from",
+            )
         initrd = ":{}.initrd".format(name)
         initrd_image(
             name = name + ".initrd",
