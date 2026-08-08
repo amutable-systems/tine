@@ -1,7 +1,7 @@
 """Configured native package managers."""
 
 load("//:specs.bzl", "spec_args")
-load("//distribution:defs.bzl", "distribution_attr")
+load("//distribution:defs.bzl", "distribution_attrs")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load(":local_packages.bzl", "LocalPackageUniverseInfo")
 load(":release.bzl", "OsReleaseInfo")
@@ -207,4 +207,4 @@ _package_manager = rule(
 def package_manager(name: str, **kwargs) -> None:
     if not name.endswith(".package-manager"):
         fail("package_manager name must end with '.package-manager': {}".format(name))
-    _package_manager(name = name, **distribution_attr(kwargs))
+    _package_manager(name = name, **(distribution_attrs() | kwargs))

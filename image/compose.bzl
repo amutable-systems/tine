@@ -1,6 +1,6 @@
 """Convenience compositions for image products."""
 
-load("//distribution:defs.bzl", "distribution_aliases", "distribution_attr")
+load("//distribution:defs.bzl", "distribution_aliases", "distribution_attrs")
 load(
     "//image_format:archive.bzl",
     "ARCHIVE_ATTRS",
@@ -53,18 +53,24 @@ load(
     "resolve_signing_key",
 )
 
-def _composed_image(ctx: AnalysisContext, generate: bool = True, **kwargs) -> ImageInfo:
+def _composed_image(
+    ctx: AnalysisContext,
+    generate: bool = True,
+    package_manager: Dependency | None = None,
+    parent: ImageInfo | None = None,
+) -> ImageInfo:
     return declare_image(
         ctx,
         identifier = "image",
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
         ops = generated(ctx.attrs.ops, ctx.attrs.packages + ctx.attrs.package_sets) if generate else ctx.attrs.ops,
+        package_manager = package_manager,
         package_sets = ctx.attrs.package_sets,
         packages = ctx.attrs.packages,
+        parent = parent,
         tmpfiles = ctx.attrs.tmpfiles,
         version = ctx.attrs.version,
-        **kwargs,
     )
 
 def _rootfs_archive_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -370,15 +376,27 @@ _bootable_disk_image = rule(
     },
 )
 
-def rootfs_archive(name: str, ops: list[LayerOperationTree] = [], **kwargs) -> None:
+def rootfs_archive(
+    name: str,
+    ops: list[LayerOperationTree] = [],
+    distribution: str | None = None,
+    visibility: list[str] | None = None,
+    **kwargs,
+) -> None:
     """Build one logical image from operations and emit it as an archive."""
-    distribution_aliases(name, kwargs)
-    _rootfs_archive(name = name, ops = flatten_operations(ops), **distribution_attr(kwargs))
+    distribution_aliases(name, distribution, visibility)
+    _rootfs_archive(name = name, ops = flatten_operations(ops), **(distribution_attrs(distribution, visibility) | kwargs))
 
-def sysext_image(name: str, ops: list[LayerOperationTree] = [], **kwargs) -> None:
+def sysext_image(
+    name: str,
+    ops: list[LayerOperationTree] = [],
+    distribution: str | None = None,
+    visibility: list[str] | None = None,
+    **kwargs,
+) -> None:
     """Build one logical image from operations and package it as a system-extension DDI."""
-    distribution_aliases(name, kwargs)
-    _sysext_image(name = name, ops = flatten_operations(ops), **distribution_attr(kwargs))
+    distribution_aliases(name, distribution, visibility)
+    _sysext_image(name = name, ops = flatten_operations(ops), **(distribution_attrs(distribution, visibility) | kwargs))
 
 def bootable_disk_image(
     name: str,
@@ -388,6 +406,11 @@ def bootable_disk_image(
     verity_key: str | None = None,
     secure_boot_key: str | None = None,
     sign_expected_pcr_key: str | None = None,
+    initrd: str | Select | None = None,
+    package_manager: str | Select | None = None,
+    version: str | Select | None = None,
+    distribution: str | None = None,
+    visibility: list[str] | None = None,
     **kwargs,
 ) -> None:
     """Compose the initrd, versioned UKIs, the ESP, and system partitions into a disk.
@@ -400,9 +423,8 @@ def bootable_disk_image(
     key auto-enrollment files for firmware in setup mode. With sign_expected_pcr_key, the UKIs carry
     a signed expected-PCR policy.
     """
-    initrd = kwargs.pop("initrd", None)
     if initrd == None:
-        if "package_manager" not in kwargs:
+        if package_manager == None:
             fail(
                 "bootable_disk_image {}: declare an `initrd_image()` and pass it as `initrd`; ".format(name)
                 + "a disk extending `parent` names no package manager to declare one from",
@@ -410,14 +432,14 @@ def bootable_disk_image(
         initrd = ":{}.initrd".format(name)
         initrd_image(
             name = name + ".initrd",
-            package_manager = kwargs["package_manager"],
-            version = kwargs.get("version", "0"),
-            visibility = kwargs.get("visibility"),
+            package_manager = package_manager,
+            version = version,
+            visibility = visibility,
             # The image naming a distribution of its own makes its initrd that distribution too;
             # otherwise the leaf pulling it in decides, exactly as a parent chain does.
-            distribution = kwargs.get("distribution"),
+            distribution = distribution,
         )
-    distribution_aliases(name, kwargs)
+    distribution_aliases(name, distribution, visibility)
     _bootable_disk_image(
         name = name,
         initrd = initrd,
@@ -431,9 +453,11 @@ def bootable_disk_image(
             split = True,
         ),
         ops = flatten_operations(ops),
+        package_manager = package_manager,
         profiles = encode_profiles(profiles),
         secure_boot_key = secure_boot_key,
         sign_expected_pcr_key = sign_expected_pcr_key,
         verity_key = verity_key,
-        **distribution_attr(kwargs),
+        version = version,
+        **(distribution_attrs(distribution, visibility) | kwargs),
     )

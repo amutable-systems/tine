@@ -1,6 +1,6 @@
 """The conventional initrd a bootable image boots, as a target of its own."""
 
-load("//distribution:defs.bzl", "distribution_aliases", "distribution_attr")
+load("//distribution:defs.bzl", "distribution_aliases", "distribution_attrs")
 load(
     "//image_format:archive.bzl",
     "COMPRESSIONS",
@@ -90,12 +90,18 @@ _initrd_image = rule(
     },
 )
 
-def initrd_image(name: str, ops: list[LayerOperationTree] = [], **kwargs) -> None:
+def initrd_image(
+    name: str,
+    ops: list[LayerOperationTree] = [],
+    distribution: str | None = None,
+    visibility: list[str] | None = None,
+    **kwargs,
+) -> None:
     """Declare the conventional initrd, extended by `packages`, `package_sets`, and `ops`.
 
     The release's `initrd` package set and the operations every initrd needs come first; what this
     target declares is added to them rather than replacing them. `bootable_disk_image` declares one
     of these for itself when it is given no `initrd`.
     """
-    distribution_aliases(name, kwargs)
-    _initrd_image(name = name, ops = flatten_operations(ops), **distribution_attr(kwargs))
+    distribution_aliases(name, distribution, visibility)
+    _initrd_image(name = name, ops = flatten_operations(ops), **(distribution_attrs(distribution, visibility) | kwargs))
