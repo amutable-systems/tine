@@ -119,6 +119,25 @@ uki_modules() {
     done
 }
 
+# What the demo disk boots, extracted out of its own ESP. The selection is semantic (the newest
+# kernel, its UKI, the sections inside it), so it can go wrong without any target failing; assert by
+# magic that each artifact is what it claims to be, and that the extracted initrd is the one the UKI
+# carries rather than the initrd image the composition was handed.
+boot_artifacts() {
+    local scratch target=tine//examples/image:boot-demo.fedora
+    scratch=$(mktemp -d)
+    "$buck" build "$target[boot][kernel]" --out "$scratch/vmlinuz"
+    "$buck" build "$target[boot][uki]" --out "$scratch/uki.efi"
+    "$buck" build "$target[boot][initrd]" --out "$scratch/initrd"
+    "$buck" build "$target[initrd]" --out "$scratch/image.cpio.zst"
+    # A bzImage carries "HdrS" at 0x202 and a PE binary "MZ" at 0.
+    test "$(dd if="$scratch/vmlinuz" bs=1 skip=514 count=4 status=none)" = HdrS
+    test "$(dd if="$scratch/uki.efi" bs=1 count=2 status=none)" = MZ
+    # The UKI appends the modules initrd to the one it was given, so the extracted one is larger.
+    test "$(stat -c%s "$scratch/initrd")" -gt "$(stat -c%s "$scratch/image.cpio.zst")"
+    rm -rf "$scratch"
+}
+
 # Sign the Secure Boot example through PKCS#11 tokens, exercising the external-key path end to end
 # with the production module: tools/signing-server serves one tpm2-pkcs11 token per key from a
 # software TPM, and the same example builds against its socket. Every tool this needs comes from the
@@ -191,6 +210,7 @@ group verify-catalog    -- "$buck" run tine//tools:verify-catalog
 group box               -- "$buck" build tine//examples/box:box
 group boot-demo-image   -- "$buck" build tine//examples/image:boot-demo.fedora
 group uki-modules       -- uki_modules
+group boot-artifacts    -- boot_artifacts
 group boot-demo-smoke   -- "$buck" run tine//examples/image:boot-demo-vm-smoke.fedora
 group rust-sbom         -- rust_sbom
 group go-sbom           -- go_sbom

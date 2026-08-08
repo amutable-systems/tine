@@ -7,6 +7,7 @@ load(
     "declare_image_archive",
     "declare_image_directory",
 )
+load("//image_format:boot.bzl", "boot_subtargets", "declare_boot_artifacts")
 load(
     "//image_format:disk.bzl",
     "DISK_FORMATS",
@@ -303,8 +304,19 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         for format in DISK_FORMATS
     ]
 
+    # What this disk boots, as files rather than as PE sections: a direct kernel boot needs the
+    # kernel and the initrd the UKI carries, and publishing needs the one UKI out of the set the
+    # image ships. Declared here so a caller does not have to point a second target at the ESP.
+    boot = declare_boot_artifacts(ctx, identifier = "boot", image = esp)
+
     sub_targets = dict(disk.sub_targets)
     sub_targets.update({
+        "boot": [
+            DefaultInfo(
+                default_outputs = [boot.kernel, boot.initrd],
+                sub_targets = boot_subtargets(boot),
+            ),
+        ],
         "directory": [DefaultInfo(default_output = directory.directory), directory],
         "initrd": [
             DefaultInfo(
