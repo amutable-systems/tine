@@ -14,7 +14,7 @@ from util import MAGIC, decompressor
 
 import snapshotter
 from href import relative_href
-from snapshotter import PackageEntry
+from snapshotter import MetadataFile, PackageEntry, RepositoryMetadata
 
 _REPOMD_NS = "http://linux.duke.edu/metadata/repo"
 _PRIMARY_NS = "http://linux.duke.edu/metadata/common"
@@ -25,17 +25,9 @@ _OPTIONAL_STREAMS = ("group",)
 _KEPT_STREAMS = frozenset(_REQUIRED_STREAMS + _OPTIONAL_STREAMS)
 
 
-class RepositoryStream(TypedDict):
-    out: str
-    url: str
-    sha256: str
-    size: int
-
-
 class RepositorySnapshot(TypedDict):
+    metadata: RepositoryMetadata
     packages: dict[str, PackageEntry]
-    repomd: str
-    streams: list[RepositoryStream]
 
 
 class BinaryReader(Protocol):
@@ -104,7 +96,7 @@ def _parse_primary(rid: str, source: BinaryReader) -> dict[str, PackageEntry]:
     return packages
 
 
-def _load_package_index(rid: str, stream: RepositoryStream) -> dict[str, PackageEntry]:
+def _load_package_index(rid: str, stream: MetadataFile) -> dict[str, PackageEntry]:
     """Download, verify, decompress, and parse the pinned primary stream."""
     with tempfile.TemporaryFile("w+b") as compressed:
         snapshotter.download(
@@ -134,7 +126,7 @@ def _repository_stream(
     baseurl: str,
     stream_type: str,
     data: ET.Element,
-) -> RepositoryStream:
+) -> MetadataFile:
     """Decode and validate one retained repomd data record."""
     location = data.find(f"{{{_REPOMD_NS}}}location")
     checksum = data.find(f"{{{_REPOMD_NS}}}checksum[@type='sha256']")
@@ -150,8 +142,8 @@ def _repository_stream(
         raise SystemExit(f"{rid}: {stream_type} record lacks a location, sha256 checksum, or size")
 
     href = _location_href(rid, f"{stream_type} stream", location)
-    return RepositoryStream(
-        out=PurePosixPath(href).name,
+    return MetadataFile(
+        out=f"repodata/{PurePosixPath(href).name}",
         url=baseurl + href,
         sha256=snapshotter.checksum(rid, f"{stream_type} stream", checksum.text),
         # Recording the compressed size avoids an unpinned HEAD request later.
@@ -172,9 +164,9 @@ def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
     root = ET.fromstring(repomd)
 
     kept: set[str] = set()
-    streams: list[RepositoryStream] = []
+    streams: list[MetadataFile] = []
     outputs: set[str] = set()
-    primary: RepositoryStream | None = None
+    primary: MetadataFile | None = None
     # The filtered repomd becomes the exact local repository view consumed by libdnf5.
     for data in list(root.findall(f"{{{_REPOMD_NS}}}data")):
         stream_type = data.get("type")
@@ -199,8 +191,12 @@ def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
         raise SystemExit(f"{rid}: repomd.xml has no primary stream")
 
     filtered = ET.tostring(root, encoding="unicode", xml_declaration=True)
-    packages = _load_package_index(rid, primary)
-    return {"packages": packages, "repomd": filtered, "streams": streams}
+    return {
+        # The filtered repomd is the exact local repository view libdnf5 consumes, so it travels
+        # as bytes rather than as something to fetch again.
+        "metadata": RepositoryMetadata(files=streams, inline={"repodata/repomd.xml": filtered}),
+        "packages": _load_package_index(rid, primary),
+    }
 
 
 def main(argv: list[str] | None = None) -> None:

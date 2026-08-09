@@ -1,4 +1,29 @@
 {
+  "metadata": {
+    "files": [
+      {
+        "out": "repodata/585e821a34b4876747cc414857442e165cfc4e250836838913373114a9e96a14-primary.xml.zst",
+        "sha256": "585e821a34b4876747cc414857442e165cfc4e250836838913373114a9e96a14",
+        "size": 16110587,
+        "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260729/repodata/585e821a34b4876747cc414857442e165cfc4e250836838913373114a9e96a14-primary.xml.zst"
+      },
+      {
+        "out": "repodata/4082c1c401dd84223af0c3d88c0a9d135a5009206888de7d406d44efe2502443-filelists.xml.zst",
+        "sha256": "4082c1c401dd84223af0c3d88c0a9d135a5009206888de7d406d44efe2502443",
+        "size": 47303107,
+        "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260729/repodata/4082c1c401dd84223af0c3d88c0a9d135a5009206888de7d406d44efe2502443-filelists.xml.zst"
+      },
+      {
+        "out": "repodata/53c0c57ab27a09a5c97a9d3e1854a9382902ac5178553b8a3d2cb51466a3d3e5-comps-Everything.x86_64.xml.zst",
+        "sha256": "53c0c57ab27a09a5c97a9d3e1854a9382902ac5178553b8a3d2cb51466a3d3e5",
+        "size": 291584,
+        "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260729/repodata/53c0c57ab27a09a5c97a9d3e1854a9382902ac5178553b8a3d2cb51466a3d3e5-comps-Everything.x86_64.xml.zst"
+      }
+    ],
+    "inline": {
+      "repodata/repomd.xml": "<?xml version='1.0' encoding='utf-8'?>\n<repomd xmlns=\"http://linux.duke.edu/metadata/repo\">\n  <revision>1785216859</revision>\n  <data type=\"primary\">\n    <checksum type=\"sha256\">585e821a34b4876747cc414857442e165cfc4e250836838913373114a9e96a14</checksum>\n    <open-checksum type=\"sha256\">dfecfd6cb47cfb53f70dc7648a994b2d9bd06a50920358d2b8580780ae18461b</open-checksum>\n    <location href=\"repodata/585e821a34b4876747cc414857442e165cfc4e250836838913373114a9e96a14-primary.xml.zst\" />\n    <timestamp>1785216848</timestamp>\n    <size>16110587</size>\n    <open-size>196068247</open-size>\n  </data>\n  <data type=\"filelists\">\n    <checksum type=\"sha256\">4082c1c401dd84223af0c3d88c0a9d135a5009206888de7d406d44efe2502443</checksum>\n    <open-checksum type=\"sha256\">82d7ce1079528de393675ed81773b9289082a87eb0af211fd999a5f00585b9b1</open-checksum>\n    <location href=\"repodata/4082c1c401dd84223af0c3d88c0a9d135a5009206888de7d406d44efe2502443-filelists.xml.zst\" />\n    <timestamp>1785216848</timestamp>\n    <size>47303107</size>\n    <open-size>840987036</open-size>\n  </data>\n  <data type=\"group\">\n    <checksum type=\"sha256\">53c0c57ab27a09a5c97a9d3e1854a9382902ac5178553b8a3d2cb51466a3d3e5</checksum>\n    <location href=\"repodata/53c0c57ab27a09a5c97a9d3e1854a9382902ac5178553b8a3d2cb51466a3d3e5-comps-Everything.x86_64.xml.zst\" />\n    <timestamp>1785216650</timestamp>\n    <size>291584</size>\n  </data>\n  </repomd>"
+    }
+  },
   "packages": {
     "00000448019a56322d62412e898c0cf56eabbf30201b6dc1a7fa7c59bf0090ad": {"location":"Packages/l/libvirt-daemon-qemu-12.5.0-2.fc45.x86_64.rpm","size":11373},
     "000088a82a99e80dac3b716d7be288d5bdcd08087a54f83809310f47e402224b": {"location":"Packages/r/rust-unic-langid-impl-devel-0.9.6-4.fc45.noarch.rpm","size":82504},
@@ -75347,26 +75372,5 @@
     "fff992f112130ff5e330f3abbf6262466f753dff73e4b94acc979a2e08ba6bc0": {"location":"Packages/r/rust-minijinja+serde-devel-2.17.1-2.fc45.noarch.rpm","size":8853},
     "ffff8ac1c84b202215e42890af600357634d34865776464ab541a83ec3a443e4": {"location":"Packages/r/rust-futures-channel+futures-sink-devel-0.3.33-1.fc45.noarch.rpm","size":8365},
     "ffffb5d607e76f1cc3445b0ee946c258d70de9a5bf720c01e77b4702bdcbd0c6": {"location":"Packages/t/texlive-tikzpingus-svn78219-4.fc45.noarch.rpm","size":4390674}
-  },
-  "repomd": "<?xml version='1.0' encoding='utf-8'?>\n<repomd xmlns=\"http://linux.duke.edu/metadata/repo\">\n  <revision>1785216859</revision>\n  <data type=\"primary\">\n    <checksum type=\"sha256\">585e821a34b4876747cc414857442e165cfc4e250836838913373114a9e96a14</checksum>\n    <open-checksum type=\"sha256\">dfecfd6cb47cfb53f70dc7648a994b2d9bd06a50920358d2b8580780ae18461b</open-checksum>\n    <location href=\"repodata/585e821a34b4876747cc414857442e165cfc4e250836838913373114a9e96a14-primary.xml.zst\" />\n    <timestamp>1785216848</timestamp>\n    <size>16110587</size>\n    <open-size>196068247</open-size>\n  </data>\n  <data type=\"filelists\">\n    <checksum type=\"sha256\">4082c1c401dd84223af0c3d88c0a9d135a5009206888de7d406d44efe2502443</checksum>\n    <open-checksum type=\"sha256\">82d7ce1079528de393675ed81773b9289082a87eb0af211fd999a5f00585b9b1</open-checksum>\n    <location href=\"repodata/4082c1c401dd84223af0c3d88c0a9d135a5009206888de7d406d44efe2502443-filelists.xml.zst\" />\n    <timestamp>1785216848</timestamp>\n    <size>47303107</size>\n    <open-size>840987036</open-size>\n  </data>\n  <data type=\"group\">\n    <checksum type=\"sha256\">53c0c57ab27a09a5c97a9d3e1854a9382902ac5178553b8a3d2cb51466a3d3e5</checksum>\n    <location href=\"repodata/53c0c57ab27a09a5c97a9d3e1854a9382902ac5178553b8a3d2cb51466a3d3e5-comps-Everything.x86_64.xml.zst\" />\n    <timestamp>1785216650</timestamp>\n    <size>291584</size>\n  </data>\n  </repomd>",
-  "streams": [
-    {
-      "out": "585e821a34b4876747cc414857442e165cfc4e250836838913373114a9e96a14-primary.xml.zst",
-      "sha256": "585e821a34b4876747cc414857442e165cfc4e250836838913373114a9e96a14",
-      "size": 16110587,
-      "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260729/repodata/585e821a34b4876747cc414857442e165cfc4e250836838913373114a9e96a14-primary.xml.zst"
-    },
-    {
-      "out": "4082c1c401dd84223af0c3d88c0a9d135a5009206888de7d406d44efe2502443-filelists.xml.zst",
-      "sha256": "4082c1c401dd84223af0c3d88c0a9d135a5009206888de7d406d44efe2502443",
-      "size": 47303107,
-      "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260729/repodata/4082c1c401dd84223af0c3d88c0a9d135a5009206888de7d406d44efe2502443-filelists.xml.zst"
-    },
-    {
-      "out": "53c0c57ab27a09a5c97a9d3e1854a9382902ac5178553b8a3d2cb51466a3d3e5-comps-Everything.x86_64.xml.zst",
-      "sha256": "53c0c57ab27a09a5c97a9d3e1854a9382902ac5178553b8a3d2cb51466a3d3e5",
-      "size": 291584,
-      "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45/f45-x86_64-rawhide-20260729/repodata/53c0c57ab27a09a5c97a9d3e1854a9382902ac5178553b8a3d2cb51466a3d3e5-comps-Everything.x86_64.xml.zst"
-    }
-  ]
+  }
 }
