@@ -8,11 +8,9 @@ load("//package:manager.bzl", "PackageManagerInfo")
 load(
     "//package:repository.bzl",
     "LocalPackageInfo",
-    "PackageArtifactInfo",
     "PackagePoolInfo",
-    "PackagePoolValueInfo",
     "REMOTE_REPOSITORY_ATTRS",
-    "pool_transports",
+    "declare_package_pool",
     "remote_repository_base",
     "snapshot_data",
 )
@@ -56,38 +54,6 @@ _materialize_repodata = dynamic_actions(
     },
 )
 
-def _materialize_package_pool_impl(
-    actions: AnalysisActions,
-    baseurl: str,
-    engine_locks: list[ArtifactValue],
-    id: str,
-    snapshot: ArtifactValue,
-) -> list[Provider]:
-    packages = pool_transports(id, baseurl, snapshot, engine_locks)
-    rpms = {}
-    for pkgid, package in packages.items():
-        url = package["url"]
-        raw = actions.declare_output("packages", pkgid + ".rpm", has_content_based_path = True)
-        actions.download_file(
-            raw,
-            url,
-            sha256 = pkgid,
-            # A repository may serve a package larger than a Starlark i32, which arrives as a float.
-            size_bytes = int(package["size"]),
-        )
-        rpms[pkgid] = PackageArtifactInfo(artifact = raw, name = url.rsplit("/", 1)[-1])
-    return [PackagePoolValueInfo(packages = rpms)]
-
-_materialize_package_pool = dynamic_actions(
-    impl = _materialize_package_pool_impl,
-    attrs = {
-        "baseurl": dynattrs.value(str),
-        "engine_locks": dynattrs.list(dynattrs.artifact_value()),
-        "id": dynattrs.value(str),
-        "snapshot": dynattrs.artifact_value(),
-    },
-)
-
 def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     repo = ctx.actions.declare_output("repo", dir = True)
     snapshot = ctx.attrs.snapshot
@@ -100,21 +66,21 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
             snapshot = snapshot,
         )
     )
-    pool = ctx.actions.dynamic_output_new(
-        _materialize_package_pool(
-            baseurl = ctx.attrs.baseurl,
-            engine_locks = ctx.attrs.engine_locks,
-            id = ctx.label.name,
-            snapshot = snapshot,
-        )
-    )
     return remote_repository_base(
         ctx,
         baseurl = ctx.attrs.baseurl,
         package_system = ctx.attrs.package_system,
         repo_dir = repo,
     ) + [
-        PackagePoolInfo(value = pool),
+        PackagePoolInfo(
+            value = declare_package_pool(
+                ctx,
+                baseurl = ctx.attrs.baseurl,
+                engine_locks = ctx.attrs.engine_locks,
+                package_system = ctx.attrs.package_system,
+                snapshot = snapshot,
+            ),
+        ),
     ]
 
 _remote_repository = rule(
