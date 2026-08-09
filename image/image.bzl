@@ -452,6 +452,7 @@ def _declare_pkgdb(
 def _declare_sbom(
     ctx: AnalysisContext,
     *,
+    tools: ImageToolsInfo,
     engine: Dependency,
     layers: list[Artifact],
     tmpfiles: list[str],
@@ -459,7 +460,6 @@ def _declare_sbom(
     version: str,
     identifier: str | None,
 ) -> ImageSbomInfo:
-    tools = ctx.attrs._tools[ImageToolsInfo]
     spdx = declare_out(ctx, identifier, "sbom.spdx.json")
     cdx = declare_out(ctx, identifier, "sbom.cdx.json")
     cmd = _image_command(
@@ -486,6 +486,7 @@ def _declare_sbom(
 def declare_image(
     ctx: AnalysisContext,
     *,
+    tools: ImageToolsInfo,
     ops: list[LayerOperation],
     packages: list[str] = [],
     package_sets: list[str] = [],
@@ -506,7 +507,6 @@ def declare_image(
     every operation sees the packages this layer adds. `keys` names the signing keys this layer's
     operations use, so that the action can reach one held outside the build.
     """
-    tools = ctx.attrs._tools[ImageToolsInfo]
     if parent != None:
         if engine != None or package_manager != None:
             fail("image: parent cannot be combined with engine or package_manager")
@@ -606,6 +606,7 @@ def declare_image(
         pkgdb = pkgdb,
         sbom = _declare_sbom(
             ctx,
+            tools = tools,
             engine = engine,
             identifier = identifier,
             layers = layers,
@@ -698,6 +699,7 @@ IMAGE_ATTRS = {
 def _image_impl(ctx: AnalysisContext) -> list[Provider]:
     image = declare_image(
         ctx,
+        tools = ctx.attrs._tools[ImageToolsInfo],
         engine = ctx.attrs.engine,
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,

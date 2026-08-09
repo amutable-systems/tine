@@ -40,6 +40,7 @@ SysextImageInfo = provider(
 def declare_image_sysext(
     ctx: AnalysisContext,
     *,
+    tools: ImageToolsInfo,
     image: ImageInfo,
     extension: str,
     arch: str,
@@ -85,7 +86,7 @@ def declare_image_sysext(
         signing_access = signing_access,
         # The DDI is named after the extension, so one composition can declare several.
         driver = "sysext-" + extension,
-        exe = ctx.attrs._tools[ImageToolsInfo].sysext,
+        exe = tools.sysext,
         image = image,
         spec = {
             "base": layers,
@@ -112,6 +113,7 @@ def declare_image_sysext(
 def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
     info = declare_image_sysext(
         ctx,
+        tools = ctx.attrs._tools[ImageToolsInfo],
         arch = ctx.attrs.arch,
         base = ctx.attrs.base[ImageInfo] if ctx.attrs.base != None else None,
         extension = ctx.attrs.extension_name or ctx.label.name,

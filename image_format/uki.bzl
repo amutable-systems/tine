@@ -71,6 +71,7 @@ def encode_profiles(profiles: list[UkiProfile]) -> list[str]:
 def declare_uki(
     ctx: AnalysisContext,
     *,
+    tools: ImageToolsInfo,
     image: ImageInfo,
     initrds: list[ImageArchiveInfo],
     cmdline: list[str],
@@ -111,7 +112,7 @@ def declare_uki(
         ctx,
         signing_access = signing_access,
         driver = "uki",
-        exe = ctx.attrs._tools[ImageToolsInfo].uki,
+        exe = tools.uki,
         identifier = identifier,
         image = image,
         spec = {
@@ -150,6 +151,7 @@ def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
             fail("uki: root_hash RepartInfo does not contain a verity root hash")
     info = declare_uki(
         ctx,
+        tools = ctx.attrs._tools[ImageToolsInfo],
         arch = ctx.attrs.arch,
         cmdline = ctx.attrs.cmdline,
         image = ctx.attrs.image[ImageInfo],

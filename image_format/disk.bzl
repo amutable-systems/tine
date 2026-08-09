@@ -245,6 +245,7 @@ def _partition_sub_targets(partitions: list[PartitionInfo]) -> dict[str, list[Pr
 def declare_repart(
     ctx: AnalysisContext,
     *,
+    tools: ImageToolsInfo,
     image: ImageInfo,
     definitions: list[str],
     disk: bool = True,
@@ -385,7 +386,7 @@ def declare_repart(
             ctx,
             signing_access = signing_access,
             driver = "repart",
-            exe = ctx.attrs._tools[ImageToolsInfo].disk,
+            exe = tools.disk,
             identifier = identifier,
             image = image,
             spec = spec,
@@ -409,6 +410,7 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
             imported_root_hash = root_hash
     result = declare_repart(
         ctx,
+        tools = ctx.attrs._tools[ImageToolsInfo],
         basename = ctx.attrs.basename,
         definitions = ctx.attrs.definitions,
         disk = ctx.attrs.disk,
@@ -512,6 +514,7 @@ DiskConversionInfo = provider(
 def declare_disk_conversion(
     ctx: AnalysisContext,
     *,
+    tools: ImageToolsInfo,
     disk: RepartInfo,
     engine: Dependency,
     format: str,
@@ -523,7 +526,7 @@ def declare_disk_conversion(
         fail("disk_convert: RepartInfo does not contain a composed disk")
     out = declare_out(ctx, identifier, basename + "." + format)
     cmd = cmd_args(
-        chroot_run(engine = engine[EngineInfo], exe = ctx.attrs._tools[ImageToolsInfo].convert),
+        chroot_run(engine = engine[EngineInfo], exe = tools.convert),
         spec_args(
             ctx.actions,
             spec_path(identifier, "convert"),
@@ -540,6 +543,7 @@ def declare_disk_conversion(
 def _disk_convert_impl(ctx: AnalysisContext) -> list[Provider]:
     info = declare_disk_conversion(
         ctx,
+        tools = ctx.attrs._tools[ImageToolsInfo],
         basename = ctx.attrs.basename,
         disk = ctx.attrs.disk[RepartInfo],
         engine = ctx.attrs.engine,

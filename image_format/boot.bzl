@@ -24,6 +24,7 @@ BootArtifactsInfo = record(
 def declare_boot_artifacts(
     ctx: AnalysisContext,
     *,
+    tools: ImageToolsInfo,
     image: ImageInfo,
     identifier: str | None = None,
 ) -> BootArtifactsInfo:
@@ -32,7 +33,6 @@ def declare_boot_artifacts(
     The driver picks the newest kernel the image carries and reads the initrd and kernel out of
     the UKI's PE sections when it boots one, so the results are what a direct kernel boot needs.
     """
-    tools = ctx.attrs._tools[ImageToolsInfo]
     selection = declare_out(ctx, identifier, "boot-artifacts.json")
     select = terminal_image_command(
         ctx,
@@ -79,7 +79,7 @@ def boot_subtargets(artifacts: BootArtifactsInfo) -> dict[str, list[Provider]]:
     }
 
 def _bootable_impl(ctx: AnalysisContext) -> list[Provider]:
-    artifacts = declare_boot_artifacts(ctx, image = ctx.attrs.image[ImageInfo])
+    artifacts = declare_boot_artifacts(ctx, tools = ctx.attrs._tools[ImageToolsInfo], image = ctx.attrs.image[ImageInfo])
 
     # A UKI is not guaranteed to exist (kernels can ship as plain files), so the default
     # outputs stay limited to the artifacts selection always yields; [uki] extracts on demand.
