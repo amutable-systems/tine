@@ -27,8 +27,8 @@ def extract(rpm_path: Path, dest: Path) -> int:
     """Extract an RPM payload into dest and return the number of files written."""
     with rpm_path.open("rb") as rpm:
         with mmap.mmap(rpm.fileno(), 0, access=mmap.ACCESS_READ) as data:
-            _sig, main = rpmfile.headers(data)
-        rpm.seek(main.end)
+            payload = rpmfile.payload_offset(data)
+        rpm.seek(payload)
         with tempfile.TemporaryFile() as tmp:
             rpmfile.decompress_stream(rpm, tmp)
             tmp.flush()
