@@ -63,6 +63,59 @@ def pool_transports(id: str, baseurl: str, snapshot: ArtifactValue, engine_locks
         }
     return packages
 
+def _materialize_package_pool_impl(
+    actions: AnalysisActions,
+    baseurl: str,
+    engine_locks: list[ArtifactValue],
+    id: str,
+    snapshot: ArtifactValue,
+    suffix: str,
+) -> list[Provider]:
+    pool = {}
+    for checksum, package in pool_transports(id, baseurl, snapshot, engine_locks).items():
+        url = package["url"]
+        artifact = actions.declare_output("packages", checksum + suffix, has_content_based_path = True)
+
+        # A repository may serve a package larger than a Starlark i32, which arrives as a float.
+        actions.download_file(artifact, url, sha256 = checksum, size_bytes = int(package["size"]))
+        pool[checksum] = PackageArtifactInfo(artifact = artifact, name = url.rsplit("/", 1)[-1])
+    return [PackagePoolValueInfo(packages = pool)]
+
+_materialize_package_pool = dynamic_actions(
+    impl = _materialize_package_pool_impl,
+    attrs = {
+        "baseurl": dynattrs.value(str),
+        "engine_locks": dynattrs.list(dynattrs.artifact_value()),
+        "id": dynattrs.value(str),
+        "snapshot": dynattrs.artifact_value(),
+        "suffix": dynattrs.value(str),
+    },
+)
+
+def declare_package_pool(
+    ctx: AnalysisContext,
+    *,
+    baseurl: str,
+    engine_locks: list[Artifact],
+    package_system: Dependency,
+    snapshot: Artifact,
+) -> DynamicValue:
+    """Declare the authoritative pool of packages this repository owns.
+
+    Every package is fetched by the checksum that identifies it, so a pool entry is named after
+    that checksum and the suffix its package system names a selected package with. What a
+    repository serves is its own business; what it is called is not.
+    """
+    return ctx.actions.dynamic_output_new(
+        _materialize_package_pool(
+            baseurl = baseurl,
+            engine_locks = engine_locks,
+            id = ctx.label.name,
+            snapshot = snapshot,
+            suffix = package_system[PackageSystemInfo].package_suffix,
+        )
+    )
+
 PackageRepositoryInfo = provider(
     doc = "A repository belonging to one native package system.",
     fields = {
