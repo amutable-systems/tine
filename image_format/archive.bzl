@@ -32,6 +32,7 @@ ImageDirectoryInfo = provider(
 def declare_image_archive(
     ctx: AnalysisContext,
     *,
+    tools: ImageToolsInfo,
     image: ImageInfo,
     format: str,
     compression: str,
@@ -49,7 +50,7 @@ def declare_image_archive(
         ctx,
         # One image can be archived in several formats, so the spec is named like the output.
         driver = "archive-" + format,
-        exe = ctx.attrs._tools[ImageToolsInfo].archive,
+        exe = tools.archive,
         identifier = identifier,
         image = image,
         spec = {
@@ -65,6 +66,7 @@ def declare_image_archive(
 def _image_archive_impl(ctx: AnalysisContext) -> list[Provider]:
     info = declare_image_archive(
         ctx,
+        tools = ctx.attrs._tools[ImageToolsInfo],
         compression = ctx.attrs.compression,
         format = ctx.attrs.format,
         image = ctx.attrs.image[ImageInfo],
@@ -88,6 +90,7 @@ _image_archive = rule(
 def declare_image_directory(
     ctx: AnalysisContext,
     *,
+    tools: ImageToolsInfo,
     image: ImageInfo,
     identifier: str | None = None,
 ) -> ImageDirectoryInfo:
@@ -96,7 +99,7 @@ def declare_image_directory(
     cmd = terminal_image_command(
         ctx,
         driver = "directory",
-        exe = ctx.attrs._tools[ImageToolsInfo].archive,
+        exe = tools.archive,
         identifier = identifier,
         image = image,
         spec = {
@@ -110,7 +113,7 @@ def declare_image_directory(
     return ImageDirectoryInfo(directory = out)
 
 def _image_directory_impl(ctx: AnalysisContext) -> list[Provider]:
-    info = declare_image_directory(ctx, image = ctx.attrs.image[ImageInfo])
+    info = declare_image_directory(ctx, tools = ctx.attrs._tools[ImageToolsInfo], image = ctx.attrs.image[ImageInfo])
     return [DefaultInfo(default_output = info.directory), info]
 
 _image_directory = rule(

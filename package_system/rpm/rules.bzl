@@ -108,7 +108,12 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
             snapshot = snapshot,
         )
     )
-    return remote_repository_base(ctx, repo) + [
+    return remote_repository_base(
+        ctx,
+        baseurl = ctx.attrs.baseurl,
+        package_system = ctx.attrs.package_system,
+        repo_dir = repo,
+    ) + [
         PackagePoolInfo(value = pool),
     ]
 

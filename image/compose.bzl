@@ -32,6 +32,7 @@ load(
     "ARCHES",
     "IMAGE_ATTRS",
     "ImageInfo",
+    "ImageToolsInfo",  # @unused Used as a function argument type.
     "LayerOperation",  # @unused Used as a type.
     "LayerOperationTree",  # @unused Used as a type.
     "VERSION_PATTERN",
@@ -57,28 +58,51 @@ load(
 
 def _composed_image(
     ctx: AnalysisContext,
+    *,
+    tools: ImageToolsInfo,
+    install_docs: bool,
+    install_langs: list[str],
+    ops: list[LayerOperation],
+    package_sets: list[str],
+    packages: list[str],
+    tmpfiles: list[str],
+    version: str,
     generate: bool = True,
     package_manager: Dependency | None = None,
     parent: ImageInfo | None = None,
 ) -> ImageInfo:
     return declare_image(
         ctx,
+        tools = tools,
         identifier = "image",
-        install_docs = ctx.attrs.install_docs,
-        install_langs = ctx.attrs.install_langs,
-        ops = generated(ctx.attrs.ops, ctx.attrs.packages + ctx.attrs.package_sets) if generate else ctx.attrs.ops,
+        install_docs = install_docs,
+        install_langs = install_langs,
+        ops = generated(ops, packages + package_sets) if generate else ops,
         package_manager = package_manager,
-        package_sets = ctx.attrs.package_sets,
-        packages = ctx.attrs.packages,
+        package_sets = package_sets,
+        packages = packages,
         parent = parent,
-        tmpfiles = ctx.attrs.tmpfiles,
-        version = ctx.attrs.version,
+        tmpfiles = tmpfiles,
+        version = version,
     )
 
 def _rootfs_archive_impl(ctx: AnalysisContext) -> list[Provider]:
-    image = _composed_image(ctx, package_manager = ctx.attrs.package_manager)
+    tools = ctx.attrs._tools[ImageToolsInfo]
+    image = _composed_image(
+        ctx,
+        tools = tools,
+        package_manager = ctx.attrs.package_manager,
+        install_docs = ctx.attrs.install_docs,
+        install_langs = ctx.attrs.install_langs,
+        ops = ctx.attrs.ops,
+        package_sets = ctx.attrs.package_sets,
+        packages = ctx.attrs.packages,
+        tmpfiles = ctx.attrs.tmpfiles,
+        version = ctx.attrs.version,
+    )
     archive = declare_image_archive(
         ctx,
+        tools = tools,
         compression = ctx.attrs.compression,
         format = ctx.attrs.format,
         image = image,
@@ -100,6 +124,7 @@ _rootfs_archive = rule(
 )
 
 def _sysext_image_impl(ctx: AnalysisContext) -> list[Provider]:
+    tools = ctx.attrs._tools[ImageToolsInfo]
     if (ctx.attrs.base == None) == (ctx.attrs.package_manager == None):
         fail("sysext_image: exactly one of base and package_manager is required")
 
@@ -107,13 +132,23 @@ def _sysext_image_impl(ctx: AnalysisContext) -> list[Provider]:
     # from its own tree would shadow that system's while describing only what the extension carries,
     # exactly as its package database would.
     base = ctx.attrs.base[ImageInfo] if ctx.attrs.base != None else None
-    if base != None:
-        image = _composed_image(ctx, generate = False, parent = base)
-    else:
-        image = _composed_image(ctx, generate = False, package_manager = ctx.attrs.package_manager)
-
+    image = _composed_image(
+        ctx,
+        tools = tools,
+        generate = False,
+        package_manager = ctx.attrs.package_manager if base == None else None,
+        parent = base,
+        install_docs = ctx.attrs.install_docs,
+        install_langs = ctx.attrs.install_langs,
+        ops = ctx.attrs.ops,
+        package_sets = ctx.attrs.package_sets,
+        packages = ctx.attrs.packages,
+        tmpfiles = ctx.attrs.tmpfiles,
+        version = ctx.attrs.version,
+    )
     sysext = declare_image_sysext(
         ctx,
+        tools = tools,
         arch = ctx.attrs.arch,
         base = base,
         extension = ctx.label.name,
@@ -144,22 +179,23 @@ _sysext_image = rule(
 )
 
 def _esp_operations(
-    ctx: AnalysisContext,
+    esp_files: dict[str, Artifact],
     ukis: Artifact,
     secure_boot_key: SigningKeyInfo | None,
 ) -> list[LayerOperation]:
     operations = [copy(ukis, "/boot/EFI/Linux")] + install_systemd_boot(secure_boot_key)
-    for destination in sorted(ctx.attrs.esp_files):
+    for destination in sorted(esp_files):
         if not (destination.startswith("/boot/") or destination.startswith("/efi/")):
             fail(
                 "bootable_disk_image: esp_files destination must be under /boot or /efi, got {!r}".format(
                     destination,
                 )
             )
-        operations.append(copy(ctx.attrs.esp_files[destination], destination))
+        operations.append(copy(esp_files[destination], destination))
     return operations
 
 def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
+    tools = ctx.attrs._tools[ImageToolsInfo]
     if (ctx.attrs.parent == None) == (ctx.attrs.package_manager == None):
         fail("bootable_disk_image: exactly one of parent and package_manager is required")
 
@@ -178,6 +214,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
     root = declare_image(
         ctx,
+        tools = tools,
         identifier = "root",
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
@@ -200,6 +237,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         identity_ops += sign_systemd_boot(secure_boot_key, ctx.attrs.arch)
     identity = declare_image(
         ctx,
+        tools = tools,
         identifier = "identity",
         keys = [secure_boot_key],
         ops = identity_ops,
@@ -242,6 +280,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
     system = declare_repart(
         ctx,
+        tools = tools,
         basename = basename,
         definitions = system_definitions,
         disk = False,
@@ -256,6 +295,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
     uki = declare_uki(
         ctx,
+        tools = tools,
         arch = ctx.attrs.arch,
         cmdline = ctx.attrs.cmdline,
         identifier = "uki",
@@ -271,15 +311,17 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     )
     esp = declare_image(
         ctx,
+        tools = tools,
         identifier = "esp",
         keys = [secure_boot_key],
-        ops = _esp_operations(ctx, uki.ukis, secure_boot_key),
+        ops = _esp_operations(ctx.attrs.esp_files, uki.ukis, secure_boot_key),
         parent = identity,
         version = version,
     )
 
     disk = declare_repart(
         ctx,
+        tools = tools,
         basename = basename,
         definitions = boot_definitions,
         identifier = "disk",
@@ -293,10 +335,11 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     raw = disk.info.disk
     if raw == None:
         fail("bootable_disk_image: internal disk repart did not expose a composed disk")
-    directory = declare_image_directory(ctx, identifier = "directory", image = esp)
+    directory = declare_image_directory(ctx, tools = tools, identifier = "directory", image = esp)
     conversions = [
         declare_disk_conversion(
             ctx,
+            tools = tools,
             basename = basename,
             disk = disk.info,
             engine = esp.engine,
@@ -309,7 +352,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     # What this disk boots, as files rather than as PE sections: a direct kernel boot needs the
     # kernel and the initrd the UKI carries, and publishing needs the one UKI out of the set the
     # image ships. Declared here so a caller does not have to point a second target at the ESP.
-    boot = declare_boot_artifacts(ctx, identifier = "boot", image = esp)
+    boot = declare_boot_artifacts(ctx, tools = tools, identifier = "boot", image = esp)
 
     sub_targets = dict(disk.sub_targets)
     sub_targets.update({

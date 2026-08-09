@@ -279,6 +279,9 @@ def repository_universe(name: str, **kwargs) -> None:
 
 def remote_repository_base(
     ctx: AnalysisContext,
+    *,
+    baseurl: str,
+    package_system: Dependency,
     repo_dir: Artifact,
     snapshot_spec: dict[str, typing.Any] = {},
 ) -> list[Provider]:
@@ -288,13 +291,13 @@ def remote_repository_base(
     its metadata; the identity and base URL every repository has are supplied here.
     """
     rid = ctx.label.name
-    system = ctx.attrs.package_system[PackageSystemInfo]
+    system = package_system[PackageSystemInfo]
     reserved = [key for key in snapshot_spec if key in ("baseurl", "id")]
     if reserved:
         fail("remote_repository_base: {} are supplied by the neutral spec".format(reserved))
     spec = ctx.actions.write_json(
         "snapshot.spec.json",
-        dict(snapshot_spec, baseurl = ctx.attrs.baseurl, id = rid),
+        dict(snapshot_spec, baseurl = baseurl, id = rid),
         has_content_based_path = False,
     )
     sub_targets = {
@@ -304,9 +307,9 @@ def remote_repository_base(
     return [
         DefaultInfo(default_output = repo_dir, sub_targets = sub_targets),
         PackageRepositoryInfo(
-            baseurl = ctx.attrs.baseurl,
+            baseurl = baseurl,
             dir = repo_dir,
-            package_system = ctx.attrs.package_system,
+            package_system = package_system,
         ),
     ]
 

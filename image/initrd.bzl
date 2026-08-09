@@ -12,6 +12,7 @@ load(
     ":image.bzl",
     "IMAGE_ATTRS",
     "ImageInfo",
+    "ImageToolsInfo",  # @unused Used as a function argument type.
     "LayerOperationTree",  # @unused Used as a type.
     "declare_image",
     "flatten_operations",
@@ -48,8 +49,10 @@ _PRUNED = [
 ]
 
 def _initrd_image_impl(ctx: AnalysisContext) -> list[Provider]:
+    tools = ctx.attrs._tools[ImageToolsInfo]
     image = declare_image(
         ctx,
+        tools = tools,
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
         ops = generated(_DEFAULT_OPS + ctx.attrs.ops, _DEFAULT_PACKAGE_SETS) + _PRUNED,
@@ -61,6 +64,7 @@ def _initrd_image_impl(ctx: AnalysisContext) -> list[Provider]:
     )
     cpio = declare_image_archive(
         ctx,
+        tools = tools,
         compression = ctx.attrs.compression,
         format = "cpio",
         image = image,

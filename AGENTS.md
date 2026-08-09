@@ -68,6 +68,13 @@ whole `kwargs` dict. Buck reads `None` as "use the attribute's default", so such
 `None` rather than restating the rule's default, and one a caller may reach with a `select()` is annotated
 `X | Select`.
 
+## Rule implementations
+
+`ctx.attrs` belongs to the rule implementation that owns those attributes, and to nothing else. A `_impl`
+reads whatever it likes from it; every other function takes what it needs as typed parameters, for the same
+reason a macro's helpers do. Otherwise a shared helper silently requires an attribute of a name and type
+its signature never mentions, and the next rule to call it fails at analysis rather than at the call.
+
 ## Architecture
 
 See [the design plan](docs/design.md).
