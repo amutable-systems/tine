@@ -115,7 +115,7 @@ source = "{SD_CONF}"
 
 
 def _lock(text: str) -> dict[str, typing.Any]:
-    """Parse a lock fixture the way a `?format=toml` data load hands it to the macro."""
+    """Parse a lock fixture into what the lock driver's JSON hands the dynamic action."""
     return tomllib.loads(text)
 
 
