@@ -10,7 +10,9 @@ load(
     "LocalPackageInfo",
     "PackagePoolInfo",
     "REMOTE_REPOSITORY_ATTRS",
+    "RepositoryPin",
     "declare_package_pool",
+    "declare_remote_repository",
     "remote_repository_base",
     "snapshot_data",
 )
@@ -93,45 +95,25 @@ def rpm_remote_repository(
     baseurl: str | None = None,
     rpmrepo_mirror: str | None = None,
     rpmrepo_snapshot: str | None = None,
-    labels: list[str] = [],
     **kwargs,
 ) -> None:
-    """Declare a repository backed by its optional package-relative snapshot.
-
-    A repository is named either by a plain `baseurl` or by an rpmrepo pin, which composes the
-    base URL from `rpmrepo_mirror` and `rpmrepo_snapshot` and records the pin for refresh-catalog
-    to advance. The pin belongs on the declaration a catalog writes, so releases forward their own
-    pin arguments here rather than reproducing the composition.
-    """
-    if not name.endswith(".repository"):
-        fail("rpm_remote_repository name must end with '.repository': {}".format(name))
+    """Declare an RPM repository, optionally pinned to an rpmrepo compose snapshot."""
     if (rpmrepo_mirror == None) != (rpmrepo_snapshot == None):
         fail("rpm_remote_repository requires rpmrepo_mirror and rpmrepo_snapshot together: {}".format(name))
-    metadata = {}
+    pin = None
     if rpmrepo_mirror != None:
-        if baseurl != None:
-            fail(
-                "rpm_remote_repository takes rpmrepo_mirror/rpmrepo_snapshot or baseurl, not both: {}".format(name),
-            )
-        baseurl = rpmrepo_mirror.rstrip("/") + "/" + rpmrepo_snapshot
-
-        # refresh-catalog reads the pin back through this metadata to advance the snapshot.
-        metadata = {"rpmrepo.mirror": rpmrepo_mirror, "rpmrepo.snapshot": rpmrepo_snapshot}
-    elif baseurl == None:
-        fail("rpm_remote_repository requires baseurl or an rpmrepo pin: {}".format(name))
-    snapshot_name = name[: -len(".repository")]
-    snapshots = glob(["snapshot/repo/" + snapshot_name + ".json"])
-    if len(snapshots) > 1:
-        fail("rpm_remote_repository {} has multiple snapshots: {}".format(name, snapshots))
-    snapshot = snapshots[0] if snapshots else None
-    _remote_repository(
+        pin = RepositoryPin(
+            baseurl = rpmrepo_mirror.rstrip("/") + "/" + rpmrepo_snapshot,
+            metadata = {"rpmrepo.mirror": rpmrepo_mirror, "rpmrepo.snapshot": rpmrepo_snapshot},
+        )
+    declare_remote_repository(
+        _remote_repository,
         name = name,
-        baseurl = baseurl,
-        engine_locks = glob(["snapshot/engine/*.json"]),
-        labels = ["tine:remote-repository", "tine:rpm-remote-repository"] + labels,
-        metadata = metadata,
+        what = "rpm_remote_repository",
+        label = "tine:rpm-remote-repository",
         package_system = _RPM_PACKAGE_SYSTEM,
-        snapshot = snapshot,
+        baseurl = baseurl,
+        pin = pin,
         **kwargs,
     )
 
