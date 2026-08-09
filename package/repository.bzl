@@ -366,6 +366,52 @@ def remote_repository_base(
         ),
     ]
 
+RepositoryPin = record(
+    # Where the pinned snapshot serves this repository from.
+    baseurl = field(str),
+    # What refresh-catalog reads back to advance the pin, under the namespace its system owns.
+    metadata = field(dict[str, str]),
+)
+
+def declare_remote_repository(
+    rule: typing.Callable,
+    *,
+    name: str,
+    what: str,
+    label: str,
+    package_system: str,
+    baseurl: str | None,
+    pin: RepositoryPin | None,
+    labels: list[str] = [],
+    **kwargs,
+) -> None:
+    """Declare a remote repository backed by its optional package-relative snapshot.
+
+    A repository is named either by a plain `baseurl` or by a pin, which composes the base URL
+    from a mirror publishing immutable snapshots and records what refresh-catalog advances. Only
+    a mirror whose metadata never changes keeps a committed snapshot buildable, so the pin belongs
+    on the declaration a catalog writes and releases forward their own pin arguments to it.
+
+    How a pin composes its URL is the package system's business; everything around that is not.
+    """
+    if not name.endswith(".repository"):
+        fail("{} name must end with '.repository': {}".format(what, name))
+    if pin != None and baseurl != None:
+        fail("{} takes a pin or baseurl, not both: {}".format(what, name))
+    if pin == None and baseurl == None:
+        fail("{} requires baseurl or a pin: {}".format(what, name))
+    snapshots = glob(["snapshot/repo/" + name.removesuffix(".repository") + ".json"])
+    rule(
+        name = name,
+        baseurl = pin.baseurl if pin != None else baseurl,
+        engine_locks = glob(["snapshot/engine/*.json"]),
+        labels = ["tine:remote-repository", label] + labels,
+        metadata = pin.metadata if pin != None else {},
+        package_system = package_system,
+        snapshot = snapshots[0] if snapshots else None,
+        **kwargs,
+    )
+
 def _contains_only(value: str, alphabet: str) -> bool:
     for character in value.elems():
         if character not in alphabet:
