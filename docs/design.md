@@ -162,7 +162,7 @@ cacheable build action. The generated transaction is an input to the existing dy
 so the engine builds in one invocation without mutating the source tree. Its package selection changes only
 when its authored policy, resolver engine, or pinned repository inputs change.
 
-`tools/buck run tine//tools:refresh-catalog` refreshes the default `tine//catalog` package in two
+`tools/buck run tine//tools:refresh-catalog` refreshes the default `tine//catalog` package in three
 phases. Pass another catalog package after `--`, for example
 `tools/buck run tine//tools:refresh-catalog -- my_project//catalog`:
 
@@ -170,8 +170,8 @@ phases. Pass another catalog package after `--`, for example
    declaration. A remote repository rule owns its own pin arguments and carries them as metadata under a
    namespace it owns, so a package system joins this phase by declaring a pin. How the newest snapshot is
    found is the mirror's business: one enumerates its snapshots through a gateway, while another publishes
-   a tree per day and exposes no index at all, so it is walked back from the present, up to a bounded
-   number of steps, until a snapshot the whole pin group serves turns up. Repositories sharing one pin
+   a tree per day and exposes no index at all, but does record when it last finished one, which is the
+   only thing distinguishing a complete day from a half-written one. Repositories sharing one pin
    advance together, because a release's repositories are only guaranteed to solve together when they come
    from the same snapshot, and a pin never moves backwards. A release macro forwards its own pin arguments
    to the repositories it owns, and overriding a release's mirrors is all or nothing for the same reason.
@@ -203,7 +203,9 @@ that availability can be supplied independently without changing the solve.
 are ordinary Buck source inputs, so changes invalidate only consumers of the changed data.
 
 The catalog tool asks Buck for the targets carrying each role's label, so a package system joins the
-refresh by labelling its repositories, not by being named in the tool.
+snapshot and resolve phases by labelling its repositories rather than by being named in the tool.
+Advancing a pin is not there yet: the tool holds a table mapping each system's repository label to the
+pin attribute it rewrites and to the function that asks that mirror for its newest snapshot.
 
 A remote repository declaration derives its optional snapshot by stripping `.repository` from the target
 name and looking under `snapshot/repo/`. This lets a new repository target analyze before its first refresh;
