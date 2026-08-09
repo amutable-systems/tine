@@ -136,12 +136,9 @@ def _box(name: str) -> list[str]:
 def main(argv: list[str] | None = None) -> NoReturn:
     p = argparse.ArgumentParser(prog="sandbox")
     p.add_argument("--tools", required=True, help="ro exec-env chroot bound onto / (the pinned tools tree)")
-    p.add_argument("--bind", action="append", default=[], help="SRC:DST rw bind")
     p.add_argument("--ro-bind", dest="ro_bind", action="append", default=[], help="SRC:DST ro bind")
-    p.add_argument("--scratch", action="append", default=[], help="NAME:DST tmpfs (NAME=_ → empty dir)")
     p.add_argument("--setenv", action="append", default=[], help="K=V environment")
     p.add_argument("--source-date-epoch", type=int, default=None)
-    p.add_argument("--chdir", default=None)
     p.add_argument("--bind-cwd", dest="bind_cwd", action="store_true", help="bind+chdir the project root")
     p.add_argument("--network", action="store_true", help="grant network (default: unshared)")
     p.add_argument("--box", default=None, help="enter as the named development box (prompt and TINE_BOX)")
@@ -190,17 +187,12 @@ def main(argv: list[str] | None = None) -> NoReturn:
             elif entry.is_dir():
                 out += ["--ro-bind", str(entry), dest]
 
-    for name, dest in _kv(args.scratch, ":"):
-        out += ["--dir", dest] if name == "_" else ["--tmpfs", dest]
-    for src, dest in _kv(args.bind, ":"):
-        out += ["--bind", _abs(src), dest]
     for src, dest in _kv(args.ro_bind, ":"):
         out += ["--ro-bind", _abs(src), dest]
 
-    chdir = args.chdir
+    chdir = cwd
     if cwd:
         out += ["--bind", cwd, cwd]
-        chdir = chdir or cwd
 
     # Package scripts require writable API and temporary filesystems.
     out += ["--bind", "/proc", "/proc"]
