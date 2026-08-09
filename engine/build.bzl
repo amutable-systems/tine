@@ -197,8 +197,6 @@ def engine(name: str, packages: list[str], release: str, labels: list[str] = [],
     if not name.endswith(".engine"):
         fail("engine name must end with '.engine': {}".format(name))
     locks = glob(["snapshot/engine/" + name[: -len(".engine")] + ".json"])
-    if len(locks) > 1:
-        fail("engine {} has multiple locks: {}".format(name, locks))
     _engine(
         name = name,
         packages = packages,
