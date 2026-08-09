@@ -113,7 +113,12 @@ def distribution_compatibility():
     return select({target: [] for target in targets} | {"DEFAULT": [_UNCHOSEN]})
 
 def distribution_attrs(distribution: str | None = None, visibility: list[str] | None = None) -> dict:
-    """Resolve what a package declares about distributions into the attributes rules take."""
+    """Resolve what a package declares about distributions into the attributes rules take.
+
+    Anything a build can name takes these through `distributed()`, which declares the aliases that
+    make the compatibility satisfiable. This is on its own only for a target reached exclusively as
+    a dependency, which is configured by whatever depends on it and never named directly.
+    """
     attributes = {"visibility": visibility}
     if distribution != None:
         attributes["incoming_transition"] = distribution
@@ -125,7 +130,7 @@ def distribution_attrs(distribution: str | None = None, visibility: list[str] | 
         attributes["target_compatible_with"] = compatibility
     return attributes
 
-def distribution_aliases(name: str, distribution: str | None = None, visibility: list[str] | None = None) -> None:
+def _distribution_aliases(name: str, distribution: str | None = None, visibility: list[str] | None = None) -> None:
     """Name one target once per distribution its package serves.
 
     A target that names no distribution of its own is buildable under every one of them, so the
@@ -142,6 +147,21 @@ def distribution_aliases(name: str, distribution: str | None = None, visibility:
             distribution = declared[suffix]["distribution"],
             visibility = visibility,
         )
+
+def distributed(
+    name: str,
+    distribution: str | None = None,
+    visibility: list[str] | None = None,
+) -> dict:
+    """Declare a target's per-distribution aliases and return the attributes it takes.
+
+    These are one decision rather than two. A target given the attributes without the aliases is
+    compatible only with a choice nothing can make of it: it disappears from `//...` and fails when
+    something finally names it. One that nothing names directly, because it is only ever a
+    dependency, takes `distribution_attrs()` on its own instead.
+    """
+    _distribution_aliases(name, distribution, visibility)
+    return distribution_attrs(distribution, visibility)
 
 def _distribution_alias_impl(ctx: AnalysisContext) -> list[Provider]:
     return ctx.attrs.actual.providers
