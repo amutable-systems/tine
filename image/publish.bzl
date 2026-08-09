@@ -7,7 +7,8 @@ gathers artifacts from several targets reads those names here rather than compos
 
 A partition is the exception: its name exists only once repart has run, so it travels as the typed
 result of the run rather than as a name, and whatever materializes it reads the name back out of
-the metadata written beside it.
+the metadata written beside it. That is the whole reason `image_artifacts` assembles its directory
+from a dynamic action: everything else in it is known while the graph is still being built.
 """
 
 load("//image_format:disk.bzl", "PartitionInfo")
@@ -17,5 +18,71 @@ PublishedInfo = provider(
     fields = {
         "artifacts": provider_field(dict[str, Artifact]),
         "partitions": provider_field(list[PartitionInfo], default = []),
+    },
+)
+
+def _assemble_impl(
+    actions: AnalysisActions,
+    blocks: list[Artifact],
+    directory: OutputArtifact,
+    metadata: list[ArtifactValue],
+    tree: dict[str, Artifact],
+) -> list[Provider]:
+    published = dict(tree)
+    for index, value in enumerate(metadata):
+        name = value.read_json()["published"]
+        if name in published:
+            fail("image_artifacts: {} is published by more than one target".format(name))
+        published[name] = blocks[index]
+
+    # Symlinks, not copies: a release is mostly disk images, and every one of them already exists.
+    actions.symlinked_dir(directory, published)
+    return []
+
+_assemble = dynamic_actions(
+    impl = _assemble_impl,
+    attrs = {
+        "blocks": dynattrs.list(dynattrs.value(Artifact)),
+        "directory": dynattrs.output(),
+        "metadata": dynattrs.list(dynattrs.artifact_value()),
+        "tree": dynattrs.dict(str, dynattrs.value(Artifact)),
+    },
+)
+
+def _image_artifacts_impl(ctx: AnalysisContext) -> list[Provider]:
+    if not ctx.attrs.targets:
+        fail("image_artifacts: at least one target is required")
+
+    tree = {}
+    blocks = []
+    metadata = []
+    for dep in ctx.attrs.targets:
+        published = dep[PublishedInfo]
+        for name, artifact in published.artifacts.items():
+            if name in tree:
+                fail("image_artifacts: {} is published by more than one target".format(name))
+            tree[name] = artifact
+        for partition in published.partitions:
+            blocks.append(partition.blocks)
+            metadata.append(partition.metadata)
+
+    directory = ctx.actions.declare_output("artifacts", dir = True)
+    ctx.actions.dynamic_output_new(
+        _assemble(
+            blocks = blocks,
+            directory = directory.as_output(),
+            metadata = metadata,
+            tree = tree,
+        )
+    )
+    return [DefaultInfo(default_output = directory)]
+
+image_artifacts = rule(
+    impl = _image_artifacts_impl,
+    attrs = {
+        "targets": attrs.list(
+            attrs.dep(providers = [PublishedInfo]),
+            doc = "the targets whose published artifacts make up the release",
+        ),
     },
 )
