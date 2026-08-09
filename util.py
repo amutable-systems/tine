@@ -80,16 +80,6 @@ def with_retries[T](what: str, operation: Callable[[], T]) -> T:
     raise AssertionError("unreachable")
 
 
-def terminal_is_dumb() -> bool:
-    """Whether terminal styling should be disabled."""
-    return not sys.stdout.isatty() or os.getenv("TERM", "") == "dumb"
-
-
-ANSI_CYAN = "\033[1;36m" if not terminal_is_dumb() else ""
-ANSI_GREEN = "\033[32m" if not terminal_is_dumb() else ""
-ANSI_RESET = "\033[0m" if not terminal_is_dumb() else ""
-
-
 def clone_file(src: Path, dst: Path, allow_link: bool = False) -> None:
     """Clone, optionally hardlink, or copy src to dst while preserving its mode.
 
