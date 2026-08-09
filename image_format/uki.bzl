@@ -18,6 +18,7 @@ load(
     "external_signing_execution",
     "merge_signing_access",
     "resolve_signing_key",
+    "signing_key_spec",
 )
 load(":archive.bzl", "ImageArchiveInfo")
 load(
@@ -66,16 +67,6 @@ def encode_profiles(profiles: list[UkiProfile]) -> list[str]:
             fail("uki: duplicate profile id {!r}".format(profile["id"]))
         ids[profile["id"]] = True
     return [json.encode(profile) for profile in profiles]
-
-def _encode_key(key: SigningKeyInfo | None) -> dict[str, typing.Any] | None:
-    """Serialize a signing key for a driver spec."""
-    if key == None:
-        return None
-    return {
-        "certificate": key.certificate,
-        "private_key": key.private_key,
-        "source": key.source,
-    }
 
 def declare_uki(
     ctx: AnalysisContext,
@@ -138,8 +129,8 @@ def declare_uki(
             }
             if root_hash != None
             else None,
-            "secure_boot": _encode_key(secure_boot_key),
-            "sign_expected_pcr": _encode_key(sign_expected_pcr_key),
+            "secure_boot": signing_key_spec(secure_boot_key),
+            "sign_expected_pcr": signing_key_spec(sign_expected_pcr_key),
             "systemd_arch": ARCHES[arch].systemd,
             "version": version,
         },
