@@ -1,24 +1,20 @@
 """Pin a repository's build metadata and authoritative RPM inventory.
 
-Refresh runs this host-side fetch-and-filter step independently per repository.
 The snapshot contains filtered repomd, pinned streams, and a pkgid-keyed package index.
 """
 
-import argparse
-import hashlib
-import json
-import string
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from contextlib import ExitStack
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from typing import Protocol, TypedDict
 
-import specs
-from util import MAGIC, atomic_text_writer, decompressor, urlopen, with_retries
+from util import MAGIC, decompressor
 
+import snapshotter
 from href import relative_href
+from snapshotter import PackageEntry
 
 _REPOMD_NS = "http://linux.duke.edu/metadata/repo"
 _PRIMARY_NS = "http://linux.duke.edu/metadata/common"
@@ -27,12 +23,6 @@ _XML_NS = "http://www.w3.org/XML/1998/namespace"
 _REQUIRED_STREAMS = ("primary", "filelists")
 _OPTIONAL_STREAMS = ("group",)
 _KEPT_STREAMS = frozenset(_REQUIRED_STREAMS + _OPTIONAL_STREAMS)
-_AGENT = "tine-snapshot"
-
-
-class PackageEntry(TypedDict):
-    location: str
-    size: int
 
 
 class RepositoryStream(TypedDict):
@@ -48,11 +38,6 @@ class RepositorySnapshot(TypedDict):
     streams: list[RepositoryStream]
 
 
-class Spec(TypedDict):
-    id: str
-    baseurl: str
-
-
 class BinaryReader(Protocol):
     def read(self, size: int = -1, /) -> bytes: ...
 
@@ -66,14 +51,6 @@ def _location_href(rid: str, what: str, location: ET.Element | None) -> str:
     if location_base is not None:
         raise SystemExit(f"{rid}: {what} has unsupported location {href!r}")
     return relative_href(rid, what, href)
-
-
-def _sha256(rid: str, what: str, value: str | None) -> str:
-    """Normalize and validate a sha256 supplied by repository metadata."""
-    digest = "" if value is None else value.strip().lower()
-    if len(digest) != 64 or any(character not in string.hexdigits for character in digest):
-        raise SystemExit(f"{rid}: {what} has invalid sha256 {digest!r}")
-    return digest
 
 
 def _metadata_int(rid: str, what: str, value: str | None, *, minimum: int) -> int:
@@ -113,20 +90,13 @@ def _parse_primary(rid: str, source: BinaryReader) -> dict[str, PackageEntry]:
             raise SystemExit(f"{rid}: primary package {count} lacks a checksum")
         if checksum.get("type") != "sha256" or checksum.get("pkgid") != "YES":
             raise SystemExit(f"{rid}: primary package {count} does not have a sha256 pkgid")
-        pkgid = _sha256(rid, f"primary package {count} pkgid", checksum.text)
+        pkgid = snapshotter.checksum(rid, f"primary package {count} pkgid", checksum.text)
 
         href = _location_href(rid, f"primary package {pkgid}", location)
 
         package_size = size.get("package") if size is not None else None
         download_size = _metadata_int(rid, f"primary package {pkgid}", package_size, minimum=1)
-        entry = PackageEntry(location=href, size=download_size)
-        if previous := packages.get(pkgid):
-            if previous["size"] != entry["size"]:
-                raise SystemExit(f"{rid}: duplicate pkgid {pkgid} has conflicting sizes")
-            # Mirrors sometimes expose identical content at more than one path.
-            previous["location"] = min(str(previous["location"]), href)
-        else:
-            packages[pkgid] = entry
+        snapshotter.add_package(packages, rid, pkgid, PackageEntry(location=href, size=download_size))
         element.clear()
 
     if count != expected:
@@ -136,34 +106,15 @@ def _parse_primary(rid: str, source: BinaryReader) -> dict[str, PackageEntry]:
 
 def _load_package_index(rid: str, stream: RepositoryStream) -> dict[str, PackageEntry]:
     """Download, verify, decompress, and parse the pinned primary stream."""
-    expected_size = int(stream["size"])
     with tempfile.TemporaryFile("w+b") as compressed:
-
-        def download() -> None:
-            # A retried attempt restarts the stream from scratch.
-            compressed.seek(0)
-            compressed.truncate()
-            digest = hashlib.sha256()
-            total = 0
-            with urlopen(str(stream["url"]), agent=_AGENT) as response:
-                while chunk := response.read(1024 * 1024):
-                    total += len(chunk)
-                    # Stop before writing unbounded data from a stale or malicious endpoint.
-                    if total > expected_size:
-                        raise SystemExit(
-                            f"{rid}: primary stream size {total} does not match repomd size {expected_size}"
-                        )
-                    digest.update(chunk)
-                    compressed.write(chunk)
-            if total != expected_size:
-                raise SystemExit(
-                    f"{rid}: primary stream size {total} does not match repomd size {expected_size}"
-                )
-            if digest.hexdigest() != stream["sha256"]:
-                raise SystemExit(f"{rid}: primary stream checksum does not match repomd")
-
-        with_retries(f"{rid}: {stream['out']}", download)
-
+        snapshotter.download(
+            rid,
+            "primary stream",
+            stream["url"],
+            compressed,
+            size=int(stream["size"]),
+            sha256=stream["sha256"],
+        )
         compressed.seek(0)
         magic = compressed.read(MAGIC)
         compressed.seek(0)
@@ -202,7 +153,7 @@ def _repository_stream(
     return RepositoryStream(
         out=PurePosixPath(href).name,
         url=baseurl + href,
-        sha256=_sha256(rid, f"{stream_type} stream", checksum.text),
+        sha256=snapshotter.checksum(rid, f"{stream_type} stream", checksum.text),
         # Recording the compressed size avoids an unpinned HEAD request later.
         size=_metadata_int(rid, f"{stream_type} stream", size.text, minimum=1),
     )
@@ -210,13 +161,12 @@ def _repository_stream(
 
 def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
     """Pin one repo's build-time repodata; see the module docstring for the shape."""
+    print(f"{rid}: snapshotting repodata…", file=sys.stderr)
     base = baseurl.rstrip("/") + "/"
-
-    def download_repomd() -> bytes:
-        with urlopen(base + "repodata/repomd.xml", agent=_AGENT) as f:
-            return f.read()
-
-    repomd = with_retries(f"{rid}: repomd.xml", download_repomd)
+    with tempfile.TemporaryFile("w+b") as stream:
+        snapshotter.download(rid, "repomd.xml", base + "repodata/repomd.xml", stream)
+        stream.seek(0)
+        repomd = stream.read()
 
     ET.register_namespace("", _REPOMD_NS)  # Preserve the default namespace.
     root = ET.fromstring(repomd)
@@ -253,46 +203,8 @@ def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
     return {"packages": packages, "repomd": filtered, "streams": streams}
 
 
-def _write_snapshot(path: Path, snapshot: RepositorySnapshot) -> None:
-    """Atomically replace a snapshot with deterministic, reviewable UTF-8 JSON."""
-    with atomic_text_writer(path) as output:
-        # One package per line keeps this large generated file reviewable.
-        output.write('{\n  "packages": {\n')
-        packages = sorted(snapshot["packages"].items())
-        for index, (pkgid, package) in enumerate(packages):
-            comma = "," if index + 1 < len(packages) else ""
-            output.write(
-                "    "
-                + json.dumps(pkgid)
-                + ": "
-                + json.dumps(package, sort_keys=True, separators=(",", ":"))
-                + comma
-                + "\n"
-            )
-        output.write('  },\n  "repomd": ')
-        json.dump(snapshot["repomd"], output)
-        output.write(',\n  "streams": ')
-        streams = json.dumps(snapshot["streams"], indent=2, sort_keys=True)
-        output.write(streams.replace("\n", "\n  "))
-        output.write("\n}\n")
-
-
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="snapshot")
-    specs.add_argument(parser)
-    parser.add_argument(
-        "--out",
-        required=True,
-        help="snapshot path to write ({packages, repomd, streams} JSON)",
-    )
-    args = parser.parse_args(argv)
-
-    spec: Spec = specs.load(args.spec, prog="snapshot")
-    print(f"{spec['id']}: snapshotting repodata…", file=sys.stderr)
-    snapshot = snapshot_repodata(spec["id"], spec["baseurl"])
-    out = Path(args.out)
-    _write_snapshot(out, snapshot)
-    print(f"wrote {out} ({len(snapshot['packages'])} packages)", file=sys.stderr)
+    snapshotter.run("snapshot", lambda spec: snapshot_repodata(spec["id"], spec["baseurl"]), argv)
 
 
 if __name__ == "__main__":
