@@ -125,7 +125,7 @@ Design:
 ## Development
 
 ```sh
-tools/buck build //...                     # the examples, the catalog, and the tooling
+tools/buck build tine//...                 # the examples, the catalog, and the tooling
 tools/buck run tine//tools:check           # lint, type-check, unit tests
 tools/buck run tine//tools:fmt             # auto-format and auto-fix
 tools/buck run tine//tools:verify-catalog  # assert the committed catalog lock matches
