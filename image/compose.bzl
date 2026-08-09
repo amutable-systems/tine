@@ -333,6 +333,10 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     for conversion in conversions:
         sub_targets[conversion.format] = [
             DefaultInfo(default_output = conversion.image),
+            # A re-encoding is publishable in its own right, so a release can gather the subtarget
+            # rather than the disk; it is not in the disk's own set, which would build every
+            # encoding whenever anything materializes the release.
+            PublishedInfo(artifacts = {conversion.image.basename: conversion.image}),
             conversion,
         ]
 

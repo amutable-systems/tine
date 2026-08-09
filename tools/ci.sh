@@ -147,6 +147,25 @@ sysext_name() {
     test "$(basename "$output")" = demo-ext_0_x86-64.sysext.raw
 }
 
+# The release directory is where every published name meets. Assert the set the example publishes,
+# that the verity pair is named after the two halves of the root hash (which is what lets
+# systemd-sysupdate give the partitions it writes the UUIDs dissection pairs them by), and that the
+# ESP is not among them.
+release_artifacts() {
+    local directory names roothash expected
+    "$buck" build tine//examples/image-secureboot:release
+    directory=$("$buck" targets --show-output tine//examples/image-secureboot:release | awk '{print $2}')
+    names=$(ls "$directory")
+    for expected in image_0_x86-64.raw image_0_x86-64.qcow2 image_0_x86-64.efi \
+        image_0_x86-64.vmlinuz image_0_x86-64.initrd demo-ext_0_x86-64.sysext.raw; do
+        grep -qx "$expected" <<< "$names" || { echo "release: $expected is missing" >&2; return 1; }
+    done
+    if grep -q esp <<< "$names"; then echo "release: the ESP must not be published" >&2; return 1; fi
+    roothash=$("$buck" build 'tine//examples/image-secureboot:image[roothash]' --out -)
+    grep -qx "image_0_x86-64.usr-x86-64.${roothash:0:32}.raw" <<< "$names"
+    grep -qx "image_0_x86-64.usr-x86-64-verity.${roothash:32:32}.raw" <<< "$names"
+}
+
 # Sign the Secure Boot example through PKCS#11 tokens, exercising the external-key path end to end
 # with the production module: tools/signing-server serves one tpm2-pkcs11 token per key from a
 # software TPM, and the same example builds against its socket. Every tool this needs comes from the
@@ -226,5 +245,6 @@ group rust-sbom         -- rust_sbom
 group go-sbom           -- go_sbom
 group secureboot-image  -- "$buck" build tine//examples/image-secureboot:image
 group secureboot-sbom   -- secureboot_sbom
+group release-artifacts -- release_artifacts
 group secureboot-smoke  -- "$buck" run tine//examples/image-secureboot:vm-smoke
 group secureboot-pkcs11 -- secureboot_pkcs11

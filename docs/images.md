@@ -501,7 +501,36 @@ DDI. Each rule names what it builds, so anything gathering a release reads those
 names of its own. A partition is the exception and travels as a typed `PartitionInfo`: its name contains the
 type and UUID repart assigned, so it exists only after the build, and a consumer reads it back out of the
 metadata written beside the partition. The ESP is not published: what it carries is transferred by other
-means, and no update writes the partition back.
+means, and no update writes the partition back. `[qcow2]` and `[raw.zst]` publish themselves rather than
+travelling in the disk's own set, so gathering a release does not build every encoding of it.
+
+`image_artifacts` gathers those contributions into one directory of symlinks, which is a release as a
+consumer sees it:
+
+```Starlark
+image_artifacts(
+    name = "release",
+    targets = [":image", ":image[qcow2]", ":demo-ext"],
+)
+```
+
+```text
+demo-ext_0_x86-64.sysext.raw
+image_0_x86-64.efi
+image_0_x86-64.initrd
+image_0_x86-64.qcow2
+image_0_x86-64.raw
+image_0_x86-64.usr-x86-64.0a72787674a137eaabf7aa97c82a72ee.raw
+image_0_x86-64.usr-x86-64-verity.94dcef64374b73274b88fe1a9ff45b31.raw
+image_0_x86-64.usr-x86-64-verity-sig.cb66a98640e5450aa028a8bf473ac0ea.raw
+image_0_x86-64.vmlinuz
+```
+
+The rule decides no name: it unions what each target published and reads a partition's name back from the
+metadata beside it, which is why it assembles the directory from a dynamic action. Two targets publishing
+one name is an error rather than a silent overwrite. The `usr` and `usr-verity` UUIDs above are the two
+halves of that build's verity root hash, and `%M_@v_%a.usr-%a.@u.raw` in a transfer is how
+systemd-sysupdate reads one back to give the partition it writes the UUID dissection pairs them by.
 `RepartInfo` contains the optional `RootHashInfo` when verity is enabled. The completed `ImageInfo` includes
 the ESP layer, so another image can use the bootable image as its parent without relying on a generated
 helper label. The same `InitrdInfo`, containing its logical `ImageInfo` and derived `ImageArchiveInfo`, is
