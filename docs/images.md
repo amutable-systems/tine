@@ -327,7 +327,11 @@ when needed:
 - `bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
 - `image_sysext` builds a systemd-sysext(8) DDI with `systemd-repart`, containing `/usr`, `/opt`, and
-  `extension-release.<name>`, and provides `SysextImageInfo`; with `base`, only the delta layered above that
+  `extension-release.<name>`, and provides `SysextImageInfo`. The DDI is the file
+  `<extension>_<version>_<arch>.sysext.raw`, which is the name a systemd-sysupdate transfer matches, and
+  the same three values fill `SYSEXT_ID`, `SYSEXT_VERSION_ID`, `IMAGE_VERSION` and `ARCHITECTURE` in its
+  extension-release, so a caller states each of them once; `release` overrides any of them. With `base`,
+  only the delta layered above that
   image is packaged, and the extension-release pins the base's `ID`/`VERSION_ID`; with `verity_key` (a
   target providing `SigningKeyInfo`), the DDI carries a signature over its verity root hash, which a host
   validates against the key's certificate in its `/usr/lib/verity.d/` (enforced only where the host's
@@ -488,8 +492,16 @@ identity when copied out of the build, exactly matching the UKI's `<image_id>_<v
 The `[qcow2]` and `[raw.zst]` subtargets re-encode the raw disk into a compact qcow2 or a compressed raw on
 demand, each publishing one `DiskConversionInfo`; the encodings are reachable only through those subtargets,
 because one result cannot carry the same provider type twice. The target has no aggregate bootable-image
-provider: it returns `ImageInfo`, `RepartInfo`, `InitrdInfo`, `ImageDirectoryInfo`, and `UkiInfo`
-independently.
+provider: it returns `ImageInfo`, `RepartInfo`, `InitrdInfo`, `ImageDirectoryInfo`, `UkiInfo`, and
+`PublishedInfo` independently.
+
+`PublishedInfo` is what a target contributes to a release, keyed by the name it is published under: for a
+disk the raw image, the UKI, the kernel and the initrd, plus the partitions, and for a `sysext_image` its
+DDI. Each rule names what it builds, so anything gathering a release reads those names instead of composing
+names of its own. A partition is the exception and travels as a typed `PartitionInfo`: its name contains the
+type and UUID repart assigned, so it exists only after the build, and a consumer reads it back out of the
+metadata written beside the partition. The ESP is not published: what it carries is transferred by other
+means, and no update writes the partition back.
 `RepartInfo` contains the optional `RootHashInfo` when verity is enabled. The completed `ImageInfo` includes
 the ESP layer, so another image can use the bootable image as its parent without relying on a generated
 helper label. The same `InitrdInfo`, containing its logical `ImageInfo` and derived `ImageArchiveInfo`, is

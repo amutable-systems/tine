@@ -66,6 +66,7 @@ load(
 )
 load(":initrd.bzl", _InitrdInfo = "InitrdInfo", _initrd_image = "initrd_image")
 load(":install.bzl", _image_install = "image_install")
+load(":publish.bzl", _PublishedInfo = "PublishedInfo")
 load(
     ":sign.bzl",
     _SigningKeyInfo = "SigningKeyInfo",
@@ -140,3 +141,4 @@ RepartInfo = _RepartInfo
 RootHashInfo = _RootHashInfo
 DiskConversionInfo = _DiskConversionInfo
 InitrdInfo = _InitrdInfo
+PublishedInfo = _PublishedInfo
