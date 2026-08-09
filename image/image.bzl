@@ -157,6 +157,16 @@ def terminal_image_command(
         tmpfiles = image.tmpfiles,
     )
 
+def pkgdb_paths(image: ImageInfo) -> list[str]:
+    """Where the image's package system keeps its database.
+
+    Empty for an image with no package manager, which installed no packages and so has no
+    database to strip.
+    """
+    if image.package_manager == None:
+        return []
+    return image.package_manager[PackageManagerInfo].package_system[PackageSystemInfo].database_paths
+
 def image_metadata_subtargets(image: ImageInfo) -> dict[str, list[Provider]]:
     """Expose the canonical metadata carried by a logical image."""
     sub_targets = {

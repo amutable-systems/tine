@@ -14,6 +14,7 @@ load(
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
     "ImageToolsInfo",
+    "pkgdb_paths",
     "terminal_image_command",
 )
 load("//image:publish.bzl", "PublishedInfo")
@@ -26,8 +27,6 @@ load(
     "resolve_signing_key",
     "signing_key_spec",
 )
-load("//package:manager.bzl", "PackageManagerInfo")
-load("//package:system.bzl", "PackageSystemInfo")
 
 SysextImageInfo = provider(
     doc = "A systemd system-extension DDI generated from a logical image.",
@@ -80,13 +79,6 @@ def declare_image_sysext(
             fail("image_sysext: image must layer a delta on top of base")
         layers = len(base.layers)
 
-    # A merged extension must not shadow the host's package database, so strip wherever the
-    # image's package system keeps it. An image without one installed no packages.
-    pkgdb_paths = []
-    if image.package_manager != None:
-        system = image.package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
-        pkgdb_paths = system.database_paths
-
     signing_access = merge_signing_access([verity_key])
     cmd = terminal_image_command(
         ctx,
@@ -100,7 +92,8 @@ def declare_image_sysext(
             "identity": str(ctx.label),
             "name": extension,
             "out": out.as_output(),
-            "pkgdb_paths": pkgdb_paths,
+            # A merged extension must not shadow the host's package database.
+            "pkgdb_paths": pkgdb_paths(image),
             "release": {key: release_fields[key] for key in sorted(release_fields)},
             "seed": seed,
             "signing": signing_key_spec(verity_key),
