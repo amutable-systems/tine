@@ -1,6 +1,6 @@
 """Convenience compositions for image products."""
 
-load("//distribution:defs.bzl", "distribution_aliases", "distribution_attrs")
+load("//distribution:defs.bzl", "distributed")
 load(
     "//image_format:archive.bzl",
     "ARCHIVE_ATTRS",
@@ -461,8 +461,7 @@ def rootfs_archive(
     **kwargs,
 ) -> None:
     """Build one logical image from operations and emit it as an archive."""
-    distribution_aliases(name, distribution, visibility)
-    _rootfs_archive(name = name, ops = flatten_operations(ops), **(distribution_attrs(distribution, visibility) | kwargs))
+    _rootfs_archive(name = name, ops = flatten_operations(ops), **(distributed(name, distribution, visibility) | kwargs))
 
 def sysext_image(
     name: str,
@@ -472,8 +471,7 @@ def sysext_image(
     **kwargs,
 ) -> None:
     """Build one logical image from operations and package it as a system-extension DDI."""
-    distribution_aliases(name, distribution, visibility)
-    _sysext_image(name = name, ops = flatten_operations(ops), **(distribution_attrs(distribution, visibility) | kwargs))
+    _sysext_image(name = name, ops = flatten_operations(ops), **(distributed(name, distribution, visibility) | kwargs))
 
 def bootable_disk_image(
     name: str,
@@ -516,7 +514,6 @@ def bootable_disk_image(
             # otherwise the leaf pulling it in decides, exactly as a parent chain does.
             distribution = distribution,
         )
-    distribution_aliases(name, distribution, visibility)
     _bootable_disk_image(
         name = name,
         initrd = initrd,
@@ -536,5 +533,5 @@ def bootable_disk_image(
         sign_expected_pcr_key = sign_expected_pcr_key,
         verity_key = verity_key,
         version = version,
-        **(distribution_attrs(distribution, visibility) | kwargs),
+        **(distributed(name, distribution, visibility) | kwargs),
     )

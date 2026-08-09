@@ -207,4 +207,7 @@ _package_manager = rule(
 def package_manager(name: str, **kwargs) -> None:
     if not name.endswith(".package-manager"):
         fail("package_manager name must end with '.package-manager': {}".format(name))
+
+    # An image reaches this through a dependency and configures it on the way, so it takes the
+    # package's compatibility without the per-distribution aliases a named target needs.
     _package_manager(name = name, **(distribution_attrs() | kwargs))
