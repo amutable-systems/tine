@@ -26,7 +26,7 @@ python_bootstrap_binary(name = "build", main = "build.py", deps = ["//:specs", "
 
 python_bootstrap_binary(
     name = "snapshot",
-    deps = ["//:specs", "//:util", "//package:href"],
+    deps = ["//:util", "//package:href", "//package:snapshotter"],
     main = "snapshot.py",
 )
 

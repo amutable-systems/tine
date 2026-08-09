@@ -14,6 +14,13 @@ python_bootstrap_library(
 )
 
 python_bootstrap_library(
+    name = "snapshotter",
+    srcs = ["snapshotter.py"],
+    deps = ["//:specs", "//:util"],
+    visibility = ["PUBLIC"],
+)
+
+python_bootstrap_library(
     name = "transaction",
     srcs = ["transaction.py"],
     deps = ["//:util"],
