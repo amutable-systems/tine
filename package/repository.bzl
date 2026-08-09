@@ -63,6 +63,33 @@ def pool_transports(id: str, baseurl: str, snapshot: ArtifactValue, engine_locks
         }
     return packages
 
+def _materialize_metadata_impl(
+    actions: AnalysisActions,
+    id: str,
+    repo: OutputArtifact,
+    snapshot: ArtifactValue,
+) -> list[Provider]:
+    metadata = snapshot_data(snapshot, id).get("metadata")
+    if not metadata:
+        fail("repository '{}' is not locked yet (snapshot missing or empty); run refresh-catalog".format(id))
+
+    tree = {path: actions.write(path, content) for path, content in metadata["inline"].items()}
+    for file in metadata["files"]:
+        out = actions.declare_output(file["out"])
+        actions.download_file(out, file["url"], sha256 = file["sha256"], size_bytes = int(file["size"]))
+        tree[file["out"]] = out
+    actions.copied_dir(repo, tree)
+    return []
+
+_materialize_metadata = dynamic_actions(
+    impl = _materialize_metadata_impl,
+    attrs = {
+        "id": dynattrs.value(str),
+        "repo": dynattrs.output(),
+        "snapshot": dynattrs.artifact_value(),
+    },
+)
+
 def _materialize_package_pool_impl(
     actions: AnalysisActions,
     baseurl: str,
@@ -92,7 +119,37 @@ _materialize_package_pool = dynamic_actions(
     },
 )
 
-def declare_package_pool(
+def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
+    repo = ctx.actions.declare_output("repo", dir = True)
+    snapshot = ctx.attrs.snapshot
+    if snapshot == None:
+        snapshot = ctx.actions.write("empty-snapshot.json", "{}")
+    ctx.actions.dynamic_output_new(
+        _materialize_metadata(
+            id = ctx.label.name,
+            repo = repo.as_output(),
+            snapshot = snapshot,
+        )
+    )
+    return remote_repository_base(
+        ctx,
+        baseurl = ctx.attrs.baseurl,
+        package_system = ctx.attrs.package_system,
+        repo_dir = repo,
+        snapshot_spec = ctx.attrs.snapshot_spec,
+    ) + [
+        PackagePoolInfo(
+            value = _declare_package_pool(
+                ctx,
+                baseurl = ctx.attrs.baseurl,
+                engine_locks = ctx.attrs.engine_locks,
+                package_system = ctx.attrs.package_system,
+                snapshot = snapshot,
+            ),
+        ),
+    ]
+
+def _declare_package_pool(
     ctx: AnalysisContext,
     *,
     baseurl: str,
@@ -135,7 +192,7 @@ ConfiguredPackageRepositoryInfo = record(
 )
 
 # What every remote repository declares, whichever package system owns it.
-REMOTE_REPOSITORY_ATTRS = {
+_REMOTE_REPOSITORY_ATTRS = {
     "baseurl": attrs.string(),
     "engine_locks": attrs.list(
         attrs.source(),
@@ -145,7 +202,15 @@ REMOTE_REPOSITORY_ATTRS = {
     "labels": attrs.list(attrs.string(), default = []),
     "package_system": attrs.dep(providers = [PackageSystemInfo]),
     "snapshot": attrs.option(attrs.source(), default = None),
+    "snapshot_spec": attrs.dict(
+        attrs.string(),
+        attrs.string(),
+        default = {},
+        doc = "what else this repository's snapshot driver needs to name its metadata",
+    ),
 }
+
+remote_repository = rule(impl = _remote_repository_impl, attrs = _REMOTE_REPOSITORY_ATTRS)
 
 LocalPackageInfo = provider(
     doc = "Built native packages and their native package system.",
@@ -374,7 +439,6 @@ RepositoryPin = record(
 )
 
 def declare_remote_repository(
-    rule: typing.Callable,
     *,
     name: str,
     what: str,
@@ -401,7 +465,7 @@ def declare_remote_repository(
     if pin == None and baseurl == None:
         fail("{} requires baseurl or a pin: {}".format(what, name))
     snapshots = glob(["snapshot/repo/" + name.removesuffix(".repository") + ".json"])
-    rule(
+    remote_repository(
         name = name,
         baseurl = pin.baseurl if pin != None else baseurl,
         engine_locks = glob(["snapshot/engine/*.json"]),

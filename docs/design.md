@@ -147,9 +147,11 @@ Normal builds do not resolve against live network repositories. The catalog cont
 optional generated form:
 
 - `snapshot/repo/<name>.json` pins one repository's build metadata and its complete package inventory,
-  keyed by SHA-256 checksum. What that metadata is belongs to the package system. Where the mirror
-  itself names metadata by content, the snapshot pins each stream by its own checksum and drops the
-  ones the resolver will not read; where it does not, the snapshot pins the bytes the refresh saw,
+  keyed by SHA-256 checksum. The metadata is files named by where each lands in the materialized
+  repository: some fetched against a stated checksum, some carried verbatim where the pin narrowed what
+  the mirror served. What goes in them belongs to the package system; placing them does not. Where the
+  mirror itself names metadata by content, the snapshot pins each stream by its own checksum and drops
+  the ones the resolver will not read; where it does not, the snapshot pins the bytes the refresh saw,
   which stays buildable only against a mirror that serves immutable snapshots and not against an
   ordinary rolling one;
 - `snapshot/engine/<name>.json` optionally freezes an engine transaction. Remote records contain

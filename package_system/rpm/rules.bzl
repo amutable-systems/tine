@@ -5,90 +5,10 @@ load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//package:buildroot.bzl", "BuildrootInfo")
 load("//package:install.bzl", "install_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
-load(
-    "//package:repository.bzl",
-    "LocalPackageInfo",
-    "PackagePoolInfo",
-    "REMOTE_REPOSITORY_ATTRS",
-    "RepositoryPin",
-    "declare_package_pool",
-    "declare_remote_repository",
-    "remote_repository_base",
-    "snapshot_data",
-)
+load("//package:repository.bzl", "LocalPackageInfo", "RepositoryPin", "declare_remote_repository")
 load("//package:system.bzl", "PackageSystemInfo")
 
 _RPM_PACKAGE_SYSTEM = "@tine//package_system/rpm:package_system"
-
-def _materialize_repodata_impl(
-    actions: AnalysisActions,
-    id: str,
-    repo: OutputArtifact,
-    snapshot: ArtifactValue,
-) -> list[Provider]:
-    data = snapshot_data(snapshot, id)
-    repomd_xml = data.get("repomd", "")
-    if not repomd_xml:
-        fail(
-            "repository '{}' is not locked yet (snapshot missing or empty); run refresh-catalog".format(id),
-        )
-
-    tree = {"repodata/repomd.xml": actions.write("repomd.xml", repomd_xml)}
-    for stream in data.get("streams", []):
-        out_name = stream["out"]
-        out = actions.declare_output(out_name)
-        actions.download_file(
-            out,
-            stream["url"],
-            sha256 = stream["sha256"],
-            size_bytes = stream["size"],
-        )
-        tree["repodata/" + out_name] = out
-    actions.copied_dir(repo, tree)
-    return []
-
-_materialize_repodata = dynamic_actions(
-    impl = _materialize_repodata_impl,
-    attrs = {
-        "id": dynattrs.value(str),
-        "repo": dynattrs.output(),
-        "snapshot": dynattrs.artifact_value(),
-    },
-)
-
-def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
-    repo = ctx.actions.declare_output("repo", dir = True)
-    snapshot = ctx.attrs.snapshot
-    if snapshot == None:
-        snapshot = ctx.actions.write("empty-snapshot.json", "{}")
-    ctx.actions.dynamic_output_new(
-        _materialize_repodata(
-            id = ctx.label.name,
-            repo = repo.as_output(),
-            snapshot = snapshot,
-        )
-    )
-    return remote_repository_base(
-        ctx,
-        baseurl = ctx.attrs.baseurl,
-        package_system = ctx.attrs.package_system,
-        repo_dir = repo,
-    ) + [
-        PackagePoolInfo(
-            value = declare_package_pool(
-                ctx,
-                baseurl = ctx.attrs.baseurl,
-                engine_locks = ctx.attrs.engine_locks,
-                package_system = ctx.attrs.package_system,
-                snapshot = snapshot,
-            ),
-        ),
-    ]
-
-_remote_repository = rule(
-    impl = _remote_repository_impl,
-    attrs = REMOTE_REPOSITORY_ATTRS,
-)
 
 def rpm_remote_repository(
     name: str,
@@ -107,7 +27,6 @@ def rpm_remote_repository(
             metadata = {"rpmrepo.mirror": rpmrepo_mirror, "rpmrepo.snapshot": rpmrepo_snapshot},
         )
     declare_remote_repository(
-        _remote_repository,
         name = name,
         what = "rpm_remote_repository",
         label = "tine:rpm-remote-repository",

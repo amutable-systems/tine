@@ -26,6 +26,27 @@ class PackageEntry(TypedDict):
     size: int
 
 
+class MetadataFile(TypedDict):
+    """One pinned file, named by where it lands in the materialized repository directory."""
+
+    out: str
+    url: str
+    sha256: str
+    size: int
+
+
+class RepositoryMetadata(TypedDict):
+    """What a build materializes to make a pinned repository local again.
+
+    A repository describes itself with files it serves and, where the pin has to edit or narrow
+    what it found, files the snapshot carries verbatim. Both are placed by path, so what belongs
+    in a `repodata/` subdirectory and what sits at the root are the same kind of thing here.
+    """
+
+    files: list[MetadataFile]
+    inline: dict[str, str]
+
+
 class Spec(TypedDict):
     id: str
     baseurl: str
