@@ -12,7 +12,6 @@ load(
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
 
-_EXT = {"cpio": "cpio", "tar": "tar"}
 COMPRESSIONS = ["none", "zstd"]
 _COMPRESSION_EXT = {"none": "", "zstd": ".zst"}
 
@@ -46,11 +45,7 @@ def declare_image_archive(
     keeps it, for a root nothing ever resolves packages in. The image's `[pkgdb]` subtarget still
     captures the database from the tree itself.
     """
-    out = declare_out(
-        ctx,
-        identifier,
-        "image." + _EXT[format] + _COMPRESSION_EXT[compression],
-    )
+    out = declare_out(ctx, identifier, "image." + format + _COMPRESSION_EXT[compression])
 
     # An image without a package manager installed no packages, so it has no database to strip.
     pkgdb_paths = []
