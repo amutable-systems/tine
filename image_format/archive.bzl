@@ -7,10 +7,9 @@ load(
     "ImageInfo",
     "ImageToolsInfo",
     "declare_out",
+    "pkgdb_paths",
     "terminal_image_command",
 )
-load("//package:manager.bzl", "PackageManagerInfo")
-load("//package:system.bzl", "PackageSystemInfo")
 
 COMPRESSIONS = ["none", "zstd"]
 _COMPRESSION_EXT = {"none": "", "zstd": ".zst"}
@@ -46,13 +45,6 @@ def declare_image_archive(
     captures the database from the tree itself.
     """
     out = declare_out(ctx, identifier, "image." + format + _COMPRESSION_EXT[compression])
-
-    # An image without a package manager installed no packages, so it has no database to strip.
-    pkgdb_paths = []
-    if strip_pkgdb and image.package_manager != None:
-        system = image.package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
-        pkgdb_paths = system.database_paths
-
     cmd = terminal_image_command(
         ctx,
         # One image can be archived in several formats, so the spec is named like the output.
@@ -64,7 +56,7 @@ def declare_image_archive(
             "compression": compression,
             "format": format,
             "out": out.as_output(),
-            "pkgdb_paths": pkgdb_paths,
+            "pkgdb_paths": pkgdb_paths(image) if strip_pkgdb else [],
         },
     )
     ctx.actions.run(cmd, category = "image_" + format, identifier = identifier or format)

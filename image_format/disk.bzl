@@ -9,6 +9,7 @@ load(
     "ImageToolsInfo",
     "check_name",
     "declare_out",
+    "pkgdb_paths",
     "spec_path",
     "terminal_image_command",
 )
@@ -21,8 +22,6 @@ load(
     "resolve_signing_key",
     "signing_key_spec",
 )
-load("//package:manager.bzl", "PackageManagerInfo")
-load("//package:system.bzl", "PackageSystemInfo")
 
 Partition = dict[str, typing.Any]
 
@@ -301,12 +300,6 @@ def declare_repart(
     if len(names) != len({name: True for name in names}):
         fail("repart: new and imported partition names must be unique")
 
-    # An image without a package manager installed no packages, so it has no database to strip.
-    pkgdb_paths = []
-    if strip_pkgdb and image.package_manager != None:
-        system = image.package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
-        pkgdb_paths = system.database_paths
-
     spec = {
         "basename": basename,
         "definitions": decoded,
@@ -322,7 +315,7 @@ def declare_repart(
             }
             for value in imported_partitions
         ],
-        "pkgdb_paths": pkgdb_paths,
+        "pkgdb_paths": pkgdb_paths(image) if strip_pkgdb else [],
         "root_hash_out": None,
         "seed": seed,
         "signing": signing_key_spec(verity_key),
