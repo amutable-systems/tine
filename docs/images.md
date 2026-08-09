@@ -483,8 +483,7 @@ views and supply-chain artifacts are lazy subtargets:
 ├── [roothash]
 └── [partitions]
     ├── [usr]
-    ├── [usr-verity]
-    └── [esp]
+    └── [usr-verity]
 ```
 
 The disk and its re-encodings are files named `<image_id>_<version>_<arch>.<ext>`, so they keep the image
