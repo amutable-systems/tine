@@ -190,12 +190,14 @@ cached rather than repeated by every terminal output.
 `rootfs_archive`, `bootable_disk_image`'s root filesystem, and `initrd_image` end their operations with
 `depmod()`, `hwdb()` and `locale_gen()` at their defaults, because a composition declares a whole product
 rather than one layer: the three cover everything a package can leave described, and each does nothing on
-an image carrying none of it. An initrd generates before it prunes, so it ships the compiled database
-rather than the sources it was compiled from. Naming a generator in `ops` overrides the composition's copy
-instead of adding a second, so `hwdb(usr = False)`, or a `depmod()` placed before the operations that strip
-modules, is taken exactly as written. `sysext_image` runs none of them: an extension merges onto a system
-it does not own, where a database built from the extension's own tree would shadow that system's while
-describing only what the extension carries.
+an image carrying none of it. They land on the layer the composition declares, so a composition handed a
+`parent` and given no operations or packages of its own declares no layer and places none; that parent is
+where they belong, after the operations whose packages they read. An initrd generates before it prunes, so
+it ships the compiled database rather than the sources it was compiled from. Naming a generator in `ops`
+overrides the composition's copy instead of adding a second, so `hwdb(usr = False)`, or a `depmod()` placed
+before the operations that strip modules, is taken exactly as written. `sysext_image` runs none of them: an
+extension merges onto a system it does not own, where a database built from the extension's own tree would
+shadow that system's while describing only what the extension carries.
 
 ### Declaring the initrd
 
