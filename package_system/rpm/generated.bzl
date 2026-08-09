@@ -240,6 +240,7 @@ def _buildroot_locks(
     edge_caps: dict[str, dict[str, list[str]]],
     provides: dict[str, dict[str, bool]],
     buildroot_only_packages: list[str],
+    comp: dict[str, int],
 ) -> dict[str, list[str]]:
     """Build an acyclic package-to-self-hosted-provider map.
 
@@ -248,7 +249,6 @@ def _buildroot_locks(
     for cap in buildroot_only_packages:
         if cap not in provides:
             fail("buildroot-only package '{}' has no provider among the branch packages".format(cap))
-    comp = _sccs({name: sorted(deps) for name, deps in edge_caps.items()})
     locks = {}
     for name in edge_caps:
         keep = []
@@ -307,13 +307,14 @@ def rpm_branch(
             if p in seed_only_packages:
                 fail("buildroot-only package '{}' is provided by seed-only package '{}'".format(cap, p))
     edge_caps = _buildrequires_edges(metadata, provides, seed_only_packages)
-    locks = _buildroot_locks(edge_caps, provides, buildroot_only_packages)
+    sccs = _sccs({name: sorted(deps) for name, deps in edge_caps.items()})
+    locks = _buildroot_locks(edge_caps, provides, buildroot_only_packages, sccs)
 
     # An underscore never starts a valid rpm name, so this cannot clash with a package target.
     _buildrequires_graph(
         name = "_buildrequires_graph",
         edges = edge_caps,
-        sccs = _sccs({name: sorted(deps) for name, deps in edge_caps.items()}),
+        sccs = sccs,
     )
 
     # Runtime metadata for installs: a package manager attaches this target, and each install's
