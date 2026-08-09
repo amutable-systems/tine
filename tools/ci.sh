@@ -138,6 +138,15 @@ boot_artifacts() {
     rm -rf "$scratch"
 }
 
+# A DDI's file name is what a systemd-sysupdate transfer matches, so it is part of the contract
+# rather than an implementation detail. The example sets no version, so this pins the rule's default
+# alongside the shape.
+sysext_name() {
+    local output
+    output=$("$buck" targets --show-output tine//examples/image:demo-ext.fedora | awk '{print $2}')
+    test "$(basename "$output")" = demo-ext_0_x86-64.sysext.raw
+}
+
 # Sign the Secure Boot example through PKCS#11 tokens, exercising the external-key path end to end
 # with the production module: tools/signing-server serves one tpm2-pkcs11 token per key from a
 # software TPM, and the same example builds against its socket. Every tool this needs comes from the
@@ -211,6 +220,7 @@ group box               -- "$buck" build tine//examples/box:box
 group boot-demo-image   -- "$buck" build tine//examples/image:boot-demo.fedora
 group uki-modules       -- uki_modules
 group boot-artifacts    -- boot_artifacts
+group sysext-name       -- sysext_name
 group boot-demo-smoke   -- "$buck" run tine//examples/image:boot-demo-vm-smoke.fedora
 group rust-sbom         -- rust_sbom
 group go-sbom           -- go_sbom

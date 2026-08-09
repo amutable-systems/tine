@@ -47,6 +47,7 @@ load(
     "sign_systemd_boot",
 )
 load(":initrd.bzl", "InitrdInfo", "initrd_image")
+load(":publish.bzl", "PublishedInfo")
 load(
     ":sign.bzl",
     "SigningKeyInfo",  # @unused Used as a function argument type.
@@ -113,16 +114,18 @@ def _sysext_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
     sysext = declare_image_sysext(
         ctx,
+        arch = ctx.attrs.arch,
         base = base,
         extension = ctx.label.name,
         image = image,
         release = ctx.attrs.release,
         seed = ctx.attrs.seed,
         verity_key = resolve_signing_key(ctx.attrs.verity_key),
+        version = ctx.attrs.version,
     )
     return image_providers(
         default_outputs = [sysext.image],
-        extra = [sysext],
+        extra = [sysext, PublishedInfo(artifacts = {sysext.image.basename: sysext.image})],
         image = image,
     )
 
@@ -333,9 +336,23 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
             conversion,
         ]
 
+    # An update carries the partitions and the UKI; the disk itself is the installation medium, and
+    # the kernel and initrd are what boots one without a boot loader. The ESP is none of those: what
+    # it holds arrives as transfers of its own, so it is left out rather than published as a
+    # partition nothing ever writes back.
+    published = PublishedInfo(
+        artifacts = {
+            "{}.efi".format(basename): boot.uki,
+            "{}.initrd".format(basename): boot.initrd,
+            "{}.vmlinuz".format(basename): boot.kernel,
+            raw.basename: raw,
+        },
+        partitions = [partition for partition in disk.info.partitions if partition.definition["type"] != "esp"],
+    )
+
     return image_providers(
         default_outputs = [raw],
-        extra = [directory, disk.info, initrd_info, uki],
+        extra = [directory, disk.info, initrd_info, published, uki],
         image = esp,
         sub_targets = sub_targets,
     )
