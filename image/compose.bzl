@@ -289,7 +289,6 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         mkfs_options = ctx.attrs.mkfs_options,
         output_size = ctx.attrs.output_size,
         seed = ctx.attrs.disk_seed,
-        split = True,
     )
     raw = disk.info.disk
     if raw == None:

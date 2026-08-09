@@ -118,6 +118,10 @@ class Definition:
         _setting(lines, "Verity", self.verity)
         _setting(lines, "VerityMatchKey", self.verity_match_key)
         lines.append(f"CopyBlocks={blocks}")
+
+        # An imported partition already exists as a standalone artifact, so splitting it back out
+        # would write a second copy of it and discard that. SplitName= otherwise defaults to %t.
+        lines.append("SplitName=-")
         return "\n".join(lines) + "\n"
 
 

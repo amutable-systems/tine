@@ -754,7 +754,7 @@ root filesystem layer ──> identity layer ──> split /usr + verity ──>
                                               ESP layer
                                               │          │
                                               │          └─> terminal views and supply-chain artifacts
-                                              └─> split ESP + system partitions ─> bootable-image result
+                                              └─> ESP + system partitions ─> bootable-image result
 ```
 
 The identity layer stamps `IMAGE_ID` and `IMAGE_VERSION` into the image's os-release. It is a separate
@@ -804,8 +804,9 @@ name (and sysupdate's matching of it) could not distinguish more. If several ker
 a requirement, add naming configuration to `uki()` to disambiguate them. The ESP layer copies the UKI
 directory into `EFI/Linux` and includes the operations returned by `install_systemd_boot()`. Those create
 the ESP path, run the engine's `bootctl` with its paths in the command environment, and remove the random
-seed. The final repart action creates and exports the ESP while copying the previously split system
-partitions into the same disk. The default system partition is a compressed EROFS `/usr` protected by
+seed. The final repart action creates the ESP while copying the previously split system partitions into
+the same disk. It splits nothing itself: the system partitions arrive already split, and nothing updates
+the ESP as a partition. The default system partition is a compressed EROFS `/usr` protected by
 dm-verity; the generated `usrhash=` is embedded in every UKI. The same copy operation can place device
 trees, bootloader entries, and future standalone artifacts; `esp_files` exposes it, copying caller-declared
 artifacts to chosen ESP paths.
@@ -847,8 +848,7 @@ supply-chain metadata, and constituents are lazy subtargets:
 ├── [roothash]
 └── [partitions]
     ├── [usr]
-    ├── [usr-verity]
-    └── [esp]
+    └── [usr-verity]
 ```
 
 Typed providers are the composition API; subtargets are the command-line interface. There is no aggregate
