@@ -17,7 +17,6 @@ import os
 import pty
 import re
 import select
-import shlex
 import struct
 import sys
 import termios
@@ -137,15 +136,10 @@ def main(argv: list[str]) -> None:
         default=[],
         help="assert this shell command succeeds in the guest (repeatable)",
     )
-    parser.add_argument("command", nargs="+", help="the image_vm runner command to launch")
+    parser.add_argument("command", nargs="+", help="the image_vm runner command to launch, after `--`")
     args = parser.parse_args(argv)
 
-    command = args.command
-    # command_alias expands `$(exe_target :target)` into one space-joined argument; split it back into
-    # argv. buck-out paths carry no spaces, so a plain shell split round-trips the command exactly.
-    if len(command) == 1:
-        command = shlex.split(command[0])
-    console = Console(command)
+    console = Console(args.command)
 
     print("[boot-smoke] waiting for the autologin shell...", file=sys.stderr)
     if console.expect(PROMPT, BOOT_TIMEOUT) is None:

@@ -25,6 +25,7 @@ load(
     "sysext_image",
 )
 load("@tine//package:manager.bzl", "package_manager")
+load("@tine//tests:defs.bzl", "vm_smoke")
 
 package_manager(
     name = "image.package-manager",
@@ -161,58 +162,43 @@ image_vm(
 )
 
 # Boot smoke test: enrolls keys on first boot, settles under Secure Boot with a vTPM, then powers
-# off. Reuses the shared tine driver; `buck run :vm-smoke` runs it locally and in CI.
-command_alias(
+# off. Reuses the shared tine driver; `buck test` runs it, `buck run` boots it by hand.
+vm_smoke(
     name = "vm-smoke",
-    args = [
-        "--check",
+    vm = ":vm",
+    checks = [
         "bootctl | grep -F 'Secure Boot: enabled (user)'",
-        "--check",
         "bootctl | grep -F 'Measured UKI: yes'",
-        "--check",
         "bootctl | grep -F 'Measured OS: yes'",
         # The booted /usr must carry the signed bootloader: bootctl update (and thus
         # systemd-boot-update.service after an OS update) reinstalls from there, and an unsigned
         # binary would fail Secure Boot verification on the next reboot.
-        "--check",
         "test -e /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed",
         # `strip_pkgdb` leaves the package database out of the partitions, so nothing under the
         # signed /usr carries one; the path is the rpm package system's `database_paths`.
-        "--check",
         "test ! -e /usr/lib/sysimage/rpm",
         # The disk carries the signature over the verity root hash, which is what lets anything
         # receiving this image as an update verify it before trusting it.
-        "--check",
         "test -e /dev/disk/by-designator/usr-verity-sig",
         # The stub hands the booted system the public key the expected-PCR policy is sealed with.
-        "--check",
         "test -s /run/systemd/tpm2-pcr-public-key.pem",
         # The extension merged with sysext.conf's strict "signed" image policy. Proves
         # its signature verified against the certificate in /usr/lib/verity.d.
-        "--check",
         "systemd-sysext status --no-pager | grep -F demo-ext",
-        "--check",
         "test -x /usr/bin/zsh",
         # The same policy refuses an extension without a signature: refresh fails, and must
         # change nothing -- the unsigned extension appears neither in the list nor in the
         # merged file system, and the previous merge stays in place (the dissection failure
         # precedes the unmerge).
-        "--check",
         "mkdir -p /run/extensions && cp /usr/share/tine-example/demo-ext-unsigned.raw /run/extensions/",
-        "--check",
         "! systemd-sysext refresh",
-        "--check",
         "! systemd-sysext status --no-pager | grep -F demo-ext-unsigned",
-        "--check",
         "test ! -d /usr/share/tine-unsigned && test -x /usr/bin/zsh",
         # ...and only with a relaxed policy the same DDI merges fine.
-        "--check",
         "systemd-sysext refresh '--image-policy=root=verity+signed+unprotected+absent:usr=verity+signed+unprotected+absent:=ignore'",
-        "--check",
         "systemd-sysext status --no-pager | grep -F demo-ext-unsigned && test -d /usr/share/tine-unsigned",
         # Undo the relaxed merge: without the unsigned DDI the strict refresh succeeds again,
         # demo-ext stays, and the unsigned marker vanishes.
-        "--check",
         "rm /run/extensions/demo-ext-unsigned.raw && systemd-sysext refresh && test -x /usr/bin/zsh && test ! -d /usr/share/tine-unsigned",
     ]
     + (
@@ -220,16 +206,10 @@ command_alias(
             # It must be the expected-PCR key, and not the Secure Boot one, compared through the
             # certificates copied into /usr, which external builds do not carry. Derive each in the
             # guest and insist it is non-empty, so that a comparison against nothing cannot pass.
-            "--check",
-            '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/expected-pcr.crt >/tmp/pcr.pem && test -s /tmp/pcr.pem && test "\\$(cat /tmp/pcr.pem)" = "\\$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
-            "--check",
-            '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/secure-boot.crt >/tmp/sb.pem && test -s /tmp/sb.pem && test "\\$(cat /tmp/sb.pem)" \'!=\' "\\$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
+            '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/expected-pcr.crt >/tmp/pcr.pem && test -s /tmp/pcr.pem && test "$(cat /tmp/pcr.pem)" = "$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
+            '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/secure-boot.crt >/tmp/sb.pem && test -s /tmp/sb.pem && test "$(cat /tmp/sb.pem)" \'!=\' "$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
         ]
         if not _EXTERNAL
         else []
-    )
-    + [
-        "$(exe_target :vm)",
-    ],
-    exe = "tine//tests:boot-smoke",
+    ),
 )

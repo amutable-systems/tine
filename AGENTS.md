@@ -35,7 +35,9 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
 - **Check (lint plus the hooked-in test suites):** `buck run tine//tools:check`
 - **Analyze every target without building one:** `buck bxl tine//tools/graph.bxl:analyze`. Catches a rule
   that fails during analysis in a target nothing happens to build; `--` `--pattern` scopes it elsewhere.
-- **Unit tests:** `buck test tine//...` (one suite: `buck test tine//image:test`). Test targets are
+- **Unit tests:** `buck test tine//...` (one suite: `buck test tine//image:test`). The boot smokes are
+  tests too and carry the `vm` label, so `--exclude vm` is everything else and `--include vm` is only
+  them; `check` excludes them and CI runs them as their own step. Test targets are
   not build artifacts, so `buck build` does not run them and there is no cached verdict: every
   `buck test` reruns the suites it selects.
 - **Auto-format + auto-fix:** `buck run tine//tools:fmt`
