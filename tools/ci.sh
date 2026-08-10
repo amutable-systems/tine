@@ -238,16 +238,17 @@ group check             -- "$buck" run tine//tools:check
 # Every repository the catalog declares is pinned to a mirror serving immutable snapshots, so the whole
 # catalog is verifiable rather than the engines that happen to be pinned.
 group verify-catalog    -- "$buck" run tine//tools:verify-catalog
-group box               -- "$buck" build tine//examples/box:box
-group boot-demo-image   -- "$buck" build tine//examples/image:boot-demo.fedora
+# Everything the cell declares, rather than the handful of targets someone remembered to name here:
+# every example image over both package systems, the boxes, and the source-build demos.
+group build             -- "$buck" build tine//...
 group uki-modules       -- uki_modules
 group boot-artifacts    -- boot_artifacts
 group sysext-name       -- sysext_name
-group boot-demo-smoke   -- "$buck" run tine//examples/image:boot-demo-vm-smoke.fedora
 group rust-sbom         -- rust_sbom
 group go-sbom           -- go_sbom
-group secureboot-image  -- "$buck" build tine//examples/image-secureboot:image
 group secureboot-sbom   -- secureboot_sbom
 group release-artifacts -- release_artifacts
-group secureboot-smoke  -- "$buck" run tine//examples/image-secureboot:vm-smoke
+# The boot smokes, which `check` above left out because they take minutes each. Adding one is
+# declaring it, not naming it here as well.
+group smokes            -- "$buck" test tine//... --include vm
 group secureboot-pkcs11 -- secureboot_pkcs11

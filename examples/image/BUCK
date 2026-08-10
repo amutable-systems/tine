@@ -7,7 +7,7 @@ distribution is the default, so what a build names is one of the per-distributio
 image rule declares for itself.
 """
 
-load("@tine//distribution:defs.bzl", "distribution_alias", "distribution_compatibility", "distributions_for_package")
+load("@tine//distribution:defs.bzl", "distributions_for_package")
 load(
     "@tine//image:defs.bzl",
     "DEFAULT_USR_VERITY_PARTITIONS",
@@ -25,6 +25,7 @@ load(
     "uki_profile",
 )
 load("@tine//package:manager.bzl", "package_manager")
+load("@tine//tests:defs.bzl", "vm_smoke")
 
 # Everything a distribution decides is described in the PACKAGE file, which is the one place a
 # distribution is added; nothing below names one.
@@ -229,48 +230,25 @@ image_vm(
 )
 
 # Boot smoke test: drives :boot-demo-vm's console over a pty (via the shared tine driver),
-# asserts the system settles, then powers off. `buck run :boot-demo-vm-smoke` runs it locally and in CI.
-command_alias(
+# asserts the system settles, then powers off. `buck test` runs it, `buck run` boots it by hand.
+vm_smoke(
     name = "boot-demo-vm-smoke",
-    # A prelude rule, so unlike the image rules it has no tine macro to inherit the package's
-    # distributions through and has to ask for them.
-    target_compatible_with = distribution_compatibility(),
-    # exe_target, not exe: the runner is data for the driver, not a host tool, so keep it in the
-    # target configuration and reuse the image `buck build :boot-demo` already produced (exe would
-    # pull it into the exec configuration and rebuild it).
-    args = [
+    vm = ":boot-demo-vm",
+    checks = [
         # The distribution that booted is the one that was asked for. A select reaches here through
-        # the alias below, which configures this target too.
-        "--check",
+        # the alias the macro declares, which configures this target too.
         select({d["distribution"]: "grep -q '^ID={}$' /etc/os-release".format(d["os_release_id"]) for d in DISTRIBUTIONS.values()}),
-        "--check",
         "bootctl | grep -F 'Secure Boot: disabled (setup)'",
         # The build compiled the hardware database into /usr, which is read-only here, so a guest
         # that has it got it from the build rather than from a boot-time regeneration.
-        "--check",
         "test -s /usr/lib/udev/hwdb.bin",
         # The runner's cmdline_extra reached the kernel the UKI booted.
-        "--check",
         "grep -q tine.smoke=1 /proc/cmdline",
         # The guest sees the disk at its output_size, and the partitions it boots from still
         # occupy only the front of it.
-        "--check",
-        # Buck's macro parser claims $(...), so the shell substitution is escaped.
-        "test \\$(blockdev --getsize64 /dev/vda) -eq 2147483648",
-        "$(exe_target :boot-demo-vm)",
+        "test $(blockdev --getsize64 /dev/vda) -eq 2147483648",
     ],
-    exe = "tine//tests:boot-smoke",
 )
-
-# The image rules name themselves per distribution. This one is a prelude rule, so it says so here.
-[
-    distribution_alias(
-        name = "boot-demo-vm-smoke." + suffix,
-        actual = ":boot-demo-vm-smoke",
-        distribution = DISTRIBUTIONS[suffix]["distribution"],
-    )
-    for suffix in sorted(DISTRIBUTIONS)
-]
 
 # System-extension DDI extending :boot-demo: only the delta above the base lands in the
 # image, and its extension-release pins the base's ID/VERSION_ID. `boot-demo-vm` exposes
