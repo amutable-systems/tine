@@ -17,9 +17,3 @@ runs:
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm --settle
         ls -l /dev/kvm
-
-    # verify-catalog shells out to `git -C <catalog>`, which trips git's safe.directory guard on a
-    # checkout owned by another uid.
-    - name: Set up git
-      shell: bash
-      run: git config --global --add safe.directory '*'

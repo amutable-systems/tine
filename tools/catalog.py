@@ -13,13 +13,18 @@ Nested Buck reuses the invoking daemon through the inherited isolation directory
 
 import argparse
 import contextlib
+import difflib
+import itertools
 import json
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
 from util import urlopen, with_retries
+
+VERIFY_PREFIX = ".catalog-verify."
 
 DEFAULT_CATALOG = "tine//catalog"
 ENGINE_LABEL = "tine:engine"
@@ -58,19 +63,19 @@ def _catalog_directory(buck: str, targets: list[str]) -> Path:
     return cell_root / package
 
 
-def _snapshot_path(catalog_dir: Path, target: str, kind: str, suffix: str) -> Path:
+def _snapshot_path(target: str, kind: str, suffix: str) -> Path:
     name = _name_of(target)
     if not name.endswith(suffix):
         raise SystemExit(f"catalog: {target} does not end with {suffix!r}")
-    return catalog_dir / "snapshot" / kind / f"{name.removesuffix(suffix)}.json"
+    return Path("snapshot") / kind / f"{name.removesuffix(suffix)}.json"
 
 
-def _engine_snapshot_path(catalog_dir: Path, target: str) -> Path:
-    return _snapshot_path(catalog_dir, target, "engine", ".engine")
+def _engine_snapshot_path(target: str) -> Path:
+    return _snapshot_path(target, "engine", ".engine")
 
 
-def _repository_snapshot_path(catalog_dir: Path, target: str) -> Path:
-    return _snapshot_path(catalog_dir, target, "repo", ".repository")
+def _repository_snapshot_path(target: str) -> Path:
+    return _snapshot_path(target, "repo", ".repository")
 
 
 def _run(buck: str, target: str, args: list[str]) -> None:
@@ -206,21 +211,17 @@ def _advance_snapshots(buck: str, catalog: str, catalog_dir: Path, selected: lis
         _advance(pinned, wanted, newest, declaration, attribute)
 
 
-def _snapshot(buck: str, target: str, catalog_dir: Path) -> None:
+def _snapshot(buck: str, target: str, out: Path) -> None:
     """Atomically replace a repository snapshot with its current pure metadata."""
-    repository = _name_of(target)
-    print(f"==> snapshotting {repository} (via {target}[snapshot])", file=sys.stderr)
-    committed = _repository_snapshot_path(catalog_dir, target)
-    committed.parent.mkdir(parents=True, exist_ok=True)
-    _run(buck, f"{target}[snapshot]", ["--out", str(committed)])
+    print(f"==> snapshotting {_name_of(target)} (via {target}[snapshot])", file=sys.stderr)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    _run(buck, f"{target}[snapshot]", ["--out", str(out)])
 
 
-def _resolve(buck: str, target: str, catalog_dir: Path) -> None:
-    engine = _name_of(target)
-    print(f"==> resolving {engine} (via {target}[resolve])", file=sys.stderr)
-    committed = _engine_snapshot_path(catalog_dir, target)
-    committed.parent.mkdir(parents=True, exist_ok=True)
-    _run(buck, f"{target}[resolve]", ["--out", str(committed)])
+def _resolve(buck: str, target: str, out: Path) -> None:
+    print(f"==> resolving {_name_of(target)} (via {target}[resolve])", file=sys.stderr)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    _run(buck, f"{target}[resolve]", ["--out", str(out)])
 
 
 def _select_engines(all_resolves: list[str], selected_engines: list[str] | None) -> list[str]:
@@ -249,8 +250,11 @@ def _refresh(
     catalog: str,
     selected_engines: list[str] | None,
     advance_snapshots: bool,
+    destination: Path | None = None,
 ) -> tuple[Path, list[Path]]:
-    """Snapshot repositories and resolve selected engines; return the catalog dir and written files.
+    """Snapshot repositories and resolve selected engines into `destination`, the catalog by default.
+
+    Returns the catalog directory and what was written, relative to whichever it was written to.
 
     Selecting engines also scopes the snapshotted repositories to those the engines depend on, so a
     partial refresh or verify never touches a repository outside the selection.
@@ -266,19 +270,39 @@ def _refresh(
     if not targets:
         raise SystemExit(f"catalog: no repository/engine refresh targets found in {catalog}")
     catalog_dir = _catalog_directory(buck, targets)
+    out_dir = destination if destination is not None else catalog_dir
     if advance_snapshots:
         _advance_snapshots(buck, catalog, catalog_dir, snapshots)
 
     written = []
     for target in snapshots:
-        _snapshot(buck, target, catalog_dir)
-        written.append(_repository_snapshot_path(catalog_dir, target))
+        written.append(_repository_snapshot_path(target))
+        _snapshot(buck, target, out_dir / written[-1])
 
     for target in resolves:
-        _resolve(buck, target, catalog_dir)
-        written.append(_engine_snapshot_path(catalog_dir, target))
+        written.append(_engine_snapshot_path(target))
+        _resolve(buck, target, out_dir / written[-1])
 
     return catalog_dir, written
+
+
+def _differences(committed: Path, regenerated: Path, limit: int = 24) -> str:
+    """What a regenerated file says that the committed one does not, bounded.
+
+    A snapshot runs to tens of thousands of lines, so a full diff of one is unreadable and a diff
+    of five is worse; enough to name what moved is the useful amount.
+    """
+    if not committed.exists():
+        return f"{committed}: not committed yet\n"
+    expected = committed.read_text(encoding="utf-8").splitlines(keepends=True)
+    actual = regenerated.read_text(encoding="utf-8").splitlines(keepends=True)
+    if expected == actual:
+        return ""
+    diff = difflib.unified_diff(expected, actual, fromfile=str(committed), tofile="regenerated", n=0)
+    shown = list(itertools.islice(diff, limit))
+    if len(shown) == limit:
+        shown.append("... (truncated)\n")
+    return "".join(shown)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -306,40 +330,34 @@ def main(argv: list[str] | None = None) -> None:
     catalog = _catalog_pattern(args.catalog)
 
     # Run nested commands from the project root so wrappers resolve consistently.
-    with contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")):
-        catalog_dir, written = _refresh(
-            args.buck,
-            catalog,
-            args.engine,
-            advance_snapshots=not args.verify,
-        )
+    with contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")) as _:
+        if not args.verify:
+            _refresh(args.buck, catalog, args.engine, advance_snapshots=True)
+            return
 
-    if args.verify:
-        print("==> verifying the committed catalog matches", file=sys.stderr)
-        # Check exactly the files this run regenerated, so a scoped verify ignores everything else.
-        pathspecs = sorted(str(path.relative_to(catalog_dir)) for path in written)
-        status = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(catalog_dir),
-                "status",
-                "--porcelain=v1",
-                "--untracked-files=all",
-                "--",
-                *pathspecs,
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
-        if status:
-            print(status, end="", file=sys.stderr)
-            subprocess.run(
-                ["git", "-C", str(catalog_dir), "diff", "--", *pathspecs],
-                check=True,
+        # Regenerate beside the catalog rather than over it, so a verify that fails, or dies,
+        # leaves the checkout exactly as it found it. It has to stay inside the project: the
+        # `[resolve]` sub-target runs in a sandbox that binds the project and nothing else, so an
+        # output anywhere else would land in the sandbox's own tmpfs.
+        with tempfile.TemporaryDirectory(dir=".", prefix=VERIFY_PREFIX) as scratch:
+            catalog_dir, written = _refresh(
+                args.buck,
+                catalog,
+                args.engine,
+                advance_snapshots=False,
+                destination=Path(scratch),
             )
-            raise SystemExit(1)
+            print("==> verifying the committed catalog matches", file=sys.stderr)
+            stale = [
+                report
+                for relative in written
+                if (report := _differences(catalog_dir / relative, Path(scratch) / relative))
+            ]
+
+    if stale:
+        for report in stale:
+            print(report, end="", file=sys.stderr)
+        raise SystemExit("catalog: the committed catalog is not what the pinned resolvers produce")
 
 
 if __name__ == "__main__":
