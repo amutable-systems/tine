@@ -67,7 +67,11 @@ def fedora_release(
     repository_universe(
         name = name + ".repositories",
         package_system = _RPM,
-        required_repositories = [":" + name + ".repository"],
+        # The additional repositories are part of the release, not just of installs from it. An
+        # engine resolves against the universe and nothing else, so leaving them out would stop a
+        # release from building with the tools it ships: an image running a systemd from one of
+        # these has to be assembled by the matching ukify and repart, which live in the same place.
+        required_repositories = [":" + name + ".repository"] + additional_repositories,
     )
     distribution(name = name + ".distribution", visibility = visibility)
     os_release(
