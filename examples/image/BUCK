@@ -8,6 +8,7 @@ image rule declares for itself.
 """
 
 load("@tine//distribution:defs.bzl", "distributions_for_package")
+load("@tine//engine:test.bzl", "engine_sh_test")
 load(
     "@tine//image:defs.bzl",
     "DEFAULT_USR_VERITY_PARTITIONS",
@@ -283,4 +284,41 @@ image_archive(
     name = "opaque",
     image = ":opaque-child.layer",
     format = "tar",
+)
+
+# The UKI's module selection still carries what the demo image boots through. The smoke proves the
+# same thing by booting; this pins it against the real kernel without a VM, so a change to the
+# default list that drops one fails here with the module named. Only modules Fedora builds as
+# modules: it links dm-mod, ext4, virtio_blk, virtio_pci, ahci and sd_mod into the kernel.
+engine_sh_test(
+    name = "uki-modules-test",
+    labels = ["image"],
+    engine = "@tine//box:dev.engine",
+    test = "@tine//tests:contains.sh",
+    args = ["$(location :boot-demo.fedora[uki][modules])"]
+    + ['"path": ".*/{}\\.ko'.format(module) for module in ["erofs", "dm-verity", "loop", "overlay", "nvme", "vfat", "virtio_scsi", "virtio_net", "virtiofs"]],
+)
+
+engine_sh_test(
+    name = "boot-artifacts-test",
+    labels = ["image"],
+    engine = "@tine//box:dev.engine",
+    test = "boot-artifacts.sh",
+    args = [
+        "$(location :boot-demo.fedora[boot][kernel])",
+        "$(location :boot-demo.fedora[boot][uki])",
+        "$(location :boot-demo.fedora[boot][initrd])",
+        "$(location :boot-demo.fedora[initrd])",
+    ],
+)
+
+# A DDI's file name is what a systemd-sysupdate transfer matches, so it is part of the contract
+# rather than an implementation detail. The example sets no version, so this pins the rule's
+# default alongside the shape.
+engine_sh_test(
+    name = "sysext-name-test",
+    labels = ["image"],
+    engine = "@tine//box:dev.engine",
+    script = 'test "$(basename "$1")" = "$2"',
+    args = ["$(location :demo-ext.fedora)", "demo-ext_0_x86-64.sysext.raw"],
 )

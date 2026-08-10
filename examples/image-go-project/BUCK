@@ -5,6 +5,7 @@ it builds. `hello/` plays that checkout.
 """
 
 load("@tine//engine:build.bzl", "engine")
+load("@tine//engine:test.bzl", "engine_sh_test")
 load("@tine//go:rules.bzl", "go_package")
 load("@tine//image:defs.bzl", "copy", "rootfs_archive")
 load("@tine//package:manager.bzl", "package_manager")
@@ -57,4 +58,20 @@ rootfs_archive(
         copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
     ],
     format = "tar",
+)
+
+# The modules go embeds in the binary must reach the image's SBOM. Our own are unversioned:
+# -buildvcs=false leaves a main module's version at (devel).
+engine_sh_test(
+    name = "sbom-test",
+    labels = ["image"],
+    engine = "@tine//box:dev.engine",
+    test = "@tine//tests:contains.sh",
+    args = [
+        "$(location :demo[sbom][cyclonedx])",
+        "pkg:golang/example.com/hello",
+        "pkg:golang/example.com/nodeps",
+        "pkg:golang/rsc.io/quote@",
+        "pkg:golang/golang.org/x/text@",
+    ],
 )

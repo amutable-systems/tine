@@ -6,6 +6,7 @@ it builds. `hello/` plays that checkout.
 
 load("@tine//cargo:rules.bzl", "cargo_package")
 load("@tine//engine:build.bzl", "engine")
+load("@tine//engine:test.bzl", "engine_sh_test")
 load("@tine//image:defs.bzl", "copy", "image_install", "install_from", "mkdir", "rootfs_archive")
 load("@tine//package:manager.bzl", "package_manager")
 
@@ -80,4 +81,20 @@ rootfs_archive(
     package_manager = ":image.package-manager",
     ops = [install_from(":demo.install")],
     format = "tar",
+)
+
+# The crate graph cargo-auditable recorded in each binary must reach the image's SBOM: our own
+# packages, a crates.io dependency, and one from git.
+engine_sh_test(
+    name = "sbom-test",
+    labels = ["image"],
+    engine = "@tine//box:dev.engine",
+    test = "@tine//tests:contains.sh",
+    args = [
+        "$(location :demo[sbom][cyclonedx])",
+        "pkg:cargo/hello@0.1.0",
+        "pkg:cargo/nodeps@0.1.0",
+        "pkg:cargo/serde_json@",
+        "pkg:cargo/anyhow@",
+    ],
 )

@@ -147,9 +147,9 @@ def _lint(args: argparse.Namespace) -> None:
 def _check(args: argparse.Namespace) -> None:
     _lint(args)
     _bold("unit tests")
-    # Booting an image is minutes where these are seconds, and the boot smokes are covered by
-    # `buck test tine//... --include vm`, which is what CI runs.
-    _run([args.buck, "test", "tine//...", "--exclude", "vm"])
+    # Building an example image is minutes where these are seconds. Everything that needs one is
+    # labelled `image` and covered by `buck test tine//... --include image`, which is what CI runs.
+    _run([args.buck, "test", "tine//...", "--exclude", "image"])
 
 
 def _fmt(args: argparse.Namespace) -> None:

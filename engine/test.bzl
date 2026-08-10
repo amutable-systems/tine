@@ -1,4 +1,4 @@
-"""Run a package's unit tests inside an engine's hermetic sandbox."""
+"""Run a package's tests inside an engine's hermetic sandbox."""
 
 load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapSources")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
@@ -70,5 +70,56 @@ engine_python_test = rule(
         "engine": attrs.dep(providers = [EngineInfo], doc = "engine whose hermetic sandbox runs the tests"),
         "labels": attrs.list(attrs.string(), default = [], doc = "passed to the test runner, for `buck test` filtering"),
         "srcs": attrs.list(attrs.source(), doc = "the tests and the sources they exercise"),
+    },
+)
+
+def _engine_sh_test_impl(ctx: AnalysisContext) -> list[Provider]:
+    if (ctx.attrs.script == None) == (ctx.attrs.test == None):
+        fail("engine_sh_test: exactly one of script and test is required")
+
+    # An inline script gets the strict mode a committed one sets for itself, so a one-liner does
+    # not have to remember it to fail the way every other assertion does.
+    test = ctx.attrs.test or ctx.actions.write("test.sh", ["set -euo pipefail", ctx.attrs.script])
+
+    # The sandbox binds the project at its own path and works there, so an artifact argument
+    # reaches the script as the same project-relative path a build would name.
+    command = cmd_args(
+        chroot_run(engine = ctx.attrs.engine[EngineInfo]),
+        "bash",
+        test,
+        ctx.attrs.args,
+    )
+    return [
+        DefaultInfo(default_output = test),
+        RunInfo(args = command),
+        ExternalRunnerTestInfo(
+            type = "custom",
+            command = [command],
+            labels = ctx.attrs.labels,
+            default_executor = CommandExecutorConfig(local_enabled = True, remote_enabled = False),
+        ),
+    ]
+
+engine_sh_test = rule(
+    doc = """One shell script asserting something about what a build produced, run inside an engine.
+
+    The shell is either a committed script (`test`) or written inline (`script`), and is handed
+    `args`, which name build artifacts with `$(location //target)` exactly as an image operation
+    does. Artifacts arrive that way rather than through the shell, so an inline script stays shell
+    and needs no escaping. Running it in an engine rather than on the host is what makes the tools
+    it reaches for the pinned ones, so an assertion cannot pass or fail on what a developer happens
+    to have installed.
+    """,
+    impl = _engine_sh_test_impl,
+    attrs = {
+        "args": attrs.list(attrs.arg(), default = [], doc = "arguments to the script, artifacts included"),
+        "engine": attrs.dep(providers = [EngineInfo], doc = "engine whose hermetic sandbox runs the script"),
+        "labels": attrs.list(attrs.string(), default = [], doc = "passed to the test runner, for `buck test` filtering"),
+        "script": attrs.option(
+            attrs.string(),
+            default = None,
+            doc = "the shell to run, for an assertion a file of its own would only bury",
+        ),
+        "test": attrs.option(attrs.source(), default = None, doc = "the script to run"),
     },
 )

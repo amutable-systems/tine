@@ -7,3 +7,11 @@ python_bootstrap_binary(
     main = "boot-smoke.py",
     visibility = ["PUBLIC"],
 )
+
+# Assert an artifact mentions what it should. Shared because "these things must appear in that
+# file" is the same test whether the file is an SBOM or a module manifest.
+export_file(
+    name = "contains.sh",
+    src = "contains.sh",
+    visibility = ["PUBLIC"],
+)

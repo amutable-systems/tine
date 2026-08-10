@@ -64,108 +64,6 @@ if [ "$mode" = github ]; then
     trap 'printf "::endgroup::\n::error::ci step %s failed\n" "$step"' ERR
 fi
 
-# Build the from-source Rust image's SBOM to stdout and assert the crate graph reached it. Captured on
-# its own line so `set -e` still catches a buck failure before grep runs.
-rust_sbom() {
-    local sbom
-    sbom=$("$buck" build 'tine//examples/image-rust-project:demo[sbom][cyclonedx]' --out -)
-    # our own rust packages
-    grep -q 'pkg:cargo/hello@0.1.0' <<< "$sbom"
-    grep -q 'pkg:cargo/nodeps@0.1.0' <<< "$sbom"
-    # hello's dependency from crates.io
-    grep -q 'pkg:cargo/serde_json@' <<< "$sbom"
-    # hello's dependency from git
-    grep -q 'pkg:cargo/anyhow@' <<< "$sbom"
-}
-
-# The same for the from-source Go image: the modules go embeds in the binary must reach the SBOM.
-go_sbom() {
-    local sbom
-    sbom=$("$buck" build 'tine//examples/image-go-project:demo[sbom][cyclonedx]' --out -)
-    # our own go modules, unversioned: -buildvcs=false leaves a main module's version at (devel)
-    grep -q 'pkg:golang/example.com/hello' <<< "$sbom"
-    grep -q 'pkg:golang/example.com/nodeps' <<< "$sbom"
-    # hello's direct dependency
-    grep -q 'pkg:golang/rsc.io/quote@' <<< "$sbom"
-    # hello's indirect dependency
-    grep -q 'pkg:golang/golang.org/x/text@' <<< "$sbom"
-}
-
-# The secure-boot image strips the package database from its partitions, so only the logical image
-# still carries one for syft to read. Assert the rpm packages still reach its SBOM: without the
-# database syft falls back to what it can guess from binaries, which reports a fraction of them.
-secureboot_sbom() {
-    local sbom
-    sbom=$("$buck" build 'tine//examples/image-secureboot:image[sbom][cyclonedx]' --out -)
-    grep -q 'pkg:rpm/fedora/systemd@' <<< "$sbom"
-    grep -q 'pkg:rpm/fedora/kernel-core@' <<< "$sbom"
-    # No binary to guess from: only the database reports these.
-    grep -q 'pkg:rpm/fedora/fedora-release@' <<< "$sbom"
-    grep -q 'pkg:rpm/fedora/filesystem@' <<< "$sbom"
-}
-
-# Assert the UKI's module selection still carries what the demo image boots through. The smokes below
-# prove the same thing by booting, but this pins it against the real kernel without a VM, so a change to
-# the default list that drops one of these fails here with the module named.
-uki_modules() {
-    local manifest
-    manifest=$("$buck" build 'tine//examples/image:boot-demo.fedora[uki][modules]' --out -)
-    # Only modules Fedora builds as modules: it links dm-mod, ext4, virtio_blk, virtio_pci, ahci and
-    # sd_mod into the kernel, so no initrd carries those and the smokes cover them instead.
-    local module
-    for module in erofs dm-verity loop overlay nvme vfat virtio_scsi virtio_net virtiofs; do
-        grep -q "\"path\": \".*/$module\.ko" <<< "$manifest" ||
-            { echo "uki modules: $module is missing" >&2; return 1; }
-    done
-}
-
-# What the demo disk boots, extracted out of its own ESP. The selection is semantic (the newest
-# kernel, its UKI, the sections inside it), so it can go wrong without any target failing; assert by
-# magic that each artifact is what it claims to be, and that the extracted initrd is the one the UKI
-# carries rather than the initrd image the composition was handed.
-boot_artifacts() {
-    local scratch target=tine//examples/image:boot-demo.fedora
-    scratch=$(mktemp -d)
-    "$buck" build "$target[boot][kernel]" --out "$scratch/vmlinuz"
-    "$buck" build "$target[boot][uki]" --out "$scratch/uki.efi"
-    "$buck" build "$target[boot][initrd]" --out "$scratch/initrd"
-    "$buck" build "$target[initrd]" --out "$scratch/image.cpio.zst"
-    # A bzImage carries "HdrS" at 0x202 and a PE binary "MZ" at 0.
-    test "$(dd if="$scratch/vmlinuz" bs=1 skip=514 count=4 status=none)" = HdrS
-    test "$(dd if="$scratch/uki.efi" bs=1 count=2 status=none)" = MZ
-    # The UKI appends the modules initrd to the one it was given, so the extracted one is larger.
-    test "$(stat -c%s "$scratch/initrd")" -gt "$(stat -c%s "$scratch/image.cpio.zst")"
-    rm -rf "$scratch"
-}
-
-# A DDI's file name is what a systemd-sysupdate transfer matches, so it is part of the contract
-# rather than an implementation detail. The example sets no version, so this pins the rule's default
-# alongside the shape.
-sysext_name() {
-    local output
-    output=$("$buck" targets --show-output tine//examples/image:demo-ext.fedora | awk '{print $2}')
-    test "$(basename "$output")" = demo-ext_0_x86-64.sysext.raw
-}
-
-# The release directory is where every published name meets. Assert the set the example publishes,
-# that the verity pair is named after the two halves of the root hash (which is what lets
-# systemd-sysupdate give the partitions it writes the UUIDs dissection pairs them by), and that the
-# ESP is not among them.
-release_artifacts() {
-    local directory names roothash expected
-    "$buck" build tine//examples/image-secureboot:release
-    directory=$("$buck" targets --show-output tine//examples/image-secureboot:release | awk '{print $2}')
-    names=$(ls "$directory")
-    for expected in image_0_x86-64.raw image_0_x86-64.qcow2 image_0_x86-64.efi \
-        image_0_x86-64.vmlinuz image_0_x86-64.initrd demo-ext_0_x86-64.sysext.raw; do
-        grep -qx "$expected" <<< "$names" || { echo "release: $expected is missing" >&2; return 1; }
-    done
-    if grep -q esp <<< "$names"; then echo "release: the ESP must not be published" >&2; return 1; fi
-    roothash=$("$buck" build 'tine//examples/image-secureboot:image[roothash]' --out -)
-    grep -qx "image_0_x86-64.usr-x86-64.${roothash:0:32}.raw" <<< "$names"
-    grep -qx "image_0_x86-64.usr-x86-64-verity.${roothash:32:32}.raw" <<< "$names"
-}
-
 # Sign the Secure Boot example through PKCS#11 tokens, exercising the external-key path end to end
 # with the production module: tools/signing-server serves one tpm2-pkcs11 token per key from a
 # software TPM, and the same example builds against its socket. Every tool this needs comes from the
@@ -241,14 +139,7 @@ group verify-catalog    -- "$buck" run tine//tools:verify-catalog
 # Everything the cell declares, rather than the handful of targets someone remembered to name here:
 # every example image over both package systems, the boxes, and the source-build demos.
 group build             -- "$buck" build tine//...
-group uki-modules       -- uki_modules
-group boot-artifacts    -- boot_artifacts
-group sysext-name       -- sysext_name
-group rust-sbom         -- rust_sbom
-group go-sbom           -- go_sbom
-group secureboot-sbom   -- secureboot_sbom
-group release-artifacts -- release_artifacts
-# The boot smokes, which `check` above left out because they take minutes each. Adding one is
-# declaring it, not naming it here as well.
-group smokes            -- "$buck" test tine//... --include vm
+# Everything `check` left out: the boot smokes, which take minutes each, and the assertions about
+# what the images above produced. Adding one is declaring it, not naming it here as well.
+group image-tests       -- "$buck" test tine//... --include image
 group secureboot-pkcs11 -- secureboot_pkcs11
