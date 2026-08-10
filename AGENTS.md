@@ -20,7 +20,7 @@ consumers may instead declare a project-specific `//catalog` package. `examples`
 that CI builds and boot-tests, plus a dev box. Package sources and targets live in the OS.git root that
 consumes this cell, under `packages/` (built as `//packages/...`).
 
-Unit tests sit beside the driver they exercise as `<driver>_test.py`, run by an `engine_unittest`
+Unit tests sit beside the driver they exercise as `<driver>_test.py`, run by an `engine_python_test`
 target in the same package (`tine//engine:test.bzl`), which only `buck test` runs. Cross-package
 sources reach a suite through `deps` on a `python_bootstrap_library`, never `export_file`. `tests`
 holds only the drivers shared across images, like the VM boot smoke.

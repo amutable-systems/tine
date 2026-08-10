@@ -3,7 +3,7 @@
 load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapSources")
 load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 
-def _engine_unittest_impl(ctx: AnalysisContext) -> list[Provider]:
+def _engine_python_test_impl(ctx: AnalysisContext) -> list[Provider]:
     tree = {}
     for source in [src for dep in ctx.attrs.deps for src in dep[PythonBootstrapSources].srcs] + ctx.attrs.srcs:
         # The tree is flat, so two files sharing a name would silently shadow one another and the
@@ -52,7 +52,7 @@ def _engine_unittest_impl(ctx: AnalysisContext) -> list[Provider]:
         ),
     ]
 
-engine_unittest = rule(
+engine_python_test = rule(
     doc = """One package's `*_test.py` files, run by `buck test` in a flat tree inside an engine.
 
     Same-package sources go in `srcs`; anything from another package comes in through `deps` on a
@@ -60,7 +60,7 @@ engine_unittest = rule(
     `Path(__file__).parent` -- which also covers the drivers that are not importable modules, the
     `.bzl` files written in the Python subset and the extensionless `tools/importer`.
     """,
-    impl = _engine_unittest_impl,
+    impl = _engine_python_test_impl,
     attrs = {
         "deps": attrs.list(
             attrs.dep(providers = [PythonBootstrapSources]),

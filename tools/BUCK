@@ -1,6 +1,6 @@
 """Pinned tool binaries and development commands fetched by Buck."""
 
-load("//engine:test.bzl", "engine_unittest")
+load("//engine:test.bzl", "engine_python_test")
 load(":defs.bzl", "http_tool")
 load(":tools.json", _pins = "value")
 
@@ -91,7 +91,7 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-engine_unittest(
+engine_python_test(
     name = "version-test",
     engine = "//box:dev.engine",
     srcs = [
@@ -153,7 +153,7 @@ command_alias(
     exe = "tine//box:swtpm-signing",
 )
 
-engine_unittest(
+engine_python_test(
     name = "importer-test",
     engine = "//box:dev.engine",
     srcs = [

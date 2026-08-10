@@ -1,6 +1,6 @@
 """Logical image mutation and boot assembly drivers."""
 
-load("//engine:test.bzl", "engine_unittest")
+load("//engine:test.bzl", "engine_python_test")
 load(":image.bzl", "image_tools")
 
 # The one bundle every image rule resolves its drivers through.
@@ -57,7 +57,7 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-engine_unittest(
+engine_python_test(
     name = "test",
     engine = "//box:dev.engine",
     srcs = [

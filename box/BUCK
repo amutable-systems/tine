@@ -3,7 +3,7 @@
 load(":rules.bzl", "box")
 
 # tine's dev environment for importer and its unit tests. Used by every
-# `engine_unittest` suite (hermetic), this target itself (relaxed), and
+# `engine_python_test` suite (hermetic), this target itself (relaxed), and
 # `tine//tools:importer` (relaxed).
 # Derived from the main engine (lockless transaction, resolved during the
 # build), so dev tooling changes never invalidate the build graph that depends
