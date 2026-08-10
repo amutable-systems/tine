@@ -1,6 +1,6 @@
 """Terminal image-output format drivers."""
 
-load("//engine:test.bzl", "engine_unittest")
+load("//engine:test.bzl", "engine_python_test")
 
 python_bootstrap_binary(
     name = "archive",
@@ -59,7 +59,7 @@ python_bootstrap_library(
     visibility = ["tine//image:test"],
 )
 
-engine_unittest(
+engine_python_test(
     name = "test",
     engine = "//box:dev.engine",
     srcs = [
