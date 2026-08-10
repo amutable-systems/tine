@@ -63,7 +63,12 @@ def _starlark_srcs(buck: str) -> list[Path]:
         # names promise nothing, so keep what is known to be Starlark rather than reject data.
         if f.is_relative_to(tine) and owner(f) not in (None, "none", "prelude")
         if f.suffix == ".bzl" or f.name in ("BUCK", "PACKAGE")
-    ]
+    ] + sorted(
+        # A .bxl is Starlark nothing loads, so no build file names it; check it all the same.
+        f
+        for f in tine.rglob("*.bxl")
+        if "buck-out" not in f.parts
+    )
 
 
 def _orphan_tests(buck: str, cell: Path) -> list[Path]:
@@ -132,6 +137,11 @@ def _lint(args: argparse.Namespace) -> None:
     # probe also matches the `?format=toml` spelling.
     checkable = [f for f in srcs if 'toml"' not in f.read_text(encoding="utf-8")]
     _run([args.buck, "-v", "0", "starlark", "typecheck", *checkable], stderr=subprocess.DEVNULL)
+    _bold("target graph")
+    # Analysis, not a build: it reaches every rule a build would run, without producing anything.
+    # Scoped to this cell, whose platform the parser knows how to detect; what a consuming project
+    # declares is its own to check, with its own pattern.
+    _run([args.buck, "-v", "0", "bxl", "--console", "none", "tine//tools/graph.bxl:analyze"])
 
 
 def _check(args: argparse.Namespace) -> None:

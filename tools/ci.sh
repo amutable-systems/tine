@@ -228,6 +228,9 @@ EOF
     "$buck" run "${config[@]}" tine//examples/image-secureboot:vm-smoke
 }
 
+# Nothing here needs an engine, so a graph that does not analyze is reported in seconds rather than
+# after two bootstraps. `check` runs it again, for anyone running that on its own.
+group graph             -- "$buck" bxl tine//tools/graph.bxl:analyze
 # First invocation fetches buck's pinned tools and builds the shared engine; kept its own group so
 # bootstrap time stays visible.
 group engine            -- "$buck" build tine//catalog:fedora.rawhide.engine

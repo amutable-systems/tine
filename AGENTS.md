@@ -31,8 +31,10 @@ The pinned `buck` lives in `tools/`; invoke it by path. Everything else (python3
 is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck run` targets.
 
 - **buck (whole project):** `buck build tine//...` — builds everything but runs no tests; see below.
-- **Lint (format, lint, type-check):** `buck run tine//tools:lint`
+- **Lint (format, lint, type-check, whole-graph analysis):** `buck run tine//tools:lint`
 - **Check (lint plus the hooked-in test suites):** `buck run tine//tools:check`
+- **Analyze every target without building one:** `buck bxl tine//tools/graph.bxl:analyze`. Catches a rule
+  that fails during analysis in a target nothing happens to build; `--` `--pattern` scopes it elsewhere.
 - **Unit tests:** `buck test tine//...` (one suite: `buck test tine//image:test`). Test targets are
   not build artifacts, so `buck build` does not run them and there is no cached verdict: every
   `buck test` reruns the suites it selects.
