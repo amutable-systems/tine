@@ -34,7 +34,13 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
     if ctx.attrs.secure_boot:
         # OVMF variable store starts in setup mode and sd-boot enrolls the
         # image's loader/keys/auto keys on first boot.
-        run.add("--secure-boot=yes", "--tpm=yes")
+        run.add("--secure-boot=yes")
+
+    # Secure Boot brings one for the expected-PCR policy to be measured into, but an image needs a
+    # TPM whenever it seals anything to one, which a repart definition asking for Encrypt=tpm2 does
+    # on first boot, Secure Boot or not.
+    if ctx.attrs.secure_boot or ctx.attrs.tpm:
+        run.add("--tpm=yes")
 
     if ctx.attrs.sysexts:
         # each DDI must be named after its extension.
@@ -115,6 +121,10 @@ _image_vm = rule(
             attrs.dep(providers = [SysextImageInfo]),
             default = [],
             doc = "sysext DDIs exposed to the guest under /var/lib/extensions",
+        ),
+        "tpm": attrs.bool(
+            default = False,
+            doc = "attach a software TPM, which Secure Boot implies",
         ),
     },
 )
