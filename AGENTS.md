@@ -22,8 +22,10 @@ consumes this cell, under `packages/` (built as `//packages/...`).
 
 Unit tests sit beside the driver they exercise as `<driver>_test.py`, run by an `engine_python_test`
 target in the same package (`tine//engine:test.bzl`), which only `buck test` runs. Cross-package
-sources reach a suite through `deps` on a `python_bootstrap_library`, never `export_file`. `tests`
-holds only the drivers shared across images, like the VM boot smoke.
+sources reach a suite through `deps` on a `python_bootstrap_library`, never `export_file`. An
+assertion about what a build produced is an `engine_sh_test` beside the target that produced it: a
+script taking artifacts as `$(location)` arguments, run in an engine so it reaches pinned tools
+rather than the host'"'"'s. `tests` holds what those share, like the VM boot smoke driver.
 
 ## Commands
 
@@ -35,9 +37,10 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
 - **Check (lint plus the hooked-in test suites):** `buck run tine//tools:check`
 - **Analyze every target without building one:** `buck bxl tine//tools/graph.bxl:analyze`. Catches a rule
   that fails during analysis in a target nothing happens to build; `--` `--pattern` scopes it elsewhere.
-- **Unit tests:** `buck test tine//...` (one suite: `buck test tine//image:test`). The boot smokes are
-  tests too and carry the `vm` label, so `--exclude vm` is everything else and `--include vm` is only
-  them; `check` excludes them and CI runs them as their own step. Test targets are
+- **Unit tests:** `buck test tine//...` (one suite: `buck test tine//image:test`). Anything needing an
+  example image built is a test too and carries the `image` label, the boot smokes additionally `vm`;
+  `--exclude image` is the seconds-long half, which `check` runs, and `--include image` is the rest,
+  which CI runs as its own step. Test targets are
   not build artifacts, so `buck build` does not run them and there is no cached verdict: every
   `buck test` reruns the suites it selects.
 - **Auto-format + auto-fix:** `buck run tine//tools:fmt`

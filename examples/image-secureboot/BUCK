@@ -11,6 +11,7 @@ generated key, see below), with the image enforcing the signature through its sy
 policy.
 """
 
+load("@tine//engine:test.bzl", "engine_sh_test")
 load(
     "@tine//image:defs.bzl",
     "DEFAULT_SIGNED_USR_VERITY_PARTITIONS",
@@ -212,4 +213,29 @@ vm_smoke(
         if not _EXTERNAL
         else []
     ),
+)
+
+# This image strips the package database from its partitions, so only the logical image still
+# carries one for syft to read. Without it syft falls back to what it can guess from binaries,
+# which reports a fraction of the packages: the last two have no binary to guess from.
+engine_sh_test(
+    name = "sbom-test",
+    labels = ["image"],
+    engine = "@tine//box:dev.engine",
+    test = "@tine//tests:contains.sh",
+    args = [
+        "$(location :image[sbom][cyclonedx])",
+        "pkg:rpm/fedora/systemd@",
+        "pkg:rpm/fedora/kernel-core@",
+        "pkg:rpm/fedora/fedora-release@",
+        "pkg:rpm/fedora/filesystem@",
+    ],
+)
+
+engine_sh_test(
+    name = "release-artifacts-test",
+    labels = ["image"],
+    engine = "@tine//box:dev.engine",
+    test = "release-artifacts.sh",
+    args = ["$(location :release)", "$(location :image[roothash])"],
 )

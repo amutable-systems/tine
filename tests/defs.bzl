@@ -19,9 +19,9 @@ def _vm_smoke_impl(ctx: AnalysisContext) -> list[Provider]:
         ExternalRunnerTestInfo(
             type = "custom",
             command = [command],
-            # Booting is minutes where a unit suite is seconds, so both halves are addressable:
-            # `--exclude vm` is every other test, `--include vm` is only these.
-            labels = ["vm"] + ctx.attrs.labels,
+            # `image` is every test that needs an example image built, which is minutes rather
+            # than seconds; `vm` is the ones that additionally boot one.
+            labels = ["image", "vm"] + ctx.attrs.labels,
             # A VM needs the host's /dev/kvm, so it cannot be shipped to a remote executor.
             default_executor = CommandExecutorConfig(local_enabled = True, remote_enabled = False),
         ),
