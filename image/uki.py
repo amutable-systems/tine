@@ -6,6 +6,7 @@ extends the supplied base initrds.
 """
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -115,7 +116,24 @@ def _provider_options(source: str) -> list[str]:
     ]  # fmt: skip
 
 
-def _signing_arguments(secure_boot: Key | None, pcr: Key | None, profiles: list[Profile]) -> list[str]:
+def _ukify_options() -> set[str]:
+    """Which options this ukify accepts.
+
+    The measured-boot policy a UKI carries is only useful to a systemd that speaks the same
+    dialect, and the engine's ukify comes from one generation of systemd while its options come and
+    go with it. Asking what this one takes keeps a build working across both sides of a change,
+    rather than pinning tine to whichever generation the distributions have caught up to.
+    """
+    help = subprocess.run(["ukify", "build", "--help"], check=True, capture_output=True, text=True)
+    return {word for word in re.findall(r"--[a-z0-9-]+", help.stdout)}
+
+
+def _signing_arguments(
+    secure_boot: Key | None,
+    pcr: Key | None,
+    profiles: list[Profile],
+    options: set[str],
+) -> list[str]:
     """ukify's arguments for the two independent signing roles, empty for an unsigned UKI.
 
     The Secure Boot key signs the UKI and the kernel in it, the expected-PCR key seals the policy
@@ -139,6 +157,12 @@ def _signing_arguments(secure_boot: Key | None, pcr: Key | None, profiles: list[
             "--pcr-banks", "sha256",
             "--pcr-private-key", pcr["private_key"],
         ]  # fmt: skip
+        # NvPCRs are initialized from the initrd, against a policy bound to the "initrd" policy
+        # reference; a signature without that reference does not authorize the write, whatever it
+        # covers. Ask for the second signing pass that produces one, so that an image shipping
+        # /usr/lib/nvpcr definitions gets past the boot's first TPM step.
+        if "--sign-initrd-pcrs" in options:
+            signing += ["--sign-initrd-pcrs"]
         if pcr["source"]:
             # Only the provider path passes the certificate: ukify's systemd-measure call requires
             # one there. Everywhere else ukify derives the public key section (.pcrpkey) from the
@@ -220,7 +244,7 @@ def main(argv: list[str] | None = None) -> None:
             subprocess.run(cmd, check=True)
             profile_pes.append(pe)
 
-        signing = _signing_arguments(secure_boot, pcr, profiles)
+        signing = _signing_arguments(secure_boot, pcr, profiles, _ukify_options() if pcr else set())
 
         modules = scratch / f"modules-{kver}.cpio"
         prefix = f"usr/lib/modules/{kver}"
