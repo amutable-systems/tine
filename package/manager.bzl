@@ -1,7 +1,7 @@
 """Configured native package managers."""
 
 load("//:specs.bzl", "spec_args")
-load("//box:runtime.bzl", "BoxInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//distribution:defs.bzl", "distribution_attrs")
 load(":local_packages.bzl", "LocalPackageUniverseInfo")
 load(":release.bzl", "OsReleaseInfo")
@@ -23,7 +23,7 @@ def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     system = ctx.attrs.package_system[PackageSystemInfo]
     repo = ctx.actions.declare_output("repo", dir = True)
     index = cmd_args(
-        chroot_run(box = ctx.attrs.box[BoxInfo], exe = system.index),
+        box_run(box = ctx.attrs.box[BoxInfo], exe = system.index),
         spec_args(
             ctx.actions,
             "index.spec.json",

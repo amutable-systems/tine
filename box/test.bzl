@@ -1,7 +1,7 @@
 """Run a package's tests inside a box's hermetic sandbox."""
 
 load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapSources")
-load("//box:runtime.bzl", "BoxInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "box_run")
 
 def _box_python_test_impl(ctx: AnalysisContext) -> list[Provider]:
     tree = {}
@@ -25,7 +25,7 @@ def _box_python_test_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # -B keeps __pycache__ out of the tree; discover's top-level dir defaults to the start dir.
     command = cmd_args(
-        chroot_run(box = ctx.attrs.box[BoxInfo]),
+        box_run(box = ctx.attrs.box[BoxInfo]),
         "python3",
         "-B",
         "-m",
@@ -84,7 +84,7 @@ def _box_sh_test_impl(ctx: AnalysisContext) -> list[Provider]:
     # The sandbox binds the project at its own path and works there, so an artifact argument
     # reaches the script as the same project-relative path a build would name.
     command = cmd_args(
-        chroot_run(box = ctx.attrs.box[BoxInfo]),
+        box_run(box = ctx.attrs.box[BoxInfo]),
         "bash",
         test,
         ctx.attrs.args,

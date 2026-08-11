@@ -11,7 +11,7 @@ load(
 )
 load("//package:solver.bzl", "solve_command", "solver_cache")
 load("//package:system.bzl", "PackageSystemInfo")
-load(":runtime.bzl", "BoxInfo", "chroot_run")
+load(":runtime.bzl", "BoxInfo", "box_run")
 
 _REPOSITORY_PRIORITY = 99
 
@@ -81,7 +81,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.actions.run(resolve, category = "box_resolve")
 
     # A predecessor installs the transaction directly. Only a root box must first unpack that
-    # same closure into an installer-capable chroot, without metadata or scriptlets.
+    # same closure into an installer-capable root, without metadata or scriptlets.
     packages = select_package_artifacts(
         ctx,
         transaction,
@@ -90,7 +90,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     )
     installer_box = resolver_box
     if installer_box == None:
-        chroot1 = ctx.actions.declare_output("chroot1", dir = True)
+        stage1 = ctx.actions.declare_output("stage1", dir = True)
         ctx.actions.run(
             cmd_args(
                 system.extract[RunInfo],
@@ -98,7 +98,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
                     ctx.actions,
                     "extract.spec.json",
                     {
-                        "out": chroot1.as_output(),
+                        "out": stage1.as_output(),
                         "packages": [packages],
                     },
                 ),
@@ -107,15 +107,15 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
         )
         installer_box = BoxInfo(
             arch = ctx.attrs.arch,
-            root = chroot1,
+            root = stage1,
             sandbox = ctx.attrs._sandbox,
         )
 
     # Use the predecessor or bootstrapped root to produce the fully installed box.
-    chroot2 = ctx.actions.declare_output("chroot2", dir = True)
+    stage2 = ctx.actions.declare_output("stage2", dir = True)
     ctx.actions.run(
         cmd_args(
-            chroot_run(
+            box_run(
                 box = installer_box,
                 exe = system.install,
             ),
@@ -130,7 +130,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
                     "langs": [],
                     "lower": [],
                     "packages_dir": packages,
-                    "target": chroot2.as_output(),
+                    "target": stage2.as_output(),
                     "work": None,
                 },
             ),
@@ -140,7 +140,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
 
     info = BoxInfo(
         arch = ctx.attrs.arch,
-        root = chroot2,
+        root = stage2,
         sandbox = ctx.attrs._sandbox,
     )
 
@@ -161,11 +161,11 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # Running a box target is an interactive act, so its own RunInfo is the host-integrated relaxed
     # entry. Build actions never reach it: they take BoxInfo and construct their own hermetic
-    # chroot_run.
+    # box_run.
     return [
-        DefaultInfo(default_output = chroot2, sub_targets = sub_targets),
+        DefaultInfo(default_output = stage2, sub_targets = sub_targets),
         info,
-        chroot_run(info, relaxed = True, name = ctx.label.name.removesuffix(".box")),
+        box_run(info, relaxed = True, name = ctx.label.name.removesuffix(".box")),
     ]
 
 _box = rule(

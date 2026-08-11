@@ -1,7 +1,7 @@
 """Resolve and install native packages into filesystem roots."""
 
 load("//:specs.bzl", "spec_args")
-load("//box:runtime.bzl", "BoxInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "box_run")
 load(":local_packages.bzl", "LocalPackageUniverseInfo", "select_local_packages")
 load(":manager.bzl", "PackageManagerInfo", "materialize_local_repository")
 load(
@@ -110,7 +110,7 @@ def _install_actions(
     out = ctx.actions.declare_output("install.delta" if stack else "root", dir = True)
     work = ctx.actions.declare_output("install.work", dir = True) if stack else None
     cmd = cmd_args(
-        chroot_run(box = box, exe = system.install),
+        box_run(box = box, exe = system.install),
         spec_args(
             ctx.actions,
             "install.spec.json",

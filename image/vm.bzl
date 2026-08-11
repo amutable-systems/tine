@@ -1,6 +1,6 @@
 """Interactive virtual-machine image runners."""
 
-load("//box:runtime.bzl", "BoxInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//distribution:defs.bzl", "distributed")
 load("//image_format:disk.bzl", "RepartInfo", "SIZE_PATTERN")
 load("//image_format:sysext.bzl", "SysextImageInfo")
@@ -10,7 +10,7 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
     if disk.disk == None:
         fail("image_vm: RepartInfo does not contain a composed disk")
     run = cmd_args(
-        chroot_run(
+        box_run(
             box = ctx.attrs.box[BoxInfo],
             exe = "systemd-vmspawn",
             relaxed = True,

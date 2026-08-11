@@ -1,7 +1,7 @@
 """Logical filesystem images built as ordered overlay deltas."""
 
 load("//:specs.bzl", "executable", "spec_args", "spec_argument")
-load("//box:runtime.bzl", "BoxInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//distribution:defs.bzl", "distributed")
 load("//package:install.bzl", "resolve_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
@@ -117,7 +117,7 @@ def _image_command(
     signing_access: SigningAccess | None = None,
 ) -> cmd_args:
     return cmd_args(
-        chroot_run(
+        box_run(
             box = box[BoxInfo],
             exe = exe,
             ro_binds = signing_access.ro_binds if signing_access else {},
@@ -573,7 +573,7 @@ def declare_image(
             }
         signing_access = merge_signing_access(keys)
         cmd = cmd_args(
-            chroot_run(
+            box_run(
                 box = box[BoxInfo],
                 exe = tools.layer,
                 ro_binds = signing_access.ro_binds,

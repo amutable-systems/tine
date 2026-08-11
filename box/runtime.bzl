@@ -7,12 +7,12 @@ BoxInfo = provider(
     doc = "A reusable execution environment built from one base OS release.",
     fields = {
         "arch": provider_field(str),
-        "root": provider_field(Artifact),  # the box root chroot
+        "root": provider_field(Artifact),  # the box root
         "sandbox": provider_field(Dependency),
     },
 )
 
-def chroot_run(
+def box_run(
     box: BoxInfo,
     exe: Dependency | str | None = None,
     network: bool = False,
@@ -49,10 +49,10 @@ def chroot_run(
         destination = ro_binds[source]
         for path in (source, destination):
             if ":" in path:
-                fail("chroot_run: ro_binds path cannot contain ':', got {!r}".format(path))
+                fail("box_run: ro_binds path cannot contain ':', got {!r}".format(path))
         run.add("--ro-bind", "{}:{}".format(source, destination))
-    for name in sorted(setenv):
-        run.add("--setenv", "{}={}".format(name, setenv[name]))
+    for variable in sorted(setenv):
+        run.add("--setenv", "{}={}".format(variable, setenv[variable]))
     run.add("--")
     if isinstance(exe, Dependency):
         info = exe[DefaultInfo]
