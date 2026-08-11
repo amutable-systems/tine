@@ -4,14 +4,14 @@ Newc has no general extended-attribute representation; callers needing xattrs mu
 different terminal format.
 """
 
-import ctypes
-import errno
 import mmap
 import os
 import stat
 from collections.abc import Buffer, Iterable, Iterator
 from pathlib import Path, PurePath, PurePosixPath
 from typing import NamedTuple, Self
+
+import util
 
 MAGIC = b"070701"
 TRAILER = "TRAILER!!!"
@@ -24,19 +24,6 @@ _BLOCK = 4096
 # build host, so it must not be queried via pathconf here.
 _PATH_MAX = 4096
 
-# Bootstrap Python omits os.copy_file_range, so bind the host libc symbol.
-_libc = ctypes.CDLL(None, use_errno=True)
-_libc.copy_file_range.restype = ctypes.c_ssize_t
-# int fd_in, loff_t *off_in, int fd_out, loff_t *off_out, size_t len, unsigned int flags
-_libc.copy_file_range.argtypes = (
-    ctypes.c_int,
-    ctypes.POINTER(ctypes.c_int64),
-    ctypes.c_int,
-    ctypes.POINTER(ctypes.c_int64),
-    ctypes.c_size_t,
-    ctypes.c_uint,
-)
-
 
 def _roundup(n: int, align: int) -> int:
     return n + (-n) % align
@@ -48,33 +35,6 @@ def _pwrite_all(fd: int, data: memoryview | bytes, off: int) -> None:
         n = os.pwrite(fd, mv, off)
         mv = mv[n:]
         off += n
-
-
-def _copy_range(dst_fd: int, dst_off: int, src_fd: int, src_off: int, size: int) -> None:
-    """Plain userspace pread/pwrite copy — the fallback when the kernel can't take the range."""
-    while size:
-        chunk = os.pread(src_fd, min(size, 1 << 20), src_off)
-        if not chunk:
-            raise OSError(f"short read: {size} bytes remain")
-        _pwrite_all(dst_fd, chunk, dst_off)
-        src_off += len(chunk)
-        dst_off += len(chunk)
-        size -= len(chunk)
-
-
-def _clone_or_copy(dst_fd: int, dst_off: int, src_fd: int, src_off: int, size: int) -> None:
-    """Clone a range when supported, otherwise copy it in userspace."""
-    o_in, o_out, done = ctypes.c_int64(src_off), ctypes.c_int64(dst_off), 0
-    while done < size:
-        n = _libc.copy_file_range(src_fd, ctypes.byref(o_in), dst_fd, ctypes.byref(o_out), size - done, 0)
-        if n < 0:
-            if ctypes.get_errno() not in (errno.EXDEV, errno.EINVAL, errno.EOPNOTSUPP, errno.ENOSYS):
-                raise OSError(ctypes.get_errno(), "copy_file_range")
-            _copy_range(dst_fd, o_out.value, src_fd, o_in.value, size - done)
-            return
-        if n == 0:
-            raise OSError(f"short copy_file_range: {size - done} of {size} bytes remain")
-        done += n
 
 
 # Reader.
@@ -139,7 +99,7 @@ def _put_regular(target: Path, e: Entry, src_fd: int) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
     try:
-        _clone_or_copy(fd, 0, src_fd, e.data_off, len(e.data))
+        util.copy_range(fd, 0, src_fd, e.data_off, len(e.data))
     finally:
         os.close(fd)
     target.chmod(e.mode & 0o7777)
@@ -260,7 +220,7 @@ class Writer:
         try:
             size = os.fstat(fd).st_size
             self._header(name, stat.S_IFREG | (mode & 0o7777), size, mtime=mtime, block_align=size >= _BLOCK)
-            _clone_or_copy(self._fd, self._pos, fd, 0, size)
+            util.copy_range(self._fd, self._pos, fd, 0, size)
             self._pos += size
         finally:
             os.close(fd)

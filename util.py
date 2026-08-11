@@ -3,7 +3,6 @@
 import bz2
 import compression.zstd
 import errno
-import fcntl
 import gzip
 import http.client
 import io
@@ -21,8 +20,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, TextIO, cast
 
-# Fall back only when the filesystem does not support cloning or linking.
-_CLONE_FALLBACK_ERRNOS = frozenset({errno.ENOTTY, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV})
+# Fall back only when the filesystem does not support the range copy or linking.
+_COPY_FALLBACK_ERRNOS = frozenset({errno.EINVAL, errno.ENOSYS, errno.EOPNOTSUPP, errno.EXDEV})
 _LINK_FALLBACK_ERRNOS = frozenset({errno.EMLINK, errno.EOPNOTSUPP, errno.EXDEV})
 
 _TRANSIENT_HTTP_STATUS = frozenset((408, 429, 500, 502, 503, 504))
@@ -80,29 +79,43 @@ def with_retries[T](what: str, operation: Callable[[], T]) -> T:
     raise AssertionError("unreachable")
 
 
+def copy_range(dst_fd: int, dst_off: int, src_fd: int, src_off: int, size: int) -> None:
+    """Copy a byte range between two files at explicit offsets.
+
+    copy_file_range shares extents outright where the filesystem can clone them, so a whole-file
+    copy on btrfs or reflinked XFS costs nothing; the pread/pwrite step is for the filesystems and
+    kernels that refuse the call.
+    """
+    while size:
+        try:
+            n = os.copy_file_range(src_fd, dst_fd, size, offset_src=src_off, offset_dst=dst_off)
+        except OSError as error:
+            if error.errno not in _COPY_FALLBACK_ERRNOS:
+                raise
+            n = os.pwrite(dst_fd, os.pread(src_fd, min(size, 1 << 20), src_off), dst_off)
+        if not n:
+            raise OSError(f"short copy: {size} bytes remain")
+        src_off += n
+        dst_off += n
+        size -= n
+
+
 def clone_file(src: Path, dst: Path, allow_link: bool = False) -> None:
-    """Clone, optionally hardlink, or copy src to dst while preserving its mode.
+    """Hardlink or copy src to dst while preserving its mode.
 
     Hardlinking requires an explicit opt-in because later writes affect both paths.
     """
-    with open(src, "rb") as source, open(dst, "wb") as destination:
-        try:
-            fcntl.ioctl(destination.fileno(), fcntl.FICLONE, source.fileno())
-        except OSError as error:
-            if error.errno not in _CLONE_FALLBACK_ERRNOS:
-                raise
-        else:
-            shutil.copymode(src, dst)
-            return
-    dst.unlink()
     if allow_link:
+        dst.unlink(missing_ok=True)
         try:
             os.link(src, dst)
             return
         except OSError as error:
             if error.errno not in _LINK_FALLBACK_ERRNOS:
                 raise
-    shutil.copy(src, dst)
+    with open(src, "rb") as source, open(dst, "wb") as destination:
+        copy_range(destination.fileno(), 0, source.fileno(), 0, os.fstat(source.fileno()).st_size)
+    shutil.copymode(src, dst)
 
 
 def take_binaries(built: Path, binaries: dict[str, str], *, tool: str, where: str) -> None:
