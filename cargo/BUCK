@@ -1,6 +1,6 @@
 """Rust source builds against a vendored, hash-pinned crate tree."""
 
-load("//engine:test.bzl", "engine_python_test")
+load("//box:test.bzl", "box_python_test")
 
 # The project's source artifacts in, its workspace root and resolved lock out.
 python_bootstrap_binary(
@@ -18,7 +18,7 @@ python_bootstrap_binary(
     deps = ["//:specs"],
 )
 
-# Runs inside the engine: the source tree and its vendored crates in, the declared binaries out.
+# Runs inside the box: the source tree and its vendored crates in, the declared binaries out.
 python_bootstrap_binary(
     name = "build",
     main = "build.py",
@@ -29,9 +29,9 @@ python_bootstrap_binary(
     ],
 )
 
-engine_python_test(
+box_python_test(
     name = "test",
-    engine = "//box:dev.engine",
+    box = "//tools:dev.box",
     srcs = [
         "build.py",
         "cargo_test.py",

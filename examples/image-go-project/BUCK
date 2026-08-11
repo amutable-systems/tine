@@ -4,24 +4,24 @@ In a product this package lives in the OS.git that vendors tine, beside a checko
 it builds. `hello/` plays that checkout.
 """
 
-load("@tine//engine:build.bzl", "engine")
-load("@tine//engine:test.bzl", "engine_sh_test")
+load("@tine//box:build.bzl", "box")
+load("@tine//box:test.bzl", "box_sh_test")
 load("@tine//go:rules.bzl", "go_package")
 load("@tine//image:defs.bzl", "copy", "rootfs_archive")
 load("@tine//package:manager.bzl", "package_manager")
 
 # The build environment for our Go projects; it never reaches an image.
-engine(
-    name = "go.engine",
+box(
+    name = "go.box",
     packages = [
         # TLS trust for the module fetch from proxy.golang.org.
         "ca-certificates",
         "golang",
-        # tine's in-engine drivers run on the engine's own interpreter.
+        # tine's in-box drivers run on the box's own interpreter.
         "python3",
     ],
     release = "tine//catalog:fedora.rawhide.release",
-    resolver_engine = "tine//catalog:fedora.rawhide.engine",
+    resolver_box = "tine//catalog:fedora.rawhide.box",
 )
 
 # A checked-out project needs no build file of its own: the sources default to the directory named
@@ -29,14 +29,14 @@ engine(
 go_package(
     name = "hello",
     binaries = ["hello-cli"],
-    engine = ":go.engine",
+    box = ":go.box",
 )
 
 # A project with no dependencies at all, which therefore commits no go.sum and fetches nothing.
 go_package(
     name = "nodeps",
     binaries = ["nodeps"],
-    engine = ":go.engine",
+    box = ":go.box",
 )
 
 package_manager(
@@ -62,10 +62,10 @@ rootfs_archive(
 
 # The modules go embeds in the binary must reach the image's SBOM. Our own are unversioned:
 # -buildvcs=false leaves a main module's version at (devel).
-engine_sh_test(
+box_sh_test(
     name = "sbom-test",
     labels = ["image"],
-    engine = "@tine//box:dev.engine",
+    box = "@tine//tools:dev.box",
     test = "@tine//tests:contains.sh",
     args = [
         "$(location :demo[sbom][cyclonedx])",

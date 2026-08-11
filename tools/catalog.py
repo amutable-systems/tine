@@ -1,11 +1,11 @@
-"""Refresh pure catalog snapshots, then resolve engine transactions against those pins.
+"""Refresh pure catalog snapshots, then resolve box transactions against those pins.
 
 Repositories pinned to a mirror that publishes snapshots first advance their declaration to the
 newest one the mirror offers. Repositories sharing one pin advance together, and rolling back
 means editing the pin.
 
-Remote engine-lock entries retain their package transports, so a repository's package pool keeps
-the committed engine available after its repodata advances.
+Remote box-lock entries retain their package transports, so a repository's package pool keeps
+the committed box available after its repodata advances.
 
 The host orchestrator discovers refresh subtargets and appends only output paths.
 Nested Buck reuses the invoking daemon through the inherited isolation directory.
@@ -27,7 +27,7 @@ from util import urlopen, with_retries
 VERIFY_PREFIX = ".catalog-verify."
 
 DEFAULT_CATALOG = "tine//catalog"
-ENGINE_LABEL = "tine:engine"
+BOX_LABEL = "tine:box"
 REMOTE_REPOSITORY_LABEL = "tine:remote-repository"
 RPM_REMOTE_REPOSITORY_LABEL = "tine:rpm-remote-repository"
 
@@ -70,8 +70,8 @@ def _snapshot_path(target: str, kind: str, suffix: str) -> Path:
     return Path("snapshot") / kind / f"{name.removesuffix(suffix)}.json"
 
 
-def _engine_snapshot_path(target: str) -> Path:
-    return _snapshot_path(target, "engine", ".engine")
+def _box_snapshot_path(target: str) -> Path:
+    return _snapshot_path(target, "box", ".box")
 
 
 def _repository_snapshot_path(target: str) -> Path:
@@ -224,51 +224,51 @@ def _resolve(buck: str, target: str, out: Path) -> None:
     _run(buck, f"{target}[resolve]", ["--out", str(out)])
 
 
-def _select_engines(all_resolves: list[str], selected_engines: list[str] | None) -> list[str]:
-    if selected_engines is None:
+def _select_boxes(all_resolves: list[str], selected_boxes: list[str] | None) -> list[str]:
+    if selected_boxes is None:
         return all_resolves
-    duplicates = sorted({name for name in selected_engines if selected_engines.count(name) > 1})
+    duplicates = sorted({name for name in selected_boxes if selected_boxes.count(name) > 1})
     if duplicates:
-        raise SystemExit(f"catalog: engine names selected more than once: {duplicates}")
+        raise SystemExit(f"catalog: box names selected more than once: {duplicates}")
     by_name = {_name_of(target): target for target in all_resolves}
-    unknown = sorted(set(selected_engines) - by_name.keys())
+    unknown = sorted(set(selected_boxes) - by_name.keys())
     if unknown:
-        raise SystemExit(f"catalog: unknown engine names: {unknown}")
-    selected = set(selected_engines)
+        raise SystemExit(f"catalog: unknown box names: {unknown}")
+    selected = set(selected_boxes)
     return [target for target in all_resolves if _name_of(target) in selected]
 
 
-def _repositories_for_engines(buck: str, engines: list[str]) -> list[str]:
-    """Remote repository targets reachable from the given engine targets."""
-    engine_set = " ".join(engines)
-    query = f"attrfilter(labels, '{REMOTE_REPOSITORY_LABEL}', deps(set({engine_set})))"
+def _repositories_for_boxes(buck: str, boxes: list[str]) -> list[str]:
+    """Remote repository targets reachable from the given box targets."""
+    box_set = " ".join(boxes)
+    query = f"attrfilter(labels, '{REMOTE_REPOSITORY_LABEL}', deps(set({box_set})))"
     return sorted(_buck_out(buck, "uquery", query).split())
 
 
 def _refresh(
     buck: str,
     catalog: str,
-    selected_engines: list[str] | None,
+    selected_boxes: list[str] | None,
     advance_snapshots: bool,
     destination: Path | None = None,
 ) -> tuple[Path, list[Path]]:
-    """Snapshot repositories and resolve selected engines into `destination`, the catalog by default.
+    """Snapshot repositories and resolve selected boxes into `destination`, the catalog by default.
 
     Returns the catalog directory and what was written, relative to whichever it was written to.
 
-    Selecting engines also scopes the snapshotted repositories to those the engines depend on, so a
+    Selecting boxes also scopes the snapshotted repositories to those the boxes depend on, so a
     partial refresh or verify never touches a repository outside the selection.
     """
-    all_resolves = _targets_with_label(buck, catalog, ENGINE_LABEL)
-    resolves = _select_engines(all_resolves, selected_engines)
+    all_resolves = _targets_with_label(buck, catalog, BOX_LABEL)
+    resolves = _select_boxes(all_resolves, selected_boxes)
 
-    if selected_engines is None:
+    if selected_boxes is None:
         snapshots = _targets_with_label(buck, catalog, REMOTE_REPOSITORY_LABEL)
     else:
-        snapshots = _repositories_for_engines(buck, resolves)
+        snapshots = _repositories_for_boxes(buck, resolves)
     targets = all_resolves + snapshots
     if not targets:
-        raise SystemExit(f"catalog: no repository/engine refresh targets found in {catalog}")
+        raise SystemExit(f"catalog: no repository/box refresh targets found in {catalog}")
     catalog_dir = _catalog_directory(buck, targets)
     out_dir = destination if destination is not None else catalog_dir
     if advance_snapshots:
@@ -280,7 +280,7 @@ def _refresh(
         _snapshot(buck, target, out_dir / written[-1])
 
     for target in resolves:
-        written.append(_engine_snapshot_path(target))
+        written.append(_box_snapshot_path(target))
         _resolve(buck, target, out_dir / written[-1])
 
     return catalog_dir, written
@@ -317,9 +317,9 @@ def main(argv: list[str] | None = None) -> None:
         "--buck", default="buck", help="buck binary to nest (aliases pass the pinned one; default: PATH)"
     )
     p.add_argument(
-        "--engine",
+        "--box",
         action="append",
-        help="only (re)resolve these engines and snapshot the repositories they depend on; default: all",
+        help="only (re)resolve these boxes and snapshot the repositories they depend on; default: all",
     )
     p.add_argument(
         "--verify",
@@ -332,7 +332,7 @@ def main(argv: list[str] | None = None) -> None:
     # Run nested commands from the project root so wrappers resolve consistently.
     with contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")) as _:
         if not args.verify:
-            _refresh(args.buck, catalog, args.engine, advance_snapshots=True)
+            _refresh(args.buck, catalog, args.box, advance_snapshots=True)
             return
 
         # Regenerate beside the catalog rather than over it, so a verify that fails, or dies,
@@ -343,7 +343,7 @@ def main(argv: list[str] | None = None) -> None:
             catalog_dir, written = _refresh(
                 args.buck,
                 catalog,
-                args.engine,
+                args.box,
                 advance_snapshots=False,
                 destination=Path(scratch),
             )

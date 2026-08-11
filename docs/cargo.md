@@ -3,10 +3,10 @@
 A repository that builds images can also build a Rust project it has checked out, without packaging it first.
 The project's committed `Cargo.lock` pins everything: Buck fetches each registry crate against the SHA-256
 the lock records, and each git dependency as a fetch of exactly the locked commit. `cargo` itself
-runs offline inside an engine, and [`cargo-auditable`](https://crates.io/crates/cargo-auditable) writes the
+runs offline inside a box, and [`cargo-auditable`](https://crates.io/crates/cargo-auditable) writes the
 crate graph into each binary so the image's SBOM reports those crates beside its packages.
 
-`examples/image-rust-project` is a complete worked example: a builder engine, two projects checked out
+`examples/image-rust-project` is a complete worked example: a builder box, two projects checked out
 beside it, and an image carrying the resulting binaries.
 
 ## Declaring a build
@@ -17,7 +17,7 @@ load("@tine//cargo:rules.bzl", "cargo_package")
 cargo_package(
     name = "hello",
     binaries = ["hello-cli"],
-    engine = ":rust.engine",
+    box = ":rust.box",
 )
 ```
 
@@ -35,7 +35,7 @@ cargo_package(
   match the package. Each becomes a sub-target (`:hello[hello-cli]`), and together they are the target's
   default outputs. A name that the build does not produce fails the action; only the private name
   `__tine` is reserved by the rule.
-- `engine` is the build environment, declared by the consumer because only the consumer knows what its
+- `box` is the build environment, declared by the consumer because only the consumer knows what its
   projects link against.
 
 The binaries are ordinary artifacts, so an image installs one with a `copy()` operation:
@@ -50,23 +50,23 @@ rootfs_archive(
 )
 ```
 
-## What the builder engine needs
+## What the builder box needs
 
 ```Starlark
-engine(
-    name = "rust.engine",
+box(
+    name = "rust.box",
     packages = ["cargo", "gcc", "python3", "rust"],
     release = "tine//catalog:fedora.rawhide.release",
-    resolver_engine = "tine//catalog:fedora.rawhide.engine",
+    resolver_box = "tine//catalog:fedora.rawhide.box",
 )
 ```
 
-- `cargo` and `rust` are the toolchain, and `gcc` links. `python3` runs the in-engine driver, because
-  tine's drivers execute through the engine's own interpreter.
+- `cargo` and `rust` are the toolchain, and `gcc` links. `python3` runs the in-box driver, because
+  tine's drivers execute through the box's own interpreter.
 - Add whatever the project links against. A crate wrapping a C library needs that library's `-devel`
   package, and on Fedora anything using `pkg-config` also needs `rpm`, because `/usr/bin/pkg-config` is a
   wrapper that shells out to `rpm --eval`.
-- The engine is a build environment. It never becomes part of an image, and the toolchain is not shipped.
+- The box is a build environment. It never becomes part of an image, and the toolchain is not shipped.
 
 ## Git dependencies
 

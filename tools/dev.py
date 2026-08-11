@@ -72,14 +72,14 @@ def _starlark_srcs(buck: str) -> list[Path]:
 
 
 def _orphan_tests(buck: str, cell: Path) -> list[Path]:
-    """Test files no engine_python_test lists in `srcs`, which `buck test` would never run.
+    """Test files no box_python_test lists in `srcs`, which `buck test` would never run.
 
     Each suite names its sources explicitly, so a new file beside the code is invisible until it is
     added to one; nothing else would report that.
     """
     targets = json.loads(
         _buck_out(
-            buck, "-v", "0", "uquery", "kind('engine_python_test', tine//...)", "--output-attribute", "srcs"
+            buck, "-v", "0", "uquery", "kind('box_python_test', tine//...)", "--output-attribute", "srcs"
         )
     )
     claimed = {cell / src.split("//", 1)[1] for target in targets.values() for src in target["srcs"]}
@@ -105,12 +105,12 @@ def _lint(args: argparse.Namespace) -> None:
     _bold("test targets")
     if orphans := _orphan_tests(args.buck, cell):
         listing = "\n".join(f"  {p.relative_to(cell)}" for p in orphans)
-        raise SystemExit(f"no engine_python_test lists these, so they never run:\n{listing}")
+        raise SystemExit(f"no box_python_test lists these, so they never run:\n{listing}")
     _bold("ruff")
     _run([args.ruff, "format", "--check", "--no-cache", cell])
     _run([args.ruff, "check", "--no-cache", cell])
     _bold("ty")
-    # Resolve third-party imports from the pinned engine runtime.
+    # Resolve third-party imports from the pinned box runtime.
     _run(
         [
             args.ty,
@@ -118,7 +118,7 @@ def _lint(args: argparse.Namespace) -> None:
             "--project",
             cell,
             "--python",
-            Path(args.engine) / "usr",
+            Path(args.box) / "usr",
         ]
     )
     _bold("starlark_fmt")
@@ -219,10 +219,10 @@ def _scc(args: argparse.Namespace) -> None:
 
 
 def _ty(args: argparse.Namespace) -> None:
-    engine = Path(args.engine)
-    site_packages = sorted((engine / "usr/lib").glob("python*/site-packages"))
+    box = Path(args.box)
+    site_packages = sorted((box / "usr/lib").glob("python*/site-packages"))
     if len(site_packages) != 1:
-        raise SystemExit(f"ty: expected one site-packages directory in {engine}, found {len(site_packages)}")
+        raise SystemExit(f"ty: expected one site-packages directory in {box}, found {len(site_packages)}")
     env = os.environ.copy()
     pythonpath = [str(site_packages[0])]
     if inherited := env.get("PYTHONPATH"):
@@ -250,7 +250,7 @@ def main(argv: list[str] | None = None) -> None:
         verb = sub.add_parser(name, parents=[common, starlark], help=help_text)
         for tool in ("ruff", "ty"):
             verb.add_argument(f"--{tool}", required=True)
-        verb.add_argument("--engine", required=True, help="engine root for ty --python")
+        verb.add_argument("--box", required=True, help="box root for ty --python")
         verb.set_defaults(func=func)
 
     fmt = sub.add_parser("fmt", parents=[common, starlark], help="auto-format and auto-fix lints")
@@ -263,8 +263,8 @@ def main(argv: list[str] | None = None) -> None:
     scc.add_argument("--dot", type=Path, help="write the cycle subgraph as graphviz")
     scc.set_defaults(func=_scc)
 
-    ty = sub.add_parser("ty", help="run pinned ty against the engine's Python environment")
-    ty.add_argument("--engine", required=True)
+    ty = sub.add_parser("ty", help="run pinned ty against the box's Python environment")
+    ty.add_argument("--box", required=True)
     ty.add_argument("--ty", required=True)
     ty.add_argument("arguments", nargs=argparse.REMAINDER)
     ty.set_defaults(func=_ty)

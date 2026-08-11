@@ -2,7 +2,7 @@
 
 load("//package:system.bzl", "package_system")
 
-# Host tools bootstrap the engine; remaining drivers run inside it.
+# Host tools bootstrap the box; remaining drivers run inside it.
 
 python_bootstrap_library(name = "rpmfile", srcs = ["rpmfile.py"], deps = ["//:util"])
 

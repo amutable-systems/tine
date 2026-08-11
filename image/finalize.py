@@ -58,10 +58,10 @@ def apply_tmpfiles(tree: Path, snippets: list[str], *, program: str) -> None:
     )
 
 
-def _engine_tool(name: str, what: str) -> str:
+def _box_tool(name: str, what: str) -> str:
     path = shutil.which(name)
     if path is None:
-        raise SystemExit(f"{what}: this engine carries no {name}")
+        raise SystemExit(f"{what}: this box carries no {name}")
     return path
 
 
@@ -121,7 +121,7 @@ def hwdb(tree: Path, *, usr: bool, strict: bool) -> None:
     """Compile the image's hardware database, which udev reads in binary form and never sources."""
     if not any((tree / source).is_dir() for source in ("usr/lib/udev/hwdb.d", "etc/udev/hwdb.d")):
         return
-    _run("hwdb", hwdb_command(_engine_tool("systemd-hwdb", "hwdb"), tree, usr=usr, strict=strict))
+    _run("hwdb", hwdb_command(_box_tool("systemd-hwdb", "hwdb"), tree, usr=usr, strict=strict))
     # A database in /etc would shadow the one in /usr the image now ships forever.
     if usr:
         (tree / "etc/udev/hwdb.bin").unlink(missing_ok=True)

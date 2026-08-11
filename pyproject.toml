@@ -8,7 +8,7 @@ extend-exclude = ["buck-out", "vendor/mkosi/sandbox.py"]
 src = [
     "archive",
     "cargo",
-    "engine",
+    "box",
     "image",
     "image_format",
     "package",
@@ -36,7 +36,7 @@ python-version = "3.14"
 extra-paths = [
     "archive",
     "cargo",
-    "engine",
+    "box",
     "image",
     "image_format",
     "package",

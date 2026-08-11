@@ -2,7 +2,7 @@
 """Build RPMs inside an assembled, pinned buildroot.
 
 Sources and the spec are staged in action scratch space, while only the produced
-RPMs persist. The engine sandbox already supplies isolation around the chroot.
+RPMs persist. The box sandbox already supplies isolation around the chroot.
 """
 
 import os

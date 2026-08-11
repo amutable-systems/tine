@@ -41,7 +41,7 @@ def _check_name(name: str, family: str, version: str) -> None:
 def fedora_release(
     name: str,
     version: str,
-    engine: str,
+    box: str,
     baseurl: str | None = None,
     rpmrepo_mirror: str | None = None,
     rpmrepo_snapshot: str | None = None,
@@ -68,7 +68,7 @@ def fedora_release(
         name = name + ".repositories",
         package_system = _RPM,
         # The additional repositories are part of the release, not just of installs from it. An
-        # engine resolves against the universe and nothing else, so leaving them out would stop a
+        # box resolves against the universe and nothing else, so leaving them out would stop a
         # release from building with the tools it ships: an image running a systemd from one of
         # these has to be assembled by the matching ukify and repart, which live in the same place.
         required_repositories = [":" + name + ".repository"] + additional_repositories,
@@ -83,7 +83,7 @@ def fedora_release(
     package_manager(
         name = name + ".package-manager",
         release = ":" + name + ".release",
-        engine = engine,
+        box = box,
         additional_repositories = additional_repositories,
         repository_priorities = repository_priorities,
         visibility = visibility,

@@ -1,7 +1,7 @@
 """Partition and raw-disk assembly with systemd-repart."""
 
 load("//:specs.bzl", "spec_args")
-load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "chroot_run")
 load(
     "//image:image.bzl",
     "IMAGE_TOOLS_ATTR",
@@ -516,7 +516,7 @@ def declare_disk_conversion(
     *,
     tools: ImageToolsInfo,
     disk: RepartInfo,
-    engine: Dependency,
+    box: Dependency,
     format: str,
     basename: str = "image",
     identifier: str | None = None,
@@ -526,7 +526,7 @@ def declare_disk_conversion(
         fail("disk_convert: RepartInfo does not contain a composed disk")
     out = declare_out(ctx, identifier, basename + "." + format)
     cmd = cmd_args(
-        chroot_run(engine = engine[EngineInfo], exe = tools.convert),
+        chroot_run(box = box[BoxInfo], exe = tools.convert),
         spec_args(
             ctx.actions,
             spec_path(identifier, "convert"),
@@ -546,7 +546,7 @@ def _disk_convert_impl(ctx: AnalysisContext) -> list[Provider]:
         tools = ctx.attrs._tools[ImageToolsInfo],
         basename = ctx.attrs.basename,
         disk = ctx.attrs.disk[RepartInfo],
-        engine = ctx.attrs.engine,
+        box = ctx.attrs.box,
         format = ctx.attrs.format,
     )
     return [DefaultInfo(default_output = info.image), info]
@@ -555,8 +555,8 @@ disk_convert = rule(
     impl = _disk_convert_impl,
     attrs = {
         "basename": attrs.string(default = "image", doc = "file name of the re-encoded disk, without extension"),
+        "box": attrs.dep(providers = [BoxInfo], doc = "execution environment supplying conversion tools"),
         "disk": attrs.dep(providers = [RepartInfo], doc = "the composed raw disk to re-encode"),
-        "engine": attrs.dep(providers = [EngineInfo], doc = "execution environment supplying conversion tools"),
         "format": attrs.enum(DISK_FORMATS),
     }
     | IMAGE_TOOLS_ATTR,

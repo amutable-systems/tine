@@ -20,8 +20,8 @@ under `${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2`; cached invocations work offl
 
 A **catalog** is a Buck package that declares which OS releases are available to build against. For each
 release it bundles the repository definitions, the release identity and its package sets, a package
-manager (the pinned solve environment that images start from), a buildroot for package builds, and an
-engine. The default catalog is [`tine//catalog`](../catalog/BUCK) and currently declares two releases:
+manager (the pinned solve environment that images start from), a buildroot for package builds, and a
+box. The default catalog is [`tine//catalog`](../catalog/BUCK) and currently declares two releases:
 
 - `fedora.rawhide`: pinned to an rpmrepo compose snapshot, so packages never vanish underneath the pins
 - `fedora.44`
@@ -32,17 +32,16 @@ have to be buildable from a committed pin at all.
 Each release consists of targets named `<family>.<release>.<role>`, for example
 `tine//catalog:fedora.rawhide.package-manager` or `tine//catalog:fedora.44.release`. The pins live
 as committed snapshots under [`catalog/snapshot/`](../catalog/snapshot/): repository metadata in
-`snapshot/repo/*.json` and frozen engine transactions in `snapshot/engine/*.json`. Normal builds therefore
+`snapshot/repo/*.json` and frozen box transactions in `snapshot/box/*.json`. Normal builds therefore
 never touch the network; `refresh-catalog` (below) advances the pins. A project can instead declare its
 own `//catalog` package with the same macros. The naming scheme and the pinning mechanism are described in
 [design.md](design.md).
 
-An **engine** is a pinned, reproducible execution environment that runs every build action. It supplies
-rpm, Python, libdnf5, `createrepo_c`, core utilities, and the image assembly and VM tools; these tools
-stay in the engine and out of the built images. All current releases share
-`tine//catalog:fedora.rawhide.engine`. An engine's base release only records where its userspace came
-from: the Rawhide engine also serves Fedora 44. How an engine bootstraps itself is
-described in [design.md](design.md).
+A **box** is a pinned, reproducible execution environment that runs every build action. It supplies rpm,
+Python, libdnf5, `createrepo_c`, core utilities, and the image assembly and VM tools; these tools stay in the
+box and out of the built images. All current releases share `tine//catalog:fedora.rawhide.box`. A box's base
+release only records where its userspace came from: the Rawhide box also serves Fedora 44. How a box
+bootstraps itself is described in [design.md](design.md).
 
 ## Commands
 
@@ -72,7 +71,7 @@ The modules behind the facade (`image.bzl`, `compose.bzl`, and the `image_format
 implementation structure and may be rearranged; load them directly only from inside the cell.
 
 An initial image fixes one package manager for its whole lifetime; every derived image and terminal output
-inherits it and its engine. Take a catalog package manager, optionally extend it with project repositories,
+inherits it and its box. Take a catalog package manager, optionally extend it with project repositories,
 and create the initial image. For example, a project can expose locally built packages without adding them
 to its OS release:
 
@@ -117,15 +116,15 @@ resolve upstream (details in [design.md](design.md)).
 
 ## Images and operations
 
-`image` has two construction modes. An initial image supplies `package_manager` or `engine`; a derived image
-supplies `parent` and inherits that image's package manager and engine. A call with operations applies one
+`image` has two construction modes. An initial image supplies `package_manager` or `box`; a derived image
+supplies `parent` and inherits that image's package manager and box. A call with operations applies one
 ordered operation sequence in one action and persists exactly one delta:
 
 - `packages` and `package_sets` are rule attributes rather than operations: a layer installs them as one
   request before any of its operations run, so every operation sees what the layer adds. `package_sets`
   names symbolic sets the image's OS release supplies and `packages` names concrete ones; a layer may use
   both, and duplicates between them collapse.
-- `run([...])` executes a command against the image. By default the engine supplies the userspace and
+- `run([...])` executes a command against the image. By default the box supplies the userspace and
   the image is mounted at `/buildroot`; with `chroot = True` the command runs inside the image with its
   own binaries instead. Either takes an `env` argument that overlays variables on that command's
   environment. An argument names a build artifact by being one, or by spelling `$(location //target)` in
@@ -182,7 +181,7 @@ image(
   how Debian and Arch generate locales; a distribution that ships them as packages has no such file and
   the operation does nothing.
 
-`hwdb()` is the one that runs an engine tool against the mounted image, exactly as `run()` does by
+`hwdb()` is the one that runs a box tool against the mounted image, exactly as `run()` does by
 default, so an image that installs no systemd of its own still gets a database; the other two must be
 the image's own. What they write is captured by the layer that runs them, so it is built once and
 cached rather than repeated by every terminal output.
@@ -325,7 +324,7 @@ when needed:
   split-only invocation, `output_size` composes the disk with free space behind its partitions, and
   `strip_pkgdb` leaves the package database out of them, and `mkfs_options` tunes the filesystems it
   creates;
-- `disk_convert` re-encodes a raw disk with an explicitly selected engine and provides `DiskConversionInfo`;
+- `disk_convert` re-encodes a raw disk with an explicitly selected box and provides `DiskConversionInfo`;
 - `bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
 - `image_sysext` builds a systemd-sysext(8) DDI with `systemd-repart`, containing `/usr`, `/opt`, and
@@ -338,7 +337,7 @@ when needed:
   target providing `SigningKeyInfo`), the DDI carries a signature over its verity root hash, which a host
   validates against the key's certificate in its `/usr/lib/verity.d/` (enforced only where the host's
   sysext image policy says so, see "Example targets" below);
-- `image_vm` runs the raw image ephemerally with its explicitly selected engine's `systemd-vmspawn`, QEMU,
+- `image_vm` runs the raw image ephemerally with its explicitly selected box's `systemd-vmspawn`, QEMU,
   and OVMF stack,
   and binds all given `sysexts` DDIs into the guest at `/var/lib/extensions`, where systemd-sysext merges
   them at boot. With `secure_boot`, vmspawn picks Secure Boot capable firmware without pre-enrolled keys,
@@ -687,7 +686,7 @@ held by a PKCS#11 token and the build reaches it over a socket without ever seei
 
 ## Running the image in a VM
 
-Runtime and execution policy live on the `image_vm` target, not in the disk provider: its explicit `engine`
+Runtime and execution policy live on the `image_vm` target, not in the disk provider: its explicit `box`
 supplies the VM stack, its `autologin` option provisions a locked root password and runtime `login.noauth`,
 and arbitrary non-secret system credentials configure settings such as first-boot locale and timezone.
 

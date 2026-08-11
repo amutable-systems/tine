@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Build a Rust project from source inside an engine, against its vendored crate tree.
+"""Build a Rust project from source inside a box, against its vendored crate tree.
 
 The build runs with no network: every registry crate is already unpacked, and pointing cargo's
 crates-io source at that directory is what keeps it from consulting the registry index. Each git

@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Install an exact RPM set into a fresh, layered, or already-mounted root.
 
-The same driver bootstraps engines, assembles buildroots, and extends image
+The same driver bootstraps boxes, assembles buildroots, and extends image
 layers. It parks the rpmdb and removes nondeterministic bookkeeping before capture.
 """
 

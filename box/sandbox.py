@@ -206,7 +206,7 @@ def main(argv: list[str] | None = None) -> NoReturn:
         # gigabytes and should not go into RAM. /tmp keeps the tmpfs above, for small and
         # short-lived files only.
         #
-        # Entered outside a run action there is no scratch directory: `buck run` on an engine or
+        # Entered outside a run action there is no scratch directory: `buck run` on a box or
         # its [resolve] subtarget, and every `buck test`. Those keep a tmpfs here too, which dies
         # with the mount namespace.
         staging = None
@@ -231,7 +231,7 @@ def main(argv: list[str] | None = None) -> NoReturn:
             out += ["--ro-bind-nofollow", "/etc/resolv.conf", "/etc/resolv.conf"]
         chdir = chdir or os.getcwd()
     elif args.network:
-        # Preserve engine CA trust but use the host resolver and its /run target.
+        # Preserve box CA trust but use the host resolver and its /run target.
         out += ["--ro-bind-nofollow", "/etc/resolv.conf", "/etc/resolv.conf", "--ro-bind", "/run", "/run"]
     else:
         out += ["--unshare-net"]

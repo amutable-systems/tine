@@ -1,7 +1,7 @@
 """Resolve and install native packages into filesystem roots."""
 
 load("//:specs.bzl", "spec_args")
-load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "chroot_run")
 load(":local_packages.bzl", "LocalPackageUniverseInfo", "select_local_packages")
 load(":manager.bzl", "PackageManagerInfo", "materialize_local_repository")
 load(
@@ -40,7 +40,7 @@ def resolve_packages(
         if configured.dependency == None:
             fail("package manager contains inline repository '{}'".format(configured.id))
         repositories.append(configured.dependency)
-    engine = package_manager.engine[EngineInfo]
+    box = package_manager.box[BoxInfo]
     system = package_manager.package_system[PackageSystemInfo]
 
     if package_manager.local_packages != None:
@@ -56,7 +56,7 @@ def resolve_packages(
     if extra_packages:
         extra_repo = materialize_local_repository(
             ctx,
-            package_manager.engine,
+            package_manager.box,
             package_manager.package_system,
             extra_packages,
         )
@@ -75,11 +75,11 @@ def resolve_packages(
     tx = ctx.actions.declare_output(prefix + "transaction.json")
     plan = solve_command(
         ctx = ctx,
-        engine = engine,
+        box = box,
         system = system,
         repositories = plan_repositories,
         install = install,
-        arch = engine.arch,
+        arch = box.arch,
         output = tx.as_output(),
         solver_caches = package_manager.solver_caches,
         lowers = stack,
@@ -105,19 +105,19 @@ def _install_actions(
 ) -> Artifact:
     package_manager = package_manager_dep[PackageManagerInfo]
     system = package_manager.package_system[PackageSystemInfo]
-    engine = package_manager.engine[EngineInfo]
+    box = package_manager.box[BoxInfo]
     closure = resolve_packages(ctx, package_manager_dep, install, stack, extra_packages)
     out = ctx.actions.declare_output("install.delta" if stack else "root", dir = True)
     work = ctx.actions.declare_output("install.work", dir = True) if stack else None
     cmd = cmd_args(
-        chroot_run(engine = engine, exe = system.install),
+        chroot_run(box = box, exe = system.install),
         spec_args(
             ctx.actions,
             "install.spec.json",
             {
-                "arch": engine.arch,
+                "arch": box.arch,
+                "box_config": False,
                 "docs": True,
-                "engine_config": False,
                 "installroot": None,
                 "langs": [],
                 "lower": stack,

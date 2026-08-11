@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Build the unified kernel image for a logical filesystem image's single kernel.
 
-Engine tools operate on the mounted image without chrooting. A kernel-modules cpio
+Box tools operate on the mounted image without chrooting. A kernel-modules cpio
 extends the supplied base initrds.
 """
 
@@ -120,7 +120,7 @@ def _ukify_options() -> set[str]:
     """Which options this ukify accepts.
 
     The measured-boot policy a UKI carries is only useful to a systemd that speaks the same
-    dialect, and the engine's ukify comes from one generation of systemd while its options come and
+    dialect, and the box's ukify comes from one generation of systemd while its options come and
     go with it. Asking what this one takes keeps a build working across both sides of a change,
     rather than pinning tine to whichever generation the distributions have caught up to.
     """

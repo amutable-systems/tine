@@ -2,7 +2,7 @@
 
 One schema, shared by every package system's planner, because the same Starlark reads all of
 them: `select_package_artifacts` looks each entry up in its repository's pool by checksum, and a
-committed engine lock is one of these files kept verbatim. What differs between package systems
+committed box lock is one of these files kept verbatim. What differs between package systems
 is how the closure is arrived at, not how it is described.
 """
 

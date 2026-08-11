@@ -1,7 +1,7 @@
 """Interactive virtual-machine image runners."""
 
+load("//box:runtime.bzl", "BoxInfo", "chroot_run")
 load("//distribution:defs.bzl", "distributed")
-load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//image_format:disk.bzl", "RepartInfo", "SIZE_PATTERN")
 load("//image_format:sysext.bzl", "SysextImageInfo")
 
@@ -11,7 +11,7 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
         fail("image_vm: RepartInfo does not contain a composed disk")
     run = cmd_args(
         chroot_run(
-            engine = ctx.attrs.engine[EngineInfo],
+            box = ctx.attrs.box[BoxInfo],
             exe = "systemd-vmspawn",
             relaxed = True,
         ),
@@ -95,6 +95,7 @@ _image_vm = rule(
             default = None,
             doc = "user to log in automatically without authentication",
         ),
+        "box": attrs.dep(providers = [BoxInfo], doc = "execution environment supplying the VM stack"),
         "cmdline_extra": attrs.list(
             attrs.string(),
             default = [],
@@ -106,7 +107,6 @@ _image_vm = rule(
             default = {},
             doc = "non-secret system credentials passed to systemd-vmspawn",
         ),
-        "engine": attrs.dep(providers = [EngineInfo], doc = "execution environment supplying the VM stack"),
         "grow": attrs.option(
             attrs.string(),
             default = None,

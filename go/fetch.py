@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> None:
         | {
             "GOCACHE": "/var/tmp/gocache",
             # Only the user's env file, never $GOROOT/go.env, which is why everything this action
-            # depends on is spelled out below instead of left to the engine's go.
+            # depends on is spelled out below instead of left to the box's go.
             "GOENV": "off",
             "GOMODCACHE": str(module_cache_dir),
             # Where the modules come from and what vouches for the ones go.sum does not pin. Both
@@ -61,7 +61,7 @@ def main(argv: list[str] | None = None) -> None:
             # trust whatever a repository served.
             "GOPROXY": "https://proxy.golang.org,direct",
             "GOSUMDB": "sum.golang.org",
-            # The engine's go is the toolchain; never fetch another one.
+            # The box's go is the toolchain; never fetch another one.
             "GOTOOLCHAIN": "local",
             # This action stages a bare go.mod, so a go.work anywhere above it could only be a
             # stray from outside the checkout. In workspace mode go would resolve against that.

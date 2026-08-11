@@ -1,8 +1,8 @@
 """Logical filesystem images built as ordered overlay deltas."""
 
 load("//:specs.bzl", "executable", "spec_args", "spec_argument")
+load("//box:runtime.bzl", "BoxInfo", "chroot_run")
 load("//distribution:defs.bzl", "distributed")
-load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load("//package:install.bzl", "resolve_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
@@ -90,7 +90,7 @@ ImageSbomInfo = provider(
 ImageInfo = provider(
     doc = "A logical filesystem image represented by an ordered delta stack and lazy metadata.",
     fields = {
-        "engine": provider_field(Dependency),
+        "box": provider_field(Dependency),
         # Accumulated install specs; they seed the local-packages closure of every derived layer
         # so lower-layer packages keep their local backing in later solves.
         "install_specs": provider_field(list[str], default = []),
@@ -107,7 +107,7 @@ ImageInfo = provider(
 def _image_command(
     ctx: AnalysisContext,
     *,
-    engine: Dependency,
+    box: Dependency,
     layers: list[Artifact],
     tmpfiles: list[str],
     exe: Dependency,
@@ -118,7 +118,7 @@ def _image_command(
 ) -> cmd_args:
     return cmd_args(
         chroot_run(
-            engine = engine[EngineInfo],
+            box = box[BoxInfo],
             exe = exe,
             ro_binds = signing_access.ro_binds if signing_access else {},
             setenv = signing_access.setenv if signing_access else {},
@@ -149,7 +149,7 @@ def terminal_image_command(
         ctx,
         signing_access = signing_access,
         driver = driver,
-        engine = image.engine,
+        box = image.box,
         exe = exe,
         identifier = identifier,
         layers = image.layers,
@@ -227,9 +227,9 @@ ARCHES = {"x86_64": struct(efi = "x64", systemd = "x86-64")}
 # Operations replayed by the layer driver.
 
 def run(cmd: list[str | Artifact], env: dict[str, str] = {}, chroot: bool = False) -> LayerOperation:
-    """Run `cmd` against the image, either with the engine's tooling or the image's own.
+    """Run `cmd` against the image, either with the box's tooling or the image's own.
 
-    By default the engine supplies the userspace and the image is mounted at /buildroot. With
+    By default the box supplies the userspace and the image is mounted at /buildroot. With
     `chroot`, the command runs inside the image instead, and the project is bind-mounted at a
     fixed path which becomes the working directory, so an artifact argument resolves the same
     either way and a script the repository owns can simply be run.
@@ -340,7 +340,7 @@ def sign_systemd_boot(key: SigningKeyInfo, arch: str) -> list[LayerOperation]:
     """
     binary = "/buildroot/usr/lib/systemd/boot/efi/systemd-boot{}.efi".format(ARCHES[arch].efi)
     return [
-        # systemd-sbsign lives outside PATH in the engine.
+        # systemd-sbsign lives outside PATH in the box.
         run(
             [
                 "/usr/lib/systemd/systemd-sbsign",
@@ -398,7 +398,7 @@ def _encode_operation(operation: LayerOperation) -> LayerOperation:
     if operation[0] != "run":
         return operation
 
-    # An engine argument is a plain string, an artifact, or a resolved $(location) macro.
+    # A box argument is a plain string, an artifact, or a resolved $(location) macro.
     return (
         operation[0],
         [spec_argument(argument) for argument in operation[1]],
@@ -428,7 +428,7 @@ def _install_specs(
 def _declare_pkgdb(
     ctx: AnalysisContext,
     *,
-    engine: Dependency,
+    box: Dependency,
     layers: list[Artifact],
     tmpfiles: list[str],
     package_manager: Dependency,
@@ -439,7 +439,7 @@ def _declare_pkgdb(
     cmd = _image_command(
         ctx,
         driver = "pkgdb",
-        engine = engine,
+        box = box,
         exe = system.pkgdb,
         identifier = identifier,
         layers = layers,
@@ -453,7 +453,7 @@ def _declare_sbom(
     ctx: AnalysisContext,
     *,
     tools: ImageToolsInfo,
-    engine: Dependency,
+    box: Dependency,
     layers: list[Artifact],
     tmpfiles: list[str],
     source_name: str,
@@ -465,7 +465,7 @@ def _declare_sbom(
     cmd = _image_command(
         ctx,
         driver = "sbom",
-        engine = engine,
+        box = box,
         exe = tools.sbom,
         identifier = identifier,
         layers = layers,
@@ -492,7 +492,7 @@ def declare_image(
     package_sets: list[str] = [],
     identifier: str | None = None,
     parent: ImageInfo | None = None,
-    engine: Dependency | None = None,
+    box: Dependency | None = None,
     package_manager: Dependency | None = None,
     tmpfiles: list[str] = [],
     install_docs: bool = True,
@@ -508,26 +508,26 @@ def declare_image(
     operations use, so that the action can reach one held outside the build.
     """
     if parent != None:
-        if engine != None or package_manager != None:
-            fail("image: parent cannot be combined with engine or package_manager")
-        engine = parent.engine
+        if box != None or package_manager != None:
+            fail("image: parent cannot be combined with box or package_manager")
+        box = parent.box
         package_manager = parent.package_manager
         layers = parent.layers
         tmpfiles = parent.tmpfiles + tmpfiles
         parent_install_specs = parent.install_specs
     else:
         if package_manager != None:
-            manager_engine = package_manager[PackageManagerInfo].engine
-            if engine != None and engine.label != manager_engine.label:
+            manager_box = package_manager[PackageManagerInfo].box
+            if box != None and box.label != manager_box.label:
                 fail(
-                    "image engine {} does not match package manager engine {}".format(
-                        engine.label,
-                        manager_engine.label,
+                    "image box {} does not match package manager box {}".format(
+                        box.label,
+                        manager_box.label,
                     )
                 )
-            engine = manager_engine
-        if engine == None:
-            fail("image requires parent, package_manager, or engine")
+            box = manager_box
+        if box == None:
+            fail("image requires parent, package_manager, or box")
         layers = []
         parent_install_specs = []
 
@@ -565,7 +565,7 @@ def declare_image(
         }
         if installer != None:
             spec["install"] = {
-                "arch": engine[EngineInfo].arch,
+                "arch": box[BoxInfo].arch,
                 "docs": install_docs,
                 "installer": executable(installer),
                 "langs": install_langs,
@@ -574,7 +574,7 @@ def declare_image(
         signing_access = merge_signing_access(keys)
         cmd = cmd_args(
             chroot_run(
-                engine = engine[EngineInfo],
+                box = box[BoxInfo],
                 exe = tools.layer,
                 ro_binds = signing_access.ro_binds,
                 setenv = signing_access.setenv,
@@ -592,14 +592,14 @@ def declare_image(
     if package_manager != None:
         pkgdb = _declare_pkgdb(
             ctx,
-            engine = engine,
+            box = box,
             identifier = identifier,
             layers = layers,
             package_manager = package_manager,
             tmpfiles = tmpfiles,
         )
     return ImageInfo(
-        engine = engine,
+        box = box,
         install_specs = install_specs,
         layers = layers,
         package_manager = package_manager,
@@ -607,7 +607,7 @@ def declare_image(
         sbom = _declare_sbom(
             ctx,
             tools = tools,
-            engine = engine,
+            box = box,
             identifier = identifier,
             layers = layers,
             source_name = source_name or ctx.label.name,
@@ -700,7 +700,7 @@ def _image_impl(ctx: AnalysisContext) -> list[Provider]:
     image = declare_image(
         ctx,
         tools = ctx.attrs._tools[ImageToolsInfo],
-        engine = ctx.attrs.engine,
+        box = ctx.attrs.box,
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
         ops = ctx.attrs.ops,
@@ -721,8 +721,8 @@ _image = rule(
     supports_incoming_transition = True,
     attrs = IMAGE_ATTRS
     | {
-        "engine": attrs.option(
-            attrs.dep(providers = [EngineInfo]),
+        "box": attrs.option(
+            attrs.dep(providers = [BoxInfo]),
             default = None,
             doc = "the execution environment fixed for an initial image and all derived artifacts",
         ),

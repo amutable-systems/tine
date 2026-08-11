@@ -2,7 +2,7 @@
 
 Patterns follow mkosi's `KernelModules=` semantics minus its leading-slash convenience. The dependency
 and firmware closure comes from libkmod, so the initrd resolves modules through the very index modprobe
-reads at boot, and it is bound with an empty configuration vector so no modprobe.d from the engine can
+reads at boot, and it is bound with an empty configuration vector so no modprobe.d from the box can
 reach the result.
 """
 

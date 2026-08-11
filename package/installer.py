@@ -29,7 +29,7 @@ hosts: files dns
 
 
 class InstallSpec(TypedDict):
-    """The request `package/install.bzl`, `engine/build.bzl` and an image layer all write."""
+    """The request `package/install.bzl`, `box/build.bzl` and an image layer all write."""
 
     arch: str
     packages_dir: str
@@ -38,7 +38,7 @@ class InstallSpec(TypedDict):
     installroot: str | None
     lower: list[str]
     work: str | None
-    engine_config: bool
+    box_config: bool
     langs: list[str]
     docs: bool
 
@@ -58,14 +58,14 @@ def fresh_machine_id(installroot: Path) -> Iterator[None]:
         machine_id.write_text("uninitialized\n")
 
 
-def _configure_engine(installroot: Path) -> None:
-    """Materialize configuration needed before the engine is ever booted."""
+def _configure_box(installroot: Path) -> None:
+    """Materialize configuration needed before the box is ever booted."""
     factory_nsswitch = installroot / "usr/share/factory/etc/nsswitch.conf"
     nsswitch = installroot / "etc/nsswitch.conf"
     if factory_nsswitch.is_file():
         shutil.copy2(factory_nsswitch, nsswitch)
     elif not nsswitch.is_file():
-        # Minimal engines need not install systemd's factory configuration.
+        # Minimal boxes need not install systemd's factory configuration.
         nsswitch.write_text(MINIMAL_NSSWITCH)
 
     # Create the mountpoint for the sandbox's resolver bind.
@@ -78,13 +78,13 @@ def _normalize(installroot: Path, spec: InstallSpec) -> None:
     """Settle what an install leaves behind whichever package system performed it.
 
     A driver parks its own database, because only it knows what its package manager wrote. What is
-    here is what no package system owns: scriptlets that any of them run, and the configuration an
-    engine needs before it is first entered.
+    here is what no package system owns: scriptlets that any of them run, and the configuration a
+    box needs before it is first entered.
     """
     # ldconfig's auxiliary cache stores inode numbers and mtimes; ld.so.cache itself does not.
     (installroot / "var/cache/ldconfig/aux-cache").unlink(missing_ok=True)
-    if spec["engine_config"]:
-        _configure_engine(installroot)
+    if spec["box_config"]:
+        _configure_box(installroot)
 
 
 def run(
