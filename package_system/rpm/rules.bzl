@@ -1,7 +1,7 @@
 """RPM repositories and package-build rules."""
 
 load("//:specs.bzl", "spec_args")
-load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "chroot_run")
 load("//package:buildroot.bzl", "BuildrootInfo")
 load("//package:install.bzl", "install_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
@@ -77,7 +77,7 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     sub_outputs = {s: ctx.actions.declare_output(s + ".rpm") for s in ctx.attrs.subpackages}
 
     build = cmd_args(
-        chroot_run(engine = package_manager.engine[EngineInfo], exe = system.build),
+        chroot_run(box = package_manager.box[BoxInfo], exe = system.build),
         spec_args(
             ctx.actions,
             "build.spec.json",

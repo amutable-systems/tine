@@ -154,7 +154,7 @@ def _install(install: LayerInstall, target: Path, scratch: Path) -> None:
         installroot=str(target),
         lower=[],
         work=None,
-        engine_config=False,
+        box_config=False,
         langs=install["langs"],
         docs=install["docs"],
     )
@@ -204,7 +204,7 @@ def main(argv: list[str] | None = None) -> None:
             operation[1] = str(Path(operation[1]).absolute())
     install = spec["install"]
 
-    # A chrooted command names an artifact exactly as an engine command does, so the project is
+    # A chrooted command names an artifact exactly as a box command does, so the project is
     # mounted for the whole layer whenever one asks for it.
     binds = [(os.getcwd(), PROJECT)] if any(_chroots(op) for op in operations) else []
 

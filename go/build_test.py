@@ -3,7 +3,7 @@
     buck test tine//go:test
 
 The driver hands everything needing a toolchain to go, so what is left to test is how its output is
-read and which declarations it refuses. The engine these tests run in carries no go.
+read and which declarations it refuses. The box these tests run in carries no go.
 """
 
 import importlib.util

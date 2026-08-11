@@ -342,7 +342,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
             tools = tools,
             basename = basename,
             disk = disk.info,
-            engine = esp.engine,
+            box = esp.box,
             format = format,
             identifier = format,
         )

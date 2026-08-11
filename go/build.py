@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Build a Go project from source inside an engine, against its fetched module cache.
+"""Build a Go project from source inside a box, against its fetched module cache.
 
 The build runs with no network: the fetched module cache is served as a file:// proxy, from which
 go takes every module and re-verifies it against the committed go.sum.
@@ -19,7 +19,7 @@ import util
 class Spec(TypedDict):
     # Declared binary name -> the output to write it to.
     binaries: dict[str, str]
-    # Whether to force cgo on or off, or None to leave the engine toolchain's default alone.
+    # Whether to force cgo on or off, or None to leave the box toolchain's default alone.
     cgo: bool | None
     # Extra flags for the C compiler of a cgo build, on top of the -O2 -g always passed.
     cgo_cflags: list[str]
@@ -145,7 +145,7 @@ def main(argv: list[str] | None = None) -> None:
     if spec["tags"]:
         flags.append("-tags=" + ",".join(spec["tags"]))
     env = os.environ | {
-        # Spelled out rather than left to the engine's `go env` defaults, so a project's extra
+        # Spelled out rather than left to the box's `go env` defaults, so a project's extra
         # flags add to a known baseline instead of replacing whatever go would have used.
         "CGO_CFLAGS": " ".join(["-O2", "-g", *spec["cgo_cflags"]]),
         # Nothing is ever installed here. `go list` leaves .Target empty unless go has somewhere to
@@ -167,9 +167,9 @@ def main(argv: list[str] | None = None) -> None:
         "GOWORK": "off",
     }
     if spec["cgo"] is not None:
-        # Left alone otherwise, so that the engine's toolchain decides as it would for a `go build`
+        # Left alone otherwise, so that the box's toolchain decides as it would for a `go build`
         # run in the checkout by hand. Note that its default is on: importing net or os/user is
-        # enough to need a C compiler in the engine and to link the binary dynamically.
+        # enough to need a C compiler in the box and to link the binary dynamically.
         env["CGO_ENABLED"] = "1" if spec["cgo"] else "0"
 
     # Build only the declared binaries.

@@ -2,7 +2,7 @@
 
     buck test tine//image:test
 
-The pattern engine, the firmware walk and the packing decide what a UKI carries, and none of them
+The pattern box, the firmware walk and the packing decide what a UKI carries, and none of them
 need libkmod or a real kernel, so they run against synthetic module trees here. The dependency
 closure libkmod resolves is covered by the real image builds in tools/ci.sh instead.
 """

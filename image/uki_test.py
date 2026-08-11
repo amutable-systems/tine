@@ -123,4 +123,4 @@ class TestSigningArguments(unittest.TestCase):
     def test_a_key_source_ukify_cannot_load(self) -> None:
         """ukify only speaks providers, so anything else must fail the build, not the boot."""
         with self.assertRaises(SystemExit):
-            uki._signing_arguments(SECURE_BOOT | {"source": "engine:pkcs11"}, None, [], OPTIONS)
+            uki._signing_arguments(SECURE_BOOT | {"source": "box:pkcs11"}, None, [], OPTIONS)

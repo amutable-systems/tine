@@ -3,4 +3,4 @@ set -eu
 
 cell=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$cell"
-exec "$cell/tools/buck" run tine//tools:ty-engine -- "$@"
+exec "$cell/tools/buck" run tine//tools:ty-box -- "$@"

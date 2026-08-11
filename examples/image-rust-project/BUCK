@@ -4,24 +4,24 @@ In a product this package lives in the OS.git that vendors tine, beside a checko
 it builds. `hello/` plays that checkout.
 """
 
+load("@tine//box:build.bzl", "box")
+load("@tine//box:test.bzl", "box_sh_test")
 load("@tine//cargo:rules.bzl", "cargo_package")
-load("@tine//engine:build.bzl", "engine")
-load("@tine//engine:test.bzl", "engine_sh_test")
 load("@tine//image:defs.bzl", "copy", "image_install", "install_from", "mkdir", "rootfs_archive")
 load("@tine//package:manager.bzl", "package_manager")
 
 # The build environment for our Rust projects; it never reaches an image.
-engine(
-    name = "rust.engine",
+box(
+    name = "rust.box",
     packages = [
         "cargo",
         "gcc",
-        # tine's in-engine drivers run on the engine's own interpreter.
+        # tine's in-box drivers run on the box's own interpreter.
         "python3",
         "rust",
     ],
     release = "tine//catalog:fedora.rawhide.release",
-    resolver_engine = "tine//catalog:fedora.rawhide.engine",
+    resolver_box = "tine//catalog:fedora.rawhide.box",
 )
 
 # Stand in for the fetch a product would declare here, without needing the network a test cannot have:
@@ -45,7 +45,7 @@ filegroup(
 cargo_package(
     name = "hello",
     binaries = ["hello-cli"],
-    engine = ":rust.engine",
+    box = ":rust.box",
     srcs = [":hello.checkout"],
 )
 
@@ -53,7 +53,7 @@ cargo_package(
 cargo_package(
     name = "nodeps",
     binaries = ["nodeps"],
-    engine = ":rust.engine",
+    box = ":rust.box",
 )
 
 # How these binaries install, declared beside the projects rather than repeated by every image that
@@ -85,10 +85,10 @@ rootfs_archive(
 
 # The crate graph cargo-auditable recorded in each binary must reach the image's SBOM: our own
 # packages, a crates.io dependency, and one from git.
-engine_sh_test(
+box_sh_test(
     name = "sbom-test",
     labels = ["image"],
-    engine = "@tine//box:dev.engine",
+    box = "@tine//tools:dev.box",
     test = "@tine//tests:contains.sh",
     args = [
         "$(location :demo[sbom][cyclonedx])",

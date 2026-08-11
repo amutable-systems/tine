@@ -1,8 +1,12 @@
 """Pinned tool binaries and development commands fetched by Buck."""
 
-load("//engine:test.bzl", "engine_python_test")
+load("//box:build.bzl", "box")
+load("//box:test.bzl", "box_python_test")
 load(":defs.bzl", "http_tool")
 load(":tools.json", _pins = "value")
+
+_RELEASE = "tine//catalog:fedora.rawhide.release"
+_RESOLVER_BOX = "tine//catalog:fedora.rawhide.box"
 
 # The shell bootstrap fetches Buck; Buck then fetches and verifies the remaining tools. Their pinned
 # releases live in ./tools.json and are refreshed by `bump` (see docs/images.md).
@@ -65,6 +69,27 @@ http_tool(
     visibility = ["PUBLIC"],
 )
 
+# tine's dev environment for importer and its unit tests. Used by every `box_python_test` suite
+# (hermetic), `tine//tools:importer` (relaxed), and anyone entering it as a box.
+# Derived from the main box (lockless transaction, resolved during the build), so dev tooling
+# changes never invalidate the build graph that depends on the main box.
+box(
+    name = "dev.box",
+    packages = [
+        "coreutils",
+        # for "importer srpm"
+        "dist-git-client",
+        "gawk",
+        "git-core",
+        "python3",
+        "rpm-build",
+        "sed",
+    ],
+    release = _RELEASE,
+    resolver_box = _RESOLVER_BOX,
+    visibility = ["PUBLIC"],
+)
+
 # Runtime driver for the source-tree commands below.
 python_bootstrap_binary(
     name = "dev",
@@ -91,9 +116,9 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-engine_python_test(
+box_python_test(
     name = "version-test",
-    engine = "//box:dev.engine",
+    box = ":dev.box",
     srcs = [
         "version.py",
         "version_test.py",
@@ -106,9 +131,9 @@ command_alias(
     exe = ":bump-driver",
 )
 
-# ty resolves imports against the engine root.
-# FIXME: type check python in every engine? Some python dependencies will only be
-# available in certain engines.
+# ty resolves imports against the box root.
+# FIXME: type check python in every box? Some python dependencies will only be
+# available in certain boxes.
 _SOURCE_ARGS = [
     "--buck",
     "$(source buck)",
@@ -120,8 +145,8 @@ _SOURCE_ARGS = [
     "$(location :ruff)",
     "--ty",
     "$(location :ty)",
-    "--engine",
-    "$(location tine//catalog:fedora.rawhide.engine)",
+    "--box",
+    "$(location tine//catalog:fedora.rawhide.box)",
 ]
 
 command_alias(
@@ -143,19 +168,45 @@ command_alias(
 command_alias(
     name = "importer",
     args = ["$(source importer)"],
-    exe = "tine//box:dev",
+    exe = ":dev.box",
 )
 
-# Signing-token server for testing; see tools/signing-server.
+# PKCS#11 signing tokens for testing (ci.sh's secureboot-pkcs11 step): a software TPM, the
+# production tpm2-pkcs11 module on top, and the p11-kit server exposing its tokens to build
+# sandboxes over a socket. See tools/signing-server.
+box(
+    name = "swtpm-signing.box",
+    packages = [
+        "bash",
+        "coreutils",
+        # the resource manager swtpm lacks, and the private bus it needs; see tools/signing-server
+        "dbus-daemon",
+        "openssl",
+        "p11-kit-server",
+        "pkcs11-provider",
+        "swtpm",
+        # ukify, to read a UKI section back out in the ci.sh step
+        "systemd-ukify",
+        "tpm2-abrmd",
+        "tpm2-pkcs11",
+        "tpm2-pkcs11-tools",
+        # tpm2_ptool drives these binaries without a package dependency on them
+        "tpm2-tools",
+    ],
+    release = _RELEASE,
+    resolver_box = _RESOLVER_BOX,
+    visibility = ["PUBLIC"],
+)
+
 command_alias(
     name = "signing-server",
     args = ["$(source signing-server)"],
-    exe = "tine//box:swtpm-signing",
+    exe = ":swtpm-signing.box",
 )
 
-engine_python_test(
+box_python_test(
     name = "importer-test",
-    engine = "//box:dev.engine",
+    box = ":dev.box",
     srcs = [
         "importer",
         "importer_test.py",
@@ -190,11 +241,11 @@ command_alias(
 )
 
 command_alias(
-    name = "ty-engine",
+    name = "ty-box",
     args = [
         "ty",
-        "--engine",
-        "$(location tine//catalog:fedora.rawhide.engine)",
+        "--box",
+        "$(location tine//catalog:fedora.rawhide.box)",
         "--ty",
         "$(location :ty)",
     ],

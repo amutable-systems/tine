@@ -51,7 +51,7 @@ Two things do cross into the build that are worth pointing out:
 ## Prerequisites
 
 The build side needs nothing from you: the catalog installs `pkcs11-provider` and `p11-kit-client` into
-every engine. On the host holding the key:
+every box. On the host holding the key:
 
 - `p11-kit-server` for the `p11-kit server` subcommand and its systemd units.
 - your backend's module and its tooling: `tpm2-pkcs11` and `tpm2-pkcs11-tools`, or `opensc`, or `softhsm`.

@@ -1,7 +1,7 @@
 """Build a Go project from its own source tree: one online, verified module fetch, then an offline build."""
 
 load("//:specs.bzl", "spec_args")
-load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "chroot_run")
 
 _PRIVATE = "__tine"
 
@@ -140,10 +140,10 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
     ctx.actions.dynamic_output_new(
         _go_build(
             binaries = {name: out.as_output() for name, out in outputs.items()},
-            build = chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = ctx.attrs._build),
+            build = chroot_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
             cgo = ctx.attrs.cgo,
             cgo_cflags = ctx.attrs.cgo_cflags,
-            fetch = chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = ctx.attrs._fetch, network = True),
+            fetch = chroot_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._fetch, network = True),
             gocache = gocache.as_output(),
             linker_flags = ctx.attrs.linker_flags,
             sources = sources,
@@ -159,9 +159,9 @@ _go_package = rule(
     impl = _go_package_impl,
     attrs = {
         "binaries": attrs.list(attrs.string(), doc = "binaries to take out of the build"),
-        "cgo": attrs.option(attrs.bool(), default = None, doc = "force cgo on or off, engine toolchain default when unset"),
+        "box": attrs.dep(providers = [BoxInfo], doc = "box carrying the Go toolchain"),
+        "cgo": attrs.option(attrs.bool(), default = None, doc = "force cgo on or off, box toolchain default when unset"),
         "cgo_cflags": attrs.list(attrs.string(), default = [], doc = "extra C compiler flags for a cgo build"),
-        "engine": attrs.dep(providers = [EngineInfo], doc = "engine carrying the Go toolchain"),
         "linker_flags": attrs.list(attrs.string(), default = [], doc = "flags for the Go linker, passed as -ldflags"),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, go.mod and go.sum included"),
         "tags": attrs.list(attrs.string(), default = [], doc = "build tags selecting the project's optional files"),

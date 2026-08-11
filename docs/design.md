@@ -20,7 +20,7 @@ monorepo in which a useful core package set is rebuilt from source, scheduled in
 by content, and suitable for remote execution. The current implementation already provides:
 
 - pinned package repositories, each with a repository-owned package artifact pool;
-- bootstrap engine roots containing the pinned userspace used by build actions;
+- bootstrap box roots containing the pinned userspace used by build actions;
 - configured package managers and shared buildroots for several OS releases;
 - package builds from imported source metadata, including self-hosted buildroot dependencies;
 - layered filesystem images, deterministic archives, bootable GPT disks, and a VM runner.
@@ -44,27 +44,27 @@ tine//distribution/       the axis an image's distribution is selected on
 tine//package/            package-system-neutral providers and installation flow
 tine//package_system/     one directory per package system: its repository, resolver, installer,
                           extractor, indexer, and optional builder
-tine//engine/             engine bootstrap and sandbox command construction
+tine//box/                box bootstrap and sandbox command construction
 tine//rootfs/             bind/overlay mounting and stored-delta translation
 tine//image/              layers, boot artifacts, composition macros, and VM runners
 tine//image_format/       archive, directory, and raw-disk output rules and drivers
 tine//cargo/              vendored crate trees and offline Rust source builds
 tine//go/                 go.sum-verified module fetches and offline Go source builds
 tine//catalog/            default repositories, locks, releases, package managers, and buildroots
-tine//tools/              pinned development and catalog-refresh commands
+tine//tools/              pinned development and catalog-refresh commands, and the boxes they run in
 ```
 
-The default `tine//catalog` package owns its release selection, mirrors, engine choice, repository additions,
+The default `tine//catalog` package owns its release selection, mirrors, box choice, repository additions,
 and policy overrides. Projects can instead declare their own catalog package with Tine's reusable family
 macros or low-level rules. The project's `//buildroots` package maps importer-generated
 `//buildroots/<family>:<release>` names to catalog targets.
 
 Catalog targets use `<family>.<release>[.<component>].<role>` names. A rolling channel occupies the release
 segment like any other release. Singular `.repository` targets own remotes, plural `.repositories` targets
-define universes, and release, engine, package-manager, and buildroot targets use their corresponding
+define universes, and release, box, package-manager, and buildroot targets use their corresponding
 suffixes. Low-level declaration macros require the suffix appropriate to their role. The family catalog
 macros instead take a `<family>.<release>` prefix and declare the complete repository, universe, release,
-package-manager, and buildroot bundle. An engine's identity describes its provenance rather than every
+package-manager, and buildroot bundle. A box's identity describes its provenance rather than every
 release that may consume it.
 
 The package source tree lives in the OS.git repository (which consumes this `tine` cell) under `packages/`.
@@ -82,13 +82,13 @@ PackageSystemInfo (one package system's drivers)
         │                           ├── RepositoryUniverseInfo
         │                           │          │
         └───────────────────────────┴── OsReleaseInfo
-                                               ├── engine transaction ── EngineInfo ──┬── package build
-                                               │                                     ├── image tooling
-                                               │                                     │
-                                               └─────────────────────────────────────┴── PackageManagerInfo
-                                                                                   ├── image installation
-                                                                                   └── BuildrootInfo
-                                                                                          └── package build
+                                               ├── box transaction ── BoxInfo ──┬── package build
+                                               │                                ├── image tooling
+                                               │                                │
+                                               └────────────────────────────────┴── PackageManagerInfo
+                                                                              ├── image installation
+                                                                              └── BuildrootInfo
+                                                                                     └── package build
 ```
 
 The providers have deliberately narrow roles:
@@ -104,32 +104,32 @@ The providers have deliberately narrow roles:
   configuration policy, not an intrinsic repository property. A repository is not inherently owned by an
   OS release.
 - `LocalPackageRepositoryInfo` identifies a repository assembled from package artifacts in the build graph.
-  It carries package directories, not the engine that produced them; a consuming package manager generates
-  its repository metadata with its own engine.
+  It carries package directories, not the box that produced them; a consuming package manager generates
+  its repository metadata with its own box.
 - `RepositoryUniverseInfo` defines one homogeneous solve universe: required repositories, named optional
   groups, and groups enabled by default. Selection preserves declaration order, de-duplicates identical
   targets, and rejects conflicting repository IDs.
 - `OsReleaseInfo` associates named native package sets with one repository universe and supplies the base
-  of an engine. Its target label carries the release identity.
+  of a box. Its target label carries the release identity.
 - `PackageManagerInfo` is an immutable solve environment. Each ordered `ConfiguredPackageRepositoryInfo`
   record carries the repository ID, materialized directory, effective priority, base URL, and optional
   declaration dependency. The dependency is analysis-only and is absent for an inline repository made from
-  package-build inputs. The manager also carries reusable solver caches, chooses an engine, and carries its
+  package-build inputs. The manager also carries reusable solver caches, chooses a box, and carries its
   release's package sets. A derived manager inherits this state and can add repositories without repeating
   or rematerializing inherited release policy.
 - `LocalPackageUniverseInfo` describes a universe of locally built packages together with the imported
   runtime Requires/Provides metadata needed to select an install request's closure among them.
 - `BuildrootInfo` materializes the shared base root from explicit packages or a release package set.
-- `EngineInfo` contains a runnable root filesystem, its resolution architecture, and the sandbox used to
-  enter it. Its target label establishes provenance; the engine may serve compatible package managers for
+- `BoxInfo` contains a runnable root filesystem, its resolution architecture, and the sandbox used to
+  enter it. Its target label establishes provenance; the box may serve compatible package managers for
   other releases.
 
-Solver caches are anonymous targets keyed by resolver engine, package system, configured repository,
-architecture, and execution platform. Matching engines and package managers therefore consume one shared
+Solver caches are anonymous targets keyed by resolver box, package system, configured repository,
+architecture, and execution platform. Matching boxes and package managers therefore consume one shared
 cache artifact, while distinct solver contexts remain isolated.
 
 This split is visible in the default catalog. Several releases of one family are separate OS releases whose
-package managers solve against their own repositories while sharing one engine, and a release may model
+package managers solve against their own repositories while sharing one box, and a release may model
 some of its repositories as required, some as a default group, and some as an optional group a package
 manager enables. A family macro declares that whole standard target bundle and its package sets while
 accepting overrides for mirrors, repositories, priorities, and package policy. Buildroots resolve the
@@ -137,7 +137,7 @@ release's `buildroot` package set rather than duplicating native package names i
 declaration.
 
 An initial image normally fixes one package manager for the lifetime of the logical image and derives its
-engine from that manager. Every derived image and terminal output inherits both. Engine-only images are also
+box from that manager. Every derived image and terminal output inherits both. Box-only images are also
 supported, but cannot install native packages. A package target names a buildroot because its shared base
 root, not OS identity alone, is its relevant input.
 
@@ -154,15 +154,15 @@ optional generated form:
   the ones the resolver will not read; where it does not, the snapshot pins the bytes the refresh saw,
   which stays buildable only against a mirror that serves immutable snapshots and not against an
   ordinary rolling one;
-- `snapshot/engine/<name>.json` optionally freezes an engine transaction. Remote records contain
+- `snapshot/box/<name>.json` optionally freezes a box transaction. Remote records contain
   `{source, repo, pkg_checksum, package_id, url, size}`: the checksum verifies the bytes, while `url` and
   `size` record the last known transport after rolling repository metadata stops advertising that package.
-  The target's `.repository` or `.engine` suffix is not repeated in the snapshot filename.
+  The target's `.repository` or `.box` suffix is not repeated in the snapshot filename.
 
-An engine with `resolver_engine` and no committed transaction resolves through that predecessor as a normal
+A box with `resolver_box` and no committed transaction resolves through that predecessor as a normal
 cacheable build action. The generated transaction is an input to the existing dynamic package selectors,
-so the engine builds in one invocation without mutating the source tree. Its package selection changes only
-when its authored policy, resolver engine, or pinned repository inputs change.
+so the box builds in one invocation without mutating the source tree. Its package selection changes only
+when its authored policy, resolver box, or pinned repository inputs change.
 
 `tools/buck run tine//tools:refresh-catalog` refreshes the default `tine//catalog` package in three
 phases. Pass another catalog package after `--`, for example
@@ -183,17 +183,17 @@ phases. Pass another catalog package after `--`, for example
 1. Run every remote repository's `[snapshot]` sub-target on the host. The snapshot driver downloads and
    verifies repository metadata, drops unused streams, validates package locations, and atomically writes
    deterministic, pure snapshot JSON. It does not carry packages forward from an earlier snapshot.
-2. Run the selected engines' `[resolve]` sub-targets against the freshly pinned repository trees and
-   atomically replace their optional frozen transactions. The target engine's release, repository
+2. Run the selected boxes' `[resolve]` sub-targets against the freshly pinned repository trees and
+   atomically replace their optional frozen transactions. The target box's release, repository
    selection, package list, and architecture define the solve.
 
 The catalog tool asks Buck for the selected package's canonical targets and derives the snapshot directory
-from their canonical cell and package. `--engine` limits which engine transactions are resolved, and scopes
-the repositories refreshed to those the selected engines depend on.
+from their canonical cell and package. `--box` limits which box transactions are resolved, and scopes
+the repositories refreshed to those the selected boxes depend on.
 
-A committed engine lock retains any package transport needed to build that exact transaction. The repository
+A committed box lock retains any package transport needed to build that exact transaction. The repository
 package pool combines those retained transports with its current snapshot, so every intermediate refresh
-state remains buildable and an interrupted refresh can simply be re-run. A lockless engine always resolves
+state remains buildable and an interrupted refresh can simply be re-run. A lockless box always resolves
 from the current pinned snapshot and therefore needs no retained transport for packages absent from it.
 
 Transport retention does not turn a rolling mirror into an archive. A URL may eventually disappear; a
@@ -211,28 +211,28 @@ pin attribute it rewrites and to the function that asks that mirror for its newe
 
 A remote repository declaration derives its optional snapshot by stripping `.repository` from the target
 name and looking under `snapshot/repo/`. This lets a new repository target analyze before its first refresh;
-consuming its empty package pool fails with an explicit instruction to refresh the catalog. An engine that
-resolves itself needs a usable committed bootstrap transaction. A new engine instead names a working
-`resolver_engine`; the predecessor supplies only the execution environment for the planner, while the new
-engine's release, repositories, packages, and architecture define the generated transaction. Refreshing the
-catalog is optional for that engine and freezes the generated result at the conventional lock path.
+consuming its empty package pool fails with an explicit instruction to refresh the catalog. A box that
+resolves itself needs a usable committed bootstrap transaction. A new box instead names a working
+`resolver_box`; the predecessor supplies only the execution environment for the planner, while the new
+box's release, repositories, packages, and architecture define the generated transaction. Refreshing the
+catalog is optional for that box and freezes the generated result at the conventional lock path.
 
-The refresh convention keeps repository and engine declarations plus their generated JSON in the active
-catalog's root Buck package, with generated data grouped under `snapshot/{repo,engine}/`. This makes
-target-name-derived paths and the package-local optional `snapshot/engine/*.json` retention inputs agree.
+The refresh convention keeps repository and box declarations plus their generated JSON in the active
+catalog's root Buck package, with generated data grouped under `snapshot/{repo,box}/`. This makes
+target-name-derived paths and the package-local optional `snapshot/box/*.json` retention inputs agree.
 
 ### Authoritative repository package pools
 
 Each remote repository target owns separate dynamic values for its pinned metadata and package pool.
 The pool expands the union of the current snapshot inventory and remote transports retained by committed
-engine locks into one digest-checked package artifact per checksum, and nothing else: a package is
+box locks into one digest-checked package artifact per checksum, and nothing else: a package is
 installed, and bootstrapped from, exactly as its repository serves it. A selected package is named with the
 one suffix its package system declares, whatever a repository happens to serve it under: an ecosystem that
 has changed compressors may still carry a package built before the change, and the byte content, not the
 extension, is what a checksum-keyed pool identifies.
 
-The repository target is the canonical action owner, so engines, buildroots, and images share its downloads.
-A package removed from the latest snapshot remains in the pool while a committed engine lock references its
+The repository target is the canonical action owner, so boxes, buildroots, and images share its downloads.
+A package removed from the latest snapshot remains in the pool while a committed box lock references its
 pinned URL and size.
 
 `select_package_artifacts()` reads a resolved transaction, looks up each `(repository, checksum)` in the
@@ -248,44 +248,43 @@ Why repository ownership matters:
 
 - one digest and one action graph node define each upstream package;
 - a future derived form, such as a signature-verified one, has a natural shared owner;
-- engine, buildroot, and image closures become cheap selectors;
+- box, buildroot, and image closures become cheap selectors;
 - repository snapshot skew fails at the lookup boundary instead of silently downloading different bytes.
 
-### Engine bootstrap
+### Box bootstrap
 
-An engine is a reproducible execution environment built from one base OS release. It supplies its package
+A box is a reproducible execution environment built from one base OS release. It supplies its package
 system's own resolver, installer and indexer, Python, core utilities, sandbox dependencies, and currently
-the image-building tools; a VM runner takes its engine explicitly, so only an engine asked for one carries
+the image-building tools; a VM runner takes its box explicitly, so only a box asked for one carries
 that stack. The base release identifies where this userspace came from, not the only release it may
 operate on.
 
-A lockless engine uses `resolver_engine` to produce its build transaction and perform the authoritative
+A lockless box uses `resolver_box` to produce its build transaction and perform the authoritative
 installation. Its target root therefore contains only the requested packages and their dependencies; it
 does not need Python, package-manager libraries, or other construction tools unless they are part of its
 intended runtime.
-A locked engine can use its own completed root to run the explicit `[resolve]` update command; during a
+A locked box can use its own completed root to run the explicit `[resolve]` update command; during a
 bootstrap or tooling transition, a predecessor may run that command instead. This edge is deliberately
 one-way: it changes where resolution and installation execute, not the repositories, requested packages,
-architecture, or root built for the new engine. Engine resolution does not consume package-manager priority
+architecture, or root built for the new box. Box resolution does not consume package-manager priority
 policy; its repositories use the native default priority until bootstrap needs an explicit policy of its own.
 
-Only a root engine without a predecessor bootstraps its own installation tools in two stages:
+Only a root box without a predecessor bootstraps its own installation tools in two stages:
 
 1. The minimal extractor unpacks the same package closure into `chroot1` without running scriptlets
    or creating a package database. An extractor reads the packages its repository serves, whatever
    framing they carry, so the pool never has to derive a second form for the bootstrap.
 2. The package-system installer runs from `chroot1` and properly installs the closure into `chroot2`,
-   including scriptlets and the package database. `chroot2` becomes the reusable `EngineInfo` root.
+   including scriptlets and the package database. `chroot2` becomes the reusable `BoxInfo` root.
 
-A first lock is the one thing a root engine cannot produce for itself, since resolving needs an
-engine to resolve in. Pointing the new engine's `resolver_engine` at an existing engine that can run
-its package system's planner breaks that cycle for one refresh; removing `resolver_engine`
-afterwards leaves the engine self-sufficient. This is a one-time exposure per new root engine, not a
-standing dependency.
+A first lock is the one thing a root box cannot produce for itself, since resolving needs a box to
+resolve in. Pointing the new box's `resolver_box` at an existing box that can run its package system's
+planner breaks that cycle for one refresh; removing `resolver_box` afterwards leaves the box
+self-sufficient. This is a one-time exposure per new root box, not a standing dependency.
 
-Engine configuration prefers a target-provided systemd factory `nsswitch.conf`, but writes a deterministic
+Box configuration prefers a target-provided systemd factory `nsswitch.conf`, but writes a deterministic
 files/DNS fallback for minimal roots. Resolver integration and target configuration therefore do not impose
-specific implementation packages on a derived engine.
+specific implementation packages on a derived box.
 
 The second-stage install is authoritative for package metadata, ownership behavior available through the
 unprivileged sandbox, and scriptlets.
@@ -295,7 +294,7 @@ The host contract is intentionally small; its short list of requirements is docu
 
 ### Execution isolation and target roots
 
-All build actions run through `chroot_run()` and `engine/sandbox.py`. The sandbox binds the engine's
+All build actions run through `chroot_run()` and `box/sandbox.py`. The sandbox binds the box's
 userspace read-only over an otherwise isolated namespace, supplies API and temporary filesystems, clears the
 host environment, disables network by default, and uses mkosi-sandbox's unprivileged fakeroot behavior
 (`--suppress-chown`, `--suppress-sync`, and `--become-root`).
@@ -309,15 +308,15 @@ The sandbox only creates the execution environment. Drivers own their target-roo
 - pack/disk operations merge a stack with an ephemeral upper so cleanup does not modify stored layers.
 
 This division keeps one namespace boundary while letting each driver express the root it needs. Nesting a
-second sandbox inside an engine would duplicate isolation, complicate mounts, and make remote execution
+second sandbox inside a box would duplicate isolation, complicate mounts, and make remote execution
 harder.
 
-`chroot_run(relaxed = True)` is reserved for interactive leaves. The engine still supplies userspace, but
+`chroot_run(relaxed = True)` is reserved for interactive leaves. The box still supplies userspace, but
 devices, `/run`, environment, current directory, and network come from the host, and the command remains the
-invoking user. The engine's `nss-systemd` reads native identities from the host's UserDB services under
+invoking user. The box's `nss-systemd` reads native identities from the host's UserDB services under
 `/run`. This avoids importing host NSS modules or shadow databases, which may be incompatible with the
-pinned userspace. Development boxes and `image_vm` are the interactive consumers; build actions never use
-relaxed mode.
+pinned userspace. A box target's own `RunInfo` and `image_vm` are the interactive consumers; build
+actions never use relaxed mode.
 
 ### Native package installation
 
@@ -328,7 +327,7 @@ Native package installation has three phases shared by buildroots and images:
    read-only so installed packages can satisfy an incremental request.
 2. **Select.** Use the resulting transaction to select raw package files from repository pools, named with
    the package system's declared suffix so its installer finds them. A local repository is materialized by
-   an anonymous indexing target using the consuming package manager's engine. The same path handles
+   an anonymous indexing target using the consuming package manager's box. The same path handles
    package-build inputs and lets the solve choose between local and upstream packages.
    Extra packages arrive on two mutually exclusive paths: a package build passes its explicit
    `buildroot_deps` outputs, while a package manager with attached `local_packages` computes the request's
@@ -370,10 +369,10 @@ own business. The action that owns the root then captures names and overlay meta
 form. A fresh root receives mkosi's `uninitialized` machine-id marker; incremental installs preserve any
 existing machine ID.
 
-`LocalPackageInfo` intentionally does not carry the producer's engine. `local_repository` checks that its
-packages use one native package system and remains an engine-independent declaration. The consuming package
-manager materializes deterministic repository metadata with its own engine; anonymous materializations with
-the same engine, package system, and ordered package directories share one action.
+`LocalPackageInfo` intentionally does not carry the producer's box. `local_repository` checks that its
+packages use one native package system and remains a box-independent declaration. The consuming package
+manager materializes deterministic repository metadata with its own box; anonymous materializations with
+the same box, package system, and ordered package directories share one action.
 
 ### The RPM package system
 
@@ -399,7 +398,7 @@ scrubs libdnf5 and ldconfig bookkeeping. Documentation and language filtering ar
 back to the input directory it came from.
 
 The default catalog declares Fedora 44 and Rawhide as separate OS releases whose package managers solve
-against their own repositories while sharing `fedora.rawhide.engine`, both from the one `fedora_release()`
+against their own repositories while sharing `fedora.rawhide.box`, both from the one `fedora_release()`
 bundle. It offers no CentOS Stream release: nothing publishes immutable CentOS Stream composes, so its
 pinned metadata stops resolving the moment the mirror advances, which is not a repository this can pin.
 
@@ -477,7 +476,7 @@ A build is then two actions:
 
 1. `cargo_vendor` unpacks the registry crates into `vendor/<name>-<version>/` with the
    `.cargo-checksum.json` cargo expects. Git dependencies never enter this tree.
-2. `cargo_build` runs cargo in the consumer's engine with the network unshared, against the vendored tree
+2. `cargo_build` runs cargo in the consumer's box with the network unshared, against the vendored tree
    and the fetched repositories: each git source is replaced by its repository, served over git's local
    `file://` transport, so cargo takes its own checkout and resolves each crate inside its workspace,
    inheritance and sibling path dependencies included, and it insists on finding the locked commit in the
@@ -515,7 +514,7 @@ hash-verified `download_file` could check a download against. Deriving byte hash
 generated lock to keep refreshed. Instead go itself is the verifier, and the build is two actions so the
 network stays confined to the first:
 
-1. `go_fetch` is the online action: `go mod download` in the consumer's engine with the network shared,
+1. `go_fetch` is the online action: `go mod download` in the consumer's box with the network shared,
    reading nothing but `go.mod` and `go.sum`, so editing sources never refetches. go checks a download
    against the committed `go.sum` where that pins it, and against the checksum database otherwise.
    Downloading deliberately does not extend `go.sum`, so an unpinned module is fetched here and rejected
@@ -525,7 +524,7 @@ network stays confined to the first:
    module proxy serves, so the driver points `GOPROXY` at it as a `file://` URL and go re-extracts every
    module from it, verifying against `go.sum` a second time (the fetched artifact is never trusted
    implicitly). `-mod=readonly` makes a lock that no longer agrees with `go.mod` a failure rather than a
-   silent re-resolution, and `GOTOOLCHAIN=local` keeps the engine's go the only toolchain.
+   silent re-resolution, and `GOTOOLCHAIN=local` keeps the box's go the only toolchain.
 
 The declared binaries also select what gets built, rather than only what is taken out of a build of
 everything. A checked-out project often carries commands an image does not install; building those would
@@ -617,11 +616,11 @@ not reconfigure the world when it changes.
 
 ### Image construction
 
-The `image` rule creates either an initial image from a package manager or engine, or a derived image from
-`parent`. `ImageInfo` carries the package manager, its engine, an ordered stack of filesystem deltas,
+The `image` rule creates either an initial image from a package manager or box, or a derived image from
+`parent`. `ImageInfo` carries the package manager, its box, an ordered stack of filesystem deltas,
 deferred tmpfiles snippets, and the canonical lazy package-database and SBOM artifacts. A derived image
 inherits the construction configuration but declares fresh metadata for its completed stack, so one
-composition cannot silently switch package sources or tooling environments between stages. An engine may
+composition cannot silently switch package sources or tooling environments between stages. A box may
 be supplied directly for an initial image that never installs native packages.
 
 Each `image` call applies one ordered operation sequence in one action and persists exactly one overlay
@@ -637,8 +636,8 @@ together, which a set alone cannot express because its members are known only du
 against the result of an earlier install is a second layer, which is where a closure resolved over that
 result becomes available. `copy` introduces a declared Buck artifact at an absolute image path, preserving
 its position relative to the other operations. `run` executes the image's own tools in a chroot by default;
-`chroot = False` instead executes engine tooling with the image available at `/buildroot`. Its `env` argument
-overlays variables on the engine or image environment for that command. Package installation and copying
+`chroot = False` instead executes box tooling with the image available at `/buildroot`. Its `env` argument
+overlays variables on the box or image environment for that command. Package installation and copying
 always run outside the chroot. The `image()` declaration macro recursively flattens operation lists, allowing
 reusable helpers to return ordered groups of operations. Every rule that accepts operations is wrapped in a
 declaration macro that flattens them the same way, so a helper returning an ordered group works identically
@@ -666,9 +665,9 @@ does not depend on an archive or disk format.
 Package installation and image tooling remain separate concerns:
 
 - the bootstrap `package_manager` determines what native packages can be resolved;
-- that manager's `engine` supplies every layer driver and terminal image tool;
+- that manager's `box` supplies every layer driver and terminal image tool;
 - `local_repository` declares compatible package outputs and infers their package system from
-  `LocalPackageInfo`; a consuming package manager materializes its repository metadata with its own engine;
+  `LocalPackageInfo`; a consuming package manager materializes its repository metadata with its own box;
 - a derived package manager adds such repositories to a base manager's configured selection;
 - a manager's `local_packages` instead selects locally built packages per install by runtime closure.
 
@@ -725,8 +724,8 @@ of first copying a directory artifact. Partition inputs are `RepartInfo` outputs
 their blocks are copied into the new disk with their resolved type and UUID preserved. Calls emit a disk by
 default. `split = True` additionally exposes each newly defined partition with normalized metadata alongside
 its block artifact; `disk = False` makes such a call partition-only. No partial disk is passed between
-actions. The partition artifacts are portable, so `RepartInfo` carries no engine: repart uses the
-destination `ImageInfo.engine`, while standalone conversion and VM rules select an engine explicitly.
+actions. The partition artifacts are portable, so `RepartInfo` carries no box: repart uses the
+destination `ImageInfo.box`, while standalone conversion and VM rules select a box explicitly.
 `image_directory` is an independent terminal view and is never an input to repart.
 
 Partition layouts are always explicit inputs; neither `repart` nor `bootable_disk_image` chooses one
@@ -796,7 +795,7 @@ instance directly, so both interfaces describe exactly the same initrd.
 
 `uki.py` appends the kernel-modules cpio and runs `ukify`. That cpio carries the modules `initrd_modules`
 selects, closed over their dependencies and their firmware with libkmod, which reads the image's own depmod
-index and no configuration from the engine; `/usr` keeps the full set for the booted system. The pattern
+index and no configuration from the box; `/usr` keeps the full set for the booted system. The pattern
 syntax is mkosi's `KernelModules=`, minus the convenience of retrying a leading-slash pattern below
 `kernel/`, so a leading slash anchors instead; `re:` regexes and the `host` value have no equivalent, the
 latter because reading the build host's loaded modules is not hermetic. `DEFAULT_INITRD_MODULES` is
@@ -807,7 +806,7 @@ rather than fatal, in the manifest the rule publishes beside the UKI. The UKI is
 name (and sysupdate's matching of it) could not distinguish more. If several kernels per image ever become
 a requirement, add naming configuration to `uki()` to disambiguate them. The ESP layer copies the UKI
 directory into `EFI/Linux` and includes the operations returned by `install_systemd_boot()`. Those create
-the ESP path, run the engine's `bootctl` with its paths in the command environment, and remove the random
+the ESP path, run the box's `bootctl` with its paths in the command environment, and remove the random
 seed. The final repart action creates the ESP while copying the previously split system partitions into
 the same disk. It splits nothing itself: the system partitions arrive already split, and nothing updates
 the ESP as a partition. The default system partition is a compressed EROFS `/usr` protected by
@@ -822,7 +821,7 @@ addon stub and joined into every UKI; a profile's arguments extend the shared ba
 the verity hash), and kernel arguments are last-wins, so profiles can also override it.
 
 A composed raw disk can be re-encoded into distributable formats without rebuilding it: `disk_convert`
-uses its explicit engine to drive `qemu-img` for a compact qcow2 and `zstd` for a compressed raw. These are
+uses its explicit box to drive `qemu-img` for a compact qcow2 and `zstd` for a compressed raw. These are
 alternative encodings of the same disk and remain separate, reusable terminal implementations rather than
 default outputs. A converted target provides `DiskConversionInfo`, naming the format alongside its artifact,
 so one provider covers every encoding instead of one provider type per format.
@@ -901,11 +900,11 @@ standalone artifacts. Selecting the `[directory]` subtarget does not assemble th
 materializes the directory.
 
 Repart derives stable UUID seeds from target identity and logical configuration; callers can override them
-explicitly. VM runners are declared separately from disk composition. Their execution engine and runtime
+explicitly. VM runners are declared separately from disk composition. Their execution box and runtime
 policy are passed to `image_vm` rather than baked into the disk provider or image.
 
-The image build tools live in the engine and are not installed into the image merely to build it. Chrooted
-`run` operations intentionally use the image's own binaries; non-chrooted runs explicitly use engine tools
+The image build tools live in the box and are not installed into the image merely to build it. Chrooted
+`run` operations intentionally use the image's own binaries; non-chrooted runs explicitly use box tools
 against `/buildroot`.
 
 ### Generating derived state
@@ -929,13 +928,13 @@ extension merges onto a system it does not own, where a database built from the 
 shadow that system's while describing only what the extension carries, exactly as its package database
 would.
 
-Their tools are the engine's, applied to the mounted image through the `--root` interface systemd gives them,
+Their tools are the box's, applied to the mounted image through the `--root` interface systemd gives them,
 which is the same relationship every other layer driver has to the image and is what lets an image that
 installs no systemd still be finalized. Two cannot work that way and use the image's own binaries in a
 chroot: `locale-gen` is a distribution's own script over its own sources, and `depmod` resolves its
-search-order configuration from absolute paths that `--basedir` does not relocate, so an engine-side run
-would silently apply the wrong module ordering. Its index format is its own kmod's to define as well, and an
-engine older than the image would leave out index files the image's modprobe expects. Both report the
+search-order configuration from absolute paths that `--basedir` does not relocate, so a box-side run
+would silently apply the wrong module ordering. Its index format is its own kmod's to define as well, and a
+box older than the image would leave out index files the image's modprobe expects. Both report the
 missing binary by name rather than skipping.
 
 ### Reproducibility and caching
@@ -943,7 +942,7 @@ missing binary by name rather than skipping.
 Reproducibility is both a release property and a caching requirement. Current mechanisms include:
 
 - repository metadata, package bytes, and source archives pinned by SHA-256;
-- generated or committed engine transactions containing repository/package identities;
+- generated or committed box transactions containing repository/package identities;
 - a fixed assembly `SOURCE_DATE_EPOCH` for roots that should be shared across consumers;
 - per-package source date epochs for build output timestamps and headers;
 - a fixed build host and frozen release-numbering macros;
@@ -973,39 +972,39 @@ Buck cannot add ordinary target dependencies discovered from an action output. D
 among declared inputs but cannot turn newly discovered BuildRequires into a new static graph. Therefore
 dependency discovery/import must produce committed or analysis-time lock data before normal builds.
 
-### Commit repository snapshots and selectively freeze engines
+### Commit repository snapshots and selectively freeze boxes
 
 Repository snapshots are committed so normal resolution remains independent of live repository state and
-reviewable. Engines with a predecessor resolve a cacheable transaction from those pins during their build.
-Committing an engine transaction is an explicit freeze operation for bootstrap roots, releases, or other
-engines that must remain stable across repository snapshot updates. Unlike an ordinary language lockfile, a
-frozen engine transaction also retains the transport for packages needed after a rolling repository
+reviewable. Boxes with a predecessor resolve a cacheable transaction from those pins during their build.
+Committing a box transaction is an explicit freeze operation for bootstrap roots, releases, or other
+boxes that must remain stable across repository snapshot updates. Unlike an ordinary language lockfile, a
+frozen box transaction also retains the transport for packages needed after a rolling repository
 advances.
 
 ### Let repositories own upstream packages
 
 Putting downloads in each closure duplicated ownership and left derived operations without a stable home.
 The authoritative named pool instead gives every upstream package one action owner per repository. The
-current snapshot defines available packages, while optional committed engine locks retain older packages
+current snapshot defines available packages, while optional committed box locks retain older packages
 required by frozen transactions. Closures select artifacts; they do not fetch or transform them.
 
 ### Separate package system, OS release, package manager, and buildroot
 
-The former distribution object bundled repository membership, engine tooling, and buildroot policy. That
-made optional repositories awkward, implied that an engine had to match every target release it operated
+The former distribution object bundled repository membership, box tooling, and buildroot policy. That
+made optional repositories awkward, implied that a box had to match every target release it operated
 on, and provided no clean place for request-specific local repositories.
 
 The current vocabulary follows the actual responsibilities:
 
 - the package system defines operations;
 - the repository universe defines membership and normal enablement policy;
-- the OS release defines identity, selects a repository universe, and may provide an engine's base;
-- the package manager defines one exact solve universe and engine; derived managers compose additional
-  repositories and priority overrides without changing their inherited release or engine;
+- the OS release defines identity, selects a repository universe, and may provide a box's base;
+- the package manager defines one exact solve universe and box; derived managers compose additional
+  repositories and priority overrides without changing their inherited release or box;
 - the buildroot materializes the shared base packages.
 
 This is also why a release is not called a distribution target: two releases of one family are separate
-release identities, while repositories and engines can be reused across those identities when compatible.
+release identities, while repositories and boxes can be reused across those identities when compatible.
 
 ### Keep native package managers homogeneous
 
@@ -1017,17 +1016,17 @@ systems such as Flatpak may eventually coexist with a native one in an image, bu
 are deliberately deferred until that is a real requirement. `PackageSystemInfo` is for native binary
 package ecosystems, not every possible image content type.
 
-### Separate an engine's base release from its target releases
+### Separate a box's base release from its target releases
 
-An engine is a tools root with a concrete OS userspace, so its base release records where its packages and
-identity came from. That does not make it part of a package manager's target OS identity: one engine can
-still operate on every compatible release. An image normally obtains this explicit engine dependency
+A box is a tools root with a concrete OS userspace, so its base release records where its packages and
+identity came from. That does not make it part of a package manager's target OS identity: one box can
+still operate on every compatible release. An image normally obtains this explicit box dependency
 through its package manager, making reuse visible and content-keyed while avoiding duplicated compatible
-tooling roots. Engine-only images remain available when no native package resolution is needed.
+tooling roots. Box-only images remain available when no native package resolution is needed.
 
 ### Use one sandbox boundary and let drivers mount target roots
 
-The engine userspace must be pinned, the host environment must not leak into builds, and package scriptlets
+The box userspace must be pinned, the host environment must not leak into builds, and package scriptlets
 need unprivileged fakeroot semantics. Vendored mkosi-sandbox supplies those properties without host package
 tooling, a build-chroot manager, bwrap, or a second nested sandbox. Drivers mount their own target roots
 because install, build, image, pack, and disk actions need different layouts.
@@ -1153,8 +1152,8 @@ The accepted direction for upstream authenticity is:
 2. Add a repository-owned verified package representation, using each package system's own
    signature verification.
 3. Make installation select verified artifacts while preserving the raw form a repository serves.
-4. Handle engine trust inductively: an existing trusted engine verifies the inputs of its successor rather
-   than allowing a new engine to vouch for itself.
+4. Handle box trust inductively: an existing trusted box verifies the inputs of its successor rather
+   than allowing a new box to vouch for itself.
 
 The exact key policy and first-trust/bootstrap procedure remain open. HTTPS plus committed SHA-256
 locks currently provides reviewable integrity but is not a substitute for signature verification.
@@ -1174,14 +1173,14 @@ Near-term image gaps are:
 - deterministic ext4/FAT byte-level validation and any required normalization;
 - OCI, confext, ESP, and other terminal formats as real consumers require them;
 - richer ordered operations for setting file metadata directly;
-- deciding whether package installation and image tooling eventually need distinct compatible engines.
+- deciding whether package installation and image tooling eventually need distinct compatible boxes.
 
 The layer model should remain ordered operations captured as deltas. A provides/requires feature solver is
 unnecessary unless real composition requirements appear.
 
 ### Scale, configuration, and testing
 
-- Configure remote cache/execution only after the local action graph and host contract are stable. Engine
+- Configure remote cache/execution only after the local action graph and host contract are stable. Box
   roots and ordinary filesystem artifacts are intended to be CAS inputs; relaxed VM actions remain local.
 - Add build-twice reproducibility audits because early cutoff is useful only when rebuilt outputs are
   byte-identical. Track known exceptions explicitly rather than weakening all comparisons.
@@ -1200,7 +1199,7 @@ Useful implementation entry points:
 - `package/{system,repository,release,manager,solver,buildroot,install}.bzl` and
   `package/{href,installer,transaction}.py`
 - each package system's `rules.bzl` and drivers under `package_system/`, listed in its own section above
-- `engine/{build,runtime}.bzl`, `engine/sandbox.py`, and `rootfs/rootfs.py`
+- `box/{build,runtime}.bzl`, `box/sandbox.py`, and `rootfs/rootfs.py`
 - `image/{image,compose,defs,sign,vm}.bzl` and `image_format/{archive,boot,disk,sysext,uki}.bzl`
 - `cargo/{rules,lock,vendor}.bzl` and `cargo/{vendor,build}.py`
 - `go/rules.bzl` and `go/{fetch,build}.py`

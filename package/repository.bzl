@@ -24,10 +24,10 @@ def snapshot_data(snapshot: ArtifactValue, id: str) -> dict:
         fail("repository '{}' snapshot is not an object; run refresh-catalog".format(id))
     return data
 
-def _retained_transports(id: str, engine_locks: list[ArtifactValue]) -> dict[str, dict]:
-    """The remote transports committed engine locks still need from this repository."""
+def _retained_transports(id: str, box_locks: list[ArtifactValue]) -> dict[str, dict]:
+    """The remote transports committed box locks still need from this repository."""
     retained = {}
-    for lock in engine_locks:
+    for lock in box_locks:
         for entry in lock.read_json():
             if entry["source"] != "repo" or entry["repo"] != id:
                 continue
@@ -38,21 +38,21 @@ def _retained_transports(id: str, engine_locks: list[ArtifactValue]) -> dict[str
             if previous != None and previous["size"] != package["size"]:
                 fail("repository '{}': retained package {} has conflicting sizes".format(id, checksum))
 
-            # More than one engine may retain the same content through different mirrors.
+            # More than one box may retain the same content through different mirrors.
             if previous == None or package["url"] < previous["url"]:
                 retained[checksum] = package
     return retained
 
-def pool_transports(id: str, baseurl: str, snapshot: ArtifactValue, engine_locks: list[ArtifactValue]) -> dict[str, dict]:
+def pool_transports(id: str, baseurl: str, snapshot: ArtifactValue, box_locks: list[ArtifactValue]) -> dict[str, dict]:
     """Where every package this repository owns can be fetched from, keyed by checksum.
 
-    The pool is the union of what the repository advertises now and what committed engine locks
+    The pool is the union of what the repository advertises now and what committed box locks
     still need from it. The repository's current route wins while it still carries the content,
     so an advancing snapshot re-routes a package rather than duplicating it, and a lock's
     transport remains the fallback once the package leaves the snapshot. A size that disagrees
     between the two is skew this cannot paper over.
     """
-    packages = _retained_transports(id, engine_locks)
+    packages = _retained_transports(id, box_locks)
     for checksum, package in snapshot_data(snapshot, id).get("packages", {}).items():
         retained = packages.get(checksum)
         if retained != None and retained["size"] != package["size"]:
@@ -93,13 +93,13 @@ _materialize_metadata = dynamic_actions(
 def _materialize_package_pool_impl(
     actions: AnalysisActions,
     baseurl: str,
-    engine_locks: list[ArtifactValue],
+    box_locks: list[ArtifactValue],
     id: str,
     snapshot: ArtifactValue,
     suffix: str,
 ) -> list[Provider]:
     pool = {}
-    for checksum, package in pool_transports(id, baseurl, snapshot, engine_locks).items():
+    for checksum, package in pool_transports(id, baseurl, snapshot, box_locks).items():
         url = package["url"]
         artifact = actions.declare_output("packages", checksum + suffix, has_content_based_path = True)
 
@@ -112,7 +112,7 @@ _materialize_package_pool = dynamic_actions(
     impl = _materialize_package_pool_impl,
     attrs = {
         "baseurl": dynattrs.value(str),
-        "engine_locks": dynattrs.list(dynattrs.artifact_value()),
+        "box_locks": dynattrs.list(dynattrs.artifact_value()),
         "id": dynattrs.value(str),
         "snapshot": dynattrs.artifact_value(),
         "suffix": dynattrs.value(str),
@@ -142,7 +142,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
             value = _declare_package_pool(
                 ctx,
                 baseurl = ctx.attrs.baseurl,
-                engine_locks = ctx.attrs.engine_locks,
+                box_locks = ctx.attrs.box_locks,
                 package_system = ctx.attrs.package_system,
                 snapshot = snapshot,
             ),
@@ -153,7 +153,7 @@ def _declare_package_pool(
     ctx: AnalysisContext,
     *,
     baseurl: str,
-    engine_locks: list[Artifact],
+    box_locks: list[Artifact],
     package_system: Dependency,
     snapshot: Artifact,
 ) -> DynamicValue:
@@ -166,7 +166,7 @@ def _declare_package_pool(
     return ctx.actions.dynamic_output_new(
         _materialize_package_pool(
             baseurl = baseurl,
-            engine_locks = engine_locks,
+            box_locks = box_locks,
             id = ctx.label.name,
             snapshot = snapshot,
             suffix = package_system[PackageSystemInfo].package_suffix,
@@ -194,10 +194,10 @@ ConfiguredPackageRepositoryInfo = record(
 # What every remote repository declares, whichever package system owns it.
 _REMOTE_REPOSITORY_ATTRS = {
     "baseurl": attrs.string(),
-    "engine_locks": attrs.list(
+    "box_locks": attrs.list(
         attrs.source(),
         default = [],
-        doc = "frozen engine transactions whose remote package transports remain available",
+        doc = "frozen box transactions whose remote package transports remain available",
     ),
     "labels": attrs.list(attrs.string(), default = []),
     "package_system": attrs.dep(providers = [PackageSystemInfo]),
@@ -468,7 +468,7 @@ def declare_remote_repository(
     remote_repository(
         name = name,
         baseurl = pin.baseurl if pin != None else baseurl,
-        engine_locks = glob(["snapshot/engine/*.json"]),
+        box_locks = glob(["snapshot/box/*.json"]),
         labels = ["tine:remote-repository", label] + labels,
         metadata = pin.metadata if pin != None else {},
         package_system = package_system,

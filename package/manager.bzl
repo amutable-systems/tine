@@ -1,8 +1,8 @@
 """Configured native package managers."""
 
 load("//:specs.bzl", "spec_args")
+load("//box:runtime.bzl", "BoxInfo", "chroot_run")
 load("//distribution:defs.bzl", "distribution_attrs")
-load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
 load(":local_packages.bzl", "LocalPackageUniverseInfo")
 load(":release.bzl", "OsReleaseInfo")
 load(
@@ -23,7 +23,7 @@ def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     system = ctx.attrs.package_system[PackageSystemInfo]
     repo = ctx.actions.declare_output("repo", dir = True)
     index = cmd_args(
-        chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = system.index),
+        chroot_run(box = ctx.attrs.box[BoxInfo], exe = system.index),
         spec_args(
             ctx.actions,
             "index.spec.json",
@@ -40,7 +40,7 @@ def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
 _materialize_local_repository = anon_rule(
     impl = _materialize_local_repository_impl,
     attrs = {
-        "engine": attrs.dep(providers = [EngineInfo]),
+        "box": attrs.dep(providers = [BoxInfo]),
         "package_dirs": attrs.list(attrs.source()),
         "package_system": attrs.dep(providers = [PackageSystemInfo]),
     },
@@ -51,7 +51,7 @@ _materialize_local_repository = anon_rule(
 
 def materialize_local_repository(
     ctx: AnalysisContext,
-    engine: Dependency,
+    box: Dependency,
     package_system: Dependency,
     package_dirs: list[Artifact],
 ) -> Artifact:
@@ -59,7 +59,7 @@ def materialize_local_repository(
     return ctx.actions.anon_target(
         _materialize_local_repository,
         {
-            "engine": engine,
+            "box": box,
             "name": "//local-repository:materialize",
             "package_dirs": package_dirs,
             "package_system": package_system,
@@ -67,9 +67,9 @@ def materialize_local_repository(
     ).artifact("repo")
 
 PackageManagerInfo = provider(
-    doc = "The engine and repository selection used for native package operations.",
+    doc = "The box and repository selection used for native package operations.",
     fields = {
-        "engine": provider_field(Dependency),
+        "box": provider_field(Dependency),
         "local_packages": provider_field(Dependency | None, default = None),
         "package_sets": provider_field(dict[str, list[str]]),
         "package_system": provider_field(Dependency),
@@ -80,12 +80,12 @@ PackageManagerInfo = provider(
 
 def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
     if ctx.attrs.base != None:
-        if ctx.attrs.release != None or ctx.attrs.engine != None:
-            fail("derived package_manager cannot set release or engine")
+        if ctx.attrs.release != None or ctx.attrs.box != None:
+            fail("derived package_manager cannot set release or box")
         if ctx.attrs.enable_repository_groups or ctx.attrs.disable_repository_groups:
             fail("derived package_manager cannot change repository groups")
         base = ctx.attrs.base[PackageManagerInfo]
-        engine_dep = base.engine
+        box_dep = base.box
         package_system = base.package_system
         package_sets = base.package_sets
         configured_by_id = {configured.id: configured for configured in base.repositories}
@@ -97,9 +97,9 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
         solver_caches = list(base.solver_caches)
         local_packages = ctx.attrs.local_packages if ctx.attrs.local_packages != None else base.local_packages
     else:
-        if ctx.attrs.release == None or ctx.attrs.engine == None:
-            fail("package_manager requires release and engine when base is not set")
-        engine_dep = ctx.attrs.engine
+        if ctx.attrs.release == None or ctx.attrs.box == None:
+            fail("package_manager requires release and box when base is not set")
+        box_dep = ctx.attrs.box
         release_info = ctx.attrs.release[OsReleaseInfo]
         package_system = release_info.package_system
         package_sets = release_info.package_sets
@@ -123,7 +123,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
         if rid not in by_id:
             fail("priority override names unknown repository '{}'".format(rid))
 
-    engine = engine_dep[EngineInfo]
+    box = box_dep[BoxInfo]
     configured_repositories = []
     for repository in repositories:
         repo = repository[PackageRepositoryInfo]
@@ -139,7 +139,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
             if local != None:
                 directory = materialize_local_repository(
                     ctx,
-                    engine_dep,
+                    box_dep,
                     package_system,
                     local.package_dirs,
                 )
@@ -163,10 +163,10 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
             solver_caches.append(
                 solver_cache(
                     ctx,
-                    engine_dep,
+                    box_dep,
                     package_system,
                     configured,
-                    engine.arch,
+                    box.arch,
                 )
             )
         configured_repositories.append(configured)
@@ -174,7 +174,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
     return [
         DefaultInfo(),
         PackageManagerInfo(
-            engine = engine_dep,
+            box = box_dep,
             package_sets = package_sets,
             package_system = package_system,
             repositories = configured_repositories,
@@ -191,9 +191,9 @@ _package_manager = rule(
             default = [],
         ),
         "base": attrs.option(attrs.dep(providers = [PackageManagerInfo]), default = None),
+        "box": attrs.option(attrs.dep(providers = [BoxInfo]), default = None),
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
-        "engine": attrs.option(attrs.dep(providers = [EngineInfo]), default = None),
         "local_packages": attrs.option(
             attrs.dep(providers = [LocalPackageUniverseInfo]),
             default = None,

@@ -31,7 +31,7 @@ load(
 SysextImageInfo = provider(
     doc = "A systemd system-extension DDI generated from a logical image.",
     fields = {
-        "engine": provider_field(Dependency),
+        "box": provider_field(Dependency),
         "extension": provider_field(str),
         "image": provider_field(Artifact),
     },
@@ -108,7 +108,7 @@ def declare_image_sysext(
         **external_signing_execution(signing_access),
     )
 
-    return SysextImageInfo(engine = image.engine, extension = extension, image = out)
+    return SysextImageInfo(box = image.box, extension = extension, image = out)
 
 def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
     info = declare_image_sysext(

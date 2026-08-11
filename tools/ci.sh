@@ -82,9 +82,9 @@ pkcs11_cleanup() {
 }
 
 secureboot_pkcs11() {
-    # On a fresh runner this resolves and installs the box engine, so run it in the foreground
+    # On a fresh runner this resolves and installs the signing box, so run it in the foreground
     # where that shows progress, rather than sitting silently in the backgrounded server's log.
-    "$buck" build tine//box:swtpm-signing
+    "$buck" build tine//tools:swtpm-signing.box
 
     pkcs11_dir=$(mktemp -d)
     "$buck" run tine//tools:signing-server -- "$pkcs11_dir" > "$pkcs11_dir/log" 2>&1 &
@@ -113,7 +113,7 @@ EOF
     # Secure Boot one. Read each side into a variable first: a command substitution inside a `test`
     # argument is exempt from errexit, so a certificate that cannot be read would yield an empty
     # string and satisfy the inequality below without comparing anything.
-    local box=("$buck" run tine//box:swtpm-signing --) uki=("$pkcs11_dir"/ukis/*.efi)
+    local box=("$buck" run tine//tools:swtpm-signing.box --) uki=("$pkcs11_dir"/ukis/*.efi)
     local pcrpkey pcr_certificate secure_boot_certificate
     # ukify takes the file before the options, per `ukify inspect --help`.
     "${box[@]}" ukify inspect "${uki[0]}" --section ".pcrpkey:binary@$pkcs11_dir/pcrpkey"
@@ -126,15 +126,15 @@ EOF
     "$buck" run "${config[@]}" tine//examples/image-secureboot:vm-smoke
 }
 
-# Nothing here needs an engine, so a graph that does not analyze is reported in seconds rather than
+# Nothing here needs a box, so a graph that does not analyze is reported in seconds rather than
 # after two bootstraps. `check` runs it again, for anyone running that on its own.
 group graph             -- "$buck" bxl tine//tools/graph.bxl:analyze
-# First invocation fetches buck's pinned tools and builds the shared engine; kept its own group so
+# First invocation fetches buck's pinned tools and builds the shared box; kept its own group so
 # bootstrap time stays visible.
-group engine            -- "$buck" build tine//catalog:fedora.rawhide.engine
+group box               -- "$buck" build tine//catalog:fedora.rawhide.box
 group check             -- "$buck" run tine//tools:check
 # Every repository the catalog declares is pinned to a mirror serving immutable snapshots, so the whole
-# catalog is verifiable rather than the engines that happen to be pinned.
+# catalog is verifiable rather than the boxes that happen to be pinned.
 group verify-catalog    -- "$buck" run tine//tools:verify-catalog
 # Everything the cell declares, rather than the handful of targets someone remembered to name here:
 # every example image over both package systems, the boxes, and the source-build demos.

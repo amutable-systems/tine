@@ -1,13 +1,13 @@
 """Construct package-solver commands and reusable repository caches."""
 
 load("//:specs.bzl", "spec_args")
-load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "chroot_run")
 load(":repository.bzl", "ConfiguredPackageRepositoryInfo", "encode_repositories")
 load(":system.bzl", "PackageSystemInfo")
 
 def solve_command(
     ctx: AnalysisContext,
-    engine: EngineInfo,
+    box: BoxInfo,
     system: PackageSystemInfo,
     repositories: list[ConfiguredPackageRepositoryInfo],
     install: list[str],
@@ -23,7 +23,7 @@ def solve_command(
     run target, where the caller names the transaction it wants written.
     """
     command = cmd_args(
-        chroot_run(engine = engine, exe = system.plan),
+        chroot_run(box = box, exe = system.plan),
         "solve",
         spec_args(
             ctx.actions,
@@ -42,7 +42,7 @@ def solve_command(
     return command
 
 def _solver_cache_impl(ctx: AnalysisContext) -> list[Provider]:
-    engine = ctx.attrs.engine[EngineInfo]
+    box = ctx.attrs.box[BoxInfo]
     system = ctx.attrs.package_system[PackageSystemInfo]
     repository = ConfiguredPackageRepositoryInfo(
         id = ctx.attrs.repository_id,
@@ -53,7 +53,7 @@ def _solver_cache_impl(ctx: AnalysisContext) -> list[Provider]:
     cache = ctx.actions.declare_output("cache", dir = True)
     ctx.actions.run(
         cmd_args(
-            chroot_run(engine = engine, exe = system.plan),
+            chroot_run(box = box, exe = system.plan),
             "make-cache",
             spec_args(
                 ctx.actions,
@@ -76,7 +76,7 @@ _solver_cache = anon_rule(
     attrs = {
         "arch": attrs.string(),
         "baseurl": attrs.option(attrs.string(), default = None),
-        "engine": attrs.dep(providers = [EngineInfo]),
+        "box": attrs.dep(providers = [BoxInfo]),
         "package_system": attrs.dep(providers = [PackageSystemInfo]),
         "priority": attrs.int(),
         "repository_dir": attrs.source(),
@@ -89,7 +89,7 @@ _solver_cache = anon_rule(
 
 def solver_cache(
     ctx: AnalysisContext,
-    engine: Dependency,
+    box: Dependency,
     package_system: Dependency,
     repository: ConfiguredPackageRepositoryInfo,
     arch: str,
@@ -100,7 +100,7 @@ def solver_cache(
         {
             "arch": arch,
             "baseurl": repository.baseurl,
-            "engine": engine,
+            "box": box,
             "package_system": package_system,
             "priority": repository.priority,
             "repository_dir": repository.directory,

@@ -1,7 +1,7 @@
 """Build a Rust project from its own source tree, offline and SBOM-visible."""
 
 load("//:specs.bzl", "executable", "spec_args")
-load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "chroot_run")
 load(":lock.bzl", "crate_downloads", "git_sources")
 load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
 
@@ -116,7 +116,7 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
         _cargo_build(
             auditable = executable(ctx.attrs._auditable),
             binaries = {name: out.as_output() for name, out in outputs.items()},
-            build = chroot_run(engine = ctx.attrs.engine[EngineInfo], exe = ctx.attrs._build),
+            build = chroot_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
             fetch = ctx.attrs._fetch[RunInfo],
             lock = resolved,
             name = ctx.label.name,
@@ -132,7 +132,7 @@ _cargo_package = rule(
     impl = _cargo_package_impl,
     attrs = {
         "binaries": attrs.list(attrs.string(), doc = "binaries to take out of the build"),
-        "engine": attrs.dep(providers = [EngineInfo], doc = "engine carrying the Rust toolchain"),
+        "box": attrs.dep(providers = [BoxInfo], doc = "box carrying the Rust toolchain"),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, Cargo.lock included"),
         "_auditable": attrs.dep(providers = [RunInfo], default = "tine//tools:cargo-auditable"),
         "_build": attrs.dep(providers = [RunInfo], default = "tine//cargo:build"),

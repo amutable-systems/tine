@@ -14,17 +14,17 @@
 ## Layout
 
 The `tine` cell contains reusable machinery organized by subsystem. Starlark rules and their
-drivers live together in `engine`, `package`, `package_system`, `cargo`, `go`, `image`, `image_format`,
+drivers live together in `box`, `package`, `package_system`, `cargo`, `go`, `image`, `image_format`,
 `rootfs`, and `archive`. Vendored code lives in `vendor`. The default catalog is `tine//catalog`;
 consumers may instead declare a project-specific `//catalog` package. `examples` holds the demo images
 that CI builds and boot-tests, plus a dev box. Package sources and targets live in the OS.git root that
 consumes this cell, under `packages/` (built as `//packages/...`).
 
-Unit tests sit beside the driver they exercise as `<driver>_test.py`, run by an `engine_python_test`
-target in the same package (`tine//engine:test.bzl`), which only `buck test` runs. Cross-package
+Unit tests sit beside the driver they exercise as `<driver>_test.py`, run by a `box_python_test`
+target in the same package (`tine//box:test.bzl`), which only `buck test` runs. Cross-package
 sources reach a suite through `deps` on a `python_bootstrap_library`, never `export_file`. An
-assertion about what a build produced is an `engine_sh_test` beside the target that produced it: a
-script taking artifacts as `$(location)` arguments, run in an engine so it reaches pinned tools
+assertion about what a build produced is a `box_sh_test` beside the target that produced it: a
+script taking artifacts as `$(location)` arguments, run in a box so it reaches pinned tools
 rather than the host'"'"'s. `tests` holds what those share, like the VM boot smoke driver.
 
 ## Commands
@@ -46,7 +46,7 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
 - **Auto-format + auto-fix:** `buck run tine//tools:fmt`
 - **Refresh the catalog lock:** `buck run tine//tools:refresh-catalog`;
   `buck run tine//tools:verify-catalog` asserts the committed lock matches.
-- **Full CI pipeline:** `tools/ci.sh` runs the graph analysis, both engine bootstraps, `check`,
+- **Full CI pipeline:** `tools/ci.sh` runs the graph analysis, both box bootstraps, `check`,
   `verify-catalog`, a build of everything, the `image`-labelled tests, and the PKCS#11 signing
   harness, as one fail-fast command.
 - **rpm importer:** `buck run tine//tools:importer -- <verb>` runs the package import/update tool

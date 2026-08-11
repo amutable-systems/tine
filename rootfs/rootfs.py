@@ -176,12 +176,12 @@ def _apivfs(stack: ExitStack, target: Path) -> None:
     TmpfsOperation(str(target / "run")).execute()
     stack.callback(umount2, str(target / "run"), MNT_DETACH)
 
-    # The same split the sandbox makes for its own (engine/sandbox.py): /tmp is a tmpfs, for small
+    # The same split the sandbox makes for its own (box/sandbox.py): /tmp is a tmpfs, for small
     # and short-lived files, and everything large belongs under /var/tmp, which gets Buck's on-disk
     # per-action scratch directory rather than RAM -- package scripts stage gigabytes there. Buck
     # clears the scratch path before each execution, so the backing neither accumulates nor collides
     # with an earlier run's leftovers. Outside a run action there is no scratch directory (`buck run`
-    # on an engine, and `buck test`), and a tmpfs is all that is available.
+    # on a box, and `buck test`), and a tmpfs is all that is available.
     TmpfsOperation(str(target / "tmp")).execute()
     stack.callback(umount2, str(target / "tmp"), MNT_DETACH)
 

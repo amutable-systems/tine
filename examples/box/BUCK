@@ -1,12 +1,14 @@
 """Development-box smoke target."""
 
-load("@tine//box:rules.bzl", "box")
+load("@tine//box:build.bzl", "box")
 
 box(
-    name = "box",
+    name = "demo.box",
     packages = [
         "bash",
         "coreutils",
         "fish",
     ],
+    release = "tine//catalog:fedora.rawhide.release",
+    resolver_box = "tine//catalog:fedora.rawhide.box",
 )

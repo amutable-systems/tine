@@ -1,4 +1,4 @@
-"""Bootstrap an engine by extracting RPM v4 newc payloads without RPM tooling.
+"""Bootstrap a box by extracting RPM v4 newc payloads without RPM tooling.
 
 An rpm is read as its repository serves it: the header is framed off, the payload decompressed,
 and the cpio unpacked. Metadata and scriptlets are deferred to the real install.

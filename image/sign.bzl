@@ -8,7 +8,7 @@ PKCS#11 key (https://p11-glue.github.io/p11-glue/p11-kit/manual/remoting.html) d
 Do not load image.bzl here: it consumes the provider, so that would close a load cycle.
 """
 
-load("//engine:runtime.bzl", "EngineInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "chroot_run")
 
 # The sandbox forwards PKCS#11 calls rather than holding a backend module, so this is the only module
 # it ever loads, whatever the key is held by.
@@ -109,7 +109,7 @@ def _signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
     certificate = ctx.actions.declare_output("signing.crt")
     ctx.actions.run(
         cmd_args(
-            chroot_run(engine = ctx.attrs.engine[EngineInfo]),
+            chroot_run(box = ctx.attrs.box[BoxInfo]),
             "ukify",
             "genkey",
             cmd_args(key.as_output(), format = "--secureboot-private-key={}"),
@@ -130,10 +130,10 @@ def _signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
 generate_signing_key = rule(
     impl = _signing_key_impl,
     attrs = {
-        "engine": attrs.dep(
-            providers = [EngineInfo],
-            default = "tine//catalog:fedora.rawhide.engine",
-            doc = "engine providing ukify",
+        "box": attrs.dep(
+            providers = [BoxInfo],
+            default = "tine//catalog:fedora.rawhide.box",
+            doc = "box providing ukify",
         ),
     },
     doc = """Mint a development signing key pair as a build artifact.

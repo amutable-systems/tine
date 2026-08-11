@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Generate deterministic repodata for a local package repository.
 
-Runs inside the engine so the pinned createrepo_c produces the metadata.
+Runs inside the box so the pinned createrepo_c produces the metadata.
 """
 
 import os
