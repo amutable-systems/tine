@@ -1,7 +1,7 @@
 """Build a Rust project from its own source tree, offline and SBOM-visible."""
 
 load("//:specs.bzl", "executable", "spec_args")
-load("//box:runtime.bzl", "BoxInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "box_run")
 load(":lock.bzl", "crate_downloads", "git_sources")
 load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
 
@@ -116,7 +116,7 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
         _cargo_build(
             auditable = executable(ctx.attrs._auditable),
             binaries = {name: out.as_output() for name, out in outputs.items()},
-            build = chroot_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
+            build = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
             fetch = ctx.attrs._fetch[RunInfo],
             lock = resolved,
             name = ctx.label.name,

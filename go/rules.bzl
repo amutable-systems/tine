@@ -1,7 +1,7 @@
 """Build a Go project from its own source tree: one online, verified module fetch, then an offline build."""
 
 load("//:specs.bzl", "spec_args")
-load("//box:runtime.bzl", "BoxInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "box_run")
 
 _PRIVATE = "__tine"
 
@@ -140,10 +140,10 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
     ctx.actions.dynamic_output_new(
         _go_build(
             binaries = {name: out.as_output() for name, out in outputs.items()},
-            build = chroot_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
+            build = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
             cgo = ctx.attrs.cgo,
             cgo_cflags = ctx.attrs.cgo_cflags,
-            fetch = chroot_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._fetch, network = True),
+            fetch = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._fetch, network = True),
             gocache = gocache.as_output(),
             linker_flags = ctx.attrs.linker_flags,
             sources = sources,

@@ -1,7 +1,7 @@
 """Construct package-solver commands and reusable repository caches."""
 
 load("//:specs.bzl", "spec_args")
-load("//box:runtime.bzl", "BoxInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "box_run")
 load(":repository.bzl", "ConfiguredPackageRepositoryInfo", "encode_repositories")
 load(":system.bzl", "PackageSystemInfo")
 
@@ -23,7 +23,7 @@ def solve_command(
     run target, where the caller names the transaction it wants written.
     """
     command = cmd_args(
-        chroot_run(box = box, exe = system.plan),
+        box_run(box = box, exe = system.plan),
         "solve",
         spec_args(
             ctx.actions,
@@ -53,7 +53,7 @@ def _solver_cache_impl(ctx: AnalysisContext) -> list[Provider]:
     cache = ctx.actions.declare_output("cache", dir = True)
     ctx.actions.run(
         cmd_args(
-            chroot_run(box = box, exe = system.plan),
+            box_run(box = box, exe = system.plan),
             "make-cache",
             spec_args(
                 ctx.actions,

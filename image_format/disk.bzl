@@ -1,7 +1,7 @@
 """Partition and raw-disk assembly with systemd-repart."""
 
 load("//:specs.bzl", "spec_args")
-load("//box:runtime.bzl", "BoxInfo", "chroot_run")
+load("//box:runtime.bzl", "BoxInfo", "box_run")
 load(
     "//image:image.bzl",
     "IMAGE_TOOLS_ATTR",
@@ -526,7 +526,7 @@ def declare_disk_conversion(
         fail("disk_convert: RepartInfo does not contain a composed disk")
     out = declare_out(ctx, identifier, basename + "." + format)
     cmd = cmd_args(
-        chroot_run(box = box[BoxInfo], exe = tools.convert),
+        box_run(box = box[BoxInfo], exe = tools.convert),
         spec_args(
             ctx.actions,
             spec_path(identifier, "convert"),

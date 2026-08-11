@@ -271,11 +271,11 @@ policy; its repositories use the native default priority until bootstrap needs a
 
 Only a root box without a predecessor bootstraps its own installation tools in two stages:
 
-1. The minimal extractor unpacks the same package closure into `chroot1` without running scriptlets
+1. The minimal extractor unpacks the same package closure into `stage1` without running scriptlets
    or creating a package database. An extractor reads the packages its repository serves, whatever
    framing they carry, so the pool never has to derive a second form for the bootstrap.
-2. The package-system installer runs from `chroot1` and properly installs the closure into `chroot2`,
-   including scriptlets and the package database. `chroot2` becomes the reusable `BoxInfo` root.
+2. The package-system installer runs from `stage1` and properly installs the closure into `stage2`,
+   including scriptlets and the package database. `stage2` becomes the reusable `BoxInfo` root.
 
 A first lock is the one thing a root box cannot produce for itself, since resolving needs a box to
 resolve in. Pointing the new box's `resolver_box` at an existing box that can run its package system's
@@ -294,7 +294,7 @@ The host contract is intentionally small; its short list of requirements is docu
 
 ### Execution isolation and target roots
 
-All build actions run through `chroot_run()` and `box/sandbox.py`. The sandbox binds the box's
+All build actions run through `box_run()` and `box/sandbox.py`. The sandbox binds the box's
 userspace read-only over an otherwise isolated namespace, supplies API and temporary filesystems, clears the
 host environment, disables network by default, and uses mkosi-sandbox's unprivileged fakeroot behavior
 (`--suppress-chown`, `--suppress-sync`, and `--become-root`).
@@ -311,7 +311,7 @@ This division keeps one namespace boundary while letting each driver express the
 second sandbox inside a box would duplicate isolation, complicate mounts, and make remote execution
 harder.
 
-`chroot_run(relaxed = True)` is reserved for interactive leaves. The box still supplies userspace, but
+`box_run(relaxed = True)` is reserved for interactive leaves. The box still supplies userspace, but
 devices, `/run`, environment, current directory, and network come from the host, and the command remains the
 invoking user. The box's `nss-systemd` reads native identities from the host's UserDB services under
 `/run`. This avoids importing host NSS modules or shadow databases, which may be incompatible with the
