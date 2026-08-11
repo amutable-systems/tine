@@ -23,11 +23,27 @@ target_platform_detector_spec = target:tine//...->prelude//platforms:default
 execution_platforms = prelude//platforms:default
 
 [project]
-# VCS state, local build trees, and tool caches must not invalidate Buck's file watcher. `**/target` covers any
-# directory of that name, the case that motivates it being a cargo build run by hand in a checkout.
-ignore = .git, .jj, **/.git, **/.jj, **/buck-out, **/target, **/.ruff_cache
+# VCS state, dependency and build trees, and the caches tools keep must not invalidate Buck's file
+# watcher. Only names that are always generated: `build`, `dist` and `out` are ordinary package names,
+# and ignoring one would hide the targets in it rather than only its churn.
+ignore = .git, .jj, **/.git, **/.jj, **/.hg, **/.svn, \
+    **/buck-out, **/target, **/node_modules, **/__pycache__, **/.venv, **/venv, \
+    **/.cache, **/.direnv, **/.gradle, **/.tox, **/.nox, \
+    **/.mypy_cache, **/.pytest_cache, **/.ruff_cache, \
+    **/.next, **/.parcel-cache, **/.turbo, **/.idea, **/.vscode
 
 [buck2]
 materializations = deferred
 sqlite_materializer_state = true
 defer_write_actions = true
+
+# The Buck2 `bin/tine` fetches and verifies before running anything; `tine bump` rewrites these.
+[tine]
+buck2-repository = daandemeyer/buck2
+buck2-release = 2026-07-31-18.59.08
+buck2-Linux-aarch64-artifact = buck2-aarch64-unknown-linux-musl.zst
+buck2-Linux-aarch64-sha256 = 7f04b5d8348403ce2b5ee4d723e8b2fc4ce071de74d7153db7fb7d72c9b99419
+buck2-Linux-riscv64-artifact = buck2-riscv64gc-unknown-linux-gnu.zst
+buck2-Linux-riscv64-sha256 = a4a5708b6ffe576ffaf9d7293ab4efbc2a97031de6296b9077ae42247d9e72a5
+buck2-Linux-x86_64-artifact = buck2-x86_64-unknown-linux-musl.zst
+buck2-Linux-x86_64-sha256 = 1120f17a4708ce77c3de51d43ba5a1230f0bec9d4c22520ad4cffd2aa7864046

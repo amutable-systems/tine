@@ -1,0 +1,12 @@
+"""The command a checkout builds through."""
+
+load("//box:test.bzl", "box_python_test")
+
+box_python_test(
+    name = "test",
+    box = "//tools:dev.box",
+    srcs = [
+        "tine",
+        "tine_test.py",
+    ],
+)

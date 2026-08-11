@@ -13,8 +13,11 @@ The host contract is intentionally small:
 - unprivileged user namespaces and the filesystem/kernel facilities required by mkosi-sandbox/overlayfs;
 - `/dev/kvm` only when running a VM target.
 
-The Buck bootstrap needs `jq`, `curl`, `sha256sum`, and `zstd`. It verifies and caches the pinned Buck binary
-under `${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2`; cached invocations work offline.
+The bootstrap is [`bin/tine`](../bin/tine), which needs a `/usr/bin/python3` of 3.9 or newer, `git` for
+the version components it derives, and, unless that python is 3.14 or newer, `zstd`.
+It verifies the pinned Buck binary against the SHA-256 in `.buckconfig`, or in the `.buckconfig.local`
+a developer pins their own Buck2 in, and caches it under
+`${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2/<sha256>`; cached invocations work offline.
 
 ## Concepts
 
@@ -48,14 +51,14 @@ bootstraps itself is described in [design.md](design.md).
 The wrapper commands work from anywhere in the root project:
 
 ```sh
-tools/buck run tine//tools:refresh-catalog
-tools/buck run tine//tools:verify-catalog
-tools/buck run tine//tools:fmt
-tools/buck run tine//tools:check
+tine buck run tine//tools:refresh-catalog
+tine buck run tine//tools:verify-catalog
+tine buck run tine//tools:fmt
+tine buck run tine//tools:check
 ```
 
 `refresh-catalog` refreshes the default `tine//catalog` package. Pass another catalog package after `--`,
-for example `tools/buck run tine//tools:refresh-catalog -- my_project//catalog`. `verify-catalog`
+for example `tine buck run tine//tools:refresh-catalog -- my_project//catalog`. `verify-catalog`
 performs the same generation and fails when the committed JSON differs. The pinning and refresh mechanism
 is described in [design.md](design.md).
 
@@ -705,7 +708,7 @@ GPT backup header until something rewrites the table. Use it to give a guest mor
 disk carries; a disk that should always carry that room sets `output_size` on the image instead.
 
 ```sh
-tools/buck run //examples/image:boot-demo-vm.fedora
+tine buck run //examples/image:boot-demo-vm.fedora
 ```
 
 The example image uses a tmpfs root with `mount.usr=dissect`; SELinux is disabled because the build does not
@@ -716,12 +719,12 @@ yet produce filesystem labels. Ephemeral mode preserves the Buck disk artifact.
 Representative builds are:
 
 ```sh
-tools/buck build //examples/image:demo.fedora
-tools/buck build //examples/image:layered-install.fedora
-tools/buck build //examples/image:boot-demo.fedora
-tools/buck build '//examples/image:boot-demo.fedora[uki]'
-tools/buck build '//examples/image:boot-demo.fedora[partitions][usr]'
-tools/buck build //examples/image:demo-ext.fedora
+tine buck build //examples/image:demo.fedora
+tine buck build //examples/image:layered-install.fedora
+tine buck build //examples/image:boot-demo.fedora
+tine buck build '//examples/image:boot-demo.fedora[uki]'
+tine buck build '//examples/image:boot-demo.fedora[partitions][usr]'
+tine buck build //examples/image:demo-ext.fedora
 ```
 
 These validate package installation and commands sharing one delta, incremental layering, archive packing,
@@ -802,8 +805,8 @@ tine//examples/image:boot-demo is incompatible with prelude//platforms:default
 ```
 
 A distribution is also a platform, so a developer who builds one of them all day can name it as the
-default for unqualified targets in `.buckconfig.local`, which is git-ignored and belongs to the
-checkout rather than the repository:
+default for unqualified targets in `.buckconfig.local`, below the block `bin/tine` generates there,
+which is git-ignored and belongs to the checkout rather than the repository:
 
 ```ini
 [parser]
@@ -823,23 +826,24 @@ an image from those packages. Neither target exists in this repository.
 
 `bump` refreshes the pinned tool releases against their upstream GitHub releases.
 
-Update one or more pinned tools by name (`buck2`, `starlark-fmt`, `python3`, `ruff`, `ty`, `syft`):
+Update one or more pinned tools by name (`starlark-fmt`, `python3`, `ruff`, `ty`, `syft`,
+`cargo-auditable`):
 
 ```sh
-tools/buck run tine//tools:bump -- --tool ruff --tool ty
+tine buck run tine//tools:bump -- --tool ruff --tool ty
 ```
 
 Update all tools:
 
 ```sh
-tools/buck run tine//tools:bump -- --all
+tine buck run tine//tools:bump -- --all
 ```
 
 Each tool is resolved to its latest upstream release and its `url` and `sha256` are rewritten in place.
 Add `--commit` to record the result as a git commit whose message itemizes each update.
 
-`buck2` and `starlark-fmt` ship from the same release of the same fork, so bump them together (`--all`
-does) to keep them on one tag.
+Buck2 is not one of them: it is pinned in `.buckconfig` and bumped by `tine bump`. `starlark-fmt` ships
+from the same fork release, so bump it whenever Buck2 moves to keep the two on one tag.
 
 python3 minor version stays pinned in pyproject.toml; updating to a new minor release stays a deliberate
 manual change.

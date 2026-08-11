@@ -110,7 +110,8 @@ def _lint(args: argparse.Namespace) -> None:
     _run([args.ruff, "format", "--check", "--no-cache", cell])
     _run([args.ruff, "check", "--no-cache", cell])
     _bold("ty")
-    # Resolve third-party imports from the pinned box runtime.
+    # Resolve third-party imports from the pinned box runtime. ty's own walk only picks up `.py`,
+    # so a driver that is a command rather than a module has to be named for it to be checked.
     _run(
         [
             args.ty,
@@ -119,6 +120,8 @@ def _lint(args: argparse.Namespace) -> None:
             cell,
             "--python",
             Path(args.box) / "usr",
+            cell,
+            cell / "bin" / "tine",
         ]
     )
     _bold("starlark_fmt")
@@ -235,7 +238,11 @@ def _ty(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> None:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
-        "--buck", default="buck", help="buck binary to nest (aliases pass the pinned one; default: PATH)"
+        "--buck",
+        # `tine` exports the Buck2 it resolved, so a nested command runs that one and not the
+        # wrapper: refreshing configuration under a command already holding it deadlocks.
+        default=os.environ.get("BUCK2_BINARY", "buck"),
+        help="buck binary to nest (default: $BUCK2_BINARY, else PATH)",
     )
     starlark = argparse.ArgumentParser(add_help=False)
     starlark.add_argument("--starlark-fmt", required=True)

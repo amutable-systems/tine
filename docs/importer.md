@@ -7,7 +7,7 @@ example `packages/fedora/f44/glibc`), with pristine imports on the separate `ups
 and metadata layout, the design principles, and the rebuild strategy behind all of this are documented in
 [packages.md](packages.md).
 
-Run the tool as `tools/buck run tine//tools:importer -- <verb> …`: that executes it in the
+Run the tool as `tine buck run tine//tools:importer -- <verb> …`: that executes it in the
 `tine//tools:dev.box` environment (host identity, network, and cwd; the box's pinned rpm/git
 toolchain), so the host needs no rpm tooling installed. Verbs that only use git also work by executing the
 script directly.

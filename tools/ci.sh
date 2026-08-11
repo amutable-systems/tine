@@ -2,7 +2,7 @@
 # The full CI pipeline
 set -Eeuo pipefail
 cd "$(dirname "$0")/.."
-buck=tools/buck
+buck=(bin/tine buck)
 
 # GitHub folds each step into a log group; an interactive terminal gets a bold banner; anything else
 # (piped to a file, another CI) gets a bare `=== label ===` line with no escape sequences.
@@ -84,10 +84,10 @@ pkcs11_cleanup() {
 secureboot_pkcs11() {
     # On a fresh runner this resolves and installs the signing box, so run it in the foreground
     # where that shows progress, rather than sitting silently in the backgrounded server's log.
-    "$buck" build tine//tools:swtpm-signing.box
+    "${buck[@]}" build tine//tools:swtpm-signing.box
 
     pkcs11_dir=$(mktemp -d)
-    "$buck" run tine//tools:signing-server -- "$pkcs11_dir" > "$pkcs11_dir/log" 2>&1 &
+    "${buck[@]}" run tine//tools:signing-server -- "$pkcs11_dir" > "$pkcs11_dir/log" 2>&1 &
     server_pid=$!
     trap pkcs11_cleanup EXIT
     until [ -S "$pkcs11_dir/sock/pkcs11" ]; do
@@ -106,14 +106,14 @@ socket = $pkcs11_dir/sock/pkcs11
 EOF
     local config=(--config-file "$pkcs11_dir/signing.bcfg")
 
-    "$buck" build "${config[@]}" tine//examples/image-secureboot:image
-    "$buck" build "${config[@]}" 'tine//examples/image-secureboot:image[uki]' --out "$pkcs11_dir/ukis"
+    "${buck[@]}" build "${config[@]}" tine//examples/image-secureboot:image
+    "${buck[@]}" build "${config[@]}" 'tine//examples/image-secureboot:image[uki]' --out "$pkcs11_dir/ukis"
 
     # The public key the UKI hands the booted system must be the PcrPolicy token's, and not the
     # Secure Boot one. Read each side into a variable first: a command substitution inside a `test`
     # argument is exempt from errexit, so a certificate that cannot be read would yield an empty
     # string and satisfy the inequality below without comparing anything.
-    local box=("$buck" run tine//tools:swtpm-signing.box --) uki=("$pkcs11_dir"/ukis/*.efi)
+    local box=("${buck[@]}" run tine//tools:swtpm-signing.box --) uki=("$pkcs11_dir"/ukis/*.efi)
     local pcrpkey pcr_certificate secure_boot_certificate
     # ukify takes the file before the options, per `ukify inspect --help`.
     "${box[@]}" ukify inspect "${uki[0]}" --section ".pcrpkey:binary@$pkcs11_dir/pcrpkey"
@@ -123,23 +123,23 @@ EOF
     test "$pcrpkey" = "$pcr_certificate"
     test "$pcrpkey" != "$secure_boot_certificate"
 
-    "$buck" run "${config[@]}" tine//examples/image-secureboot:vm-smoke
+    "${buck[@]}" run "${config[@]}" tine//examples/image-secureboot:vm-smoke
 }
 
 # Nothing here needs a box, so a graph that does not analyze is reported in seconds rather than
 # after two bootstraps. `check` runs it again, for anyone running that on its own.
-group graph             -- "$buck" bxl tine//tools/graph.bxl:analyze
+group graph             -- "${buck[@]}" bxl tine//tools/graph.bxl:analyze
 # First invocation fetches buck's pinned tools and builds the shared box; kept its own group so
 # bootstrap time stays visible.
-group box               -- "$buck" build tine//catalog:fedora.rawhide.box
-group check             -- "$buck" run tine//tools:check
+group box               -- "${buck[@]}" build tine//catalog:fedora.rawhide.box
+group check             -- "${buck[@]}" run tine//tools:check
 # Every repository the catalog declares is pinned to a mirror serving immutable snapshots, so the whole
 # catalog is verifiable rather than the boxes that happen to be pinned.
-group verify-catalog    -- "$buck" run tine//tools:verify-catalog
+group verify-catalog    -- "${buck[@]}" run tine//tools:verify-catalog
 # Everything the cell declares, rather than the handful of targets someone remembered to name here:
 # every example image over both package systems, the boxes, and the source-build demos.
-group build             -- "$buck" build tine//...
+group build             -- "${buck[@]}" build tine//...
 # Everything `check` left out: the boot smokes, which take minutes each, and the assertions about
 # what the images above produced. Adding one is declaring it, not naming it here as well.
-group image-tests       -- "$buck" test tine//... --include image
+group image-tests       -- "${buck[@]}" test tine//... --include image
 group secureboot-pkcs11 -- secureboot_pkcs11

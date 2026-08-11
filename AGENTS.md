@@ -7,7 +7,7 @@
   from `buck build --show-output`/`--out` and read it read-only.
 - **Never `buck build | tail`** — redirect full output to a log file, show the path so that the user can
   follow along, and check exit separately. Inspect failed actions with
-  `tools/buck log what-ran --failed --show-std-err`.
+  `tine buck log what-ran --failed --show-std-err`.
 - Line break documents and plans at 109 columns.
 - Keep comments concise; say each thing once. Comments explain *why*, not *what*.
 
@@ -15,10 +15,10 @@
 
 The `tine` cell contains reusable machinery organized by subsystem. Starlark rules and their
 drivers live together in `box`, `package`, `package_system`, `cargo`, `go`, `image`, `image_format`,
-`rootfs`, and `archive`. Vendored code lives in `vendor`. The default catalog is `tine//catalog`;
-consumers may instead declare a project-specific `//catalog` package. `examples` holds the demo images
-that CI builds and boot-tests, plus a dev box. Package sources and targets live in the OS.git root that
-consumes this cell, under `packages/` (built as `//packages/...`).
+`rootfs`, and `archive`. Vendored code lives in `vendor`, and `bin` holds the `tine` command. The default
+catalog is `tine//catalog`; consumers may instead declare a project-specific `//catalog` package.
+`examples` holds the demo images that CI builds and boot-tests, plus a dev box. Package sources and
+targets live in the OS.git root that consumes this cell, under `packages/` (built as `//packages/...`).
 
 Unit tests sit beside the driver they exercise as `<driver>_test.py`, run by a `box_python_test`
 target in the same package (`tine//box:test.bzl`), which only `buck test` runs. Cross-package
@@ -29,8 +29,26 @@ rather than the host'"'"'s. `tests` holds what those share, like the VM boot smo
 
 ## Commands
 
-The pinned `buck` lives in `tools/`; invoke it by path. Everything else (python3, ruff, ty, starlark_fmt)
-is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck run` targets.
+`bin/tine` is the entry point, a command of its own, and `mise.toml` puts `./bin` on `PATH` so it is
+spelled `tine`. **Every `buck` below means `tine buck`**: nothing else on this machine is the Buck2 this
+project pins. `tine buck <arguments>` fetches that Buck2 (pinned in `.buckconfig`, merged with
+`.buckconfig.local`, and rewritten by `tine bump`, which reads `.buckconfig` alone) and execs it with
+everything after `buck` untouched. `tine init` writes a project's configuration, and `tine init --local
+<path>` writes one already overridden to that checkout; `tine cell override
+<cell> <path>` builds a cell from a checkout on this machine, `tine cell revert <cell>` goes back to
+the pinned one, and `tine cell list` prints what is declared. An override follows the checkout's
+`HEAD`, or the revision `--commit` names. Those declarations live in the block `tine` owns in the
+gitignored `.buckconfig.local`, which is also what Buck reads, so there is nothing to keep in step
+with it. One
+that stops resolving fails every command that runs Buck rather than falling back to what `.buckconfig`
+pins, and overriding the `tine` cell hands the command over to that checkout's `bin/tine` as well.
+Everything else (python3, ruff, ty, starlark_fmt) is pinned in `tools/tools.json` and fetched by buck
+itself; the dev commands are `buck run` targets.
+
+It also injects configuration derived from the checkout and from those overrides (a block it owns in
+`.buckconfig.local`; see README) and serves its own shell completion, Buck2's own hanging off
+`tine buck`. A tool Buck itself runs finds that same binary in `$BUCK2_BINARY` and can nest a command
+with it, which skips the refresh rather than redoing it underneath the build that started it.
 
 - **buck (whole project):** `buck build tine//...` — builds everything but runs no tests; see below.
 - **Lint (format, lint, type-check, whole-graph analysis):** `buck run tine//tools:lint`
@@ -53,7 +71,7 @@ is pinned in `tools/BUCK` and fetched by buck itself; the dev commands are `buck
   in the dev box with the host's git identity and network; see [importer.md](docs/importer.md).
 - **BuildRequires cycle analysis:** `buck run tine//tools:scc -- <branch label>`; background in
   [self-host-approaches.md](docs/self-host-approaches.md).
-- **Inspect a failed action's stderr:** `tools/buck log what-ran --failed --show-std-err` prints the
+- **Inspect a failed action's stderr:** `tine buck log what-ran --failed --show-std-err` prints the
   full stderr of the actions that failed in the last build — buck truncates it in the build output,
   but this recovers it in full (no need to re-run or redirect anything).
 
@@ -95,7 +113,7 @@ See [the design plan](docs/design.md).
   search, so one would keep this checkout out of a Tine workspace, where it supplies the `tine` cell.
 - The flip side: a stale `.buckconfig` in any parent directory captures the project, and `//...` then
   resolves to zero targets while still exiting 0. If a command mysteriously finds nothing, check
-  `tools/buck root --kind project` before anything else.
+  `tine buck root --kind project` before anything else.
 
 ## Python guidelines
 
