@@ -1,0 +1,4 @@
+# Written by `tools/buck run tine//tools:refresh-catalog`, never by hand: a repository snapshot is
+# every package in a distribution's tree, so a pin advancing is tens of thousands of changed lines
+# that bury the rest of a diff.
+catalog/snapshot/**/*.json linguist-generated=true
