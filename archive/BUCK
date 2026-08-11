@@ -4,4 +4,5 @@ python_bootstrap_library(
     name = "cpio",
     srcs = ["cpio.py"],
     visibility = ["tine//..."],
+    deps = ["//:util"],
 )
