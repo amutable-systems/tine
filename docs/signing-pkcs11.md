@@ -84,7 +84,7 @@ tpm2-pkcs11 tokens on a software TPM, served by `tools/signing-server` (which ex
 this document). The invocation supplies the host-side parameters:
 
 ```sh
-tools/buck build \
+tine buck build \
     -c signing.token=SecureBoot \
     -c signing.pin-file="$HOME/.config/signing-pin" \
     -c signing.socket="$XDG_RUNTIME_DIR/signing/pkcs11" \
@@ -107,7 +107,7 @@ that file instead. Nothing about the host then enters the tree, and unlike a fil
 to every cell:
 
 ```sh
-tools/buck build --config-file "$CREDENTIALS_DIRECTORY/signing.bcfg" //your:image
+tine buck build --config-file "$CREDENTIALS_DIRECTORY/signing.bcfg" //your:image
 ```
 
 **Warning: Buck silently ignores a `--config-file` that does not exist**, and the build then signs with

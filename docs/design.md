@@ -52,6 +52,7 @@ tine//cargo/              vendored crate trees and offline Rust source builds
 tine//go/                 go.sum-verified module fetches and offline Go source builds
 tine//catalog/            default repositories, locks, releases, package managers, and buildroots
 tine//tools/              pinned development and catalog-refresh commands, and the boxes they run in
+tine//bin/                the command a checkout builds through, which fetches and configures Buck2
 ```
 
 The default `tine//catalog` package owns its release selection, mirrors, box choice, repository additions,
@@ -164,9 +165,9 @@ cacheable build action. The generated transaction is an input to the existing dy
 so the box builds in one invocation without mutating the source tree. Its package selection changes only
 when its authored policy, resolver box, or pinned repository inputs change.
 
-`tools/buck run tine//tools:refresh-catalog` refreshes the default `tine//catalog` package in three
+`tine buck run tine//tools:refresh-catalog` refreshes the default `tine//catalog` package in three
 phases. Pass another catalog package after `--`, for example
-`tools/buck run tine//tools:refresh-catalog -- my_project//catalog`:
+`tine buck run tine//tools:refresh-catalog -- my_project//catalog`:
 
 0. Advance every repository pinned to a mirror that publishes snapshots, by rewriting the pin in the
    declaration. A remote repository rule owns its own pin arguments and carries them as metadata under a

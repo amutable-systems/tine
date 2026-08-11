@@ -206,7 +206,7 @@ def _parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         metavar="NAME",
-        help="update a pinned tool by name, e.g. buck2 or ruff (repeatable)",
+        help="update a pinned tool by name, e.g. ruff or ty (repeatable)",
     )
     parser.add_argument("--all", action="store_true", help="update every pinned tool")
     parser.add_argument(

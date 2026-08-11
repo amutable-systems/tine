@@ -2,8 +2,12 @@
 /buck-out
 **/buck-out
 
-# Local (non-committed) config overrides
+# Local (non-committed) config overrides, one block of which bin/tine writes
 /.buckconfig.local
+/.buckconfig.local.*.tmp
+# The cells this checkout builds from a checkout of their own (`tine cell`)
+/.tine.local
+/.tine.local.*.tmp
 .claude/settings.local.json
 
 # Build output of a cargo build run by hand inside a checked-out Rust project

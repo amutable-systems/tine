@@ -5,6 +5,12 @@ target-version = "py314"
 line-length = 109
 # Exclude build outputs and the verbatim vendored sandbox.
 extend-exclude = ["buck-out", "vendor/mkosi/sandbox.py"]
+# A command carries no suffix for the linters to recognize it by; `tools/importer` predates this
+# and is not linted yet.
+extend-include = ["bin/tine"]
+# tine runs on whatever python the host has, before anything is fetched, so pyupgrade must not
+# rewrite it to syntax newer than the floor the README promises.
+per-file-target-version = { "bin/tine" = "py39" }
 src = [
     "archive",
     "cargo",
@@ -24,6 +30,9 @@ lint.select = [
     "UP",   # pyupgrade
     "B",    # flake8-bugbear
     "ANN",  # flake8-annotations
+    # A union annotation that the file's own target python evaluates as a TypeError, which is
+    # what keeps bin/tine's quoted ones quoted.
+    "FA102",
 ]
 
 [tool.ruff.lint.per-file-ignores]

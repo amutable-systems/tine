@@ -22,8 +22,8 @@ http_tool(
     visibility = ["PUBLIC"],
 )
 
-# Starlark formatter, published as a bare zstd-compressed binary alongside Buck itself; keep its pin
-# in step with buck2's so both come from the same release.
+# Starlark formatter, published as a bare zstd-compressed binary alongside Buck itself, whose pin
+# `tine bump` keeps in `.buckconfig`; bumping both together keeps them from the same release.
 http_tool(
     name = "starlark-fmt",
     compressed = True,
@@ -135,8 +135,6 @@ command_alias(
 # FIXME: type check python in every box? Some python dependencies will only be
 # available in certain boxes.
 _SOURCE_ARGS = [
-    "--buck",
-    "$(source buck)",
     "--starlark-fmt",
     "$(location :starlark-fmt)",
     "--starlark-fmt-config",
@@ -216,11 +214,7 @@ box_python_test(
 # BuildRequires cycle analysis of a branch (pass its label, e.g. //packages/fedora:rawhide's dir).
 command_alias(
     name = "scc",
-    args = [
-        "scc",
-        "--buck",
-        "$(source buck)",
-    ],
+    args = ["scc"],
     exe = ":dev",
 )
 
@@ -228,8 +222,6 @@ command_alias(
     name = "fmt",
     args = [
         "fmt",
-        "--buck",
-        "$(source buck)",
         "--starlark-fmt",
         "$(location :starlark-fmt)",
         "--starlark-fmt-config",
@@ -255,19 +247,11 @@ command_alias(
 # The catalog tool resolves the default catalog package and project root itself.
 command_alias(
     name = "refresh-catalog",
-    args = [
-        "--buck",
-        "$(source buck)",
-    ],
     exe = ":catalog",
 )
 
 command_alias(
     name = "verify-catalog",
-    args = [
-        "--verify",
-        "--buck",
-        "$(source buck)",
-    ],
+    args = ["--verify"],
     exe = ":catalog",
 )

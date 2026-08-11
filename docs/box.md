@@ -26,7 +26,7 @@ Run the target to enter an interactive shell. Buck runs it from the directory yo
 works from anywhere in the project:
 
 ```console
-$ tools/buck run //:dev.box
+$ tine buck run //:dev.box
 ```
 
 Entering a box sets `TINE_BOX` to the target's name without its `.box` suffix, itself suffixed with `:2`,
@@ -44,13 +44,13 @@ format = '[\($env_value\)](bold cyan) '
 Run a command non-interactively by placing it after `--`:
 
 ```console
-$ tools/buck run //:dev.box -- pytest
+$ tine buck run //:dev.box -- pytest
 ```
 
 A project may declare as many boxes as it likes; each is its own target:
 
 ```console
-$ tools/buck run //tools:check.box -- make check
+$ tine buck run //tools:check.box -- make check
 ```
 
 The root a box is entered with is the same artifact build actions get. Its userspace is pinned and

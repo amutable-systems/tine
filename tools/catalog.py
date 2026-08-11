@@ -17,6 +17,7 @@ import contextlib
 import difflib
 import itertools
 import json
+import os
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
@@ -311,7 +312,11 @@ def main(argv: list[str] | None = None) -> None:
         help=f"catalog package to refresh (default: {DEFAULT_CATALOG})",
     )
     p.add_argument(
-        "--buck", default="buck", help="buck binary to nest (aliases pass the pinned one; default: PATH)"
+        "--buck",
+        # `tine` exports the Buck2 it resolved, so a nested command runs that one and not the
+        # wrapper: refreshing configuration under a command already holding it deadlocks.
+        default=os.environ.get("BUCK2_BINARY", "buck"),
+        help="buck binary to nest (default: $BUCK2_BINARY, else PATH)",
     )
     p.add_argument(
         "--box",
