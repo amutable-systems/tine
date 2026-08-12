@@ -12,6 +12,7 @@ image_tools(
     convert = "//image_format:convert",
     disk = "//image_format:disk",
     layer = ":layer",
+    python = "//tools:python3",
     sbom = ":sbom",
     syft = "//tools:syft",
     sysext = "//image_format:sysext",

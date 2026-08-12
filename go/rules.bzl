@@ -165,8 +165,8 @@ _go_package = rule(
         "linker_flags": attrs.list(attrs.string(), default = [], doc = "flags for the Go linker, passed as -ldflags"),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, go.mod and go.sum included"),
         "tags": attrs.list(attrs.string(), default = [], doc = "build tags selecting the project's optional files"),
-        "_build": attrs.dep(providers = [RunInfo], default = "tine//go:build"),
-        "_fetch": attrs.dep(providers = [RunInfo], default = "tine//go:fetch"),
+        "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//go:build"),
+        "_fetch": attrs.exec_dep(providers = [RunInfo], default = "tine//go:fetch"),
         "_workspace": attrs.exec_dep(providers = [RunInfo], default = "tine//go:workspace"),
     },
 )
