@@ -696,7 +696,8 @@ needed. The catalog of terminal rules (`image_archive`, `image_directory`, `uki`
 `image_sysext`, and `image_vm`) and the `rootfs_archive`, `sysext_image`, and `bootable_disk_image`
 composition rules are documented in [images.md](images.md). All of them, with the operation helpers and the
 conventional partition layouts, are re-exported from `tine//image:defs.bzl`; that facade is the public API,
-and the modules behind it are implementation structure. Every rule resolves its drivers through one
+and the modules behind it are implementation structure. Every cell a consuming project loads from has one:
+`box`, `cargo`, `go`, `package`, `package_system/rpm` and `distribution` each re-export theirs the same way. Every rule resolves its drivers through one
 `ImageToolsInfo` bundle at `tine//image:tools` instead of a private attribute per driver.
 
 The package database and SBOMs are supply-chain outputs read from the assembled image, never shipped in it.

@@ -3,8 +3,8 @@
 # Generated data lives under `snapshot/{repo,box}/`, without target-type suffixes in filenames. Boxes
 # with a resolver can derive their transaction during the build; refresh the catalog to freeze one as a
 # retained lock.
-load("//box:build.bzl", "box")
-load("//package_system/rpm:catalog.bzl", "fedora_release")
+load("//box:defs.bzl", "box")
+load("//package_system/rpm:defs.bzl", "fedora_release")
 
 fedora_release(
     name = "fedora.44",

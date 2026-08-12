@@ -1,6 +1,6 @@
 """Development-box smoke target."""
 
-load("@tine//box:build.bzl", "box")
+load("@tine//box:defs.bzl", "box")
 
 box(
     name = "demo.box",

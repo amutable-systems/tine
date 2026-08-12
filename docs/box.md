@@ -5,7 +5,7 @@ and running the target yourself drops you into that same pinned userspace. Decla
 `BUCK` file:
 
 ```Starlark
-load("@tine//box:build.bzl", "box")
+load("@tine//box:defs.bzl", "box")
 
 box(
     name = "dev.box",

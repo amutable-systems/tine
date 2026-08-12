@@ -14,7 +14,7 @@ beside it, and an image carrying the resulting binaries.
 ## Declaring a build
 
 ```Starlark
-load("@tine//go:rules.bzl", "go_package")
+load("@tine//go:defs.bzl", "go_package")
 
 go_package(
     name = "hello",

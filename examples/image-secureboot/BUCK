@@ -11,7 +11,7 @@ generated key, see below), with the image enforcing the signature through its sy
 policy.
 """
 
-load("@tine//box:test.bzl", "box_sh_test")
+load("@tine//box:defs.bzl", "box_sh_test")
 load(
     "@tine//image:defs.bzl",
     "DEFAULT_SIGNED_USR_VERITY_PARTITIONS",
@@ -25,7 +25,7 @@ load(
     "mkdir",
     "sysext_image",
 )
-load("@tine//package:manager.bzl", "package_manager")
+load("@tine//package:defs.bzl", "package_manager")
 load("@tine//tests:defs.bzl", "vm_smoke")
 
 package_manager(

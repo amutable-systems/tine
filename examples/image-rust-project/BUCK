@@ -4,11 +4,10 @@ In a product this package lives in the OS.git that vendors tine, beside a checko
 it builds. `hello/` plays that checkout.
 """
 
-load("@tine//box:build.bzl", "box")
-load("@tine//box:test.bzl", "box_sh_test")
-load("@tine//cargo:rules.bzl", "cargo_package")
+load("@tine//box:defs.bzl", "box", "box_sh_test")
+load("@tine//cargo:defs.bzl", "cargo_package")
 load("@tine//image:defs.bzl", "copy", "image_install", "install_from", "mkdir", "rootfs_archive")
-load("@tine//package:manager.bzl", "package_manager")
+load("@tine//package:defs.bzl", "package_manager")
 
 # The build environment for our Rust projects; it never reaches an image.
 box(
