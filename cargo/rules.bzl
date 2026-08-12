@@ -134,8 +134,8 @@ _cargo_package = rule(
         "binaries": attrs.list(attrs.string(), doc = "binaries to take out of the build"),
         "box": attrs.dep(providers = [BoxInfo], doc = "box carrying the Rust toolchain"),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, Cargo.lock included"),
-        "_auditable": attrs.dep(providers = [RunInfo], default = "tine//tools:cargo-auditable"),
-        "_build": attrs.dep(providers = [RunInfo], default = "tine//cargo:build"),
+        "_auditable": attrs.exec_dep(providers = [RunInfo], default = "tine//tools:cargo-auditable"),
+        "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//cargo:build"),
         "_fetch": attrs.exec_dep(providers = [RunInfo], default = "prelude//git/tools:git_fetch"),
         "_lock": attrs.exec_dep(providers = [RunInfo], default = "tine//cargo:lock"),
     }

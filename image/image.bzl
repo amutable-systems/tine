@@ -17,6 +17,7 @@ ImageToolsInfo = provider(
         "convert": provider_field(Dependency),
         "disk": provider_field(Dependency),
         "layer": provider_field(Dependency),
+        "python": provider_field(Dependency),
         "sbom": provider_field(Dependency),
         "syft": provider_field(Dependency),
         "sysext": provider_field(Dependency),
@@ -31,6 +32,7 @@ _TOOLS = [
     "convert",
     "disk",
     "layer",
+    "python",
     "sbom",
     "syft",
     "sysext",
@@ -50,7 +52,7 @@ image_tools = rule(
 
 # Every rule resolves its drivers through one bundle instead of a private attribute each.
 IMAGE_TOOLS_ATTR = {
-    "_tools": attrs.dep(providers = [ImageToolsInfo], default = "tine//image:tools"),
+    "_tools": attrs.exec_dep(providers = [ImageToolsInfo], default = "tine//image:tools"),
 }
 
 NAME_PATTERN = "^[a-zA-Z0-9._-]+$"
@@ -269,14 +271,16 @@ def python(cmd: list[str | Artifact], env: dict[str, str] = {}, chroot: bool = F
 
     `chroot` picks the image's view exactly as it does for `run`: mounted at /buildroot by default,
     or the script's own root. Either way the interpreter is the relocatable one Buck fetches for its
-    own bootstrap, named through the project, so the image never needs a python of its own. `cmd`
-    is the script and its arguments, each naming artifacts as a `run` argument does.
+    own bootstrap, so the image never needs a python of its own. `cmd` is the script and its
+    arguments, each naming artifacts as a `run` argument does.
+
+    The rule prepends the interpreter rather than this naming it: a driver runs on the machine
+    building, so it is the one the rule already holds for the execution platform. Reaching for it
+    here, where only a target-configured `$(location)` is available, would fetch a second copy.
     """
     if not cmd:
         fail("python: cmd must not be empty")
-
-    # -B: the script and its imports are project sources, which no build may write bytecode into.
-    return run(["$(location tine//tools:python3)", "-B"] + cmd, env = env, chroot = chroot)
+    return ("python", cmd, _environment(env), chroot)
 
 def _environment(env: dict[str, str]) -> dict[str, str]:
     return {name: env[name] for name in sorted(env)}
@@ -418,14 +422,17 @@ def install_systemd_boot(key: SigningKeyInfo | None = None) -> list[LayerOperati
         remove("/efi/loader/random-seed"),
     ]
 
-def _encode_operation(operation: LayerOperation) -> LayerOperation:
-    if operation[0] != "run":
+def _encode_operation(operation: LayerOperation, python: Dependency) -> LayerOperation:
+    if operation[0] not in ("run", "python"):
         return operation
+
+    # -B: the script and its imports are project sources, which no build may write bytecode into.
+    prefix = [executable(python), "-B"] if operation[0] == "python" else []
 
     # A box argument is a plain string, an artifact, or a resolved $(location) macro.
     return (
-        operation[0],
-        [spec_argument(argument) for argument in operation[1]],
+        "run",
+        prefix + [spec_argument(argument) for argument in operation[1]],
         operation[2],
         operation[3],
     )
@@ -586,7 +593,7 @@ def declare_image(
         spec = {
             "install": None,
             "lower": layers,
-            "operations": [_encode_operation(operation) for operation in operations],
+            "operations": [_encode_operation(operation, tools.python) for operation in operations],
             "out": delta.as_output(),
             "work": work.as_output() if work != None else None,
         }
@@ -646,9 +653,10 @@ def declare_image(
 
 IMAGE_OPERATION_ATTR = attrs.one_of(
     # A command takes attrs.arg() whether or not it chroots, so an artifact argument reads the
-    # same either way; a shell substitution is escaped as `\\$(...)` at the call site.
+    # same either way; a shell substitution is escaped as `\\$(...)` at the call site. "python" is
+    # the same command with the interpreter the rule holds in front of it.
     attrs.tuple(
-        attrs.enum(["run"]),
+        attrs.enum(["run", "python"]),
         attrs.list(attrs.arg()),
         attrs.dict(attrs.string(), attrs.string()),
         attrs.bool(),

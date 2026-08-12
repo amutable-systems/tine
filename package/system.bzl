@@ -37,7 +37,7 @@ package_system = rule(
     impl = _package_system_impl,
     attrs = {
         "build": attrs.option(
-            attrs.dep(providers = [RunInfo]),
+            attrs.exec_dep(providers = [RunInfo]),
             default = None,
             doc = "build a native package",
         ),
@@ -46,11 +46,11 @@ package_system = rule(
             doc = "image-root-relative paths the installed package database occupies",
         ),
         "extract": attrs.exec_dep(providers = [RunInfo], doc = "bootstrap payload extractor"),
-        "index": attrs.dep(providers = [RunInfo], doc = "write repository metadata"),
-        "install": attrs.dep(providers = [RunInfo], doc = "install packages into a root"),
+        "index": attrs.exec_dep(providers = [RunInfo], doc = "write repository metadata"),
+        "install": attrs.exec_dep(providers = [RunInfo], doc = "install packages into a root"),
         "package_suffix": attrs.string(doc = "file suffix a selected native package is named with"),
-        "pkgdb": attrs.dep(providers = [RunInfo], doc = "capture an installed root's package database"),
-        "plan": attrs.dep(providers = [RunInfo], doc = "resolve package transactions"),
+        "pkgdb": attrs.exec_dep(providers = [RunInfo], doc = "capture an installed root's package database"),
+        "plan": attrs.exec_dep(providers = [RunInfo], doc = "resolve package transactions"),
         "snapshot": attrs.exec_dep(providers = [RunInfo], doc = "repository snapshot generator"),
         "solver_cache": attrs.bool(
             default = True,
