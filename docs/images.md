@@ -281,13 +281,15 @@ The output is named after the target. Each placeholder has to appear in the temp
 renaming one fails the build rather than leaving a marker in an installed file, and the template's mode
 carries over, so a substituted script stays executable.
 
-Every `ImageInfo` carries its canonical lazy SBOM artifacts, and a package database whenever the image has
+Every `ImageInfo` carries its canonical lazy SBOM artifacts and its file manifest, and a package database
+whenever the image has
 a package manager. The same
 artifacts are exposed as subtargets, and `ImageSbomInfo` remains available for consumers that need only the
 SBOM formats:
 
 ```text
 //examples/image:chained-base
+├── [manifest]
 ├── [pkgdb]
 └── [sbom]
     ├── [spdx]
@@ -297,6 +299,14 @@ SBOM formats:
 The `version` attribute sets the SBOM source version and defaults to `"0"`. Merely building the image still
 produces only its latest delta. Selecting `[pkgdb]` runs the image's package system's capture driver;
 selecting either nested SBOM format runs one shared scan of the completed stack.
+
+`[manifest]` is a [UAPI.16 File Manifest](https://uapi-group.org/specifications/): an RFC7464 JSON-SEQ
+listing of every path the assembled tree holds, with the type, mode, ownership and clamped mtime of each,
+a SHA256 over every regular file's contents, symlink targets carried inline, and one `inodeToken` per
+inode two names share. It answers what an image ships rather than what it was built from, so a consumer
+can compare the paths of two images against each other (a path in both a system extension and the /usr it
+merges onto shadows an OS file) or account for size per file. The artifact is named `Uapi16Manifest`,
+which is the name the format reserves, so it can be dropped beside a tree of the image it describes.
 
 `image` also takes `install_langs`: keep translated files only for these languages, instead of all of them.
 Nothing matches a value that is not a language, so `install_langs = ["C.UTF-8"]` installs no translations
@@ -359,12 +369,14 @@ artifacts without conventionally named helper targets:
 
 ```text
 //examples/image:demo
+├── [manifest]
 ├── [pkgdb]
 └── [sbom]
     ├── [spdx]
     └── [cyclonedx]
 
 //examples/image:demo-ext
+├── [manifest]
 ├── [pkgdb]
 └── [sbom]
     ├── [spdx]
@@ -471,11 +483,13 @@ views and supply-chain artifacts are lazy subtargets:
 ├── [directory]
 ├── [qcow2]
 ├── [raw.zst]
+├── [manifest]
 ├── [pkgdb]
 ├── [sbom]
 │   ├── [spdx]
 │   └── [cyclonedx]
 ├── [initrd]
+│   ├── [manifest]
 │   ├── [pkgdb]
 │   └── [sbom]
 │       ├── [spdx]

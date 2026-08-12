@@ -662,12 +662,16 @@ want both. Each package system implements them in its own driver. A sequence tha
 both, so a composition can forward them to a layer whose operations happen to skip installation.
 
 An `image` exposes its newly persisted delta, the full stack and canonical metadata through `ImageInfo`, and
-the same metadata through lazy `[pkgdb]` and `[sbom]` subtargets. `ImageSbomInfo` gives typed consumers only
+the same metadata through lazy `[manifest]`, `[pkgdb]` and `[sbom]` subtargets. `ImageSbomInfo` gives typed
+consumers only
 the two SBOM formats. Declaring a logical image declares its metadata with it, because they are intrinsic
-metadata facets of every logical image: an `ImageInfo` therefore always carries an SBOM, and a package
-database whenever the image has a package manager at all. An artifact referenced by a provider remains
-lazy. Selecting either SBOM format runs one shared scan; the default image build runs neither metadata
-action. Filesystem materialization remains an explicit terminal operation, so logical image construction
+metadata facets of every logical image: an `ImageInfo` therefore always carries an SBOM and a UAPI.16 file
+manifest, and a package
+database whenever the image has a package manager at all. The two describe different questions and neither
+subsumes the other: an SBOM says what the image was built from, the manifest says what it ships, down to
+the digest of every regular file. An artifact referenced by a provider remains
+lazy. Selecting either SBOM format runs one shared scan; the default image build runs none of the metadata
+actions. Filesystem materialization remains an explicit terminal operation, so logical image construction
 does not depend on an archive or disk format.
 
 Package installation and image tooling remain separate concerns:
@@ -793,7 +797,7 @@ prunes, so the hardware database it ships is compiled from the sources it then d
 image into the cpio itself, at the `compression` it declares, and returns both as `InitrdInfo` alongside the
 image's own providers. That cpio omits the package database from the paths the image's package system
 declares: nothing in an initrd resolves a dependency or verifies a package, and the kernel unpacks the whole
-cpio into tmpfs, so shipping it would only cost boot memory. The `[pkgdb]` and `[sbom]` views read the tree
+cpio into tmpfs, so shipping it would only cost boot memory. The `[manifest]`, `[pkgdb]` and `[sbom]` views read the tree
 rather than the archive, so they still describe the complete installed set. `bootable_disk_image` consumes
 `InitrdInfo` rather than a bare `ImageInfo`, so the archive is the initrd target's own output and its
 compression is declared where the initrd is. A composition given no `initrd` declares `<name>.initrd` for
@@ -848,11 +852,13 @@ supply-chain metadata, and constituents are lazy subtargets:
 ├── [directory]
 ├── [qcow2]
 ├── [raw.zst]
+├── [manifest]
 ├── [pkgdb]
 ├── [sbom]
 │   ├── [spdx]
 │   └── [cyclonedx]
 ├── [initrd]                    # default output: zstd cpio
+│   ├── [manifest]
 │   ├── [pkgdb]
 │   └── [sbom]
 │       ├── [spdx]
