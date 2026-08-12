@@ -62,11 +62,35 @@ FILENAME_PATTERN = "^[a-zA-Z0-9._~-]+$"
 # Versions additionally accept "^", systemd's post-release separator.
 VERSION_PATTERN = "^[a-zA-Z0-9._~^-]+$"
 
+# What a GPT partition label holds, which is what a rendered label has to stay inside.
+GPT_LABEL_LIMIT = 36
+
+# The version a caller asks to have rendered from build configuration instead of declaring outright,
+# on its own or before the base to render it around. A version accepts no ":", so neither spelling
+# can collide with one a caller means literally. `version.bzl` resolves them.
+AUTO = "auto"
+AUTO_PREFIX = "auto:"
+
 def check_name(what: str, value: str, pattern: str = NAME_PATTERN) -> str:
     """Reject a name that cannot survive the path, label, or filename it ends up in."""
     if not regex_match(pattern, value):
         fail("invalid {}: {!r}".format(what, value))
     return value
+
+def check_version(what: str, value: str) -> str:
+    """Reject a version that is not one, an unresolved `auto` above all.
+
+    A rule sees a version once its declaration macro has resolved it, so a sentinel arriving here
+    came from a rule that resolves nothing, or through a `select()`, which cannot be read where the
+    resolving happens. Left alone it would pass as a literal and name partitions and files `auto`.
+    """
+    if value == AUTO or value.startswith(AUTO_PREFIX):
+        fail(
+            "{}: version {!r} reached the build unresolved. Declare it on a rule that renders it ".format(what, value)
+            + "(rootfs_archive, sysext_image, initrd_image, bootable_disk_image) and not through a "
+            + 'select(), or name the version outright; see "Image versioning" in images.md.',
+        )
+    return check_name(what, value, VERSION_PATTERN)
 
 def _path(identifier: str | None, name: str) -> str:
     return identifier + "/" + name if identifier != None else name
@@ -507,6 +531,9 @@ def declare_image(
     every operation sees the packages this layer adds. `keys` names the signing keys this layer's
     operations use, so that the action can reach one held outside the build.
     """
+    # Every image rule's version reaches its layers through here, which makes this the one place
+    # that has to catch one no declaration macro resolved.
+    check_version("image version", version)
     if parent != None:
         if box != None or package_manager != None:
             fail("image: parent cannot be combined with box or package_manager")

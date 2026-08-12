@@ -21,6 +21,7 @@ load(
     "remove",
     "symlink",
 )
+load(":version.bzl", "resolve_version")
 
 InitrdInfo = provider(
     doc = "A logical initrd image and its derived cpio archive.",
@@ -97,6 +98,7 @@ _initrd_image = rule(
 def initrd_image(
     name: str,
     ops: list[LayerOperationTree] = [],
+    version: str | Select | None = None,
     distribution: str | None = None,
     visibility: list[str] | None = None,
     **kwargs,
@@ -107,4 +109,9 @@ def initrd_image(
     target declares is added to them rather than replacing them. `bootable_disk_image` declares one
     of these for itself when it is given no `initrd`.
     """
-    _initrd_image(name = name, ops = flatten_operations(ops), **(distributed(name, distribution, visibility) | kwargs))
+    _initrd_image(
+        name = name,
+        ops = flatten_operations(ops),
+        version = resolve_version("initrd_image {}".format(name), version),
+        **(distributed(name, distribution, visibility) | kwargs),
+    )

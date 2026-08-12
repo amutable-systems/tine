@@ -4,6 +4,7 @@ load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 load(
     "//image:image.bzl",
+    "GPT_LABEL_LIMIT",
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
     "ImageToolsInfo",
@@ -152,10 +153,11 @@ def format_partition_labels(definitions: list[Partition], image_id: str, version
 
     # Rendering can only lengthen a label, so re-check GPT's limit on the final value.
     for definition in formatted:
-        if definition["label"] != None and len(definition["label"]) > 36:
+        if definition["label"] != None and len(definition["label"]) > GPT_LABEL_LIMIT:
             fail(
-                "partition: label {!r} exceeds GPT's limit of 36 characters".format(
+                "partition: label {!r} exceeds GPT's limit of {} characters".format(
                     definition["label"],
+                    GPT_LABEL_LIMIT,
                 )
             )
     return formatted

@@ -185,8 +185,9 @@ image_archive(
 
 # Bootable GPT image; `buck run :boot-demo-vm` starts it with the box's vmspawn stack.
 # Supply-chain and format subtargets such as `:boot-demo[sbom]` and `:boot-demo[qcow2]` build on demand.
-# The version stamps os-release, partition labels, and the UKI and disk file names; inject a real
-# one with `-c demo.image-version=...` (see "Image versioning" in images.md).
+# The version stamps os-release, partition labels, and the UKI and disk file names; inject a real one
+# with `-c demo.image-version=...`, or ask for a git-derived one with `version = "auto:1.4.2"`, which
+# needs a build through `bin/tine` (see "Image versioning" in images.md).
 bootable_disk_image(
     name = "boot-demo",
     package_manager = ":image.package-manager",
