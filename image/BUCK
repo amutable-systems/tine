@@ -12,6 +12,7 @@ image_tools(
     convert = "//image_format:convert",
     disk = "//image_format:disk",
     layer = ":layer",
+    manifest = ":manifest",
     python = "//tools:python3",
     sbom = ":sbom",
     syft = "//tools:syft",
@@ -64,6 +65,8 @@ box_python_test(
     srcs = [
         "finalize_test.py",
         "kmod_test.py",
+        "manifest.py",
+        "manifest_test.py",
         "substitute.py",
         "substitute_test.py",
         "uki.py",
@@ -81,6 +84,16 @@ box_python_test(
 python_bootstrap_binary(
     name = "sbom",
     main = "sbom.py",
+    deps = [
+        ":finalize",
+        "//:specs",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+python_bootstrap_binary(
+    name = "manifest",
+    main = "manifest.py",
     deps = [
         ":finalize",
         "//:specs",

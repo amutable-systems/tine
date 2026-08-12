@@ -17,6 +17,7 @@ ImageToolsInfo = provider(
         "convert": provider_field(Dependency),
         "disk": provider_field(Dependency),
         "layer": provider_field(Dependency),
+        "manifest": provider_field(Dependency),
         "python": provider_field(Dependency),
         "sbom": provider_field(Dependency),
         "syft": provider_field(Dependency),
@@ -32,6 +33,7 @@ _TOOLS = [
     "convert",
     "disk",
     "layer",
+    "manifest",
     "python",
     "sbom",
     "syft",
@@ -121,6 +123,8 @@ ImageInfo = provider(
         # so lower-layer packages keep their local backing in later solves.
         "install_specs": provider_field(list[str], default = []),
         "layers": provider_field(list[Artifact]),
+        # Every path the assembled tree holds, as a UAPI.16 file manifest.
+        "manifest": provider_field(Artifact),
         "package_manager": provider_field(Dependency | None, default = None),
         # Absent only when the image installs no packages and so has no package system.
         "pkgdb": provider_field(Artifact | None, default = None),
@@ -196,6 +200,7 @@ def pkgdb_paths(image: ImageInfo) -> list[str]:
 def image_metadata_subtargets(image: ImageInfo) -> dict[str, list[Provider]]:
     """Expose the canonical metadata carried by a logical image."""
     sub_targets = {
+        "manifest": [DefaultInfo(default_output = image.manifest)],
         "sbom": [
             DefaultInfo(
                 default_outputs = [image.sbom.spdx, image.sbom.cyclonedx],
@@ -480,6 +485,31 @@ def _declare_pkgdb(
     ctx.actions.run(cmd, category = "image_pkgdb", identifier = identifier or "pkgdb")
     return out
 
+def _declare_manifest(
+    ctx: AnalysisContext,
+    *,
+    tools: ImageToolsInfo,
+    box: Dependency,
+    layers: list[Artifact],
+    tmpfiles: list[str],
+    identifier: str | None,
+) -> Artifact:
+    # The name the format reserves for itself, so the listing can be dropped beside a tree of the
+    # image it describes and be found there.
+    out = declare_out(ctx, identifier, "Uapi16Manifest")
+    cmd = _image_command(
+        ctx,
+        driver = "manifest",
+        box = box,
+        exe = tools.manifest,
+        identifier = identifier,
+        layers = layers,
+        spec = {"out": out.as_output()},
+        tmpfiles = tmpfiles,
+    )
+    ctx.actions.run(cmd, category = "image_manifest", identifier = identifier or "manifest")
+    return out
+
 def _declare_sbom(
     ctx: AnalysisContext,
     *,
@@ -636,6 +666,14 @@ def declare_image(
         box = box,
         install_specs = install_specs,
         layers = layers,
+        manifest = _declare_manifest(
+            ctx,
+            tools = tools,
+            box = box,
+            identifier = identifier,
+            layers = layers,
+            tmpfiles = tmpfiles,
+        ),
         package_manager = package_manager,
         pkgdb = pkgdb,
         sbom = _declare_sbom(

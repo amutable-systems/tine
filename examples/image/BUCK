@@ -55,6 +55,11 @@ export_file(
     src = "configure.py",
 )
 
+export_file(
+    name = "manifest_check.py",
+    src = "manifest_check.py",
+)
+
 # Minimal install + ordered-ops demo. `:demo` is both the tar result and a logical image.
 rootfs_archive(
     name = "demo",
@@ -298,6 +303,20 @@ box_sh_test(
     test = "@tine//tests:contains.sh",
     args = ["$(location :boot-demo.fedora[uki][modules])"]
     + ['"path": ".*/{}\\.ko'.format(module) for module in ["erofs", "dm-verity", "loop", "overlay", "nvme", "vfat", "virtio_scsi", "virtio_net", "virtiofs"]],
+)
+
+# The file manifest is what tells a consumer which paths an image ships, so its framing and its
+# view of a real tree are part of the contract rather than an implementation detail. The checker
+# is a python file of its own rather than a script the test inlines, so the linters see it.
+box_sh_test(
+    name = "manifest-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = 'python3 "$@"',
+    args = [
+        "$(location :manifest_check.py)",
+        "$(location :demo.fedora[manifest])",
+    ],
 )
 
 box_sh_test(
