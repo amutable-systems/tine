@@ -12,7 +12,7 @@ beside it, and an image carrying the resulting binaries.
 ## Declaring a build
 
 ```Starlark
-load("@tine//cargo:rules.bzl", "cargo_package")
+load("@tine//cargo:defs.bzl", "cargo_package")
 
 cargo_package(
     name = "hello",

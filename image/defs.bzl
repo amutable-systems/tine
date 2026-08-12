@@ -76,6 +76,7 @@ load(
     _pkcs11_signing_key = "pkcs11_signing_key",
 )
 load(":substitute.bzl", _substitute = "substitute")
+load(":version.bzl", _resolve_version = "resolve_version")
 load(":vm.bzl", _image_vm = "image_vm")
 
 # Logical images and their operations.
@@ -99,6 +100,7 @@ image_directory = _image_directory
 image_sysext = _image_sysext
 uki = _uki
 uki_profile = _uki_profile
+resolve_version = _resolve_version
 bootable = _bootable
 repart = _repart
 partition = _partition

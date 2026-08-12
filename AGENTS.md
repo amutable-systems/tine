@@ -21,7 +21,7 @@ catalog is `tine//catalog`; consumers may instead declare a project-specific `//
 targets live in the OS.git root that consumes this cell, under `packages/` (built as `//packages/...`).
 
 Unit tests sit beside the driver they exercise as `<driver>_test.py`, run by a `box_python_test`
-target in the same package (`tine//box:test.bzl`), which only `buck test` runs. Cross-package
+target in the same package (`tine//box:defs.bzl`), which only `buck test` runs. Cross-package
 sources reach a suite through `deps` on a `python_bootstrap_library`, never `export_file`. An
 assertion about what a build produced is a `box_sh_test` beside the target that produced it: a
 script taking artifacts as `$(location)` arguments, run in a box so it reaches pinned tools

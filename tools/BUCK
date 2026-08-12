@@ -1,7 +1,6 @@
 """Pinned tool binaries and development commands fetched by Buck."""
 
-load("//box:build.bzl", "box")
-load("//box:test.bzl", "box_python_test")
+load("//box:defs.bzl", "box", "box_python_test")
 load(":defs.bzl", "http_tool")
 load(":tools.json", _pins = "value")
 
