@@ -15,12 +15,12 @@ box(
         "python3",
     ],
     release = "tine//catalog:fedora.rawhide.release",
-    resolver_box = "tine//catalog:fedora.rawhide.box",
 )
 ```
 
-`release` is the base the box is built from and `resolver_box` the environment that resolves and installs
-it; point them at a different catalog entry when the project needs another base or bootstrap environment.
+`release` is the base the box is built from; point it at a different catalog entry when the project needs
+another base. The environment that resolves and installs the box is the one that release names beside it,
+`tine//catalog:fedora.rawhide.box` here, which a `resolver_box` of your own overrides.
 
 Run the target to enter an interactive shell. Buck runs it from the directory you invoked it in, so this
 works from anywhere in the project:

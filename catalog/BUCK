@@ -63,5 +63,6 @@ box(
         "openssh",
     ],
     release = ":fedora.rawhide.release",
+    root = True,
     visibility = ["PUBLIC"],
 )

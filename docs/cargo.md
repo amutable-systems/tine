@@ -57,7 +57,6 @@ box(
     name = "rust.box",
     packages = ["cargo", "gcc", "python3", "rust"],
     release = "tine//catalog:fedora.rawhide.release",
-    resolver_box = "tine//catalog:fedora.rawhide.box",
 )
 ```
 

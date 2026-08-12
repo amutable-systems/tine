@@ -21,7 +21,6 @@ box(
         "rust",
     ],
     release = "tine//catalog:fedora.rawhide.release",
-    resolver_box = "tine//catalog:fedora.rawhide.box",
 )
 
 # Stand in for the fetch a product would declare here, without needing the network a test cannot have:

@@ -67,7 +67,6 @@ box(
     name = "go.box",
     packages = ["ca-certificates", "golang", "python3"],
     release = "tine//catalog:fedora.rawhide.release",
-    resolver_box = "tine//catalog:fedora.rawhide.box",
 )
 ```
 
