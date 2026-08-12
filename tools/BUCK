@@ -108,23 +108,6 @@ python_bootstrap_binary(
     deps = ["//:util"],
 )
 
-# Git-derived image version provider; runs on the host against the caller's repository and
-# prints the version to inject as `-c tine.image-version=...`.
-python_bootstrap_binary(
-    name = "version",
-    main = "version.py",
-    visibility = ["PUBLIC"],
-)
-
-box_python_test(
-    name = "version-test",
-    box = ":dev.box",
-    srcs = [
-        "version.py",
-        "version_test.py",
-    ],
-)
-
 command_alias(
     name = "bump",
     args = ["--data", "$(source tools.json)"],

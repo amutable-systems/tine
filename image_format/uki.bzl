@@ -7,8 +7,8 @@ load(
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
     "ImageToolsInfo",
-    "VERSION_PATTERN",
     "check_name",
+    "check_version",
     "declare_out",
     "terminal_image_command",
 )
@@ -102,7 +102,7 @@ def declare_uki(
     # Declared next to the UKIs, not inside them: that directory is copied onto the ESP whole.
     modules = declare_out(ctx, identifier, "modules.json")
     check_name("uki image_id", image_id, FILENAME_PATTERN)
-    check_name("uki version", version, VERSION_PATTERN)
+    check_version("uki version", version)
     for initrd in initrds:
         if initrd.format != "cpio":
             fail("uki: initrd must be a cpio archive, got {!r}".format(initrd.format))

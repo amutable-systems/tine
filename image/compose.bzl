@@ -55,6 +55,7 @@ load(
     "VERITY_KEY_ATTR",
     "resolve_signing_key",
 )
+load(":version.bzl", "resolve_version")
 
 def _composed_image(
     ctx: AnalysisContext,
@@ -456,22 +457,34 @@ _bootable_disk_image = rule(
 def rootfs_archive(
     name: str,
     ops: list[LayerOperationTree] = [],
+    version: str | Select | None = None,
     distribution: str | None = None,
     visibility: list[str] | None = None,
     **kwargs,
 ) -> None:
     """Build one logical image from operations and emit it as an archive."""
-    _rootfs_archive(name = name, ops = flatten_operations(ops), **(distributed(name, distribution, visibility) | kwargs))
+    _rootfs_archive(
+        name = name,
+        ops = flatten_operations(ops),
+        version = resolve_version("rootfs_archive {}".format(name), version),
+        **(distributed(name, distribution, visibility) | kwargs),
+    )
 
 def sysext_image(
     name: str,
     ops: list[LayerOperationTree] = [],
+    version: str | Select | None = None,
     distribution: str | None = None,
     visibility: list[str] | None = None,
     **kwargs,
 ) -> None:
     """Build one logical image from operations and package it as a system-extension DDI."""
-    _sysext_image(name = name, ops = flatten_operations(ops), **(distributed(name, distribution, visibility) | kwargs))
+    _sysext_image(
+        name = name,
+        ops = flatten_operations(ops),
+        version = resolve_version("sysext_image {}".format(name), version),
+        **(distributed(name, distribution, visibility) | kwargs),
+    )
 
 def bootable_disk_image(
     name: str,
@@ -483,6 +496,7 @@ def bootable_disk_image(
     sign_expected_pcr_key: str | None = None,
     initrd: str | Select | None = None,
     package_manager: str | Select | None = None,
+    image_id: str | None = None,
     version: str | Select | None = None,
     distribution: str | None = None,
     visibility: list[str] | None = None,
@@ -498,6 +512,15 @@ def bootable_disk_image(
     key auto-enrollment files for firmware in setup mode. With sign_expected_pcr_key, the UKIs carry
     a signed expected-PCR policy.
     """
+    # Resolved once, against the labels this disk renders, and passed on: the initrd below carries
+    # the version of the disk it boots rather than one rendered against its own empty budget.
+    version = resolve_version(
+        "bootable_disk_image {}".format(name),
+        version,
+        labels = [d["label"] for d in definitions if d["label"] != None],
+        image_id = image_id or name,
+    )
+
     if initrd == None:
         if package_manager == None:
             fail(
@@ -516,6 +539,7 @@ def bootable_disk_image(
         )
     _bootable_disk_image(
         name = name,
+        image_id = image_id,
         initrd = initrd,
         # The rule renders label placeholders from its own identity during analysis.
         definitions = encode_definitions(

@@ -14,6 +14,7 @@ load(
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
     "ImageToolsInfo",
+    "check_version",
     "pkgdb_paths",
     "terminal_image_command",
 )
@@ -51,6 +52,8 @@ def declare_image_sysext(
     verity_key: SigningKeyInfo | None = None,
 ) -> SysextImageInfo:
     """Declare a system-extension DDI from resolved logical images."""
+    # The version names the published DDI, which systemd-sysupdate matches transfers against.
+    check_version("sysext_image version", version)
     systemd_arch = ARCHES[arch].systemd
 
     # The DDI leaves the build as an update artifact, so it is named the way it is published:

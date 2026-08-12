@@ -619,14 +619,8 @@ counts as it builds, since the names are all here.
 ### Image versioning
 
 A version derived from the current commit or any other dynamic query cannot be computed inside the build
-graph, so it gets passed as explicit build configuration. An image's BUCK file reads a config key like:
-
-```Starlark
-version = read_config("demo", "image-version", "unversioned")
-```
-
-and the invoker computes the value outside the graph and injects it. `tine//tools:version` derives one
-from git state, in three shapes against the latest `v*` tag (or 0.0.0 if there is no tag):
+graph, so it arrives as build configuration and is rendered where the image is declared. It takes three
+shapes against the latest `v*` tag (or 0.0.0 if there is no tag):
 
 | build    | git state                            | version          |
 |----------|--------------------------------------|------------------|
@@ -640,15 +634,100 @@ shrinks (never below 4 characters) until the longest partition label still fits 
 dev build carries the seconds since the last commit instead, so every rebuild of a dirty tree gets a strictly
 increasing version; `-` sorts below `^`, so dev builds are always newer than snapshot builds.
 
-```sh
-buck build -c demo.image-version="$(buck run tine//tools:version -- \
-    'myos_{version}')" //your:image
+The split between the two halves runs along what Buck can ask for itself. [`bin/tine`](../bin/tine)
+queries git, which the graph cannot, and writes what a version is made of into its own block in
+`.buckconfig.local` once per command:
+
+```ini
+[tine]
+version-base = 1.4.2
+version-count = 3
+version-height = 43
+version-commit = 08f2c4d9ab7e...
+version-seconds = 86400
 ```
 
-Images without versioned labels pass plain `{version}`. That applies to the `DEFAULT_ROOT_PARTITIONS`
-layout: versioned labels only serve sysupdate's A/B slot matching, and a single writable root has no
-slots and mutates in place, so its labels stay systemd-repart's type defaults and the version only lands
-in os-release and the UKI name.
+Rendering those into the version above stays inside the graph, in `image/version.bzl`, because the hash
+length is a question only the image being versioned can answer: a project with several images has one git
+state but one label budget per image, and a single rendered version would have to shrink every image's
+hash to the tightest of them. `version-seconds` is present only for a dirty tree, so its absence is what
+makes a build a release or a snapshot rather than a dev build.
+
+An image asks for that version with `version = "auto"`, or names its own base with
+`version = "auto:<base>"` and takes only what tells one build of that base from the next:
+
+```Starlark
+bootable_disk_image(
+    name = "demo",
+    definitions = DEFAULT_SIGNED_USR_VERITY_PARTITIONS,
+    version = "auto:1.4.2",
+    ...
+)
+```
+
+For an image whose labels carry no version, and which therefore keeps the whole 12-character hash:
+
+| declaration       | at tag v2.0.0            | 3 commits past it        | dirty tree               |
+|-------------------|--------------------------|--------------------------|--------------------------|
+| `"auto"`          | `2.0.0`                  | `2.0.0^3-08f2c4d9ab7e`   | `2.0.0^3^86400`          |
+| `"auto:1.4.2"`    | `1.4.2^40-08f2c4d9ab7e`  | `1.4.2^43-08f2c4d9ab7e`  | `1.4.2^43^86400`         |
+| `"1.4.2"`         | `1.4.2`                  | `1.4.2`                  | `1.4.2`                  |
+
+The disk declared above renders `1.4.2^43-08f2c4d9ab7` instead: `demo_{version}_verity_sig` has to stay
+inside 36 characters, which leaves 20 for the version and one fewer hex digit for the hash.
+
+A declared base counts in `version-height`, the number of commits behind HEAD, where a derived one
+counts its distance from the tag it came from: the next tag to be cut resets that distance, which would
+order the build after it below the one before it, and no tag names the declared base to be counted from
+anyway. For the same reason a declared base is never spelled bare, not even standing on a tag: only the
+version a tag itself names can be, since two builds of a declared base have to stay distinguishable.
+`":"` is not a character a version accepts, so neither spelling can collide with one meant literally.
+
+Every image macro resolves it as it declares the target, so the components are read where the image is
+declared and only the packages that declare one re-read them when the version moves. `bootable_disk_image`
+renders the hash against its own longest label and hands the result to the initrd it declares, so a disk
+and its initrd carry one version rather than each rendering its own; an image whose version reaches no
+partition label (`rootfs_archive`, `sysext_image`, `initrd_image`) has all 36 characters to itself and
+keeps the full 12.
+
+Three things are errors rather than fallbacks, because an unversioned or stale build published under a
+version that promises something else is worse than a build that stops:
+
+- A budget that cannot hold even a 4-character hash. The message names the label, what it leaves, and
+  what the image_id took out of it. The dev shape is the one that can start failing without the
+  declaration changing: its seconds only grow and nothing can shorten them, so an image whose budget is
+  nearly spent stops building some time after the tree is dirtied. Commit, or take characters back from
+  the image_id.
+- Either `"auto"` spelling with no components in configuration. `bin/tine` writes the reason it had none
+  into that block (see below), and the message points there.
+- A sentinel that reaches the build unresolved: `image()`, `uki()` and `image_sysext()` render nothing,
+  and a `select()` cannot be read where the rendering happens, so `"auto"` reaching either would
+  otherwise name partitions and files `auto`.
+
+`bin/tine` writes components only for a checkout git can answer for, and records why it could not
+otherwise, since a version derived from a checkout that cannot say is worse than none:
+
+```ini
+# @generated by `tine`; rewritten on every command.
+# no version components: shallow git checkout
+# @end generated by `tine`; what follows is yours.
+```
+
+A shallow checkout is the one worth knowing about, because CI makes them by default: `git describe` and
+`git rev-list --count` answer from truncated history as confidently as from whole history, and every
+answer is wrong. The others are a checkout that is not a repository, one without commits, a tag that is
+not a version, and a host with no `git` to ask. One caveat has no diagnostic: the base comes from the
+*nearest* reachable `v[0-9]*` tag, so merging a branch tagged below the current release moves the base
+back with it.
+
+`DEFAULT_ROOT_PARTITIONS` is one of the layouts whose labels carry no version: they only serve
+sysupdate's A/B slot matching, and a single writable root has no slots and mutates in place, so its
+labels stay systemd-repart's type defaults and the version only lands in os-release and the UKI name.
+
+An image that declares a version outright keeps it, the two `"auto"` spellings being the only ones
+resolved from configuration. A build that wants to name a whole version rather than a base passes one,
+from a config key of its own (`version = read_config("demo", "image-version", "unversioned")`, as the
+demos do) or from anywhere else that answers before the graph is evaluated.
 
 The injected per-commit version rebuilds only the artifacts that embed it, never package installation.
 
