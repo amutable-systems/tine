@@ -75,7 +75,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     transaction = ctx.attrs.lock
     if transaction == None:
         if resolve == None:
-            fail("box: a missing lock requires resolver_box")
+            fail("box: a root box has nothing to resolve with and requires a committed lock")
         transaction = ctx.actions.declare_output("transaction.json")
         resolve.add("--out", transaction.as_output())
         ctx.actions.run(resolve, category = "box_resolve")
@@ -195,15 +195,35 @@ _box = rule(
     },
 )
 
-def box(name: str, packages: list[str], release: str, labels: list[str] = [], **kwargs) -> None:
-    """Declare a box rooted in one base OS release."""
+def box(
+    name: str,
+    packages: list[str],
+    release: str,
+    resolver_box: str | None = None,
+    root: bool = False,
+    labels: list[str] = [],
+    **kwargs,
+) -> None:
+    """Declare a box rooted in one base OS release.
+
+    A release names its own box beside it, so an unset `resolver_box` resolves through that sibling.
+    A `root` box has none: it bootstraps by extracting its transaction, which is how the box a
+    release names is built in the first place.
+    """
     if not name.endswith(".box"):
         fail("box name must end with '.box': {}".format(name))
+    if root and resolver_box != None:
+        fail("box: a root box bootstraps itself and takes no resolver_box: {}".format(name))
+    if not root and resolver_box == None:
+        if not release.endswith(".release"):
+            fail("box: cannot derive a resolver box from release '{}'; pass resolver_box".format(release))
+        resolver_box = release.removesuffix(".release") + ".box"
     locks = glob(["snapshot/box/" + name[: -len(".box")] + ".json"])
     _box(
         name = name,
         packages = packages,
         release = release,
+        resolver_box = resolver_box,
         labels = ["tine:box"] + labels,
         lock = locks[0] if locks else None,
         **kwargs,

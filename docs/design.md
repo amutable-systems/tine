@@ -160,7 +160,7 @@ optional generated form:
   `size` record the last known transport after rolling repository metadata stops advertising that package.
   The target's `.repository` or `.box` suffix is not repeated in the snapshot filename.
 
-A box with `resolver_box` and no committed transaction resolves through that predecessor as a normal
+A box with a resolver box and no committed transaction resolves through that predecessor as a normal
 cacheable build action. The generated transaction is an input to the existing dynamic package selectors,
 so the box builds in one invocation without mutating the source tree. Its package selection changes only
 when its authored policy, resolver box, or pinned repository inputs change.
@@ -218,9 +218,10 @@ pin attribute it rewrites and to the function that asks that mirror for its newe
 A remote repository declaration derives its optional snapshot by stripping `.repository` from the target
 name and looking under `snapshot/repo/`. This lets a new repository target analyze before its first refresh;
 consuming its empty package pool fails with an explicit instruction to refresh the catalog. A box that
-resolves itself needs a usable committed bootstrap transaction. A new box instead names a working
-`resolver_box`; the predecessor supplies only the execution environment for the planner, while the new
-box's release, repositories, packages, and architecture define the generated transaction. Refreshing the
+resolves itself needs a usable committed bootstrap transaction. A new box instead resolves through the box
+its release names, or through a `resolver_box` of its own; the predecessor supplies only the execution
+environment for the planner, while the new box's release, repositories, packages, and architecture define
+the generated transaction. Refreshing the
 catalog is optional for that box and freezes the generated result at the conventional lock path.
 
 The refresh convention keeps repository and box declarations plus their generated JSON in the active
@@ -265,8 +266,8 @@ the image-building tools; a VM runner takes its box explicitly, so only a box as
 that stack. The base release identifies where this userspace came from, not the only release it may
 operate on.
 
-A lockless box uses `resolver_box` to produce its build transaction and perform the authoritative
-installation. Its target root therefore contains only the requested packages and their dependencies; it
+A lockless box uses its resolver box, by default the one its release names, to produce its build
+transaction and perform the authoritative installation. Its target root therefore contains only the requested packages and their dependencies; it
 does not need Python, package-manager libraries, or other construction tools unless they are part of its
 intended runtime.
 A locked box can use its own completed root to run the explicit `[resolve]` update command; during a
@@ -275,7 +276,8 @@ one-way: it changes where resolution and installation execute, not the repositor
 architecture, or root built for the new box. Box resolution does not consume package-manager priority
 policy; its repositories use the native default priority until bootstrap needs an explicit policy of its own.
 
-Only a root box without a predecessor bootstraps its own installation tools in two stages:
+Only a box declared `root = True`, which has no predecessor, bootstraps its own installation tools in
+two stages:
 
 1. The minimal extractor unpacks the same package closure into `stage1` without running scriptlets
    or creating a package database. An extractor reads the packages its repository serves, whatever
@@ -285,7 +287,7 @@ Only a root box without a predecessor bootstraps its own installation tools in t
 
 A first lock is the one thing a root box cannot produce for itself, since resolving needs a box to
 resolve in. Pointing the new box's `resolver_box` at an existing box that can run its package system's
-planner breaks that cycle for one refresh; removing `resolver_box` afterwards leaves the box
+planner breaks that cycle for one refresh; making it `root` afterwards leaves the box
 self-sufficient. This is a one-time exposure per new root box, not a standing dependency.
 
 Box configuration prefers a target-provided systemd factory `nsswitch.conf`, but writes a deterministic

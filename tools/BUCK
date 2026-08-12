@@ -6,7 +6,6 @@ load(":defs.bzl", "http_tool")
 load(":tools.json", _pins = "value")
 
 _RELEASE = "tine//catalog:fedora.rawhide.release"
-_RESOLVER_BOX = "tine//catalog:fedora.rawhide.box"
 
 # The shell bootstrap fetches Buck; Buck then fetches and verifies the remaining tools. Their pinned
 # releases live in ./tools.json and are refreshed by `bump` (see docs/images.md).
@@ -86,7 +85,6 @@ box(
         "sed",
     ],
     release = _RELEASE,
-    resolver_box = _RESOLVER_BOX,
     visibility = ["PUBLIC"],
 )
 
@@ -175,7 +173,6 @@ box(
         "tpm2-tools",
     ],
     release = _RELEASE,
-    resolver_box = _RESOLVER_BOX,
     visibility = ["PUBLIC"],
 )
 

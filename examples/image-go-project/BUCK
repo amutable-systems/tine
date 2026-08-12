@@ -21,7 +21,6 @@ box(
         "python3",
     ],
     release = "tine//catalog:fedora.rawhide.release",
-    resolver_box = "tine//catalog:fedora.rawhide.box",
 )
 
 # A checked-out project needs no build file of its own: the sources default to the directory named

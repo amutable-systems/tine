@@ -10,5 +10,4 @@ box(
         "fish",
     ],
     release = "tine//catalog:fedora.rawhide.release",
-    resolver_box = "tine//catalog:fedora.rawhide.box",
 )
