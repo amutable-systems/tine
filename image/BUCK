@@ -65,6 +65,8 @@ box_python_test(
     srcs = [
         "finalize_test.py",
         "kmod_test.py",
+        "layer.py",
+        "layer_test.py",
         "manifest.py",
         "manifest_test.py",
         "substitute.py",
@@ -76,8 +78,11 @@ box_python_test(
         ":finalize",
         ":kmod",
         "//:specs",
+        "//:util",
         "//archive:cpio",
         "//image_format:modules",
+        "//package:installer",
+        "//rootfs:rootfs",
     ],
 )
 
