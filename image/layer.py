@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Apply ordered operations against one mounted root and capture its overlay delta."""
 
+import glob  # noqa: F401  # Preload for Path.glob before entering the image chroot.
 import os
 import re
 import shutil
@@ -126,6 +127,16 @@ def _merge_os_release(tree: Path, raw_fields: object) -> None:
     path.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
 
 
+def _remove_glob(tree: Path, value: str) -> None:
+    pattern = PurePosixPath(value)
+    if not pattern.is_absolute() or ".." in pattern.parts:
+        raise SystemExit(f"image remove pattern must be an absolute image path: {value!r}")
+    relative = str(PurePosixPath(*pattern.parts[1:]))
+    matches = sorted(tree.glob(relative), key=lambda path: (len(path.parts), str(path)), reverse=True)
+    for path in matches:
+        util.remove_path(path)
+
+
 def _apply_filesystem(operation: list[object]) -> None:
     match operation:
         case ["mkdir", str(path), mode]:
@@ -140,7 +151,7 @@ def _apply_filesystem(operation: list[object]) -> None:
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.symlink_to(target)
         case ["remove", str(path)]:
-            util.remove_path(Path(path))
+            _remove_glob(Path("/"), path)
         case _:
             raise SystemExit(f"invalid image filesystem op: {operation!r}")
 

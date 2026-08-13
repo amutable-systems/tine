@@ -299,7 +299,7 @@ def symlink(target: str, path: str) -> LayerOperation:
     return ("symlink", target, path)
 
 def remove(path: str) -> LayerOperation:
-    """Remove a path from the image."""
+    """Remove every image path matching an absolute glob pattern."""
     return ("remove", path)
 
 def copy(source: str | Artifact, destination: str) -> LayerOperation:

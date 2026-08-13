@@ -141,8 +141,9 @@ ordered operation sequence in one action and persists exactly one delta:
   any other artifact. It takes the same `env` and `chroot` arguments, so the script either sees the image
   at `/buildroot` or has it as its own root; in the chrooted case nothing of the interpreter reaches the
   delta, because the project bind carrying it lives under `/run`.
-- `copy` introduces a declared Buck artifact at an absolute image path; `mkdir`, `symlink`, and `remove`
-  mutate the same root.
+- `copy` introduces a declared Buck artifact at an absolute image path; `mkdir` and `symlink` mutate the
+  same root. `remove` treats its absolute path as a glob pattern, including recursive `**`, and removes
+  every matching file, symlink, or directory tree. A pattern that matches nothing does nothing.
 - `depmod()`, `hwdb()` and `locale_gen()` build the state installed packages only describe (below).
 - `install_from` installs what another target needs and applies the operations it attaches (see below).
 
