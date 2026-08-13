@@ -308,6 +308,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         root_hash = system.info.root_hash if verity else None,
         secure_boot_key = secure_boot_key,
         sign_expected_pcr_key = resolve_signing_key(ctx.attrs.sign_expected_pcr_key),
+        splash = ctx.attrs.splash,
         version = version,
     )
     esp = declare_image(
