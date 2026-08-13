@@ -99,10 +99,12 @@ python_bootstrap_binary(
     deps = ["//:util"],
 )
 
+# PUBLIC: a consuming project bumps its own tools.json with this, passing --data.
 python_bootstrap_binary(
     name = "bump-driver",
     main = "bump.py",
     deps = ["//:util"],
+    visibility = ["PUBLIC"],
 )
 
 command_alias(

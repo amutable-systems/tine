@@ -1,6 +1,7 @@
 """Update pinned development-tool metadata."""
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -8,6 +9,7 @@ import subprocess
 import tomllib
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -103,7 +105,11 @@ def _asset_digest(asset: dict[str, Any], name: str) -> str:
 
 
 def _python_minor(path: Path) -> str:
-    """The pinned CPython minor (e.g. "3.14"), for python3 bumps."""
+    """The pinned CPython minor (e.g. "3.14"), read only for a CPython pin.
+
+    Lazily, because a project pinning no CPython has no reason to carry the configuration this
+    reads: every other artifact matches its successor without it.
+    """
     data = _object(tomllib.loads(path.read_text(encoding="utf-8")), str(path))
     tool = _object(data.get("tool"), f"tool table in {path}")
     ty = _object(tool.get("ty"), f"tool.ty in {path}")
@@ -111,7 +117,7 @@ def _python_minor(path: Path) -> str:
     return _string(environment.get("python-version"), f"tool.ty.environment.python-version in {path}")
 
 
-def _asset_regex(artifact: str, tag: str, python_minor: str) -> re.Pattern[str]:
+def _asset_regex(artifact: str, tag: str, python_minor: Callable[[], str]) -> re.Pattern[str]:
     """Match the successor of `artifact` across releases by wildcarding only its version parts.
 
     python-build-standalone artifacts carry both a CPython version and a date, so pin the minor (from
@@ -122,7 +128,7 @@ def _asset_regex(artifact: str, tag: str, python_minor: str) -> re.Pattern[str]:
         match = re.match(r"cpython-\d+\.\d+\.\d+\+\d+-(.+)$", artifact)
         if match is None:
             raise ValueError(f"cannot parse CPython artifact {artifact!r}")
-        return re.compile(rf"cpython-{re.escape(python_minor)}\.\d+\+\d+-{re.escape(match.group(1))}")
+        return re.compile(rf"cpython-{re.escape(python_minor())}\.\d+\+\d+-{re.escape(match.group(1))}")
     pattern = re.escape(artifact)
     for token in {tag, tag.lstrip("v")}:
         if token:
@@ -145,7 +151,7 @@ def _select_asset(assets: list[dict[str, Any]], description: str) -> dict[str, A
 
 
 def _bump_tool(
-    name: str, spec: dict[str, Any], python_minor: str, releases: dict[str, dict[str, Any]]
+    name: str, spec: dict[str, Any], python_minor: Callable[[], str], releases: dict[str, dict[str, Any]]
 ) -> tuple[str, str] | None:
     """Resolve the latest release for one tool and rewrite its per-platform pins.
 
@@ -236,11 +242,10 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     args = _parse_args()
     path = args.data
-    pyproject = path.parent.parent / "pyproject.toml"
     try:
         original = path.read_text(encoding="utf-8")
         data = _object(json.loads(original), str(path))
-        python_minor = _python_minor(pyproject)
+        python_minor = functools.cache(lambda: _python_minor(path.parent.parent / "pyproject.toml"))
         releases: dict[str, dict[str, Any]] = {}
         updates: list[tuple[str, str, str]] = []
         for name in _selected_names(args, data):
