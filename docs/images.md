@@ -739,11 +739,10 @@ sysupdate's A/B slot matching, and a single writable root has no slots and mutat
 labels stay systemd-repart's type defaults and the version only lands in os-release and the UKI name.
 
 An image that declares a version outright keeps it, the two `"auto"` spellings being the only ones
-resolved from configuration. A build that wants to name a whole version rather than a base passes one,
-from a config key of its own (`version = read_config("demo", "image-version", "unversioned")`, as the
-demos do) or from anywhere else that answers before the graph is evaluated.
+resolved from configuration. A whole version computed elsewhere is declared the same way, since the
+attribute is an ordinary string and anything that answers before the graph is evaluated can produce it.
 
-The injected per-commit version rebuilds only the artifacts that embed it, never package installation.
+A version that changes rebuilds only the artifacts that embed it, never package installation.
 
 ## Secure Boot signing
 
