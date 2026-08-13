@@ -4,7 +4,7 @@
 # with a resolver can derive their transaction during the build; refresh the catalog to freeze one as a
 # retained lock.
 load("//box:defs.bzl", "box")
-load("//package_system/rpm:defs.bzl", "fedora_release")
+load("//distribution:fedora.bzl", "fedora_release")
 
 fedora_release(
     name = "fedora.44",

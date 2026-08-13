@@ -1,11 +1,11 @@
-"""Opinionated RPM-family catalog declarations."""
+"""The conventional Fedora distribution declaration."""
 
 load("//distribution:defs.bzl", "distribution")
 load("//package:buildroot.bzl", "buildroot")
 load("//package:manager.bzl", "package_manager")
 load("//package:release.bzl", "os_release")
 load("//package:repository.bzl", "repository_universe")
-load(":rules.bzl", "rpm_remote_repository")
+load("//package_system/rpm:rules.bzl", "rpm_remote_repository")
 
 _RPM = "@tine//package_system/rpm:package_system"
 
