@@ -31,6 +31,16 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
         # the guest sees the larger disk while its writes still go nowhere.
         run.add("--grow-image={}".format(ctx.attrs.grow))
 
+    if ctx.attrs.ram != None:
+        if not regex_match(SIZE_PATTERN, ctx.attrs.ram):
+            fail("image_vm: invalid RAM size {!r}".format(ctx.attrs.ram))
+        run.add("--ram={}".format(ctx.attrs.ram))
+
+    if ctx.attrs.cpus != None:
+        if ctx.attrs.cpus < 1:
+            fail("image_vm: cpus must be positive, got {}".format(ctx.attrs.cpus))
+        run.add("--cpus={}".format(ctx.attrs.cpus))
+
     if ctx.attrs.secure_boot:
         # OVMF variable store starts in setup mode and sd-boot enrolls the
         # image's loader/keys/auto keys on first boot.
@@ -101,6 +111,11 @@ _image_vm = rule(
             default = [],
             doc = "kernel command line arguments appended to the ones the image boots with",
         ),
+        "cpus": attrs.option(
+            attrs.int(),
+            default = None,
+            doc = "number of virtual CPUs exposed to the guest",
+        ),
         "credentials": attrs.dict(
             key = attrs.string(),
             value = attrs.string(),
@@ -113,6 +128,11 @@ _image_vm = rule(
             doc = 'size to grow the disk file to before booting, e.g. "8G"; the built image itself grows',
         ),
         "image": attrs.dep(providers = [RepartInfo], doc = "the raw disk image to boot ephemerally"),
+        "ram": attrs.option(
+            attrs.string(),
+            default = None,
+            doc = 'guest RAM size passed to vmspawn, e.g. "4G"',
+        ),
         "secure_boot": attrs.bool(
             default = False,
             doc = "boot with Secure Boot capable firmware",
