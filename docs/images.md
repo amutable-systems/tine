@@ -327,11 +327,11 @@ when needed:
   systemd-sysupdate UKI transfers match. After those dependencies it appends one further initrd of its
   own, holding the kernel modules `initrd_modules` selects, so that none of the initrds handed to it has
   to carry modules for the kernel in question (see "Kernel modules in the UKI"). Alternative kernel
-  command lines are `uki_profile()` descriptors,
-  which add boot profiles as separate sd-boot menu entries, each appending its arguments to the base kernel
-  command line; with a `secure_boot_key`, the UKI and its embedded kernel are signed for Secure Boot, and
-  with a `sign_expected_pcr_key` they are sealed with a signed expected-PCR 11 policy per profile (opt out
-  per profile with `sign_expected_pcr`);
+  command lines are `uki_profile()` descriptors, which add boot profiles as separate sd-boot menu entries,
+  each appending its arguments to the base kernel command line. `splash` names the BMP image to embed for
+  the EFI stub to display while booting. With a `secure_boot_key`, the UKI and its embedded kernel are signed
+  for Secure Boot. With a `sign_expected_pcr_key`, a signed expected-PCR 11 policy covers each profile;
+  set its `sign_expected_pcr` to false to opt out;
 - `repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
   GPT disk and independent partition artifacts in one `RepartInfo`; its disk field is absent for a
   split-only invocation, `output_size` composes the disk with free space behind its partitions, and
@@ -449,6 +449,8 @@ Optional attributes:
 - `initrd_modules` (glob pattern list): The kernel modules the UKI carries, default
   `DEFAULT_INITRD_MODULES`; see "Kernel modules in the UKI"; passed on to `uki()`.
 - `profiles` (`uki_profile()` descriptor list): Alternative sd-boot menu entries, passed on to `uki()`.
+- `splash` (source target): BMP image embedded in the UKI and displayed by the EFI stub while booting;
+  passed on to `uki()`.
 - `arch` (string): Architecture; only `x86_64` is supported right now; passed on to `uki()`.
 - `esp_files` (dict): Map from an absolute image path (under `/boot` or `/efi`, the trees the ESP
   partition carries) to a source target copied onto the ESP.

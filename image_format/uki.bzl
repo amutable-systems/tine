@@ -80,6 +80,7 @@ def declare_uki(
     image_id: str,
     version: str,
     initrd_modules: list[str],
+    splash: Artifact | None = None,
     root_hash: RootHashInfo | None = None,
     secure_boot_key: SigningKeyInfo | None = None,
     sign_expected_pcr_key: SigningKeyInfo | None = None,
@@ -132,6 +133,7 @@ def declare_uki(
             else None,
             "secure_boot": signing_key_spec(secure_boot_key),
             "sign_expected_pcr": signing_key_spec(sign_expected_pcr_key),
+            "splash": splash,
             "systemd_arch": ARCHES[arch].systemd,
             "version": version,
         },
@@ -162,6 +164,7 @@ def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
         root_hash = root_hash,
         secure_boot_key = resolve_signing_key(ctx.attrs.secure_boot_key),
         sign_expected_pcr_key = resolve_signing_key(ctx.attrs.sign_expected_pcr_key),
+        splash = ctx.attrs.splash,
         version = ctx.attrs.version,
     )
     return [DefaultInfo(default_output = info.ukis, sub_targets = uki_subtargets(info)), info]
@@ -192,6 +195,11 @@ UKI_ATTRS = {
         attrs.dep(providers = [SigningKeyInfo]),
         default = None,
         doc = "key sealing the expected-PCR policy; without one the policy is not sealed",
+    ),
+    "splash": attrs.option(
+        attrs.source(),
+        default = None,
+        doc = "BMP image embedded as the UKI splash screen",
     ),
 }
 

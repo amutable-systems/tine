@@ -57,6 +57,8 @@ class Spec(finalize.ImageSpec):
     secure_boot: Key | None
     # Seals the expected-PCR policy; None leaves it unsealed.
     sign_expected_pcr: Key | None
+    # BMP displayed by the EFI stub while booting; None embeds no splash section.
+    splash: str | None
 
 
 def _kvers(tree: Path) -> list[str]:
@@ -126,6 +128,10 @@ def _ukify_options() -> set[str]:
     """
     help = subprocess.run(["ukify", "build", "--help"], check=True, capture_output=True, text=True)
     return {word for word in re.findall(r"--[a-z0-9-]+", help.stdout)}
+
+
+def _splash_arguments(splash: str | None) -> list[str]:
+    return ["--splash", splash] if splash else []
 
 
 def _signing_arguments(
@@ -270,6 +276,7 @@ def main(argv: list[str] | None = None) -> None:
             "--uname", kver,
             "--stub", str(stub),
             "--efi-arch", efi_arch,
+            *_splash_arguments(spec["splash"]),
             *signing,
             "--output", str(output),
         ]  # fmt: skip

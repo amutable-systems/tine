@@ -1,4 +1,4 @@
-"""Tests for the ukify signing arguments.
+"""Tests for the optional ukify arguments.
 
     buck test tine//image:test
 
@@ -124,3 +124,11 @@ class TestSigningArguments(unittest.TestCase):
         """ukify only speaks providers, so anything else must fail the build, not the boot."""
         with self.assertRaises(SystemExit):
             uki._signing_arguments(SECURE_BOOT | {"source": "box:pkcs11"}, None, [], OPTIONS)
+
+
+class TestSplashArguments(unittest.TestCase):
+    def test_no_splash(self) -> None:
+        self.assertEqual(uki._splash_arguments(None), [])
+
+    def test_splash(self) -> None:
+        self.assertEqual(uki._splash_arguments("boot.bmp"), ["--splash", "boot.bmp"])
