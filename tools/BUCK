@@ -118,15 +118,15 @@ command_alias(
 # available in certain boxes.
 _SOURCE_ARGS = [
     "--starlark-fmt",
-    "$(location :starlark-fmt)",
+    "$(location_exec :starlark-fmt)",
     "--starlark-fmt-config",
     "$(source starlark-fmt.json)",
     "--ruff",
-    "$(location :ruff)",
+    "$(location_exec :ruff)",
     "--ty",
-    "$(location :ty)",
+    "$(location_exec :ty)",
     "--box",
-    "$(location tine//catalog:fedora.rawhide.box)",
+    "$(location_exec tine//catalog:fedora.rawhide.box)",
 ]
 
 command_alias(
@@ -204,11 +204,11 @@ command_alias(
     args = [
         "fmt",
         "--starlark-fmt",
-        "$(location :starlark-fmt)",
+        "$(location_exec :starlark-fmt)",
         "--starlark-fmt-config",
         "$(source starlark-fmt.json)",
         "--ruff",
-        "$(location :ruff)",
+        "$(location_exec :ruff)",
     ],
     exe = ":dev",
 )
@@ -218,9 +218,9 @@ command_alias(
     args = [
         "ty",
         "--box",
-        "$(location tine//catalog:fedora.rawhide.box)",
+        "$(location_exec tine//catalog:fedora.rawhide.box)",
         "--ty",
-        "$(location :ty)",
+        "$(location_exec :ty)",
     ],
     exe = ":dev",
 )
