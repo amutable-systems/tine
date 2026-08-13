@@ -44,20 +44,25 @@ def http_tool(
 ) -> None:
     """Pin a raw binary or archive member for each supported CPU.
 
-    `spec` is the tools.json entry: a `repository`, a `release` tag, and per-CPU `artifact` + `sha256`
-    (+ optional `strip_prefix`). The download URL is derived from these. `path` selects a member of an
-    archive; `compressed` decompresses a bare zstd-compressed binary, which Buck's http rules cannot
-    unpack themselves.
+    `spec` is the tools.json entry: a `repository`, a `release` tag, and per-CPU `artifact`, `sha256`
+    and `size` (+ optional `strip_prefix`). The download URL is derived from these. `path` selects a
+    member of an archive; `compressed` decompresses a bare zstd-compressed binary, which Buck's http
+    rules cannot unpack themselves.
     """
     base = "https://github.com/{}/releases/download/{}".format(spec["repository"], spec["release"])
     platforms = spec["platforms"]
     urls = select({_CPU_SETTING[cpu]: ["{}/{}".format(base, e["artifact"])] for cpu, e in platforms.items()})
     sha256 = select({_CPU_SETTING[cpu]: e["sha256"] for cpu, e in platforms.items()})
+
+    # Without a size buck asks the server for one with a HEAD request before every download, which is
+    # a second chance for a release host to fail a build that has the bytes pinned already.
+    size_bytes = select({_CPU_SETTING[cpu]: e["size"] for cpu, e in platforms.items()})
     if path == None:
         http_file(
             name = name + "-download",
             executable = True,
             sha256 = sha256,
+            size_bytes = size_bytes,
             urls = urls,
         )
         src = ":{}-download".format(name)
@@ -65,6 +70,7 @@ def http_tool(
         http_archive(
             name = name + "-download",
             sha256 = sha256,
+            size_bytes = size_bytes,
             strip_prefix = select({_CPU_SETTING[cpu]: e.get("strip_prefix") for cpu, e in platforms.items()}),
             sub_targets = [path],
             urls = urls,

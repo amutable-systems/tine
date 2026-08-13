@@ -28,6 +28,13 @@ def _object(value: object, description: str) -> dict[str, Any]:
     return cast(dict[str, Any], value)
 
 
+def _integer(value: object, description: str) -> int:
+    # bool is an int in python, and a JSON true here would be a corrupt pin rather than a size.
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"{description} must be a non-negative integer")
+    return value
+
+
 def _array(value: object, description: str) -> list[object]:
     if not isinstance(value, list):
         raise ValueError(f"{description} must be an array")
@@ -166,9 +173,17 @@ def _bump_tool(
         asset = _select_asset(matched, f"/{pattern.pattern}/ in {repository} {tag}")
         new_artifact = _string(asset.get("name"), "asset name")
         digest = _asset_digest(asset, new_artifact)
-        changed = changed or entry.get("artifact") != new_artifact or entry.get("sha256") != digest
+        # Pinned so that buck skips the HEAD request it would otherwise size the download with.
+        size = _integer(asset.get("size"), f"size for release asset {new_artifact}")
+        changed = (
+            changed
+            or entry.get("artifact") != new_artifact
+            or entry.get("sha256") != digest
+            or entry.get("size") != size
+        )
         entry["artifact"] = new_artifact
         entry["sha256"] = digest
+        entry["size"] = size
     spec["release"] = tag
     print(f"{name}: updated {previous} -> {tag}" if changed else f"{name}: {tag} is up to date")
     return (previous, tag) if changed else None

@@ -5,11 +5,13 @@
     "platforms": {
       "aarch64": {
         "artifact": "starlark_fmt-aarch64-unknown-linux-musl.zst",
-        "sha256": "bad1e40021d9d955326ff7a735ea13eb439ed4d5dde9f57f6084458650b49ec3"
+        "sha256": "bad1e40021d9d955326ff7a735ea13eb439ed4d5dde9f57f6084458650b49ec3",
+        "size": 2442778
       },
       "x86_64": {
         "artifact": "starlark_fmt-x86_64-unknown-linux-musl.zst",
-        "sha256": "a420bae61dd6c5327c12b0f57c06f6b9b309588cdcc8fdce4dd6e19df4d02482"
+        "sha256": "a420bae61dd6c5327c12b0f57c06f6b9b309588cdcc8fdce4dd6e19df4d02482",
+        "size": 2539404
       }
     }
   },
@@ -20,11 +22,13 @@
       "aarch64": {
         "artifact": "cpython-3.14.7+20260805-aarch64-unknown-linux-gnu-install_only.tar.gz",
         "sha256": "90e4d9b59c587651f9eb081d79b0bb899e5c1705acf4fb537f4eb674b5309135",
+        "size": 96173745,
         "strip_prefix": "python"
       },
       "x86_64": {
         "artifact": "cpython-3.14.7+20260805-x86_64-unknown-linux-gnu-install_only.tar.gz",
         "sha256": "64ebb7e4ef74b03e8038ba07209ab1fce62fcbe4afafbbce5a27216fbffde5ff",
+        "size": 127417144,
         "strip_prefix": "python"
       }
     }
@@ -36,11 +40,13 @@
       "aarch64": {
         "artifact": "ruff-aarch64-unknown-linux-musl.tar.gz",
         "sha256": "5929d9f37fc518a3825f33a76ad8092c0555ca045ca1dbf5e680038a402c840c",
+        "size": 10386246,
         "strip_prefix": "ruff-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "ruff-x86_64-unknown-linux-musl.tar.gz",
         "sha256": "23469683052cd2db1589f15032dd1751b2a3f212062e9fc901b0776d25fb36bc",
+        "size": 11160618,
         "strip_prefix": "ruff-x86_64-unknown-linux-musl"
       }
     }
@@ -52,11 +58,13 @@
       "aarch64": {
         "artifact": "ty-aarch64-unknown-linux-musl.tar.gz",
         "sha256": "251c12a59b3eac947011d61d5bcf8d46ac8c4bfcd1c51401bd54b38b2c66c48a",
+        "size": 11554007,
         "strip_prefix": "ty-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "ty-x86_64-unknown-linux-musl.tar.gz",
         "sha256": "4f7f5f6aefa310aad42ad2d36f50d18a19b373df5be49cbf3a8240b566bd6399",
+        "size": 12432785,
         "strip_prefix": "ty-x86_64-unknown-linux-musl"
       }
     }
@@ -67,11 +75,13 @@
     "platforms": {
       "aarch64": {
         "artifact": "syft_1.50.0_linux_arm64.tar.gz",
-        "sha256": "887c57cbcc2d0e8c5c110a4571a3fc7150058b24d74f993ee4663516e5c8ce86"
+        "sha256": "887c57cbcc2d0e8c5c110a4571a3fc7150058b24d74f993ee4663516e5c8ce86",
+        "size": 26228491
       },
       "x86_64": {
         "artifact": "syft_1.50.0_linux_amd64.tar.gz",
-        "sha256": "bf7b29ff57f06da30918266a0e1c2885a8f99784798d1bdb1628886aa015d788"
+        "sha256": "bf7b29ff57f06da30918266a0e1c2885a8f99784798d1bdb1628886aa015d788",
+        "size": 28722052
       }
     }
   },
@@ -82,11 +92,13 @@
       "aarch64": {
         "artifact": "cargo-auditable-aarch64-unknown-linux-musl.tar.xz",
         "sha256": "35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294",
+        "size": 458248,
         "strip_prefix": "cargo-auditable-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "cargo-auditable-x86_64-unknown-linux-musl.tar.xz",
         "sha256": "3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4",
+        "size": 497692,
         "strip_prefix": "cargo-auditable-x86_64-unknown-linux-musl"
       }
     }
