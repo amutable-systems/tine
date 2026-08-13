@@ -786,6 +786,8 @@ held by a PKCS#11 token and the build reaches it over a socket without ever seei
 Runtime and execution policy live on the `image_vm` target, not in the disk provider: its explicit `box`
 supplies the VM stack, its `autologin` option provisions a locked root password and runtime `login.noauth`,
 and arbitrary non-secret system credentials configure settings such as first-boot locale and timezone.
+`cpus` sets the number of virtual CPUs, and `ram` sets the guest memory to a systemd size such as `"4G"`;
+both are passed directly to vmspawn.
 
 `cmdline_extra` appends kernel command line arguments to the ones the image already boots with, for
 settings a run needs and the image should not carry: `["systemd.firstboot=headless"]` keeps a first boot
