@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""rpm monorepo import/maintenance machinery
+"""RPM monorepo import and maintenance machinery.
 
 See docs/packages.md for the design.
 
@@ -23,6 +23,7 @@ import xmlrpc.client
 from pathlib import Path
 from typing import Literal, NamedTuple, NotRequired, TypedDict, cast, get_args
 
+
 def repo_root() -> Path | None:
     """The OS.git root: the nearest ancestor holding both packages/ and a git checkout.
 
@@ -34,32 +35,41 @@ def repo_root() -> Path | None:
     verbs need the root, and they exit with a message.
     """
     for d in Path(__file__).resolve().parents:
-        if (d / 'packages').is_dir() and (d / '.git').exists():
+        if (d / "packages").is_dir() and (d / ".git").exists():
             return d
     return None
 
 
 ROOT: Path | None = repo_root()
+
+
+def _root() -> Path:
+    """The OS.git root after the CLI or test fixture has established one."""
+    assert ROOT is not None
+    return ROOT
+
+
 # None in a standalone tine checkout; every verb needs it, so main() exits early when it is unset.
-WORKTREE = ROOT / '.upstream-rpm' if ROOT else None  # persistent checkout of the upstream-rpm branch
+WORKTREE = _root() / ".upstream-rpm" if ROOT else None  # persistent checkout of the upstream-rpm branch
 
 # arches we build for -- srcpkg.json records each one's (arch-conditional) static BuildRequires.
-Arch = Literal['x86_64', 'aarch64']
-BuildRequiresArch = Arch | Literal['_all']
+Arch = Literal["x86_64", "aarch64"]
+BuildRequiresArch = Arch | Literal["_all"]
 
 # runtime constant
 BUILD_ARCHES: tuple[Arch, ...] = get_args(Arch)
 # per-branch curation metadata; underscore makes it not a valid package name and ignored
-BRANCH_PROPERTIES = '_properties.json'
+BRANCH_PROPERTIES = "_properties.json"
 
 
 class DistroConfig(TypedDict):
     """Everything we need to import from one upstream distro."""
-    dist_git: str   # clone-URL prefix; a package's clone URL is '<dist_git><packagename>.git'
+
+    dist_git: str  # clone-URL prefix; a package's clone URL is '<dist_git><packagename>.git'
     lookaside: str  # base; a source URL is '<lookaside>/<pkg>/<file>/<hashtype>/<hash>/<file>'
-    koji_hub: str   # koji XML-RPC endpoint
+    koji_hub: str  # koji XML-RPC endpoint
     koji_pkgs: str  # built-rpm download base ('<koji_pkgs>/<n>/<v>/<r>/<arch>/<nvra>.rpm')
-    dist: str       # regex matching this distro's release dist tag (r'\.fc\d+', r'\.el\d+')
+    dist: str  # regex matching this distro's release dist tag (r'\.fc\d+', r'\.el\d+')
     bodhi: NotRequired[str]  # Fedora-only; in CentOS every build is auto-published
 
 
@@ -72,31 +82,32 @@ class BranchProperties(TypedDict):
 
 # curated distros we can import from
 DISTROS: dict[str, DistroConfig] = {
-    'fedora': {
-        'dist_git': 'https://src.fedoraproject.org/rpms/',
-        'lookaside': 'https://src.fedoraproject.org/repo/pkgs/rpms',
-        'koji_hub': 'https://koji.fedoraproject.org/kojihub',
-        'koji_pkgs': 'https://kojipkgs.fedoraproject.org/packages',
-        'dist': r'\.fc\d+',
-        'bodhi': 'https://bodhi.fedoraproject.org/updates/',
+    "fedora": {
+        "dist_git": "https://src.fedoraproject.org/rpms/",
+        "lookaside": "https://src.fedoraproject.org/repo/pkgs/rpms",
+        "koji_hub": "https://koji.fedoraproject.org/kojihub",
+        "koji_pkgs": "https://kojipkgs.fedoraproject.org/packages",
+        "dist": r"\.fc\d+",
+        "bodhi": "https://bodhi.fedoraproject.org/updates/",
     },
-    'centos': {
-        'dist_git': 'https://gitlab.com/redhat/centos-stream/rpms/',
-        'lookaside': 'https://sources.stream.centos.org/sources/rpms',
-        'koji_hub': 'https://kojihub.stream.centos.org/kojihub',
-        'koji_pkgs': 'https://kojihub.stream.centos.org/kojifiles/packages',
-        'dist': r'\.el\d+',
+    "centos": {
+        "dist_git": "https://gitlab.com/redhat/centos-stream/rpms/",
+        "lookaside": "https://sources.stream.centos.org/sources/rpms",
+        "koji_hub": "https://kojihub.stream.centos.org/kojihub",
+        "koji_pkgs": "https://kojihub.stream.centos.org/kojifiles/packages",
+        "dist": r"\.el\d+",
     },
 }
 
 
 # our %dist suffix; also the whole %dist for native packages (without upstream)
 # FIXME: hardcoded; read this from some config file instead?
-NATIVE_DIST = 'aos'
+NATIVE_DIST = "aos"
 
 
 class KojiBuild(TypedDict):
     """Subset of a koji build (listBuilds entry) we use."""
+
     build_id: int
     nvr: str
     name: str
@@ -106,6 +117,7 @@ class KojiBuild(TypedDict):
 
 class KojiRPM(TypedDict):
     """Subset of one koji listBuildRPMs() entry, identifying a single binary/src rpm."""
+
     name: str
     version: str
     release: str
@@ -118,6 +130,7 @@ class KojiTag(TypedDict):
 
 class BinaryMetadata(TypedDict):
     """rpm-computed relationships and file list of one binary package."""
+
     Requires: list[str]
     Recommends: list[str]
     Provides: list[str]
@@ -126,6 +139,7 @@ class BinaryMetadata(TypedDict):
 
 class SourceMetadata(TypedDict):
     """One upstream source archive."""
+
     url: str
     # buck's http_file wants SHA256; `sources` has SHA512
     sha256sum: str
@@ -136,6 +150,7 @@ class SourceMetadata(TypedDict):
 
 class SrcpkgMetadata(TypedDict):
     """Contents of packages/<srcpkg>.json."""
+
     # BuildRequires: the arch-common set (including what %generate_buildrequires resolved to)
     # under '_all', plus each build arch's conditional extras (key omitted when empty)
     build_requires: dict[BuildRequiresArch, list[str]]
@@ -152,6 +167,7 @@ class SrcpkgMetadata(TypedDict):
 
 class RpmInfo(NamedTuple):
     """Identity of one local rpm file."""
+
     name: str
     # not Arch: a source rpm reports its (possibly foreign, e.g. koji's s390x) build-host arch, and
     # multilib binaries (glibc.i686) reach us too -- both outside BUILD_ARCHES. Callers narrow to
@@ -161,9 +177,8 @@ class RpmInfo(NamedTuple):
 
 
 def git(*args: str, cwd: Path | None = None) -> str:
-    logging.debug('git %s%s', ' '.join(args), f'  (cwd={cwd})' if cwd else '')
-    return subprocess.run(['git', *args], cwd=cwd, check=True,
-                          stdout=subprocess.PIPE, text=True).stdout
+    logging.debug("git %s%s", " ".join(args), f"  (cwd={cwd})" if cwd else "")
+    return subprocess.run(["git", *args], cwd=cwd, check=True, stdout=subprocess.PIPE, text=True).stdout
 
 
 # transient overload, gateway, and rate-limit conditions; any other 4xx is a definitive answer
@@ -186,7 +201,7 @@ def urlopen_retry(url: str) -> bytes:
         except urllib.error.HTTPError as e:
             if e.code not in RETRYABLE_STATUS or attempt == HTTP_RETRIES:
                 raise
-            reason = f'HTTP {e.code}'
+            reason = f"HTTP {e.code}"
         except urllib.error.URLError as e:  # the request never reached a responding server
             if attempt == HTTP_RETRIES:
                 raise
@@ -195,10 +210,12 @@ def urlopen_retry(url: str) -> bytes:
             if attempt == HTTP_RETRIES:
                 raise
             reason = str(e)
-        delay = HTTP_BACKOFF * 2 ** attempt
-        logging.warning('%s failed (%s); retrying in %.0fs (%d/%d)',
-                        url, reason, delay, attempt + 1, HTTP_RETRIES)
+        delay = HTTP_BACKOFF * 2**attempt
+        logging.warning(
+            "%s failed (%s); retrying in %.0fs (%d/%d)", url, reason, delay, attempt + 1, HTTP_RETRIES
+        )
         time.sleep(delay)
+    raise AssertionError("unreachable")
 
 
 def git_net(*args: str) -> str:
@@ -216,20 +233,29 @@ def git_net(*args: str) -> str:
         try:
             return git(*args)
         except subprocess.CalledProcessError as e:
-            delay = HTTP_BACKOFF * 2 ** attempt
-            logging.warning('git %s failed (exit %d); retrying in %.0fs (%d/%d)',
-                            ' '.join(args), e.returncode, delay, attempt + 1, HTTP_RETRIES)
+            delay = HTTP_BACKOFF * 2**attempt
+            logging.warning(
+                "git %s failed (exit %d); retrying in %.0fs (%d/%d)",
+                " ".join(args),
+                e.returncode,
+                delay,
+                attempt + 1,
+                HTTP_RETRIES,
+            )
             time.sleep(delay)
     return git(*args)  # out of retries: this attempt's failure is the caller's
 
 
 def ensure_worktree() -> Path:
     """Return a checkout of the upstream-rpm branch. Fail if the branch is absent."""
-    assert git('branch', '--list', 'upstream-rpm', cwd=ROOT).strip(), \
+    worktree = WORKTREE
+    assert worktree is not None
+    assert git("branch", "--list", "upstream-rpm", cwd=_root()).strip(), (
         "upstream-rpm branch not present -- fetch and set up before importing"
-    if not WORKTREE.exists():
-        git('worktree', 'add', '--quiet', str(WORKTREE), 'upstream-rpm', cwd=ROOT)
-    return WORKTREE
+    )
+    if not worktree.exists():
+        git("worktree", "add", "--quiet", str(worktree), "upstream-rpm", cwd=_root())
+    return worktree
 
 
 def is_package_entry(path: Path) -> bool:
@@ -237,7 +263,7 @@ def is_package_entry(path: Path) -> bool:
 
     rpm package names cannot start with `_`, so this marks a path as "not a package".
     """
-    return not path.name.startswith('_')
+    return not path.name.startswith("_")
 
 
 def branch_properties(branchdir: Path) -> BranchProperties:
@@ -251,18 +277,19 @@ def rpmq(rpmfile: Path, flag: str) -> list[str]:
 
     Returns sorted, de-duplicated lines with the noise `rpmlib(...)` deps dropped.
     """
-    out = subprocess.run(['rpm', '-qp', '--nosignature', flag, str(rpmfile)],
-                         check=True, stdout=subprocess.PIPE, text=True).stdout
-    return sorted({ln for ln in out.splitlines() if ln and not ln.startswith('rpmlib(')})
+    out = subprocess.run(
+        ["rpm", "-qp", "--nosignature", flag, str(rpmfile)], check=True, stdout=subprocess.PIPE, text=True
+    ).stdout
+    return sorted({ln for ln in out.splitlines() if ln and not ln.startswith("rpmlib(")})
 
 
 def fetch_rpm(destdir: Path, distro: str, build: KojiBuild, rpm: KojiRPM) -> Path:
     """Download one rpm of a koji build from the distro's koji into destdir; return its path."""
     fn = f"{rpm['name']}-{rpm['version']}-{rpm['release']}.{rpm['arch']}.rpm"
-    base = DISTROS[distro]['koji_pkgs']
+    base = DISTROS[distro]["koji_pkgs"]
     url = f"{base}/{build['name']}/{build['version']}/{build['release']}/{rpm['arch']}/{fn}"
     dest = destdir / fn
-    logging.debug('fetch %s', url)
+    logging.debug("fetch %s", url)
     dest.write_bytes(urlopen_retry(url))
     return dest
 
@@ -272,21 +299,22 @@ def branch_dist(distro: str, branch: str) -> str | None:
 
     E.g. `f44` -> '.fc44', `c10s` -> '.el10'; None means the newest build wins (Fedora rawhide).
     """
-    if distro == 'fedora':
-        if branch == 'rawhide':
+    if distro == "fedora":
+        if branch == "rawhide":
             return None
-        m = re.fullmatch(r'f(\d+)', branch)
-        assert m, f'unsupported fedora branch: {branch}'
-        return f'.fc{m.group(1)}'
-    if distro == 'centos':  # CentOS Stream: c<N>s -> .el<N>
-        m = re.fullmatch(r'c(\d+)s', branch)
-        assert m, f'unsupported centos branch: {branch}'
-        return f'.el{m.group(1)}'
-    raise AssertionError(f'unsupported distro: {distro}')
+        m = re.fullmatch(r"f(\d+)", branch)
+        assert m, f"unsupported fedora branch: {branch}"
+        return f".fc{m.group(1)}"
+    if distro == "centos":  # CentOS Stream: c<N>s -> .el<N>
+        m = re.fullmatch(r"c(\d+)s", branch)
+        assert m, f"unsupported centos branch: {branch}"
+        return f".el{m.group(1)}"
+    raise AssertionError(f"unsupported distro: {distro}")
 
 
-def find_build(koji: xmlrpc.client.ServerProxy, distro: str, packagename: str, url: str,
-               sha: str, branch: str) -> KojiBuild | None:
+def find_build(
+    koji: xmlrpc.client.ServerProxy, distro: str, packagename: str, url: str, sha: str, branch: str
+) -> KojiBuild | None:
     """The koji build of this exact dist-git commit, or None if it was never built for `branch`.
 
     Found by its dist-git source (`git+<url>#<sha>`), so no NVR is reconstructed and the lookup
@@ -295,23 +323,25 @@ def find_build(koji: xmlrpc.client.ServerProxy, distro: str, packagename: str, u
     and pick by branch: an exact dist for `f<N>`/`c<N>s`, or the newest for Fedora rawhide.
     """
     package_id = koji.getPackageID(packagename)
-    builds = cast(list[KojiBuild],
-                  koji.listBuilds(package_id, None, None, None, 1, None, f'git+{url}#{sha}'))
-    logging.debug('koji: %s commit %s -> %s', packagename, sha[:12],
-                  [b['nvr'] for b in builds] or 'no builds')
-    matches = [b for b in builds if re.search(DISTROS[distro]['dist'] + '$', b['release'])]
+    builds = cast(
+        list[KojiBuild], koji.listBuilds(package_id, None, None, None, 1, None, f"git+{url}#{sha}")
+    )
+    logging.debug(
+        "koji: %s commit %s -> %s", packagename, sha[:12], [b["nvr"] for b in builds] or "no builds"
+    )
+    matches = [b for b in builds if re.search(DISTROS[distro]["dist"] + "$", b["release"])]
     if not matches:
         return None
     want = branch_dist(distro, branch)
     if want is None:  # Fedora rawhide: the build with the newest dist tag
-        build = max(matches, key=lambda b: int(b['release'].rsplit('.fc', 1)[1]))
+        build = max(matches, key=lambda b: int(b["release"].rsplit(".fc", 1)[1]))
     else:
-        exact = [b for b in matches if b['release'].endswith(want)]
+        exact = [b for b in matches if b["release"].endswith(want)]
         if not exact:
             return None  # built for other releases but not this branch
         assert len(exact) == 1, f"expected one {want} build, got {[b['nvr'] for b in exact]}"
         build = exact[0]
-    logging.debug('koji: selected %s for %s/%s', build['nvr'], distro, branch)
+    logging.debug("koji: selected %s for %s/%s", build["nvr"], distro, branch)
     return build
 
 
@@ -325,28 +355,34 @@ def is_published(koji: xmlrpc.client.ServerProxy, distro: str, branch: str, buil
     maintainer has at least submitted a bodhi update for it (any status; we don't wait for it
     to reach stable).
     """
-    if distro != 'fedora' or branch == 'rawhide':
+    if distro != "fedora" or branch == "rawhide":
         return True
-    tags = {t['name'] for t in cast(list[KojiTag], koji.listTags(build['build_id']))}
-    if tags & {branch, f'{branch}-updates', f'{branch}-updates-testing'}:
-        logging.debug('koji: %s tagged %s -> published', build['nvr'], sorted(tags))
+    tags = {t["name"] for t in cast(list[KojiTag], koji.listTags(build["build_id"]))}
+    if tags & {branch, f"{branch}-updates", f"{branch}-updates-testing"}:
+        logging.debug("koji: %s tagged %s -> published", build["nvr"], sorted(tags))
         return True
-    bodhi = DISTROS[distro].get('bodhi')
-    assert bodhi, f'{distro} has no bodhi configured'
-    updates = json.loads(urlopen_retry(f'{bodhi}?builds={build["nvr"]}'))['updates']
-    logging.debug('bodhi: %s -> %d update(s)', build['nvr'], len(updates))
+    bodhi = DISTROS[distro].get("bodhi")
+    assert bodhi, f"{distro} has no bodhi configured"
+    updates = json.loads(urlopen_retry(f"{bodhi}?builds={build['nvr']}"))["updates"]
+    logging.debug("bodhi: %s -> %d update(s)", build["nvr"], len(updates))
     return bool(updates)
 
 
-def latest_published_commit(koji: xmlrpc.client.ServerProxy, clone: Path, distro: str,
-                            packagename: str, url: str, branch: str,
-                            since: str | None = None) -> str | None:
+def latest_published_commit(
+    koji: xmlrpc.client.ServerProxy,
+    clone: Path,
+    distro: str,
+    packagename: str,
+    url: str,
+    branch: str,
+    since: str | None = None,
+) -> str | None:
     """Newest first-parent commit on HEAD whose koji build exists and is published, else None.
 
     Restricted to commits after `since`, when given.
     """
-    revs = f'{since}..HEAD' if since else 'HEAD'
-    for c in git('rev-list', '--first-parent', revs, cwd=clone).split():
+    revs = f"{since}..HEAD" if since else "HEAD"
+    for c in git("rev-list", "--first-parent", revs, cwd=clone).split():
         build = find_build(koji, distro, packagename, url, c, branch)
         if build and is_published(koji, distro, branch, build):
             return c
@@ -356,9 +392,12 @@ def latest_published_commit(koji: xmlrpc.client.ServerProxy, clone: Path, distro
 def rpm_info(rpmfile: Path) -> RpmInfo:
     """Identify a local rpm file (source packages are flagged via %{SOURCEPACKAGE})."""
     name, arch, src = subprocess.run(
-        ['rpm', '-qp', '--nosignature', '--qf', '%{NAME} %{ARCH} %{SOURCEPACKAGE}', str(rpmfile)],
-        check=True, stdout=subprocess.PIPE, text=True).stdout.split()
-    return RpmInfo(name, arch, src == '1')
+        ["rpm", "-qp", "--nosignature", "--qf", "%{NAME} %{ARCH} %{SOURCEPACKAGE}", str(rpmfile)],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.split()
+    return RpmInfo(name, arch, src == "1")
 
 
 def spec_defines(rpmfile: Path) -> dict[str, str]:
@@ -371,20 +410,24 @@ def spec_defines(rpmfile: Path) -> dict[str, str]:
     rpmautospec installed -- BuildRequires never depend on the release, so their values don't
     matter.
     """
-    release = subprocess.run(['rpm', '-qp', '--nosignature', '--qf', '%{RELEASE}', str(rpmfile)],
-                             check=True, stdout=subprocess.PIPE, text=True).stdout
-    if release.endswith('.' + NATIVE_DIST):
-        return {'dist': NATIVE_DIST}
+    release = subprocess.run(
+        ["rpm", "-qp", "--nosignature", "--qf", "%{RELEASE}", str(rpmfile)],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout
+    if release.endswith("." + NATIVE_DIST):
+        return {"dist": NATIVE_DIST}
 
-    m = re.search(r'\.(fc|el)(\d+)', release)
-    assert m, f'no dist tag in srpm release {release!r}'
-    distro = {'fc': {'fedora': m.group(2)}, 'el': {'rhel': m.group(2), 'centos': m.group(2)}}
-    return {'dist': m.group(), **distro[m.group(1)],
-            'autorelease': '1%{?dist}', 'autochangelog': '%nil'}
+    m = re.search(r"\.(fc|el)(\d+)", release)
+    assert m, f"no dist tag in srpm release {release!r}"
+    distro = {"fc": {"fedora": m.group(2)}, "el": {"rhel": m.group(2), "centos": m.group(2)}}
+    return {"dist": m.group(), **distro[m.group(1)], "autorelease": "1%{?dist}", "autochangelog": "%nil"}
 
 
-def spec_buildrequires(spec: Path, arch: str, defines: dict[str, str],
-                       options: list[str] = []) -> list[str]:
+def spec_buildrequires(
+    spec: Path, arch: str, defines: dict[str, str], options: list[str] | None = None
+) -> list[str]:
     """Statically evaluate a spec's BuildRequires for one target arch.
 
     %_sourcedir is the spec's own directory: some specs read committed source files at parse
@@ -392,16 +435,26 @@ def spec_buildrequires(spec: Path, arch: str, defines: dict[str, str],
     --define). Returns sorted, de-duplicated packages with the `rpmlib(...)` noise dropped,
     like rpmq().
     """
-    cmd = ['rpmspec', '--target', arch, '-q', '--buildrequires',
-           '--define', f'_sourcedir {spec.parent.resolve()}', *options, str(spec)]
+    cmd = [
+        "rpmspec",
+        "--target",
+        arch,
+        "-q",
+        "--buildrequires",
+        "--define",
+        f"_sourcedir {spec.parent.resolve()}",
+        *(options or []),
+        str(spec),
+    ]
     for k, v in defines.items():
-        cmd += ['--define', f'{k} {v}']
+        cmd += ["--define", f"{k} {v}"]
     out = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, text=True).stdout
-    return sorted({ln for ln in out.splitlines() if ln and not ln.startswith('rpmlib(')})
+    return sorted({ln for ln in out.splitlines() if ln and not ln.startswith("rpmlib(")})
 
 
-def spec_subpackages(spec: Path, arch: str, defines: dict[str, str],
-                     options: list[str] = []) -> set[str]:
+def spec_subpackages(
+    spec: Path, arch: str, defines: dict[str, str], options: list[str] | None = None
+) -> set[str]:
     """The binary package names an `arch` build of the spec actually produces.
 
     Evaluated like spec_buildrequires (%ifarch gates, generated %package names), and excluding
@@ -411,16 +464,28 @@ def spec_subpackages(spec: Path, arch: str, defines: dict[str, str],
     %package rpmspec still lists without --builtrpms, and would otherwise be recorded as an
     expected output no such build can produce.
     """
-    cmd = ['rpmspec', '--target', arch, '-q', '--builtrpms', '--queryformat', '%{NAME}\n',
-           '--define', f'_sourcedir {spec.parent.resolve()}', *options, str(spec)]
+    cmd = [
+        "rpmspec",
+        "--target",
+        arch,
+        "-q",
+        "--builtrpms",
+        "--queryformat",
+        "%{NAME}\n",
+        "--define",
+        f"_sourcedir {spec.parent.resolve()}",
+        *(options or []),
+        str(spec),
+    ]
     for k, v in defines.items():
-        cmd += ['--define', f'{k} {v}']
+        cmd += ["--define", f"{k} {v}"]
     out = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, text=True).stdout
     return {ln for ln in out.splitlines() if ln}
 
 
-def metadata_from_rpms(rpmfiles: list[Path], spec: Path,
-                       rpmbuild_options: list[str] = []) -> SrcpkgMetadata:
+def metadata_from_rpms(
+    rpmfiles: list[Path], spec: Path, rpmbuild_options: list[str] | None = None
+) -> SrcpkgMetadata:
     """Build srcpkg.json metadata from local rpm files plus the dist-git spec.
 
     rpm computes SONAME/pathname deps and file lists at build time, so we query the built
@@ -445,54 +510,62 @@ def metadata_from_rpms(rpmfiles: list[Path], spec: Path,
     (a leftover from a foreign srpm-task arch) would poison the other arches' buildroots, so it
     crashes instead.
     """
-    meta: SrcpkgMetadata = {'build_requires': {}, 'binaries': {}, 'sources': []}
-    assert rpmfiles, 'no rpms given'
+    meta: SrcpkgMetadata = {"build_requires": {}, "binaries": {}, "sources": []}
+    assert rpmfiles, "no rpms given"
     defines = spec_defines(rpmfiles[0])
-    produces = {a: spec_subpackages(spec, a, defines, rpmbuild_options) for a in BUILD_ARCHES}
+    options = rpmbuild_options or []
+    produces = {a: spec_subpackages(spec, a, defines, options) for a in BUILD_ARCHES}
     for f in rpmfiles:
         name, arch, is_src = rpm_info(f)
         if is_src:
-            static = {a: set(spec_buildrequires(spec, a, defines, rpmbuild_options))
-                      for a in BUILD_ARCHES}
+            static = {a: set(spec_buildrequires(spec, a, defines, options)) for a in BUILD_ARCHES}
             common = set.intersection(*static.values())
-            header = set(rpmq(f, '--requires'))
+            header = set(rpmq(f, "--requires"))
             dynamic = min((header - static[a] for a in BUILD_ARCHES), key=len)
-            uses_generate_br = bool(re.search(r'^%generate_buildrequires', spec.read_text(), re.M))
-            assert not dynamic or uses_generate_br, \
-                f'srpm header BuildRequires {sorted(dynamic)} not attributable to any arch of ' \
-                f'{BUILD_ARCHES} and {spec.name} has no %generate_buildrequires'
-            brs: dict[BuildRequiresArch, list[str]] = {'_all': sorted(common | dynamic)}
+            uses_generate_br = bool(re.search(r"^%generate_buildrequires", spec.read_text(), re.M))
+            assert not dynamic or uses_generate_br, (
+                f"srpm header BuildRequires {sorted(dynamic)} not attributable to any arch of "
+                f"{BUILD_ARCHES} and {spec.name} has no %generate_buildrequires"
+            )
+            brs: dict[BuildRequiresArch, list[str]] = {"_all": sorted(common | dynamic)}
             for a in BUILD_ARCHES:
                 if extra := static[a] - common:
                     brs[a] = sorted(extra)
-            meta['build_requires'] = brs
-        elif name.endswith(('-debuginfo', '-debugsource')):
+            meta["build_requires"] = brs
+        elif name.endswith(("-debuginfo", "-debugsource")):
             continue
-        elif arch in BUILD_ARCHES or arch == 'noarch':
-            built_on: list[Arch] = [cast(Arch, arch)] if arch != 'noarch' \
-                else [a for a in BUILD_ARCHES if name in produces[a]]
+        elif arch in BUILD_ARCHES or arch == "noarch":
+            built_on: list[Arch] = (
+                [arch] if arch != "noarch" else [a for a in BUILD_ARCHES if name in produces[a]]
+            )
             if not built_on:
-                logging.info('%s: noarch %s is only built on foreign arches, dropping', spec.stem, name)
+                logging.info("%s: noarch %s is only built on foreign arches, dropping", spec.stem, name)
             binmeta: BinaryMetadata = {
-                'Requires': rpmq(f, '--requires'),
-                'Recommends': rpmq(f, '--recommends'),
-                'Provides': rpmq(f, '--provides'),
-                'Files': rpmq(f, '-l'),
+                "Requires": rpmq(f, "--requires"),
+                "Recommends": rpmq(f, "--recommends"),
+                "Provides": rpmq(f, "--provides"),
+                "Files": rpmq(f, "-l"),
             }
             for a in built_on:
-                meta['binaries'].setdefault(a, {})[name] = binmeta
+                meta["binaries"].setdefault(a, {})[name] = binmeta
     return meta
 
 
-def fetch_metadata_from_koji(koji: xmlrpc.client.ServerProxy, distro: str, build: KojiBuild,
-                             spec: Path) -> SrcpkgMetadata:
+def fetch_metadata_from_koji(
+    koji: xmlrpc.client.ServerProxy, distro: str, build: KojiBuild, spec: Path
+) -> SrcpkgMetadata:
     """Fetch the relevant rpms of a koji build and compute its srcpkg.json metadata."""
-    rpms = cast(list[KojiRPM], koji.listBuildRPMs(build['build_id']))
-    logging.debug('metadata: %s has %d rpms', build['nvr'], len(rpms))
+    rpms = cast(list[KojiRPM], koji.listBuildRPMs(build["build_id"]))
+    logging.debug("metadata: %s has %d rpms", build["nvr"], len(rpms))
     # noarch is bucketed by producing arch (see metadata_from_rpms); the rest is per-build-arch.
-    wanted = [r for r in rpms if r['arch'] == 'src'
-              or (r['arch'] in ('noarch', *BUILD_ARCHES)
-                  and not r['name'].endswith(('-debuginfo', '-debugsource')))]
+    wanted = [
+        r
+        for r in rpms
+        if r["arch"] == "src"
+        or (
+            r["arch"] in ("noarch", *BUILD_ARCHES) and not r["name"].endswith(("-debuginfo", "-debugsource"))
+        )
+    ]
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
         return metadata_from_rpms([fetch_rpm(tmpdir, distro, build, r) for r in wanted], spec)
@@ -500,11 +573,11 @@ def fetch_metadata_from_koji(koji: xmlrpc.client.ServerProxy, distro: str, build
 
 def uses_autorelease(spec_text: str) -> bool:
     """Whether a spec uses rpmautospec's %autorelease (in any of its %{?...} spellings)."""
-    return bool(re.search(r'%\{?\??autorelease', spec_text))
+    return bool(re.search(r"%\{?\??autorelease", spec_text))
 
 
 def write_json(path: Path, data: object) -> None:
-    path.write_text(json.dumps(data, indent=2, sort_keys=True) + '\n')
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
 def native_disttag(text: str) -> str:
@@ -512,7 +585,7 @@ def native_disttag(text: str) -> str:
 
     E.g. '.fc44' -> '.fc44aos. Used to predict our NEVRs in dependency strings.
     """
-    return re.sub(rf'\.(?:fc|el|hum)\d+(?!{NATIVE_DIST})', lambda m: m.group() + NATIVE_DIST, text)
+    return re.sub(rf"\.(?:fc|el|hum)\d+(?!{NATIVE_DIST})", lambda m: m.group() + NATIVE_DIST, text)
 
 
 def predict_dist(meta: SrcpkgMetadata) -> None:
@@ -524,11 +597,12 @@ def predict_dist(meta: SrcpkgMetadata) -> None:
     most of the diff the post-build recompute would otherwise report. Files lists carry no dist
     tag, so they are left untouched.
     """
-    meta['build_requires'] = {a: [native_disttag(s) for s in brs]
-                              for a, brs in meta['build_requires'].items()}
-    for arch in meta['binaries'].values():
+    meta["build_requires"] = {
+        a: [native_disttag(s) for s in brs] for a, brs in meta["build_requires"].items()
+    }
+    for arch in meta["binaries"].values():
         for binmeta in arch.values():
-            for key in ('Requires', 'Recommends', 'Provides'):
+            for key in ("Requires", "Recommends", "Provides"):
                 binmeta[key] = [native_disttag(s) for s in binmeta[key]]
 
 
@@ -541,11 +615,11 @@ def parse_sources(sources_file: Path) -> list[tuple[str, str, str]]:
     for line in sources_file.read_text().splitlines() if sources_file.exists() else []:
         if not line.strip():
             continue
-        if m := re.match(r'(\w+) \((.+)\) = ([0-9a-fA-F]+)$', line):
+        if m := re.match(r"(\w+) \((.+)\) = ([0-9a-fA-F]+)$", line):
             entries.append((m.group(1), m.group(2), m.group(3)))
         else:
             digest, filename = line.split()
-            entries.append(('md5', filename, digest))
+            entries.append(("md5", filename, digest))
     return entries
 
 
@@ -559,20 +633,28 @@ def compute_sources(sources_file: Path, distro: str, packagename: str) -> list[S
     """
     sources: list[SourceMetadata] = []
     for hashtype, filename, hexdigest in parse_sources(sources_file):
-        base = DISTROS[distro]['lookaside']
-        url = f'{base}/{packagename}/{filename}/{hashtype.lower()}/{hexdigest}/{filename}'
-        logging.info('%s: fetching %s from the lookaside', packagename, filename)
-        logging.debug('GET %s', url)
+        base = DISTROS[distro]["lookaside"]
+        url = f"{base}/{packagename}/{filename}/{hashtype.lower()}/{hexdigest}/{filename}"
+        logging.info("%s: fetching %s from the lookaside", packagename, filename)
+        logging.debug("GET %s", url)
         data = urlopen_retry(url)
         # validate current sum
         actual = hashlib.new(hashtype, data).hexdigest()
-        assert actual == hexdigest.lower(), f'{filename}: {hashtype} mismatch ({actual} != {hexdigest})'
-        sources.append({'url': url, 'sha256sum': hashlib.sha256(data).hexdigest(), 'size': len(data)})
-    return sorted(sources, key=lambda s: s['url'])
+        assert actual == hexdigest.lower(), f"{filename}: {hashtype} mismatch ({actual} != {hexdigest})"
+        sources.append({"url": url, "sha256sum": hashlib.sha256(data).hexdigest(), "size": len(data)})
+    return sorted(sources, key=lambda s: s["url"])
 
 
-def import_commits(koji: xmlrpc.client.ServerProxy, wt: Path, distro: str, packagename: str,
-                   branch: str, url: str, clone: Path, commits: list[str]) -> None:
+def import_commits(
+    koji: xmlrpc.client.ServerProxy,
+    wt: Path,
+    distro: str,
+    packagename: str,
+    branch: str,
+    url: str,
+    clone: Path,
+    commits: list[str],
+) -> None:
     """Import each upstream commit (oldest first) onto the upstream-rpm worktree.
 
     Per commit: mirror its dist-git tree into packages/<distro>/<branch>/<pkg>/, recompute
@@ -584,53 +666,60 @@ def import_commits(koji: xmlrpc.client.ServerProxy, wt: Path, distro: str, packa
     downloading from the lookaside, so we only do it when the `sources` file actually changes
     -- the common rebuild/CI commit leaves it untouched and reuses the previous result.
     """
-    rel = f'packages/{distro}/{branch}/{packagename}'
+    rel = f"packages/{distro}/{branch}/{packagename}"
     pkgdir = wt / rel
-    metafile = wt / f'{rel}.json'
+    metafile = wt / f"{rel}.json"
     # Seed the sources state from the last imported commit, so update-upstreams continuing an
     # existing import only re-downloads when a new commit touches `sources`.
-    prev_sources = (pkgdir / 'sources').read_text() if (pkgdir / 'sources').exists() else ''
-    sources_meta = (cast(SrcpkgMetadata, json.loads(metafile.read_text()))['sources']
-                    if metafile.exists() else [])
+    prev_sources = (pkgdir / "sources").read_text() if (pkgdir / "sources").exists() else ""
+    sources_meta = (
+        cast(SrcpkgMetadata, json.loads(metafile.read_text()))["sources"] if metafile.exists() else []
+    )
     for c in commits:
-        git('checkout', '--quiet', c, cwd=clone)
+        git("checkout", "--quiet", c, cwd=clone)
         if pkgdir.exists():
             shutil.rmtree(pkgdir)
-        shutil.copytree(clone, pkgdir, ignore=shutil.ignore_patterns('.git'))
+        shutil.copytree(clone, pkgdir, ignore=shutil.ignore_patterns(".git"))
 
-        cur_sources = (pkgdir / 'sources').read_text() if (pkgdir / 'sources').exists() else ''
+        cur_sources = (pkgdir / "sources").read_text() if (pkgdir / "sources").exists() else ""
         if cur_sources != prev_sources:
-            sources_meta = compute_sources(pkgdir / 'sources', distro, packagename)
+            sources_meta = compute_sources(pkgdir / "sources", distro, packagename)
             prev_sources = cur_sources
 
         build = find_build(koji, distro, packagename, url, c, branch)
         if build:
-            meta = fetch_metadata_from_koji(koji, distro, build, pkgdir / f'{packagename}.spec')
-            meta['sources'] = sources_meta
+            meta = fetch_metadata_from_koji(koji, distro, build, pkgdir / f"{packagename}.spec")
+            meta["sources"] = sources_meta
             write_json(metafile, meta)
 
         # The metadata file only exists once the package has had its first build, so don't
         # demand it for the (possibly unbuilt) commits before that.
-        paths = [rel] + ([f'{rel}.json'] if (wt / f'{rel}.json').exists() else [])
+        paths = [rel] + ([f"{rel}.json"] if (wt / f"{rel}.json").exists() else [])
         # A pristine checkout holds only the upstream-tracked files (lookaside tarballs are never
         # downloaded here). Some packages ship a .gitignore that also names committed
         # files (e.g. p11-kit ignores its own trust-extract-compat and p11-kit-client.service).
         # Add --force, so git add does not silently drop them.
-        git('add', '--force', *paths, cwd=wt)
-        if not git('diff', '--cached', '--name-only', cwd=wt).strip():
+        git("add", "--force", *paths, cwd=wt)
+        if not git("diff", "--cached", "--name-only", cwd=wt).strip():
             # An unbuilt no-op upstream commit (an %autorelease mass rebuild, a merge with no net
             # first-parent change): nothing we track changed and no build refreshed the json.
             # Nothing consumes such a commit -- on our side the release is not a commit count, it
             # lives in srcpkg.json -- so don't mirror it.
-            logging.info('%s/%s/%s: skipping no-op commit %s', distro, branch, packagename, c[:12])
+            logging.info("%s/%s/%s: skipping no-op commit %s", distro, branch, packagename, c[:12])
             continue
         # Keep the upstream commit's author and message; prefix the subject with distro/branch/pkg.
-        msg = git('log', '-1', '--format=%B', cwd=clone).strip()
-        author = git('log', '-1', '--format=%an <%ae>', cwd=clone).strip()
-        git('commit', '--quiet', '--author', author, '-m',
-            f'[{distro}/{branch}/{packagename}] {msg}\n\nX-Upstream-Commit: {c}', cwd=wt)
-        logging.info('%s/%s/%s: committed %s (%s)', distro, branch, packagename,
-                     msg.splitlines()[0], c[:12])
+        msg = git("log", "-1", "--format=%B", cwd=clone).strip()
+        author = git("log", "-1", "--format=%an <%ae>", cwd=clone).strip()
+        git(
+            "commit",
+            "--quiet",
+            "--author",
+            author,
+            "-m",
+            f"[{distro}/{branch}/{packagename}] {msg}\n\nX-Upstream-Commit: {c}",
+            cwd=wt,
+        )
+        logging.info("%s/%s/%s: committed %s (%s)", distro, branch, packagename, msg.splitlines()[0], c[:12])
 
 
 def import_upstream(distro: str, branch: str, packagename: str, sha: str | None) -> None:
@@ -641,36 +730,40 @@ def import_upstream(distro: str, branch: str, packagename: str, sha: str | None)
     history stays upstream. The imported commit must have a published build (that's what
     generates the metadata); an explicit --sha without one is refused.
     """
-    assert distro in DISTROS, f'unsupported distro {distro!r} (known: {", ".join(DISTROS)})'
-    url = DISTROS[distro]['dist_git'] + packagename + '.git'
+    assert distro in DISTROS, f"unsupported distro {distro!r} (known: {', '.join(DISTROS)})"
+    url = DISTROS[distro]["dist_git"] + packagename + ".git"
     wt = ensure_worktree()
-    assert not (wt / 'packages' / distro / branch / packagename).exists(), \
-        f'{distro}/{branch}/{packagename} already imported'
+    assert not (wt / "packages" / distro / branch / packagename).exists(), (
+        f"{distro}/{branch}/{packagename} already imported"
+    )
 
-    koji = xmlrpc.client.ServerProxy(DISTROS[distro]['koji_hub'], allow_none=True)
+    koji = xmlrpc.client.ServerProxy(DISTROS[distro]["koji_hub"], allow_none=True)
     with tempfile.TemporaryDirectory() as tmp:
-        clone = Path(tmp) / 'clone'
-        git_net('clone', '--quiet', '--branch', branch, '--single-branch', url, str(clone))
+        clone = Path(tmp) / "clone"
+        git_net("clone", "--quiet", "--branch", branch, "--single-branch", url, str(clone))
         if sha:
             build = find_build(koji, distro, packagename, url, sha, branch)
             if not (build and is_published(koji, distro, branch, build)):
-                raise SystemExit(f'{packagename} commit {sha[:12]} has no published {branch} '
-                                 'build -- srcpkg.json can only come from one; pick a built commit')
+                raise SystemExit(
+                    f"{packagename} commit {sha[:12]} has no published {branch} "
+                    "build -- srcpkg.json can only come from one; pick a built commit"
+                )
         else:
             # Default target: the newest published build (skip unbuilt/staged tip commits).
             sha = latest_published_commit(koji, clone, distro, packagename, url, branch)
-            assert sha, f'no published build for {packagename} on {branch}'
-        git('checkout', '--quiet', sha, cwd=clone)
+            assert sha, f"no published build for {packagename} on {branch}"
+        git("checkout", "--quiet", sha, cwd=clone)
         import_commits(koji, wt, distro, packagename, branch, url, clone, [sha])
-    logging.info('imported %s/%s/%s onto upstream-rpm', distro, branch, packagename)
+    logging.info("imported %s/%s/%s onto upstream-rpm", distro, branch, packagename)
 
 
 def last_imported_sha(wt: Path, distro: str, branch: str, packagename: str) -> str:
     """The X-Upstream-Commit of the most recent upstream-rpm commit touching this package."""
-    rel = f'packages/{distro}/{branch}/{packagename}'
-    sha = git('log', '-1', '--format=%(trailers:key=X-Upstream-Commit,valueonly)',
-              '--', rel, f'{rel}.json', cwd=wt).strip()
-    assert sha, f'no X-Upstream-Commit trailer for {rel}'
+    rel = f"packages/{distro}/{branch}/{packagename}"
+    sha = git(
+        "log", "-1", "--format=%(trailers:key=X-Upstream-Commit,valueonly)", "--", rel, f"{rel}.json", cwd=wt
+    ).strip()
+    assert sha, f"no X-Upstream-Commit trailer for {rel}"
     return sha
 
 
@@ -678,28 +771,27 @@ def update_upstreams() -> None:
     """Import any new upstream commits for every package currently on upstream-rpm."""
     wt = ensure_worktree()
     # Each import is a packages/<distro>/<branch>/<pkg>/ directory.
-    for pkgdir in sorted(p for p in (wt / 'packages').glob('*/*/*') if p.is_dir()):
-        distro, branch, packagename = pkgdir.relative_to(wt / 'packages').parts
-        assert distro in DISTROS, f'unsupported distro {distro!r}'
-        koji = xmlrpc.client.ServerProxy(DISTROS[distro]['koji_hub'], allow_none=True)
-        url = DISTROS[distro]['dist_git'] + packagename + '.git'
+    for pkgdir in sorted(p for p in (wt / "packages").glob("*/*/*") if p.is_dir()):
+        distro, branch, packagename = pkgdir.relative_to(wt / "packages").parts
+        assert distro in DISTROS, f"unsupported distro {distro!r}"
+        koji = xmlrpc.client.ServerProxy(DISTROS[distro]["koji_hub"], allow_none=True)
+        url = DISTROS[distro]["dist_git"] + packagename + ".git"
         last = last_imported_sha(wt, distro, branch, packagename)
         # Cheap pre-check: a single ls-remote tells us whether the branch moved at all.
-        remote_head = git_net('ls-remote', url, f'refs/heads/{branch}').split()[0]
+        remote_head = git_net("ls-remote", url, f"refs/heads/{branch}").split()[0]
         if remote_head == last:
-            logging.info('%s/%s/%s: up to date (%s)', distro, branch, packagename, last[:12])
+            logging.info("%s/%s/%s: up to date (%s)", distro, branch, packagename, last[:12])
             continue
         with tempfile.TemporaryDirectory() as tmp:
-            clone = Path(tmp) / 'clone'
-            git_net('clone', '--quiet', '--branch', branch, '--single-branch', url, str(clone))
+            clone = Path(tmp) / "clone"
+            git_net("clone", "--quiet", "--branch", branch, "--single-branch", url, str(clone))
             target = latest_published_commit(koji, clone, distro, packagename, url, branch, since=last)
             if not target:
-                logging.info('%s/%s/%s: new commits, but none published yet', distro, branch, packagename)
+                logging.info("%s/%s/%s: new commits, but none published yet", distro, branch, packagename)
                 continue
-            commits = git('rev-list', '--reverse', '--first-parent', f'{last}..{target}',
-                          cwd=clone).split()
+            commits = git("rev-list", "--reverse", "--first-parent", f"{last}..{target}", cwd=clone).split()
             import_commits(koji, wt, distro, packagename, branch, url, clone, commits)
-            logging.info('%s/%s/%s: imported %d new commit(s)', distro, branch, packagename, len(commits))
+            logging.info("%s/%s/%s: imported %d new commit(s)", distro, branch, packagename, len(commits))
 
 
 def replay(commits: list[str], rel: str, take_upstream: bool = False) -> bool:
@@ -723,9 +815,9 @@ def replay(commits: list[str], rel: str, take_upstream: bool = False) -> bool:
     merged into ours, so the delta -- files we added included -- is gone and nothing can conflict.
     Only the first commit needs it; the dir is upstream's from there on.
     """
-    jrel = f'{rel}.json'
-    branchdir = (ROOT / rel).parent
-    buckrel = f'{Path(rel).parent}/BUCK'
+    jrel = f"{rel}.json"
+    branchdir = (_root() / rel).parent
+    buckrel = f"{Path(rel).parent}/BUCK"
     conflicts: list[str] = []
     for i, c in enumerate(commits):
         # Stage the commit's dir without committing yet: taken wholesale when we discard our delta,
@@ -735,39 +827,52 @@ def replay(commits: list[str], rel: str, take_upstream: bool = False) -> bool:
         if take_upstream and i == 0:
             restore(c, rel)
         else:
-            subprocess.run(['git', 'cherry-pick', '-n', '-Xno-renames', '--allow-empty', c],
-                           cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if git('ls-tree', c, '--', jrel, cwd=ROOT).strip():
-            meta = cast(SrcpkgMetadata, json.loads(git('show', f'{c}:{jrel}', cwd=ROOT)))
+            subprocess.run(
+                ["git", "cherry-pick", "-n", "-Xno-renames", "--allow-empty", c],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+        if git("ls-tree", c, "--", jrel, cwd=ROOT).strip():
+            meta = cast(SrcpkgMetadata, json.loads(git("show", f"{c}:{jrel}", cwd=ROOT)))
             predict_dist(meta)
             # Fold the build projection into the metadata (main-only, never on the pristine
             # upstream-rpm mirror), so the per-branch BUCK can load the .json directly. SDE = this
             # commit's author date (the date `-C` stamps below; stable across the metadata amend,
             # advancing on every rebuild).
-            project_build_fields(meta, int(git('show', '-s', '--format=%at', c, cwd=ROOT)))
-            write_json(ROOT / jrel, meta)
-            git('add', '--', jrel, cwd=ROOT)
-        elif (ROOT / jrel).exists():
-            git('rm', '--quiet', '--', jrel, cwd=ROOT)
+            project_build_fields(meta, int(git("show", "-s", "--format=%at", c, cwd=ROOT)))
+            write_json(_root() / jrel, meta)
+            git("add", "--", jrel, cwd=ROOT)
+        elif (_root() / jrel).exists():
+            git("rm", "--quiet", "--", jrel, cwd=ROOT)
         # Regenerate the per-branch BUCK to match the .json set (a no-op git-add when unchanged).
         regenerate_buck(branchdir)
-        git('add', '--', buckrel, cwd=ROOT)
+        git("add", "--", buckrel, cwd=ROOT)
         # The json is recomputed, never merged, so exclude it. A conflict left in the package dir
         # is kept with its markers and committed with a CONFLICT: subject (packages.md); we return
         # False so the caller (and ultimately the CLI) reports it and exits non-zero -- the PR
         # lands as a failing draft for a human to resolve.
-        conflicted = [p for p in git('diff', '--name-only', '--diff-filter=U', cwd=ROOT).split()
-                      if p != jrel]
+        conflicted = [
+            p for p in git("diff", "--name-only", "--diff-filter=U", cwd=ROOT).split() if p != jrel
+        ]
         if conflicted:
-            git('add', '--', *conflicted, cwd=ROOT)
-            msg = git('log', '-1', '--format=%B', c, cwd=ROOT).strip()
-            author = git('log', '-1', '--format=%an <%ae>', c, cwd=ROOT).strip()
-            git('commit', '--quiet', '--allow-empty', '--author', author, '-m',
-                f'CONFLICT: {Path(rel).name} ({" ".join(conflicted)})\n\n{msg}', cwd=ROOT)
+            git("add", "--", *conflicted, cwd=ROOT)
+            msg = git("log", "-1", "--format=%B", c, cwd=ROOT).strip()
+            author = git("log", "-1", "--format=%an <%ae>", c, cwd=ROOT).strip()
+            git(
+                "commit",
+                "--quiet",
+                "--allow-empty",
+                "--author",
+                author,
+                "-m",
+                f"CONFLICT: {Path(rel).name} ({' '.join(conflicted)})\n\n{msg}",
+                cwd=ROOT,
+            )
             conflicts.append(c)
-            logging.warning('%s: conflict in %s', Path(rel).name, ' '.join(conflicted))
+            logging.warning("%s: conflict in %s", Path(rel).name, " ".join(conflicted))
         else:
-            git('commit', '--quiet', '--allow-empty', '-C', c, cwd=ROOT)
+            git("commit", "--quiet", "--allow-empty", "-C", c, cwd=ROOT)
     return not conflicts
 
 
@@ -784,18 +889,21 @@ def import_(packagename: str, distro: str | None, branch: str | None) -> None:
     """
     wt = ensure_worktree()
     if not (distro and branch):
-        matches = [p for p in (wt / 'packages').glob(f'*/*/{packagename}') if p.is_dir()]
-        assert matches, f'{packagename} not on upstream-rpm'
-        assert len(matches) == 1, f'{packagename} on upstream-rpm from several sources; specify distro and branch'
-        distro, branch, _ = matches[0].relative_to(wt / 'packages').parts
-    rel = f'packages/{distro}/{branch}/{packagename}'
-    assert (wt / rel).is_dir(), f'{distro}/{branch}/{packagename} not on upstream-rpm'
-    assert not (ROOT / rel).exists(), f'{distro}/{branch}/{packagename} already on this branch'
+        matches = [p for p in (wt / "packages").glob(f"*/*/{packagename}") if p.is_dir()]
+        assert matches, f"{packagename} not on upstream-rpm"
+        assert len(matches) == 1, (
+            f"{packagename} on upstream-rpm from several sources; specify distro and branch"
+        )
+        distro, branch, _ = matches[0].relative_to(wt / "packages").parts
+    rel = f"packages/{distro}/{branch}/{packagename}"
+    assert (wt / rel).is_dir(), f"{distro}/{branch}/{packagename} not on upstream-rpm"
+    assert not (_root() / rel).exists(), f"{distro}/{branch}/{packagename} already on this branch"
 
-    commits = git('rev-list', '--reverse', '--first-parent', 'upstream-rpm',
-                  '--', rel, f'{rel}.json', cwd=wt).split()
+    commits = git(
+        "rev-list", "--reverse", "--first-parent", "upstream-rpm", "--", rel, f"{rel}.json", cwd=wt
+    ).split()
     replay(commits, rel)
-    logging.info('imported %s/%s/%s onto main (%d commit(s))', distro, branch, packagename, len(commits))
+    logging.info("imported %s/%s/%s onto main (%d commit(s))", distro, branch, packagename, len(commits))
 
 
 def resolve_main(packagename: str, distro: str | None = None, branch: str | None = None) -> str:
@@ -806,18 +914,19 @@ def resolve_main(packagename: str, distro: str | None = None, branch: str | None
     disambiguate. Raises a readable error if the package is absent or ambiguous.
     """
     if distro and branch:
-        rel = f'packages/{distro}/{branch}/{packagename}'
-        if not (ROOT / rel).is_dir():
-            raise SystemExit(f'{distro}/{branch}/{packagename}: not on this branch')
+        rel = f"packages/{distro}/{branch}/{packagename}"
+        if not (_root() / rel).is_dir():
+            raise SystemExit(f"{distro}/{branch}/{packagename}: not on this branch")
         return rel
-    matches = sorted(p for p in (ROOT / 'packages').glob(f'*/*/{packagename}') if p.is_dir())
+    matches = sorted(p for p in (_root() / "packages").glob(f"*/*/{packagename}") if p.is_dir())
     if not matches:
-        raise SystemExit(f'{packagename}: no such package on this branch')
+        raise SystemExit(f"{packagename}: no such package on this branch")
     if len(matches) > 1:
-        coords = ', '.join('/'.join(p.relative_to(ROOT / 'packages').parts[:2]) for p in matches)
-        raise SystemExit(f'{packagename}: present from several sources ({coords}); '
-                         'specify distro and branch')
-    return str(matches[0].relative_to(ROOT))
+        coords = ", ".join("/".join(p.relative_to(_root() / "packages").parts[:2]) for p in matches)
+        raise SystemExit(
+            f"{packagename}: present from several sources ({coords}); specify distro and branch"
+        )
+    return str(matches[0].relative_to(_root()))
 
 
 def upstream_anchor(rel: str) -> str:
@@ -828,8 +937,16 @@ def upstream_anchor(rel: str) -> str:
     don't) don't shadow the import/update anchor. Both the dir and its sibling <pkg>.json count,
     so a trailing upstream metadata-only rebuild is still seen as the anchor.
     """
-    return git('log', '-1', '--format=%(trailers:key=X-Upstream-Commit,valueonly)',
-               '--grep=^X-Upstream-Commit:', '--', rel, f'{rel}.json', cwd=ROOT).strip()
+    return git(
+        "log",
+        "-1",
+        "--format=%(trailers:key=X-Upstream-Commit,valueonly)",
+        "--grep=^X-Upstream-Commit:",
+        "--",
+        rel,
+        f"{rel}.json",
+        cwd=ROOT,
+    ).strip()
 
 
 def is_modified(ours: str, upstream: str) -> bool:
@@ -840,11 +957,14 @@ def is_modified(ours: str, upstream: str) -> bool:
     e.g. 'HEAD:packages/<pkg>' and '<sha>:packages/<distro>/<branch>/<pkg>'. Used by
     list/update/diff.
     """
-    if git('rev-parse', ours, cwd=ROOT).strip() == git('rev-parse', upstream, cwd=ROOT).strip():
+    if git("rev-parse", ours, cwd=ROOT).strip() == git("rev-parse", upstream, cwd=ROOT).strip():
         return False
-    changed = [ln for ln in git('diff', ours, upstream, cwd=ROOT).splitlines()
-               if ln[:1] in '+-' and not ln.startswith(('+++', '---'))]
-    return not (changed and all(re.match(r'[-+]Release:', ln) for ln in changed))
+    changed = [
+        ln
+        for ln in git("diff", ours, upstream, cwd=ROOT).splitlines()
+        if ln[:1] in "+-" and not ln.startswith(("+++", "---"))
+    ]
+    return not (changed and all(re.match(r"[-+]Release:", ln) for ln in changed))
 
 
 def restore(ref: str, *paths: str) -> None:
@@ -855,10 +975,10 @@ def restore(ref: str, *paths: str) -> None:
     the paths first makes the result an exact tree match. A path that `ref` doesn't have at all is
     simply gone afterwards.
     """
-    git('rm', '--quiet', '-r', '--ignore-unmatch', '--', *paths, cwd=ROOT)
-    at_ref = [p for p in paths if git('ls-tree', ref, '--', p, cwd=ROOT).strip()]
+    git("rm", "--quiet", "-r", "--ignore-unmatch", "--", *paths, cwd=ROOT)
+    at_ref = [p for p in paths if git("ls-tree", ref, "--", p, cwd=ROOT).strip()]
     if at_ref:
-        git('checkout', ref, '--', *at_ref, cwd=ROOT)
+        git("checkout", ref, "--", *at_ref, cwd=ROOT)
 
 
 def pending_upstream(wt: Path, rel: str) -> tuple[str, list[str]]:
@@ -868,12 +988,14 @@ def pending_upstream(wt: Path, rel: str) -> tuple[str, list[str]]:
     """
     anchor = upstream_anchor(rel)
     if not anchor:
-        raise SystemExit(f'{rel.removeprefix("packages/")}: native package, no upstream to take')
-    urc = git('log', 'upstream-rpm', '-1', '--format=%H',
-              f'--grep=^X-Upstream-Commit: {anchor}$', cwd=wt).strip()
-    assert urc, f'no upstream-rpm commit for {rel} @ {anchor}'
-    return urc, git('rev-list', '--reverse', '--first-parent', f'{urc}..upstream-rpm',
-                    '--', rel, f'{rel}.json', cwd=wt).split()
+        raise SystemExit(f"{rel.removeprefix('packages/')}: native package, no upstream to take")
+    urc = git(
+        "log", "upstream-rpm", "-1", "--format=%H", f"--grep=^X-Upstream-Commit: {anchor}$", cwd=wt
+    ).strip()
+    assert urc, f"no upstream-rpm commit for {rel} @ {anchor}"
+    return urc, git(
+        "rev-list", "--reverse", "--first-parent", f"{urc}..upstream-rpm", "--", rel, f"{rel}.json", cwd=wt
+    ).split()
 
 
 def update(packagename: str, distro: str | None = None, branch: str | None = None) -> bool:
@@ -888,42 +1010,45 @@ def update(packagename: str, distro: str | None = None, branch: str | None = Non
     rel = resolve_main(packagename, distro, branch)
     urc, new = pending_upstream(wt, rel)
     if not new:
-        logging.info('%s: already up to date', rel.removeprefix('packages/'))
+        logging.info("%s: already up to date", rel.removeprefix("packages/"))
         return True
     # A purely-Release local delta (a rebuild's Release: bump) has nothing worth preserving over an
     # update: take the dir from upstream so the new release wins cleanly rather than colliding on the
     # Release: line (packages.md). A real modification is kept, and may conflict.
-    ours, base = f'HEAD:{rel}', f'{urc}:{rel}'
-    release_only = git('rev-parse', ours, cwd=ROOT).strip() != git('rev-parse', base, cwd=ROOT).strip() \
-        and not is_modified(ours, base)
+    ours, base = f"HEAD:{rel}", f"{urc}:{rel}"
+    release_only = git("rev-parse", ours, cwd=ROOT).strip() != git(
+        "rev-parse", base, cwd=ROOT
+    ).strip() and not is_modified(ours, base)
     ok = replay(new, rel, take_upstream=release_only)
-    logging.info('%s: applied %d new commit(s)', rel.removeprefix('packages/'), len(new))
+    logging.info("%s: applied %d new commit(s)", rel.removeprefix("packages/"), len(new))
     return ok
 
 
-def rpm_metadata(packagename: str, rpms: list[str],
-                 distro: str | None = None, branch: str | None = None) -> None:
+def rpm_metadata(
+    packagename: str, rpms: list[str], distro: str | None = None, branch: str | None = None
+) -> None:
     """(Re)compute a package's packages/<distro>/<branch>/<pkg>.json from locally built rpm files.
 
     Used for native packages (no upstream koji build to fetch) and as the post-build
     recompute check for imported ones; pass the binary rpms and optionally the .src.rpm.
     """
     rel = resolve_main(packagename, distro, branch)
-    metafile = ROOT / f'{rel}.json'
-    options = branch_properties((ROOT / rel).parent).get('rpmbuild_options', {}).get(packagename, [])
-    meta = metadata_from_rpms([Path(r) for r in rpms], ROOT / rel / f'{packagename}.spec', options)
+    metafile = _root() / f"{rel}.json"
+    options = branch_properties((_root() / rel).parent).get("rpmbuild_options", {}).get(packagename, [])
+    meta = metadata_from_rpms([Path(r) for r in rpms], _root() / rel / f"{packagename}.spec", options)
     # The rpms give relationships/file lists, but not the lookaside `sources` (those come from
     # dist-git) nor the buck projection; carry the sources over and re-derive the projection so a
     # recompute of an imported package doesn't drop them.
     sde = 0
     if metafile.exists():
         old = cast(SrcpkgMetadata, json.loads(metafile.read_text()))
-        meta['sources'] = old.get('sources', [])
-        sde = old.get('source_date_epoch') or 0
+        meta["sources"] = old.get("sources", [])
+        sde = old.get("source_date_epoch") or 0
     project_build_fields(meta, sde)
     write_json(metafile, meta)
-    logging.info('wrote %s.json (%s)', rel.removeprefix('packages/'),
-                 ', '.join(meta['binaries']) or 'no binaries')
+    logging.info(
+        "wrote %s.json (%s)", rel.removeprefix("packages/"), ", ".join(meta["binaries"]) or "no binaries"
+    )
 
 
 def update_all() -> bool:
@@ -936,12 +1061,13 @@ def update_all() -> bool:
     block the whole batch (main() makes it a non-zero exit).
     """
     ok = True
-    for pkgdir in sorted(p for p in (ROOT / 'packages').glob('*/*/*')
-                         if p.is_dir() and is_package_entry(p)):
-        distro, branch, pkg = pkgdir.relative_to(ROOT / 'packages').parts
-        rel = str(pkgdir.relative_to(ROOT))
+    for pkgdir in sorted(
+        p for p in (_root() / "packages").glob("*/*/*") if p.is_dir() and is_package_entry(p)
+    ):
+        distro, branch, pkg = pkgdir.relative_to(_root() / "packages").parts
+        rel = str(pkgdir.relative_to(_root()))
         if not upstream_anchor(rel):
-            logging.info('%s/%s/%s: native, no upstream to update from', distro, branch, pkg)
+            logging.info("%s/%s/%s: native, no upstream to update from", distro, branch, pkg)
             continue
         ok = update(pkg, distro, branch) and ok
     return ok
@@ -961,30 +1087,31 @@ def sync(packagename: str, distro: str | None = None, branch: str | None = None)
     """
     wt = ensure_worktree()
     rel = resolve_main(packagename, distro, branch)
-    coord = rel.removeprefix('packages/')
+    coord = rel.removeprefix("packages/")
     _, new = pending_upstream(wt, rel)
     if new:
         ok = replay(new, rel, take_upstream=True)
-        logging.info('%s: discarded our modifications, applied %d new commit(s)', coord, len(new))
+        logging.info("%s: discarded our modifications, applied %d new commit(s)", coord, len(new))
         return ok
     # The import commit holds the pristine upstream dir + predicted json we go back to.
-    restore(import_commit(rel), rel, f'{rel}.json')
-    if not git('diff', '--cached', '--name-only', cwd=ROOT).strip():
-        raise SystemExit(f'{coord}: already in sync with upstream (nothing to discard)')
-    git('commit', '--quiet', '-m', f'{Path(rel).name}: Discard local modifications', cwd=ROOT)
-    logging.info('%s: discarded our modifications', coord)
+    restore(import_commit(rel), rel, f"{rel}.json")
+    if not git("diff", "--cached", "--name-only", cwd=ROOT).strip():
+        raise SystemExit(f"{coord}: already in sync with upstream (nothing to discard)")
+    git("commit", "--quiet", "-m", f"{Path(rel).name}: Discard local modifications", cwd=ROOT)
+    logging.info("%s: discarded our modifications", coord)
     return True
 
 
-def import_commit(rel: str, head: str = 'HEAD') -> str:
+def import_commit(rel: str, head: str = "HEAD") -> str:
     """The commit that last imported a package as of `head`, or '' if it is native.
 
     The base our local modifications sit on: both the release they bump (local_bump) and the pristine
     tree they deviate from (resets_to_import) are measured against it. Both the dir and its sibling
     <pkg>.json count, so a trailing upstream metadata-only rebuild is the base too.
     """
-    return git('log', head, '-1', '--grep=^X-Upstream-Commit:', '--format=%H',
-               '--', rel, f'{rel}.json', cwd=ROOT).strip()
+    return git(
+        "log", head, "-1", "--grep=^X-Upstream-Commit:", "--format=%H", "--", rel, f"{rel}.json", cwd=ROOT
+    ).strip()
 
 
 def resets_to_import(c: str, rel: str) -> bool:
@@ -998,11 +1125,11 @@ def resets_to_import(c: str, rel: str) -> bool:
     base = import_commit(rel, c)
     if not base or base == c:
         return False
-    paths = ['--', rel, f'{rel}.json']
-    return git('ls-tree', c, *paths, cwd=ROOT) == git('ls-tree', base, *paths, cwd=ROOT)
+    paths = ["--", rel, f"{rel}.json"]
+    return git("ls-tree", c, *paths, cwd=ROOT) == git("ls-tree", base, *paths, cwd=ROOT)
 
 
-def local_bump(rel: str, head: str = 'HEAD') -> int:
+def local_bump(rel: str, head: str = "HEAD") -> int:
     """The package's local minor-version bump: the count of its local commits since the last import.
 
     Local = commits without an X-Upstream-Commit trailer that either touch packages/.../<pkg>/ or
@@ -1013,17 +1140,29 @@ def local_bump(rel: str, head: str = 'HEAD') -> int:
     """
     pkg = Path(rel).name
     anchor = import_commit(rel, head)
-    revs = f'{anchor}..{head}' if anchor else head
-    touched = set(git('log', revs, '--invert-grep', '--grep=^X-Upstream-Commit:',
-                      '--format=%H', '--', rel, cwd=ROOT).split())
-    rebuilt = set(git('log', revs, f'--grep=^X-Rebuild: {pkg}$', '--format=%H', cwd=ROOT).split())
+    revs = f"{anchor}..{head}" if anchor else head
+    touched = set(
+        git(
+            "log", revs, "--invert-grep", "--grep=^X-Upstream-Commit:", "--format=%H", "--", rel, cwd=ROOT
+        ).split()
+    )
+    rebuilt = set(git("log", revs, f"--grep=^X-Rebuild: {pkg}$", "--format=%H", cwd=ROOT).split())
     ours = touched | rebuilt
     bump = 0
     # Newest first, over every local commit that touched the package at all -- a reset ends the count
     # the way the import does, and it may well be one that `ours` does not count (a discarded
     # X-Rebuild bump touches only the json).
-    for c in git('log', revs, '--invert-grep', '--grep=^X-Upstream-Commit:', '--format=%H',
-                 '--', rel, f'{rel}.json', cwd=ROOT).split():
+    for c in git(
+        "log",
+        revs,
+        "--invert-grep",
+        "--grep=^X-Upstream-Commit:",
+        "--format=%H",
+        "--",
+        rel,
+        f"{rel}.json",
+        cwd=ROOT,
+    ).split():
         if resets_to_import(c, rel):
             break
         if c in ours:
@@ -1038,15 +1177,14 @@ def bumped_release(release: str, prev_bump: int) -> str:
     0.1"); prev_bump (the current bump, 0 if none) tells us whether the base already carries a
     `.N` to replace or we append a fresh one.
     """
-    m = re.search(rf'(%\{{?\??dist\}}?|\.(?:fc|el|hum)\d+(?:{NATIVE_DIST})?)$', release)
-    suffix = m.group() if m else ''
-    base = release[:len(release) - len(suffix)]
-    pkgrel = base if prev_bump == 0 else base.rsplit('.', 1)[0]
-    return f'{pkgrel}.{prev_bump + 1}{suffix}'
+    m = re.search(rf"(%\{{?\??dist\}}?|\.(?:fc|el|hum)\d+(?:{NATIVE_DIST})?)$", release)
+    suffix = m.group() if m else ""
+    base = release[: len(release) - len(suffix)]
+    pkgrel = base if prev_bump == 0 else base.rsplit(".", 1)[0]
+    return f"{pkgrel}.{prev_bump + 1}{suffix}"
 
 
-def rebuild(packagename: str, reason: str,
-            distro: str | None = None, branch: str | None = None) -> None:
+def rebuild(packagename: str, reason: str, distro: str | None = None, branch: str | None = None) -> None:
     """Generate a no-change rebuild commit for a package (e.g. a library it links against changed).
 
     Per packages.md: a package using %autorelease gets a commit that touches only its srcpkg.json
@@ -1057,40 +1195,42 @@ def rebuild(packagename: str, reason: str,
     """
     rel = resolve_main(packagename, distro, branch)
     pkg = Path(rel).name
-    spec = ROOT / rel / f'{pkg}.spec'
-    metafile = ROOT / f'{rel}.json'
+    spec = _root() / rel / f"{pkg}.spec"
+    metafile = _root() / f"{rel}.json"
     meta = cast(SrcpkgMetadata, json.loads(metafile.read_text()))
     prev = local_bump(rel)
 
     vr = build_vr(meta)
-    assert vr, f'{rel}: no version-release in srcpkg.json'
-    old_release = vr.rsplit('-', 1)[1]
+    assert vr, f"{rel}: no version-release in srcpkg.json"
+    old_release = vr.rsplit("-", 1)[1]
     new_release = bumped_release(old_release, prev)
     # Bump the release in the package's own NEVRs (self-provides + versioned sibling deps end in
     # '-<release>'); other packages have no such suffix and are left alone.
-    for arch in meta['binaries'].values():
+    for arch in meta["binaries"].values():
         for binmeta in arch.values():
-            for key in ('Provides', 'Requires', 'Recommends'):
-                binmeta[key] = [re.sub(rf'-{re.escape(old_release)}$', f'-{new_release}', s)
-                                for s in binmeta[key]]
-    project_build_fields(meta, meta.get('source_date_epoch') or 0)  # refresh version/release/dist
+            for key in ("Provides", "Requires", "Recommends"):
+                binmeta[key] = [
+                    re.sub(rf"-{re.escape(old_release)}$", f"-{new_release}", s) for s in binmeta[key]
+                ]
+    project_build_fields(meta, meta.get("source_date_epoch") or 0)  # refresh version/release/dist
     write_json(metafile, meta)
 
-    subject = f'{pkg}: Rebuild against {reason}'
+    subject = f"{pkg}: Rebuild against {reason}"
     if uses_autorelease(spec.read_text()):
         # The release is a commit count -- no Release: line to touch. Only the generated metadata
         # changes; the X-Rebuild trailer makes that bump load-bearing (and countable above).
-        git('add', '--', f'{rel}.json', cwd=ROOT)
-        git('commit', '--quiet', '-m', f'{subject}\n\nX-Rebuild: {pkg}', cwd=ROOT)
+        git("add", "--", f"{rel}.json", cwd=ROOT)
+        git("commit", "--quiet", "-m", f"{subject}\n\nX-Rebuild: {pkg}", cwd=ROOT)
     else:
         text = spec.read_text()
-        m = re.search(r'^(Release:\s*)(\S+)', text, re.M)
-        assert m, f'{spec}: no Release: line'
-        spec.write_text(text[:m.start(2)] + bumped_release(m.group(2), prev) + text[m.end(2):])
-        git('add', '--', rel, f'{rel}.json', cwd=ROOT)
-        git('commit', '--quiet', '-m', subject, cwd=ROOT)
-    logging.info('%s: rebuilt against %s (release -> %s)',
-                 rel.removeprefix('packages/'), reason, new_release)
+        m = re.search(r"^(Release:\s*)(\S+)", text, re.M)
+        assert m, f"{spec}: no Release: line"
+        spec.write_text(text[: m.start(2)] + bumped_release(m.group(2), prev) + text[m.end(2) :])
+        git("add", "--", rel, f"{rel}.json", cwd=ROOT)
+        git("commit", "--quiet", "-m", subject, cwd=ROOT)
+    logging.info(
+        "%s: rebuilt against %s (release -> %s)", rel.removeprefix("packages/"), reason, new_release
+    )
 
 
 def self_provide_vr(name: str, binmeta: BinaryMetadata) -> str | None:
@@ -1098,8 +1238,8 @@ def self_provide_vr(name: str, binmeta: BinaryMetadata) -> str | None:
 
     Also matches the arch-qualified form ('<name>(x86-64) = V-R').
     """
-    for provide in binmeta['Provides']:
-        if m := re.match(rf'{re.escape(name)}(?:\(\S+\))? = (\S+)$', provide):
+    for provide in binmeta["Provides"]:
+        if m := re.match(rf"{re.escape(name)}(?:\(\S+\))? = (\S+)$", provide):
             return m.group(1)
     return None
 
@@ -1111,7 +1251,7 @@ def build_vr(meta: SrcpkgMetadata) -> str | None:
     package name -- which often isn't a binary name at all (e.g. source krb5 builds krb5-libs/
     krb5-server, source python-foo builds python3-foo).
     """
-    for arch in meta['binaries'].values():
+    for arch in meta["binaries"].values():
         for name, binmeta in arch.items():
             if vr := self_provide_vr(name, binmeta):
                 return vr
@@ -1127,14 +1267,16 @@ def arch_vr_skew(meta: SrcpkgMetadata) -> list[str]:
     each. Comparison is per binary name, so a subpackage with its own Version: (libbpf's
     usdt-devel) is never held against its siblings.
     """
-    vrs: dict[str, dict[str, str]] = {}   # binary name -> arch -> V-R
-    for arch, bucket in meta['binaries'].items():
+    vrs: dict[str, dict[str, str]] = {}  # binary name -> arch -> V-R
+    for arch, bucket in meta["binaries"].items():
         for name, binmeta in bucket.items():
             if vr := self_provide_vr(name, binmeta):
                 vrs.setdefault(name, {})[arch] = vr
-    return [f'{name} version-release skew: '
-            + ', '.join(f'{a} has {vr}' for a, vr in sorted(per.items()))
-            for name, per in sorted(vrs.items()) if len(set(per.values())) > 1]
+    return [
+        f"{name} version-release skew: " + ", ".join(f"{a} has {vr}" for a, vr in sorted(per.items()))
+        for name, per in sorted(vrs.items())
+        if len(set(per.values())) > 1
+    ]
 
 
 def build_dist(meta: SrcpkgMetadata) -> str | None:
@@ -1143,7 +1285,7 @@ def build_dist(meta: SrcpkgMetadata) -> str | None:
     A predicted main-side release ('.fc44aos') still yields '.fc44' here, which callers re-suffix.
     """
     vr = build_vr(meta)
-    if vr and (d := re.search(r'\.(?:fc|el|hum)\d+', vr)):
+    if vr and (d := re.search(r"\.(?:fc|el|hum)\d+", vr)):
         return d.group()
     return None
 
@@ -1154,11 +1296,11 @@ def native_dist(rel: str) -> str:
     Keeps NEVRs unique across distros. Read from the build's binary releases in srcpkg.json;
     native packages (no upstream build) just get '.' + NATIVE_DIST.
     """
-    metafile = ROOT / f'{rel}.json'
+    metafile = _root() / f"{rel}.json"
     if metafile.exists():
         if d := build_dist(cast(SrcpkgMetadata, json.loads(metafile.read_text()))):
             return d + NATIVE_DIST
-    return '.' + NATIVE_DIST
+    return "." + NATIVE_DIST
 
 
 # --- build-system projection (main branch only) -------------------------------------------
@@ -1166,6 +1308,7 @@ def native_dist(rel: str) -> str:
 # BUCK, in every replayed commit. The projected fields are main-only -- never on the pristine
 # upstream-rpm mirror. buck2 loads the .json natively and hands it to rpm_package_json; the rule lives in
 # the consuming buck project's `tine` cell, distributions via its `distributions` cell alias.
+
 
 def build_version(meta: SrcpkgMetadata) -> str:
     """The upstream Version the built binaries share, with epoch and Release dropped.
@@ -1175,7 +1318,7 @@ def build_version(meta: SrcpkgMetadata) -> str:
     vr = build_vr(meta)
     if not vr:
         raise SystemExit('no "<binary> = version-release" self-provide in metadata')
-    return vr.split(':', 1)[-1].rsplit('-', 1)[0]  # drop epoch, then release
+    return vr.split(":", 1)[-1].rsplit("-", 1)[0]  # drop epoch, then release
 
 
 def build_release(meta: SrcpkgMetadata, dist: str) -> str:
@@ -1187,7 +1330,7 @@ def build_release(meta: SrcpkgMetadata, dist: str) -> str:
     vr = build_vr(meta)
     if not vr:
         raise SystemExit('no "<binary> = version-release" self-provide in metadata')
-    return vr.split(':', 1)[-1].rsplit('-', 1)[1].removesuffix(dist)  # drop epoch + version, strip dist
+    return vr.split(":", 1)[-1].rsplit("-", 1)[1].removesuffix(dist)  # drop epoch + version, strip dist
 
 
 def project_build_fields(meta: SrcpkgMetadata, source_date_epoch: int) -> None:
@@ -1200,16 +1343,16 @@ def project_build_fields(meta: SrcpkgMetadata, source_date_epoch: int) -> None:
     bucket; each source's http_file `out` is its URL basename).
     """
     d = build_dist(meta)
-    dist = d + NATIVE_DIST if d else '.' + NATIVE_DIST
-    meta['version'] = build_version(meta)
-    meta['release'] = build_release(meta, dist)
-    meta['dist'] = dist
-    meta['source_date_epoch'] = source_date_epoch
+    dist = d + NATIVE_DIST if d else "." + NATIVE_DIST
+    meta["version"] = build_version(meta)
+    meta["release"] = build_release(meta, dist)
+    meta["dist"] = dist
+    meta["source_date_epoch"] = source_date_epoch
 
 
 def _load_symbol(pkg: str) -> str:
     """A Starlark identifier for a package's loaded metadata (names may contain '-', '+', '.')."""
-    return '_' + re.sub(r'\W', '_', pkg)
+    return "_" + re.sub(r"\W", "_", pkg)
 
 
 def regenerate_buck(branchdir: Path) -> None:
@@ -1227,28 +1370,33 @@ def regenerate_buck(branchdir: Path) -> None:
     """
     distro, branch = branchdir.parts[-2], branchdir.parts[-1]
     # Sort by the filename (with .json) to match the formatter's load order
-    pkgs = [p.stem for p in sorted(branchdir.glob('*.json'), key=lambda p: p.name)
-            if is_package_entry(p)]
+    pkgs = [p.stem for p in sorted(branchdir.glob("*.json"), key=lambda p: p.name) if is_package_entry(p)]
 
     # all loads have to come first in Starlark
     loads = ['load("@tine//package_system/rpm:generated.bzl", "rpm_branch")']
     loads += [f'load(":{p}.json", {_load_symbol(p)} = "value")' for p in pkgs]
     # Add a stub for branches without _properties.json to keep the rest of the file
     # in the same shape
-    loads += [f'load(":{BRANCH_PROPERTIES}", _properties = "value")'
-              if (branchdir / BRANCH_PROPERTIES).exists()
-              else '_properties = {}']
+    loads += [
+        f'load(":{BRANCH_PROPERTIES}", _properties = "value")'
+        if (branchdir / BRANCH_PROPERTIES).exists()
+        else "_properties = {}"
+    ]
 
-    lines = ['# @generated -- do not edit (regenerated on import/update).', *loads, '', 'PACKAGES = {']
+    lines = ["# @generated -- do not edit (regenerated on import/update).", *loads, "", "PACKAGES = {"]
     lines += [f'    "{p}": {_load_symbol(p)},' for p in pkgs]
-    lines += ['}', '', 'rpm_branch(',
-              '    packages = PACKAGES,',
-              f'    buildroot = _properties.get("buildroot", "//buildroots/{distro}:{branch}"),',
-              '    buildroot_only_packages = _properties.get("buildroot_only_packages", []),',
-              '    seed_only_packages = _properties.get("seed_only_packages", []),',
-              '    rpmbuild_options = _properties.get("rpmbuild_options", {}),',
-              ')']
-    (branchdir / 'BUCK').write_text('\n'.join(lines) + '\n')
+    lines += [
+        "}",
+        "",
+        "rpm_branch(",
+        "    packages = PACKAGES,",
+        f'    buildroot = _properties.get("buildroot", "//buildroots/{distro}:{branch}"),',
+        '    buildroot_only_packages = _properties.get("buildroot_only_packages", []),',
+        '    seed_only_packages = _properties.get("seed_only_packages", []),',
+        '    rpmbuild_options = _properties.get("rpmbuild_options", {}),',
+        ")",
+    ]
+    (branchdir / "BUCK").write_text("\n".join(lines) + "\n")
 
 
 def fetch_sources(pkgdir: Path, distro: str, packagename: str) -> None:
@@ -1257,13 +1405,19 @@ def fetch_sources(pkgdir: Path, distro: str, packagename: str) -> None:
     Via dist-git-client, which validates the SHA512 as it downloads. No-op when the package ships
     no `sources` file.
     """
-    sources = pkgdir / 'sources'
+    sources = pkgdir / "sources"
     if not (sources.exists() and sources.read_text().strip()):
         return
-    logging.info('fetching %s sources from the %s lookaside', packagename, distro)
-    cmd = ['dist-git-client', '--loglevel', 'warning',
-           '--forked-from', DISTROS[distro]['dist_git'] + packagename + '.git', 'sources']
-    logging.debug('%s  (cwd=%s)', ' '.join(cmd), pkgdir)
+    logging.info("fetching %s sources from the %s lookaside", packagename, distro)
+    cmd = [
+        "dist-git-client",
+        "--loglevel",
+        "warning",
+        "--forked-from",
+        DISTROS[distro]["dist_git"] + packagename + ".git",
+        "sources",
+    ]
+    logging.debug("%s  (cwd=%s)", " ".join(cmd), pkgdir)
     subprocess.run(cmd, cwd=pkgdir, check=True)
 
 
@@ -1277,31 +1431,47 @@ def srpm(packagename: str, distro: str | None = None, branch: str | None = None)
     rpmautospec or git in the buildroot.
     """
     rel = resolve_main(packagename, distro, branch)
-    distro = rel.split('/')[1]
-    pkgdir = ROOT / rel
-    spec = pkgdir / f'{packagename}.spec'
-    assert spec.exists(), f'{rel}: no {packagename}.spec'
+    distro = rel.split("/")[1]
+    pkgdir = _root() / rel
+    spec = pkgdir / f"{packagename}.spec"
+    assert spec.exists(), f"{rel}: no {packagename}.spec"
 
     fetch_sources(pkgdir, distro, packagename)
 
-    builddir = ROOT / '_build'  # also holds binary rpms from mockbuild
+    builddir = _root() / "_build"  # also holds binary rpms from mockbuild
     builddir.mkdir(exist_ok=True)
     spec_text = spec.read_text()
     with tempfile.TemporaryDirectory() as tmp:
         build_spec = spec
         if uses_autorelease(spec_text):
-            meta = cast(SrcpkgMetadata, json.loads((ROOT / f'{rel}.json').read_text()))
+            meta = cast(SrcpkgMetadata, json.loads((_root() / f"{rel}.json").read_text()))
             release = build_release(meta, native_dist(rel))  # pkgrel[.minorbump], cross-checked at import
-            build_spec = Path(tmp) / f'{packagename}.spec'
-            build_spec.write_text(f'%global autorelease {release}%{{?dist}}\n'
-                                  f'%global autochangelog %{{nil}}\n{spec_text}')
+            build_spec = Path(tmp) / f"{packagename}.spec"
+            build_spec.write_text(
+                f"%global autorelease {release}%{{?dist}}\n%global autochangelog %{{nil}}\n{spec_text}"
+            )
         out = subprocess.run(
-            ['rpmbuild', '-bs', '--define', f'_topdir {tmp}', '--define', f'_sourcedir {pkgdir}',
-             '--define', f'_srcrpmdir {builddir}', '--define', f'dist {native_dist(rel)}',
-             str(build_spec)],
-            check=True, stdout=subprocess.PIPE, text=True).stdout
-    srcrpm = Path(next(ln for ln in out.splitlines() if ln.startswith('Wrote: ')).removeprefix('Wrote: ').strip())
-    logging.info('wrote %s', srcrpm)
+            [
+                "rpmbuild",
+                "-bs",
+                "--define",
+                f"_topdir {tmp}",
+                "--define",
+                f"_sourcedir {pkgdir}",
+                "--define",
+                f"_srcrpmdir {builddir}",
+                "--define",
+                f"dist {native_dist(rel)}",
+                str(build_spec),
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True,
+        ).stdout
+    srcrpm = Path(
+        next(ln for ln in out.splitlines() if ln.startswith("Wrote: ")).removeprefix("Wrote: ").strip()
+    )
+    logging.info("wrote %s", srcrpm)
     return srcrpm
 
 
@@ -1313,20 +1483,22 @@ def mock_config(distro: str, branch: str) -> str:
     which is generally not the release a package was imported from.
     """
     arch = platform.machine()
-    if distro == 'fedora':
-        if branch == 'rawhide':
-            return f'fedora-rawhide-{arch}'
-        m = re.fullmatch(r'f(\d+)', branch)
-        assert m, f'unsupported fedora branch: {branch}'
-        return f'fedora-{m.group(1)}-{arch}'
-    if distro == 'centos':
-        m = re.fullmatch(r'c(\d+)s', branch)
-        assert m, f'unsupported centos branch: {branch}'
-        return f'centos-stream-{m.group(1)}-{arch}'
-    raise AssertionError(f'unsupported distro: {distro}, specify a --mock-config')
+    if distro == "fedora":
+        if branch == "rawhide":
+            return f"fedora-rawhide-{arch}"
+        m = re.fullmatch(r"f(\d+)", branch)
+        assert m, f"unsupported fedora branch: {branch}"
+        return f"fedora-{m.group(1)}-{arch}"
+    if distro == "centos":
+        m = re.fullmatch(r"c(\d+)s", branch)
+        assert m, f"unsupported centos branch: {branch}"
+        return f"centos-stream-{m.group(1)}-{arch}"
+    raise AssertionError(f"unsupported distro: {distro}, specify a --mock-config")
 
 
-def mockbuild(packagename: str, distro: str | None = None, branch: str | None = None, root: str | None = None) -> None:
+def mockbuild(
+    packagename: str, distro: str | None = None, branch: str | None = None, root: str | None = None
+) -> None:
     """Build a package locally with mock into _build/ -- a developer tool, not the build path.
 
     For debugging / forwarding changes upstream; the production build path is ENG-193. Assembles
@@ -1334,11 +1506,21 @@ def mockbuild(packagename: str, distro: str | None = None, branch: str | None = 
     native dist tag (native_dist); the binary rpms and build logs land next to the srpm in _build/.
     """
     rel = resolve_main(packagename, distro, branch)
-    distro, branch = rel.split('/')[1:3]
+    distro, branch = rel.split("/")[1:3]
     srcrpm = srpm(packagename, distro, branch)
-    logging.info('mock-building %s', srcrpm.name)
-    subprocess.run(['mock', '-r', root or mock_config(distro, branch), '--define', f'dist {native_dist(rel)}',
-                    f'--resultdir={ROOT / "_build"}', str(srcrpm)], check=True)
+    logging.info("mock-building %s", srcrpm.name)
+    subprocess.run(
+        [
+            "mock",
+            "-r",
+            root or mock_config(distro, branch),
+            "--define",
+            f"dist {native_dist(rel)}",
+            f"--resultdir={_root() / '_build'}",
+            str(srcrpm),
+        ],
+        check=True,
+    )
 
 
 def local_version_release(specfile: Path) -> tuple[str, str]:
@@ -1348,16 +1530,16 @@ def local_version_release(specfile: Path) -> tuple[str, str]:
     literally (it can only be resolved at srpm/build time), and %{?dist} is dropped.
     """
     text = specfile.read_text()
-    vm = re.search(r'^Version:\s*(\S+)', text, re.M)
-    rm = re.search(r'^Release:\s*(\S+)', text, re.M)
-    assert vm and rm, f'no Version/Release in {specfile}'
-    release = '%autorelease' if 'autorelease' in rm.group(1) else re.sub(r'%\{?\??dist\}?', '', rm.group(1))
+    vm = re.search(r"^Version:\s*(\S+)", text, re.M)
+    rm = re.search(r"^Release:\s*(\S+)", text, re.M)
+    assert vm and rm, f"no Version/Release in {specfile}"
+    release = "%autorelease" if "autorelease" in rm.group(1) else re.sub(r"%\{?\??dist\}?", "", rm.group(1))
     return vm.group(1), release
 
 
 def srcpkg_vr(metafile: Path) -> str:
     """The built version-release recorded in a srcpkg.json, or '?' if none."""
-    return build_vr(cast(SrcpkgMetadata, json.loads(metafile.read_text()))) or '?'
+    return build_vr(cast(SrcpkgMetadata, json.loads(metafile.read_text()))) or "?"
 
 
 def diff_package(packagename: str, distro: str | None = None, branch: str | None = None) -> None:
@@ -1370,10 +1552,11 @@ def diff_package(packagename: str, distro: str | None = None, branch: str | None
     rel = resolve_main(packagename, distro, branch)
     anchor = upstream_anchor(rel)
     if not anchor:
-        raise SystemExit(f'{rel.removeprefix("packages/")}: native package (no upstream to diff against)')
-    urc = git('log', 'upstream-rpm', '-1', '--format=%H',
-              f'--grep=^X-Upstream-Commit: {anchor}$', cwd=ROOT).strip()
-    print(git('diff', f'{urc}:{rel}', f'HEAD:{rel}', cwd=ROOT), end='')
+        raise SystemExit(f"{rel.removeprefix('packages/')}: native package (no upstream to diff against)")
+    urc = git(
+        "log", "upstream-rpm", "-1", "--format=%H", f"--grep=^X-Upstream-Commit: {anchor}$", cwd=ROOT
+    ).strip()
+    print(git("diff", f"{urc}:{rel}", f"HEAD:{rel}", cwd=ROOT), end="")
 
 
 def list_packages() -> None:
@@ -1384,45 +1567,49 @@ def list_packages() -> None:
     """
     wt = ensure_worktree()
     rows: list[tuple[str, ...]] = []
-    for pkgdir in sorted(p for p in (ROOT / 'packages').glob('*/*/*')
-                         if p.is_dir() and is_package_entry(p)):
-        distro, branch, pkg = pkgdir.relative_to(ROOT / 'packages').parts
-        rel = str(pkgdir.relative_to(ROOT))
-        source = f'{distro}/{branch}'
+    for pkgdir in sorted(
+        p for p in (_root() / "packages").glob("*/*/*") if p.is_dir() and is_package_entry(p)
+    ):
+        distro, branch, pkg = pkgdir.relative_to(_root() / "packages").parts
+        rel = str(pkgdir.relative_to(_root()))
+        source = f"{distro}/{branch}"
         anchor = upstream_anchor(rel)
         if not anchor:
             # No upstream: the spec is the only version source (%autorelease shown as-is).
-            version, release = local_version_release(pkgdir / f'{pkg}.spec')
-            rows.append((source, pkg, version, release, 'native', '-'))
+            version, release = local_version_release(pkgdir / f"{pkg}.spec")
+            rows.append((source, pkg, version, release, "native", "-"))
             continue
         # Imported: take the concrete version-release from our copied srcpkg.json, since the
         # spec's %autorelease cannot be resolved in-tree.
-        vr = srcpkg_vr(ROOT / f'{rel}.json')
-        version, release = vr.rsplit('-', 1) if '-' in vr else (vr, '')
+        vr = srcpkg_vr(_root() / f"{rel}.json")
+        version, release = vr.rsplit("-", 1) if "-" in vr else (vr, "")
         # The upstream-rpm commit carrying our anchor (main and upstream-rpm share `rel`).
-        urc = git('log', 'upstream-rpm', '-1', '--format=%H',
-                  f'--grep=^X-Upstream-Commit: {anchor}$', cwd=wt).strip()
-        status = 'modified' if is_modified(f'HEAD:{rel}', f'{urc}:{rel}') else 'clean'
+        urc = git(
+            "log", "upstream-rpm", "-1", "--format=%H", f"--grep=^X-Upstream-Commit: {anchor}$", cwd=wt
+        ).strip()
+        status = "modified" if is_modified(f"HEAD:{rel}", f"{urc}:{rel}") else "clean"
         # Out of date iff upstream-rpm has newer commits than our anchor.
         latest = last_imported_sha(wt, distro, branch, pkg)
-        upstream = 'up to date' if latest == anchor else f'update -> {srcpkg_vr(wt / f"{rel}.json")}'
+        upstream = "up to date" if latest == anchor else f"update -> {srcpkg_vr(wt / f'{rel}.json')}"
         rows.append((source, pkg, version, release, status, upstream))
 
-    headers = ('SOURCE', 'PACKAGE', 'VERSION', 'RELEASE', 'STATUS', 'UPSTREAM')
+    headers = ("SOURCE", "PACKAGE", "VERSION", "RELEASE", "STATUS", "UPSTREAM")
     widths = [max([len(h)] + [len(r[i]) for r in rows]) for i, h in enumerate(headers)]
     for row in (headers, *rows):
-        print('  '.join(cell.ljust(w) for cell, w in zip(row, widths)))
+        print("  ".join(cell.ljust(w) for cell, w in zip(row, widths, strict=True)))
 
 
 def commit_trailer(c: str, key: str) -> str:
     """The value of a single git trailer on commit `c`, or '' if absent."""
-    return git('log', '-1', f'--format=%(trailers:key={key},valueonly)', c, cwd=ROOT).strip()
+    return git("log", "-1", f"--format=%(trailers:key={key},valueonly)", c, cwd=ROOT).strip()
 
 
 def spec_at(ref: str, rel: str) -> str:
     """A package's spec text as of a commit/ref, or '' if the spec doesn't exist there."""
-    path = f'{rel}/{Path(rel).name}.spec'
-    return git('show', f'{ref}:{path}', cwd=ROOT) if git('ls-tree', ref, '--', path, cwd=ROOT).strip() else ''
+    path = f"{rel}/{Path(rel).name}.spec"
+    return (
+        git("show", f"{ref}:{path}", cwd=ROOT) if git("ls-tree", ref, "--", path, cwd=ROOT).strip() else ""
+    )
 
 
 def check_commit(c: str) -> list[str]:
@@ -1431,48 +1618,50 @@ def check_commit(c: str) -> list[str]:
     See check() for the branch-wide walk. Only commits that touch packages/ are checked; the
     per-branch BUCK is generated, so it doesn't count as a package change on its own.
     """
-    names = git('diff-tree', '--no-commit-id', '-r', '--name-only', c, cwd=ROOT).split()
-    if not any(p.startswith('packages/') for p in names):
+    names = git("diff-tree", "--no-commit-id", "-r", "--name-only", c, cwd=ROOT).split()
+    if not any(p.startswith("packages/") for p in names):
         return []
     # The package path(s) -- packages/<distro>/<branch>/<pkg>, the `rel` used elsewhere -- this
     # commit touches, derived from the changed file paths. A change is either the package dir or
     # its sibling <pkg>.json; the per-branch BUCK is neither, so it maps to no package.
     rels = set()
     for p in names:
-        parts = p.split('/')
-        if len(parts) == 4 and parts[3].endswith('.json') \
-                and is_package_entry(Path(parts[3])):         # packages/<distro>/<branch>/<pkg>.json
-            rels.add('/'.join([*parts[:3], parts[3][:-5]]))
-        elif len(parts) >= 5:                                 # packages/<distro>/<branch>/<pkg>/...
-            rels.add('/'.join(parts[:4]))
-    if not rels:                                          # only the branch BUCK or _properties.json
+        parts = p.split("/")
+        if (
+            len(parts) == 4 and parts[3].endswith(".json") and is_package_entry(Path(parts[3]))
+        ):  # packages/<distro>/<branch>/<pkg>.json
+            rels.add("/".join([*parts[:3], parts[3][:-5]]))
+        elif len(parts) >= 5:  # packages/<distro>/<branch>/<pkg>/...
+            rels.add("/".join(parts[:4]))
+    if not rels:  # only the branch BUCK or _properties.json
         return []
 
     errors: list[str] = []
-    rel = sorted(rels)[0]                                 # our commits are per-package
+    rel = sorted(rels)[0]  # our commits are per-package
     pkg = Path(rel).name
-    jrel = f'{rel}.json'
+    jrel = f"{rel}.json"
     # A commit that removes the package entirely (unimport) is always allowed: nothing of it is
     # left -- neither spec nor metadata -- to hold to the release/rebuild conventions.
-    if not git('ls-tree', c, '--', rel, jrel, cwd=ROOT).strip():
+    if not git("ls-tree", c, "--", rel, jrel, cwd=ROOT).strip():
         return []
-    upstream = commit_trailer(c, 'X-Upstream-Commit')
-    rebuild = commit_trailer(c, 'X-Rebuild')
+    upstream = commit_trailer(c, "X-Upstream-Commit")
+    rebuild = commit_trailer(c, "X-Rebuild")
     autorel = uses_autorelease(spec_at(c, rel))
     # Whether the commit only refreshes generated metadata, as opposed to changing a build input.
     # The branch's hand-authored _properties.json is such an input (its rpmbuild_options change
     # what a package builds), so a commit touching it is not metadata-only despite being all json.
-    json_only = all(p.endswith('.json') for p in names) \
-        and not any(p.endswith(f'/{BRANCH_PROPERTIES}') for p in names)
+    json_only = all(p.endswith(".json") for p in names) and not any(
+        p.endswith(f"/{BRANCH_PROPERTIES}") for p in names
+    )
     # Whether the commit touched the package's sources, as opposed to only json metadata
-    dir_changed = any(p.startswith(f'{rel}/') for p in names)
+    dir_changed = any(p.startswith(f"{rel}/") for p in names)
     # A local commit that discards our delta is exempt from the local-change rules below: it takes a
     # modification away rather than adding one, so it has no Release bump and no X-Rebuild: trailer
     # to show, and its release is the import's -- already established by its tree.
     reset = not upstream and resets_to_import(c, rel)
 
     def bad(msg: str) -> None:
-        errors.append(f'{c[:12]} {pkg}: {msg}')
+        errors.append(f"{c[:12]} {pkg}: {msg}")
 
     # A *local* package change must come with metadata (release numbers live in Provides; this
     # guards against forgetting rpm-metadata or its git add). Import commits are exempt: upstream
@@ -1483,71 +1672,87 @@ def check_commit(c: str) -> list[str]:
     meta: SrcpkgMetadata | None = None
     if jrel not in names:
         if not upstream:
-            bad(f'changes the package but not {pkg}.json')
-    elif git('ls-tree', c, '--', jrel, cwd=ROOT).strip():
+            bad(f"changes the package but not {pkg}.json")
+    elif git("ls-tree", c, "--", jrel, cwd=ROOT).strip():
         try:
-            meta = cast(SrcpkgMetadata, json.loads(git('show', f'{c}:{jrel}', cwd=ROOT)))
+            meta = cast(SrcpkgMetadata, json.loads(git("show", f"{c}:{jrel}", cwd=ROOT)))
         except json.JSONDecodeError as e:
-            bad(f'{pkg}.json is not valid JSON ({e})')
+            bad(f"{pkg}.json is not valid JSON ({e})")
     # An imported commit must trace back to upstream-rpm at the same path.
-    if upstream and not git('log', 'upstream-rpm', '-1', '--format=%H',
-                            f'--grep=^X-Upstream-Commit: {upstream}$', '--', rel, jrel,
-                            cwd=ROOT).strip():
-        bad(f'X-Upstream-Commit {upstream[:12]} has no match on upstream-rpm at {rel}')
+    if (
+        upstream
+        and not git(
+            "log",
+            "upstream-rpm",
+            "-1",
+            "--format=%H",
+            f"--grep=^X-Upstream-Commit: {upstream}$",
+            "--",
+            rel,
+            jrel,
+            cwd=ROOT,
+        ).strip()
+    ):
+        bad(f"X-Upstream-Commit {upstream[:12]} has no match on upstream-rpm at {rel}")
     # A local source change must be an %autorelease package or bump Release: (incl. native packages).
     if not upstream and dir_changed and not reset and not autorel and not release_bumped(c, rel):
-        bad('local commit neither uses %autorelease nor bumps Release:')
+        bad("local commit neither uses %autorelease nor bumps Release:")
     # A *local* metadata-only change is only legitimate as an %autorelease rebuild. An imported
     # one is fine as-is: upstream's rpmautospec mass rebuilds are empty dist-git commits
     # ("Rebuilt for ..."), mirrored 1:1 to keep the %autorelease count, and their build's
     # recomputed json is all such a commit has to show.
     if not upstream and json_only and not reset:
         if not autorel:
-            bad('changes only metadata but is not an %autorelease package')
+            bad("changes only metadata but is not an %autorelease package")
         if not rebuild:
-            bad('changes only metadata but has no X-Rebuild: trailer')
+            bad("changes only metadata but has no X-Rebuild: trailer")
     # An X-Rebuild is an %autorelease, metadata-only no-change rebuild.
     if rebuild and not autorel:
-        bad('has X-Rebuild: but is not an %autorelease package')
+        bad("has X-Rebuild: but is not an %autorelease package")
     if rebuild and set(names) != {jrel}:
-        bad(f'has X-Rebuild: but changes more than {pkg}.json')
+        bad(f"has X-Rebuild: but changes more than {pkg}.json")
     # We track changes in git, not %changelog.
-    if not upstream and changelog_at(c, rel) != changelog_at(f'{c}^', rel):
-        bad('local commit modifies %changelog')
+    if not upstream and changelog_at(c, rel) != changelog_at(f"{c}^", rel):
+        bad("local commit modifies %changelog")
     # The recorded %autorelease release must advance sanely against the metadata chain -- it is
     # never re-derived by counting upstream history: rpmautospec counts dist-git commits we don't
     # import (its count reaches past our import boundary, even past the %autorelease switch), the
     # raw Version: text is often a macro that never changes, and -b/-e/-p offsets defeat counting
     # altogether. The imported release is ground truth off the koji build's NEVR.
     if autorel and meta and build_vr(meta):
-        got = build_release(meta, (build_dist(meta) or '.') + NATIVE_DIST)
+        got = build_release(meta, (build_dist(meta) or ".") + NATIVE_DIST)
         if upstream:
             # An import either carries the previous build's metadata forward (unbuilt commit, V-R
             # unchanged), resets the release with a version change, or advances it (upstream
             # counted more commits). Only enforced for the plain integer releases of upstream
             # rpmautospec; a first import (no parent json) was anchored against koji directly.
-            if git('ls-tree', f'{c}^', '--', jrel, cwd=ROOT).strip():
-                prev = cast(SrcpkgMetadata, json.loads(git('show', f'{c}^:{jrel}', cwd=ROOT)))
-                pgot = build_release(prev, (build_dist(prev) or '.') + NATIVE_DIST)
-                if (build_vr(prev) and build_version(prev) == build_version(meta)
-                        and got != pgot and got.isdigit() and pgot.isdigit()
-                        and int(got) <= int(pgot)):
-                    bad(f'imported release {got!r} does not advance on the previous {pgot!r}')
+            if git("ls-tree", f"{c}^", "--", jrel, cwd=ROOT).strip():
+                prev = cast(SrcpkgMetadata, json.loads(git("show", f"{c}^:{jrel}", cwd=ROOT)))
+                pgot = build_release(prev, (build_dist(prev) or ".") + NATIVE_DIST)
+                if (
+                    build_vr(prev)
+                    and build_version(prev) == build_version(meta)
+                    and got != pgot
+                    and got.isdigit()
+                    and pgot.isdigit()
+                    and int(got) <= int(pgot)
+                ):
+                    bad(f"imported release {got!r} does not advance on the previous {pgot!r}")
         else:
             # A local bump continues the last import's release with our minor '.N': N counts our
             # own commits since that import (the one place a commit count remains -- it is *our*
             # count, fully contained in our history).
             anchor = import_commit(rel, c)
-            base = '0'  # native package: no upstream release to continue
-            if anchor and git('ls-tree', anchor, '--', jrel, cwd=ROOT).strip():
-                am = cast(SrcpkgMetadata, json.loads(git('show', f'{anchor}:{jrel}', cwd=ROOT)))
-                base = build_release(am, (build_dist(am) or '.') + NATIVE_DIST)
+            base = "0"  # native package: no upstream release to continue
+            if anchor and git("ls-tree", anchor, "--", jrel, cwd=ROOT).strip():
+                am = cast(SrcpkgMetadata, json.loads(git("show", f"{anchor}:{jrel}", cwd=ROOT)))
+                base = build_release(am, (build_dist(am) or ".") + NATIVE_DIST)
             # No local commit counted (a curation change is not one, see above): the release is
             # still the import's, unsuffixed -- `.N` starts at `.1` (bumped_release).
             bump = local_bump(rel, c)
-            want = f'{base}.{bump}' if bump else base
+            want = f"{base}.{bump}" if bump else base
             if got != want:
-                bad(f'%autorelease is {got!r} in Provides but git history implies {want!r}')
+                bad(f"%autorelease is {got!r} in Provides but git history implies {want!r}")
     # Arch buckets are refreshed by independent per-arch builds; they must agree on the NEVR.
     if meta:
         for skew in arch_vr_skew(meta):
@@ -1557,15 +1762,15 @@ def check_commit(c: str) -> list[str]:
 
 def release_bumped(c: str, rel: str) -> bool:
     """Whether commit `c` changed the spec's Release: line from its parent."""
-    now = re.search(r'^Release:\s*(\S+)', spec_at(c, rel), re.M)
-    was = re.search(r'^Release:\s*(\S+)', spec_at(f'{c}^', rel), re.M)
+    now = re.search(r"^Release:\s*(\S+)", spec_at(c, rel), re.M)
+    was = re.search(r"^Release:\s*(\S+)", spec_at(f"{c}^", rel), re.M)
     return now is not None and (was is None or now.group(1) != was.group(1))
 
 
 def changelog_at(ref: str, rel: str) -> str:
     """The spec's %changelog section (to end of file) as of a ref, or '' if none."""
-    m = re.search(r'^%changelog.*', spec_at(ref, rel), re.M | re.S)
-    return m.group() if m else ''
+    m = re.search(r"^%changelog.*", spec_at(ref, rel), re.M | re.S)
+    return m.group() if m else ""
 
 
 def check(start_ref: str | None = None) -> list[str]:
@@ -1576,9 +1781,9 @@ def check(start_ref: str | None = None) -> list[str]:
     non-empty result into a non-zero exit so a PR's CI fails. Metadata *integrity* isn't checked
     here -- only a rebuild can confirm that (packages.md).
     """
-    revs = f'{start_ref}..HEAD' if start_ref else 'HEAD'
+    revs = f"{start_ref}..HEAD" if start_ref else "HEAD"
     errors: list[str] = []
-    for c in git('rev-list', revs, cwd=ROOT).split():
+    for c in git("rev-list", revs, cwd=ROOT).split():
         errors += check_commit(c)
     return errors
 
@@ -1586,115 +1791,117 @@ def check(start_ref: str | None = None) -> list[str]:
 def main() -> None:
     assert __doc__ is not None
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('--debug', action='store_true', help='log every git/koji/bodhi step')
-    sub = parser.add_subparsers(dest='command', required=True)
+    parser.add_argument("--debug", action="store_true", help="log every git/koji/bodhi step")
+    sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser('import-upstream', help='import a new package from an upstream dist-git')
-    p.add_argument('packagename')
-    p.add_argument('distro', help='curated distro: ' + ', '.join(DISTROS))
-    p.add_argument('branch', help="upstream branch, e.g. 'rawhide' or 'f44'")
-    p.add_argument('--sha', help='import this commit instead of the branch HEAD')
+    p = sub.add_parser("import-upstream", help="import a new package from an upstream dist-git")
+    p.add_argument("packagename")
+    p.add_argument("distro", help="curated distro: " + ", ".join(DISTROS))
+    p.add_argument("branch", help="upstream branch, e.g. 'rawhide' or 'f44'")
+    p.add_argument("--sha", help="import this commit instead of the branch HEAD")
 
-    sub.add_parser('update-upstreams',
-                   help='import new upstream commits for all currently imported packages')
+    sub.add_parser(
+        "update-upstreams", help="import new upstream commits for all currently imported packages"
+    )
 
-    ip = sub.add_parser('import', help='copy a package from upstream-rpm onto the main branch')
-    ip.add_argument('packagename')
-    ip.add_argument('distro', nargs='?', help='disambiguate when imported from several sources')
-    ip.add_argument('branch', nargs='?')
+    ip = sub.add_parser("import", help="copy a package from upstream-rpm onto the main branch")
+    ip.add_argument("packagename")
+    ip.add_argument("distro", nargs="?", help="disambiguate when imported from several sources")
+    ip.add_argument("branch", nargs="?")
 
-    up = sub.add_parser('update', help='apply new upstream-rpm commits for a package onto this branch')
-    up.add_argument('packagename')
-    up.add_argument('distro', nargs='?', help='disambiguate when present from several sources')
-    up.add_argument('branch', nargs='?')
+    up = sub.add_parser("update", help="apply new upstream-rpm commits for a package onto this branch")
+    up.add_argument("packagename")
+    up.add_argument("distro", nargs="?", help="disambiguate when present from several sources")
+    up.add_argument("branch", nargs="?")
 
-    sub.add_parser('update-all', help='run update for every imported package on this branch')
+    sub.add_parser("update-all", help="run update for every imported package on this branch")
 
-    rb = sub.add_parser('rebuild', help='generate a no-change rebuild commit (Release bump)')
-    rb.add_argument('packagename')
-    rb.add_argument('reason', help='what triggered it, e.g. openssl-3.5.0-1')
-    rb.add_argument('distro', nargs='?', help='disambiguate when present from several sources')
-    rb.add_argument('branch', nargs='?')
+    rb = sub.add_parser("rebuild", help="generate a no-change rebuild commit (Release bump)")
+    rb.add_argument("packagename")
+    rb.add_argument("reason", help="what triggered it, e.g. openssl-3.5.0-1")
+    rb.add_argument("distro", nargs="?", help="disambiguate when present from several sources")
+    rb.add_argument("branch", nargs="?")
 
-    rm = sub.add_parser('rpm-metadata', help='(re)compute a package srcpkg.json from local rpm files')
-    rm.add_argument('packagename')
-    rm.add_argument('rpms', nargs='+', help='built rpm files (binary rpms; optionally the .src.rpm)')
-    rm.add_argument('--distro', help='disambiguate when present from several sources')
-    rm.add_argument('--branch')
+    rm = sub.add_parser("rpm-metadata", help="(re)compute a package srcpkg.json from local rpm files")
+    rm.add_argument("packagename")
+    rm.add_argument("rpms", nargs="+", help="built rpm files (binary rpms; optionally the .src.rpm)")
+    rm.add_argument("--distro", help="disambiguate when present from several sources")
+    rm.add_argument("--branch")
 
-    sub.add_parser('list', help='table of all packages: version/release, status, upstream updates')
+    sub.add_parser("list", help="table of all packages: version/release, status, upstream updates")
 
-    cp = sub.add_parser('check', help='validate release/metadata conventions on branch commits')
-    cp.add_argument('start_ref', nargs='?', help='check commits after this ref (default: all)')
+    cp = sub.add_parser("check", help="validate release/metadata conventions on branch commits")
+    cp.add_argument("start_ref", nargs="?", help="check commits after this ref (default: all)")
 
-    dp = sub.add_parser('diff', help="show a package's local modifications vs its imported upstream")
-    dp.add_argument('packagename')
-    dp.add_argument('distro', nargs='?', help='disambiguate when present from several sources')
-    dp.add_argument('branch', nargs='?')
+    dp = sub.add_parser("diff", help="show a package's local modifications vs its imported upstream")
+    dp.add_argument("packagename")
+    dp.add_argument("distro", nargs="?", help="disambiguate when present from several sources")
+    dp.add_argument("branch", nargs="?")
 
-    yp = sub.add_parser('sync', help='update a package to the latest upstream, discarding our changes')
-    yp.add_argument('packagename')
-    yp.add_argument('distro', nargs='?', help='disambiguate when present from several sources')
-    yp.add_argument('branch', nargs='?')
+    yp = sub.add_parser("sync", help="update a package to the latest upstream, discarding our changes")
+    yp.add_argument("packagename")
+    yp.add_argument("distro", nargs="?", help="disambiguate when present from several sources")
+    yp.add_argument("branch", nargs="?")
 
-    sp = sub.add_parser('srpm', help='assemble a .src.rpm (rpmbuild -bs) for a package on this branch')
-    sp.add_argument('packagename')
-    sp.add_argument('distro', nargs='?', help='disambiguate when present from several sources')
-    sp.add_argument('branch', nargs='?')
+    sp = sub.add_parser("srpm", help="assemble a .src.rpm (rpmbuild -bs) for a package on this branch")
+    sp.add_argument("packagename")
+    sp.add_argument("distro", nargs="?", help="disambiguate when present from several sources")
+    sp.add_argument("branch", nargs="?")
 
-    mb = sub.add_parser('mockbuild', help='locally build a package with mock into _build/ (dev tool)')
-    mb.add_argument('packagename')
-    mb.add_argument('distro', nargs='?', help='disambiguate when present from several sources')
-    mb.add_argument('branch', nargs='?')
-    mb.add_argument('-r', '--root', help='chroot config or name; passed on to mock')
+    mb = sub.add_parser("mockbuild", help="locally build a package with mock into _build/ (dev tool)")
+    mb.add_argument("packagename")
+    mb.add_argument("distro", nargs="?", help="disambiguate when present from several sources")
+    mb.add_argument("branch", nargs="?")
+    mb.add_argument("-r", "--root", help="chroot config or name; passed on to mock")
 
     args = parser.parse_args()
-    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
-                        format='%(levelname)s %(message)s')
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO, format="%(levelname)s %(message)s"
+    )
     if ROOT is None:
-        raise SystemExit('no OS.git tree found above this tool (need an ancestor with packages/ and .git)')
-    if args.command == 'import-upstream':
+        raise SystemExit("no OS.git tree found above this tool (need an ancestor with packages/ and .git)")
+    if args.command == "import-upstream":
         import_upstream(args.distro, args.branch, args.packagename, args.sha)
-    elif args.command == 'update-upstreams':
+    elif args.command == "update-upstreams":
         update_upstreams()
-    elif args.command == 'import':
-        assert (args.distro is None) == (args.branch is None), 'specify both distro and branch, or neither'
+    elif args.command == "import":
+        assert (args.distro is None) == (args.branch is None), "specify both distro and branch, or neither"
         import_(args.packagename, args.distro, args.branch)
-    elif args.command == 'update':
-        assert (args.distro is None) == (args.branch is None), 'specify both distro and branch, or neither'
+    elif args.command == "update":
+        assert (args.distro is None) == (args.branch is None), "specify both distro and branch, or neither"
         if not update(args.packagename, args.distro, args.branch):
             raise SystemExit(1)  # conflicts committed with markers; fail so the PR is a red draft
-    elif args.command == 'update-all':
+    elif args.command == "update-all":
         if not update_all():
             raise SystemExit(1)
-    elif args.command == 'rebuild':
-        assert (args.distro is None) == (args.branch is None), 'specify both distro and branch, or neither'
+    elif args.command == "rebuild":
+        assert (args.distro is None) == (args.branch is None), "specify both distro and branch, or neither"
         rebuild(args.packagename, args.reason, args.distro, args.branch)
-    elif args.command == 'rpm-metadata':
-        assert (args.distro is None) == (args.branch is None), 'specify both distro and branch, or neither'
+    elif args.command == "rpm-metadata":
+        assert (args.distro is None) == (args.branch is None), "specify both distro and branch, or neither"
         rpm_metadata(args.packagename, args.rpms, args.distro, args.branch)
-    elif args.command == 'list':
+    elif args.command == "list":
         list_packages()
-    elif args.command == 'check':
+    elif args.command == "check":
         errors = check(args.start_ref)
         for e in errors:
             logging.error(e)
         if errors:
             raise SystemExit(1)
-    elif args.command == 'diff':
-        assert (args.distro is None) == (args.branch is None), 'specify both distro and branch, or neither'
+    elif args.command == "diff":
+        assert (args.distro is None) == (args.branch is None), "specify both distro and branch, or neither"
         diff_package(args.packagename, args.distro, args.branch)
-    elif args.command == 'sync':
-        assert (args.distro is None) == (args.branch is None), 'specify both distro and branch, or neither'
+    elif args.command == "sync":
+        assert (args.distro is None) == (args.branch is None), "specify both distro and branch, or neither"
         if not sync(args.packagename, args.distro, args.branch):
             raise SystemExit(1)
-    elif args.command == 'srpm':
-        assert (args.distro is None) == (args.branch is None), 'specify both distro and branch, or neither'
+    elif args.command == "srpm":
+        assert (args.distro is None) == (args.branch is None), "specify both distro and branch, or neither"
         srpm(args.packagename, args.distro, args.branch)
-    elif args.command == 'mockbuild':
-        assert (args.distro is None) == (args.branch is None), 'specify both distro and branch, or neither'
+    elif args.command == "mockbuild":
+        assert (args.distro is None) == (args.branch is None), "specify both distro and branch, or neither"
         mockbuild(args.packagename, args.distro, args.branch, args.root)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

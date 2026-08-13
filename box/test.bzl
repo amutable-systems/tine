@@ -56,9 +56,9 @@ box_python_test = rule(
     doc = """One package's `*_test.py` files, run by `buck test` in a flat tree inside a box.
 
     Same-package sources go in `srcs`; anything from another package comes in through `deps` on a
-    `python_bootstrap_library`. Both land beside the tests, so a test loads what it exercises from
-    `Path(__file__).parent` -- which also covers the drivers that are not importable modules, the
-    `.bzl` files written in the Python subset and the extensionless `tools/importer`.
+    `python_bootstrap_library`. Both land beside the tests, so ordinary Python modules are imported
+    directly; a test uses `Path(__file__).parent` only for non-module inputs such as `.bzl` files
+    written in the Python subset and extensionless commands such as `bin/tine`.
     """,
     impl = _box_python_test_impl,
     attrs = {

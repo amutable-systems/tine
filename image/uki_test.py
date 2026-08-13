@@ -7,26 +7,12 @@ or in a token, and profiles can opt out of the policy, so one image build exerci
 Integration tests only cover a few combinations; the rest are asserted here.
 """
 
-import importlib.util
 import unittest
-from pathlib import Path
-from types import ModuleType
 
-HERE = Path(__file__).parent
+import uki
 
-
-def _load(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-uki = _load("uki")
-
-SECURE_BOOT = {"private_key": "/keys/sb.key", "certificate": "/keys/sb.crt", "source": None}
-PCR = {"private_key": "/keys/pcr.key", "certificate": "/keys/pcr.crt", "source": None}
+SECURE_BOOT: uki.Key = {"private_key": "/keys/sb.key", "certificate": "/keys/sb.crt", "source": None}
+PCR: uki.Key = {"private_key": "/keys/pcr.key", "certificate": "/keys/pcr.crt", "source": None}
 
 SECURE_BOOT_ARGUMENTS = [
     "--signtool", "systemd-sbsign",
@@ -46,12 +32,12 @@ PCR_ARGUMENTS = [
 OPTIONS = {"--sign-initrd-pcrs"}
 
 
-def _token(key: dict[str, str | None]) -> dict[str, str | None]:
+def _token(key: uki.Key, source: str = "provider:pkcs11") -> uki.Key:
     """The same role held in a PKCS#11 token, as pkcs11_signing_key() spells it."""
-    return key | {"source": "provider:pkcs11"}
+    return {**key, "source": source}
 
 
-def _profiles(*ids: str, unsealed: str = "") -> list[dict[str, object]]:
+def _profiles(*ids: str, unsealed: str = "") -> list[uki.Profile]:
     """Profiles by id, `unsealed` naming the one that opts out of the expected-PCR policy."""
     return [{"id": id, "title": id, "cmdline": [], "sign_expected_pcr": id != unsealed} for id in ids]
 
@@ -123,7 +109,7 @@ class TestSigningArguments(unittest.TestCase):
     def test_a_key_source_ukify_cannot_load(self) -> None:
         """ukify only speaks providers, so anything else must fail the build, not the boot."""
         with self.assertRaises(SystemExit):
-            uki._signing_arguments(SECURE_BOOT | {"source": "box:pkcs11"}, None, [], OPTIONS)
+            uki._signing_arguments(_token(SECURE_BOOT, "box:pkcs11"), None, [], OPTIONS)
 
 
 class TestSplashArguments(unittest.TestCase):

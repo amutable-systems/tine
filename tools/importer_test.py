@@ -12,10 +12,8 @@ out-of-process case, exercising the real argparse/dispatch layer.
 """
 
 import contextlib
-import functools
 import gzip
 import hashlib
-import importlib.util
 import io
 import json
 import os
@@ -26,31 +24,20 @@ import tarfile
 import tempfile
 import unittest
 from collections.abc import Callable
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
-from types import ModuleType
 from typing import Any, override
 from unittest import mock
 
-TOOL_PATH = Path(__file__).parent / "importer"
+import importer as tool
+
+TOOL_PATH = Path(__file__).parent / "importer.py"
 # a deterministic dist tag for the built rpms (branch 'rawhide' picks the newest .fcNN, so any works)
 DIST = ".fc99"
 
 
-# module is stateless: mock.patch.object restores changes
-@functools.cache
-def load_tool() -> ModuleType:
-    """Load TOOL_PATH as an importable module (it has no .py extension)."""
-    spec = importlib.util.spec_from_loader("tool", SourceFileLoader("tool", str(TOOL_PATH)))
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 # our native %dist suffix (NATIVE_DIST in the tool); NDIST is the dist tag our own rebuilds
 # of DIST imports carry
-NATIVE_DIST = load_tool().NATIVE_DIST
+NATIVE_DIST = tool.NATIVE_DIST
 NDIST = DIST + NATIVE_DIST
 
 
@@ -309,7 +296,7 @@ class PackagesTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = Path(tempfile.mkdtemp(prefix="import-test-"))
         self._oldcwd = Path.cwd()
-        self.tool = load_tool()
+        self.tool = tool
 
         # A monorepo with an (orphan, empty) upstream-rpm branch for the worktree to check out.
         self.monorepo = self._tmp / "monorepo"
@@ -1594,7 +1581,7 @@ class RegenerateBuck(unittest.TestCase):
 
     @override
     def setUp(self) -> None:
-        self.tool = load_tool()
+        self.tool = tool
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         self.branchdir = Path(tmp) / "packages" / "fedora" / "rawhide"
