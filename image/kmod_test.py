@@ -7,17 +7,17 @@ need libkmod or a real kernel, so they run against synthetic module trees here. 
 closure libkmod resolves is covered by the real image builds in tools/ci.sh instead.
 """
 
-import importlib.util
 import json
 import tempfile
 import typing
 import unittest
 from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from typing import override
 
-HERE = Path(__file__).parent
+import cpio
+import kmod
 
 # Fedora's paths for the modules this project's images actually boot through: erofs and dm-verity
 # under a dissected /usr, on virtio in a VM and on NVMe or AHCI on metal.
@@ -49,23 +49,14 @@ NOT_CARRIED = (
 )
 
 
-def _load(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def _load_bzl(name: str) -> SimpleNamespace:
-    path = HERE / f"{name}.bzl"
+    here = Path(__file__).parent
+    path = here / f"{name}.bzl"
     module: dict[str, typing.Any] = {}
     exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module)  # noqa: S102
     return SimpleNamespace(**module)
 
 
-kmod = _load("kmod")
-cpio = _load("cpio")
 modules_bzl = _load_bzl("modules")
 
 

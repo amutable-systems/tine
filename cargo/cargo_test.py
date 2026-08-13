@@ -8,7 +8,6 @@ against synthetic .crate tarballs; nothing here needs a network.
 """
 
 import hashlib
-import importlib.util
 import json
 import tarfile
 import tempfile
@@ -16,10 +15,14 @@ import tomllib
 import typing
 import unittest
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from typing import override
 
 import util
+
+import build
+import lock as lock_driver
+import vendor
 
 HERE = Path(__file__).parent
 
@@ -39,18 +42,7 @@ def _load_bzl(name: str) -> SimpleNamespace:
     return SimpleNamespace(**module)
 
 
-def _load(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 lock_bzl = _load_bzl("lock")
-lock_driver = _load("lock")
-build = _load("build")
-vendor = _load("vendor")
 
 ANYHOW_SHA = "a" * 64
 LIBC_SHA = "b" * 64
@@ -267,7 +259,7 @@ class TestBuild(unittest.TestCase):
 
     def test_cargo_config(self) -> None:
         """The registry points at the vendored tree, each git source at its fetched repository."""
-        git = {
+        git: dict[str, build.GitSource] = {
             SD_CONF_COMMIT: {
                 "fields": {"git": SD_CONF_URL, "rev": "f8f381fe"},
                 "repo": "/repos/sd-conf/.git",

@@ -4,7 +4,6 @@ buck test tine//image:test
 """
 
 import base64
-import importlib.util
 import json
 import os
 import socket
@@ -12,25 +11,13 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
-from types import ModuleType
 from typing import override
 
-HERE = Path(__file__).parent
+import manifest
 
 # The epoch every image action runs under (box/runtime.bzl); any value works, but using the real
 # one keeps the clamping assertions honest about what a build actually produces.
 EPOCH = 1739577600
-
-
-def _load(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-manifest = _load("manifest")
 
 
 def parse(data: bytes) -> list[dict[str, object]]:

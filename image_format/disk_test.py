@@ -7,28 +7,15 @@ driver records about the artifact that comes back, both of which decide how a pa
 published.
 """
 
-import importlib.util
 import json
 import tempfile
 import unittest
 from pathlib import Path
-from types import ModuleType
 
-HERE = Path(__file__).parent
+import disk
 
 UUID = "fb1bb90c-9de1-b90c-8b89-e04b87c721bd"
 PUBLISHED = f"AmutableOS_9_x86-64.usr-x86-64.{UUID}.raw"
-
-
-def _load(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-disk = _load("disk")
 
 
 DEFINITION = {

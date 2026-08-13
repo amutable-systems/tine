@@ -3,24 +3,11 @@
 buck test tine//image:test
 """
 
-import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
-from types import ModuleType
 
-HERE = Path(__file__).parent
-
-
-def _load(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-layer = _load("layer")
+import layer
 
 
 class TestRemove(unittest.TestCase):

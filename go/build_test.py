@@ -6,12 +6,10 @@ The driver hands everything needing a toolchain to go, so what is left to test i
 read and which declarations it refuses. The box these tests run in carries no go.
 """
 
-import importlib.util
 import unittest
 from pathlib import Path
-from types import ModuleType
 
-HERE = Path(__file__).parent
+import go_build as build
 
 # What `go list -e -json=ImportPath,Name,Target` prints for a v2 module whose command sits at the
 # module root, beside one in cmd/ and a library. go names the first after the second-to-last element
@@ -50,17 +48,6 @@ COLLIDING_LISTING = """\
 	"Target": "/var/tmp/gobin/server"
 }
 """
-
-
-def _load(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-build = _load("build")
 
 
 class TestMainPackages(unittest.TestCase):

@@ -2,11 +2,11 @@
 
 ## Summary
 
-`tools/importer` is a tool to maintain a (partial) downstream derivative distribution in a monorepo. It mirrors upstream distribution (currently Fedora or CentOS are supported) dist-gits, and maintains local package deltas.
+`tools/importer.py` is a tool to maintain a (partial) downstream derivative distribution in a monorepo. It mirrors upstream distribution (currently Fedora or CentOS are supported) dist-gits, and maintains local package deltas.
 
 The importer itself is part of `tine`. The actual packages are maintained in a target distribution/product monorepo which consumes `tine` as a cell; this is called `OS.git` in this document. (The importer therefore always runs from inside the consuming tree: `repo_root()` walks up to the `OS.git` root that holds `packages/`.)
 
-`aos` is this document's placeholder for the downstream OS's own short identifier. It appears in the `packages/aos/` namespace and as the `%dist` suffix; a downstream project substitutes its own (`NATIVE_DIST` in `tools/importer`, and the `dist` attribute in `package_system/rpm/rules.bzl`).
+`aos` is this document's placeholder for the downstream OS's own short identifier. It appears in the `packages/aos/` namespace and as the `%dist` suffix; a downstream project substitutes its own (`NATIVE_DIST` in `tools/importer.py`, and the `dist` attribute in `package_system/rpm/rules.bzl`).
 
 This document records the design: branch layout, metadata, operation internals, and rebuild strategy. The user guide is [importer.md](importer.md). It covers running the tool, the verb reference, the local-modification workflow, release conventions, changing import source, and `_properties.json` curation.
 
@@ -37,7 +37,7 @@ To actually build an image, the selection needs to happen in some "build configu
 
 ## Operations
 
-A single CLI tool (`tools/importer`) performs all operations via CLI verbs; how to run it and the
+A single CLI tool (`tools/importer.py`) performs all operations via CLI verbs; how to run it and the
 verb reference are documented in [importer.md](importer.md).
 
 ## Design principles

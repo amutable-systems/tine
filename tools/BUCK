@@ -147,7 +147,7 @@ command_alias(
 # host's git identity, network, and cwd, so it runs through the dev box's relaxed entry.
 command_alias(
     name = "importer",
-    args = ["$(source importer)"],
+    args = ["$(source importer.py)"],
     exe = ":dev.box",
 )
 
@@ -187,7 +187,7 @@ box_python_test(
     name = "importer-test",
     box = ":dev.box",
     srcs = [
-        "importer",
+        "importer.py",
         "importer_test.py",
     ],
 )

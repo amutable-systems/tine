@@ -6,25 +6,12 @@ Sources reach the driver either as files, which a checkout in the consuming repo
 or as one directory artifact holding a whole fetched tree. Both are exercised here.
 """
 
-import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
-from types import ModuleType
 from typing import override
 
-HERE = Path(__file__).parent
-
-
-def _load(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-workspace = _load("workspace")
+import workspace
 
 
 class TestResolveWorkspace(unittest.TestCase):
