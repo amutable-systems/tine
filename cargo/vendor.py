@@ -49,7 +49,6 @@ def main(argv: list[str] | None = None) -> None:
         # package, and only the directory it names may become one of cargo's sources.
         with tempfile.TemporaryDirectory(prefix="cargo-vendor.") as scratch:
             with tarfile.open(archive_path) as archive:
-                # `data` rejects absolute paths and escaping links.
                 archive.extractall(scratch, filter="data")
             shutil.copytree(Path(scratch) / directory, out / directory)
         _write_checksums(out / directory, package=hashlib.sha256(archive_path.read_bytes()).hexdigest())

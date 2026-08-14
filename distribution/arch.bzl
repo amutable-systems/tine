@@ -4,9 +4,7 @@ load("//distribution:defs.bzl", "distribution")
 load("//package:manager.bzl", "package_manager")
 load("//package:release.bzl", "os_release")
 load("//package:repository.bzl", "repository_universe")
-load("//package_system/pacman:rules.bzl", "ARCHIVE_MIRROR", "pacman_remote_repository")
-
-_PACMAN = "@tine//package_system/pacman:package_system"
+load("//package_system/pacman:rules.bzl", "ARCHIVE_MIRROR", "PACKAGE_SYSTEM", "pacman_remote_repository")
 
 _ARCH_PACKAGE_SETS = {
     "bootable": [
@@ -79,7 +77,7 @@ def arch_release(
 
     repository_universe(
         name = name + ".repositories",
-        package_system = _PACMAN,
+        package_system = PACKAGE_SYSTEM,
         required_repositories = [":" + name + ".core.repository"],
         optional_repository_groups = {
             "extra": [":" + name + ".extra.repository"],

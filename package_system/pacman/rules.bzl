@@ -2,7 +2,7 @@
 
 load("//package:repository.bzl", "RepositoryPin", "declare_remote_repository")
 
-_PACMAN_PACKAGE_SYSTEM = "@tine//package_system/pacman:package_system"
+PACKAGE_SYSTEM = "@tine//package_system/pacman:package_system"
 
 # The Arch Linux Archive's dated trees, whose databases never change under a committed pin.
 ARCHIVE_MIRROR = "https://archive.archlinux.org/repos"
@@ -44,7 +44,7 @@ def pacman_remote_repository(
         name = name,
         what = "pacman_remote_repository",
         label = "tine:pacman-remote-repository",
-        package_system = _PACMAN_PACKAGE_SYSTEM,
+        package_system = PACKAGE_SYSTEM,
         baseurl = baseurl,
         pin = pin,
         snapshot_spec = {"db": repository + ".db"},

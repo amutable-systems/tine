@@ -9,6 +9,7 @@ import specs
 
 import artifacts
 import finalize
+import kmod
 from mkosi.versioncomp import GenericVersion
 
 
@@ -67,19 +68,7 @@ def _ukis(tree: Path) -> list[UkiCandidate]:
 
 
 def _kernels(tree: Path) -> list[KernelCandidate]:
-    candidates = []
-    modules = tree / "usr/lib/modules"
-    if modules.is_dir():
-        for directory in sorted(modules.iterdir()):
-            kernel = directory / "vmlinuz"
-            if directory.is_dir() and kernel.is_file():
-                candidates.append(KernelCandidate(directory.name, kernel))
-    boot = tree / "boot"
-    if boot.is_dir():
-        for kernel in sorted(boot.glob("vmlinuz-*")):
-            if kernel.is_file():
-                candidates.append(KernelCandidate(kernel.name.removeprefix("vmlinuz-"), kernel))
-    return candidates
+    return [KernelCandidate(installed.release, installed.path) for installed in kmod.kernels(tree)]
 
 
 def _matching_initrd(tree: Path, kernel_release: str) -> Path | None:

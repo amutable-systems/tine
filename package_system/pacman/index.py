@@ -8,13 +8,13 @@ packages can be indexed by the same driver that runs everywhere else.
 
 import hashlib
 import os
-import shutil
 import sys
 from contextlib import ExitStack
 from pathlib import Path
 from typing import TypedDict
 
 import specs
+import util
 
 import alpm
 
@@ -69,11 +69,8 @@ def read_pkginfo(package: Path) -> dict[str, list[str]]:
 
 
 def _checksum(package: Path) -> str:
-    digest = hashlib.sha256()
     with package.open("rb") as raw:
-        while chunk := raw.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
+        return hashlib.file_digest(raw, "sha256").hexdigest()
 
 
 def entry(name: str, package: Path) -> tuple[str, dict[str, list[str]]]:
@@ -90,14 +87,6 @@ def entry(name: str, package: Path) -> tuple[str, dict[str, list[str]]]:
     return described.id, values
 
 
-def _link_or_copy(src: Path, dst: Path) -> None:
-    # Symlinks would dangle when the repository is rebound into a sandbox.
-    try:
-        os.link(src, dst)
-    except OSError:
-        shutil.copy2(src, dst)
-
-
 def index(entries: list[tuple[str, Path]], out: Path, epoch: int) -> None:
     out.mkdir(parents=True, exist_ok=True)
     entries = sorted(entries)
@@ -106,7 +95,10 @@ def index(entries: list[tuple[str, Path]], out: Path, epoch: int) -> None:
 
     # A location is relative to the repository base URL, which is a directory here.
     for name, package in entries:
-        _link_or_copy(package, out / name)
+        # Hardlinked rather than symlinked, which would dangle once the repository is rebound
+        # into a sandbox.
+        (out / name).parent.mkdir(parents=True, exist_ok=True)
+        util.clone_file(package, out / name, allow_link=True)
 
     alpm.write_db([entry(name, package) for name, package in entries], out / DATABASE, epoch)
     print(f"index: {len(entries)} packages → {out}", file=sys.stderr)

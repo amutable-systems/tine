@@ -419,7 +419,44 @@ class TestPackPaths(TreeTest):
         (self.modulesd / "link.ko").symlink_to("kernel/a/one.ko")
         base = f"usr/lib/modules/{self.kver}"
         entries = list(cpio.read(self.pack([f"{base}/link.ko"]).read_bytes()))
-        self.assertEqual(bytes(entries[0].data), b"kernel/a/one.ko")
+        self.assertEqual(entries[0].target, b"kernel/a/one.ko")
+
+
+class TestKernels(unittest.TestCase):
+    def test_finds_a_kernel_wherever_its_distribution_puts_it(self) -> None:
+        with tempfile.TemporaryDirectory() as scratch:
+            tree = Path(scratch)
+            beside = tree / "usr/lib/modules/6.1.0-beside"
+            beside.mkdir(parents=True)
+            (beside / "vmlinuz").write_bytes(b"")
+            boot = tree / "boot"
+            boot.mkdir()
+            (boot / "vmlinuz-6.1.0-in-boot").write_bytes(b"")
+
+            found = kmod.kernels(tree)
+            self.assertEqual(
+                {kernel.release: kernel.path for kernel in found},
+                {
+                    "6.1.0-beside": beside / "vmlinuz",
+                    "6.1.0-in-boot": boot / "vmlinuz-6.1.0-in-boot",
+                },
+            )
+
+    def test_counts_one_kernel_once_when_both_layouts_name_it(self) -> None:
+        with tempfile.TemporaryDirectory() as scratch:
+            tree = Path(scratch)
+            modules = tree / "usr/lib/modules/6.1.0"
+            modules.mkdir(parents=True)
+            (modules / "vmlinuz").write_bytes(b"")
+            (tree / "boot").mkdir()
+            (tree / "boot/vmlinuz-6.1.0").write_bytes(b"")
+
+            # Otherwise one kernel would trip the uki driver's one-kernel-per-image assertion.
+            self.assertEqual([kernel.release for kernel in kmod.kernels(tree)], ["6.1.0"])
+
+    def test_finds_nothing_in_a_tree_that_ships_no_kernel(self) -> None:
+        with tempfile.TemporaryDirectory() as scratch:
+            self.assertEqual(kmod.kernels(Path(scratch)), [])
 
 
 if __name__ == "__main__":

@@ -7,11 +7,15 @@ different terminal format.
 import mmap
 import os
 import stat
-from collections.abc import Buffer, Iterable, Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path, PurePath, PurePosixPath
 from typing import NamedTuple, Self
 
 import util
+
+# What an archive is read from, spelled concretely because the reader slices it: an mmap and a
+# `bytes` both hand back `bytes`, where the `Buffer` protocol promises no indexing at all.
+type Source = mmap.mmap | bytes
 
 MAGIC = b"070701"
 TRAILER = "TRAILER!!!"
@@ -41,7 +45,7 @@ def _pwrite_all(fd: int, data: memoryview | bytes, off: int) -> None:
 
 
 class Entry(NamedTuple):
-    """A decoded record whose data remains a view into the source buffer."""
+    """A decoded record, which names where its payload is rather than holding it."""
 
     ino: int
     mode: int
@@ -49,39 +53,44 @@ class Entry(NamedTuple):
     devmajor: int
     devminor: int
     name: str
-    data: memoryview
+    size: int
     data_off: int
+    # A symlink's target, and empty for everything else: it is the one payload a caller needs the
+    # bytes of, and small enough to copy. A regular file's is written from the source fd instead.
+    target: bytes
 
 
-def read(buf: Buffer, start: int = 0) -> Iterator[Entry]:
-    """Yield records from a newc archive embedded at `start` in `buf`."""
-    view = memoryview(buf)
+def _align(start: int, pos: int) -> int:
+    """Newc alignment is relative to the archive, not its containing file."""
+    return start + _roundup(pos - start, 4)
 
-    # Newc alignment is relative to the archive, not its containing file.
-    def align(pos: int) -> int:
-        return start + _roundup(pos - start, 4)
 
+def read(source: Source, start: int = 0) -> Iterator[Entry]:
+    """Yield records from a newc archive embedded at `start` in `source`.
+
+    Nothing yielded holds a view into `source`, which is what lets a caller abandon this loop on
+    an error: an exported view outliving the frame that raised would make an mmap's close fail with
+    a BufferError instead of the error that ended the extraction.
+    """
     off = start
     while True:
-        if bytes(view[off : off + 6]) != MAGIC:
-            raise ValueError(f"bad cpio magic at {off}: {bytes(view[off : off + 6])!r}")
+        if source[off : off + 6] != MAGIC:
+            raise ValueError(f"bad cpio magic at {off}: {source[off : off + 6]!r}")
         # 13 8-hex fields: ino, mode, uid, gid, nlink, mtime, filesize, devmajor, devminor,
         # rdevmajor, rdevminor, namesize, check.
-        f = [int(bytes(view[off + 6 + i * 8 : off + 6 + (i + 1) * 8]), 16) for i in range(13)]
+        f = [int(source[off + 6 + i * 8 : off + 6 + (i + 1) * 8], 16) for i in range(13)]
         ino, mode, nlink, filesize, devmajor, devminor, namesize = (
             f[0], f[1], f[4], f[6], f[7], f[8], f[11],
         )  # fmt: skip
         name_off = off + _HEADER
-        raw = bytes(view[name_off : name_off + namesize])
         # First NUL drops both the stock terminator and any of our alignment padding.
-        name = raw.split(b"\x00", 1)[0].decode()
-        data_off = align(name_off + namesize)
+        name = source[name_off : name_off + namesize].split(b"\x00", 1)[0].decode()
+        data_off = _align(start, name_off + namesize)
         if name == TRAILER:
             return
-        yield Entry(
-            ino, mode, nlink, devmajor, devminor, name, view[data_off : data_off + filesize], data_off
-        )
-        off = align(data_off + filesize)
+        target = source[data_off : data_off + filesize] if stat.S_ISLNK(mode) else b""
+        yield Entry(ino, mode, nlink, devmajor, devminor, name, filesize, data_off, target)
+        off = _align(start, data_off + filesize)
 
 
 def _relpath(name: str) -> str:
@@ -99,18 +108,17 @@ def _put_regular(target: Path, e: Entry, src_fd: int) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
     try:
-        util.copy_range(fd, 0, src_fd, e.data_off, len(e.data))
+        util.copy_range(fd, 0, src_fd, e.data_off, e.size)
     finally:
         os.close(fd)
     target.chmod(e.mode & 0o7777)
 
 
-def _extract(mm: Buffer, dest: Path, src_fd: int, start: int) -> int:
-    """Extract entries while releasing all memoryviews before the mmap closes."""
+def _extract(source: Source, dest: Path, src_fd: int, start: int) -> int:
     count = 0
     canonical: dict[tuple[int, int, int], Path] = {}
     pending: dict[tuple[int, int, int], list[tuple[Path, int]]] = {}
-    for e in read(mm, start):
+    for e in read(source, start):
         rel = _relpath(e.name)
         if not rel:
             continue
@@ -118,7 +126,7 @@ def _extract(mm: Buffer, dest: Path, src_fd: int, start: int) -> int:
         fmt = e.mode & 0o170000
         # Hardlinkable iff a regular file sharing an inode (nlink > 1).
         key = (e.devmajor, e.devminor, e.ino) if e.nlink > 1 and fmt == 0o100000 else None
-        if key is not None and len(e.data) == 0:
+        if key is not None and e.size == 0:
             if key in canonical:
                 _hardlink(target, canonical[key])
                 count += 1
@@ -126,11 +134,15 @@ def _extract(mm: Buffer, dest: Path, src_fd: int, start: int) -> int:
                 pending.setdefault(key, []).append((target, e.mode))
             continue
         if fmt == 0o040000:  # directory
+            # The mode a package ships a directory with is deliberately not applied: this runs once
+            # per archive into one tree, and a later archive still has to write into a directory an
+            # earlier one declared unwritable. `rootfs.capture` settles directory modes once
+            # everything is in place.
             target.mkdir(parents=True, exist_ok=True)
         elif fmt == 0o120000:  # symlink (last-writer-wins across multi-archive extracts)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.unlink(missing_ok=True)
-            target.symlink_to(bytes(e.data).decode())
+            target.symlink_to(e.target.decode())
         elif fmt == 0o100000:  # regular file
             _put_regular(target, e, src_fd)
         else:  # device/fifo/socket
@@ -157,7 +169,12 @@ def unpack(fd: int, dest: Path, *, offset: int = 0) -> int:
     if os.fstat(fd).st_size == 0:
         return 0
     with mmap.mmap(fd, 0, prot=mmap.PROT_READ) as mm:
-        return _extract(mm, dest, fd, offset)
+        try:
+            return _extract(mm, dest, fd, offset)
+        except ValueError as error:
+            # What the reader raises for an archive that is not the format it claims, which is an
+            # input being wrong rather than a bug worth a traceback.
+            raise SystemExit(f"cpio: {error}") from error
 
 
 # Writer.

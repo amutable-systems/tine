@@ -143,6 +143,7 @@ tine_python_binary(
     deps = [
         ":artifacts-lib",
         ":finalize",
+        ":kmod",
         "//:specs",
         "//vendor:mkosi",
     ],

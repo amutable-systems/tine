@@ -17,6 +17,7 @@ from typing import NamedTuple, Self
 
 MODULES = PurePosixPath("usr/lib/modules")
 FIRMWARE = PurePosixPath("usr/lib/firmware")
+BOOT = PurePosixPath("boot")
 # Every module spelling depmod indexes. The suffix is stripped before a pattern sees a path.
 SUFFIXES = (".ko", ".ko.gz", ".ko.xz", ".ko.zst")
 _COMPRESSION = ("", ".gz", ".xz", ".zst")
@@ -24,6 +25,37 @@ _LINK_DEPTH = 40
 
 # An opaque libkmod pointer, as ctypes hands one back.
 type Handle = int
+
+
+class Kernel(NamedTuple):
+    """One installed kernel: the release its modules are indexed under, and the image itself."""
+
+    release: str
+    path: Path
+
+
+def kernels(tree: Path) -> list[Kernel]:
+    """Every kernel an image installs, wherever its distribution puts the image itself.
+
+    Distributions following kernel-install put the kernel beside its modules; Debian keeps it in
+    `/boot` under a name carrying the release. A tree can hold either, so both are looked for and
+    the release is what ties an image back to the modules that go with it.
+    """
+    found = []
+    modules = tree / MODULES
+    if modules.is_dir():
+        for directory in sorted(modules.iterdir()):
+            kernel = directory / "vmlinuz"
+            if directory.is_dir() and kernel.is_file():
+                found.append(Kernel(directory.name, kernel))
+    boot = tree / BOOT
+    if boot.is_dir():
+        indexed = {kernel.release for kernel in found}
+        for kernel in sorted(boot.glob("vmlinuz-*")):
+            release = kernel.name.removeprefix("vmlinuz-")
+            if kernel.is_file() and release not in indexed:
+                found.append(Kernel(release, kernel))
+    return found
 
 
 class Entry(NamedTuple):

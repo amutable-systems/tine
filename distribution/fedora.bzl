@@ -5,9 +5,7 @@ load("//package:buildroot.bzl", "buildroot")
 load("//package:manager.bzl", "package_manager")
 load("//package:release.bzl", "os_release")
 load("//package:repository.bzl", "repository_universe")
-load("//package_system/rpm:rules.bzl", "rpm_remote_repository")
-
-_RPM = "@tine//package_system/rpm:package_system"
+load("//package_system/rpm:rules.bzl", "PACKAGE_SYSTEM", "rpm_remote_repository")
 
 _FEDORA_PACKAGE_SETS = {
     "bootable": [
@@ -66,7 +64,7 @@ def fedora_release(
     )
     repository_universe(
         name = name + ".repositories",
-        package_system = _RPM,
+        package_system = PACKAGE_SYSTEM,
         # The additional repositories are part of the release, not just of installs from it. An
         # box resolves against the universe and nothing else, so leaving them out would stop a
         # release from building with the tools it ships: an image running a systemd from one of

@@ -40,8 +40,5 @@ box_python_test(
         "lock.py",
         "vendor.py",
     ],
-    deps = [
-        "//:specs",
-        "//:util",
-    ],
+    deps = ["//:specs", "//:util"],
 )

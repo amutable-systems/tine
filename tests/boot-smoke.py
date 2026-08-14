@@ -32,9 +32,10 @@ POWEROFF_TIMEOUT = float(os.environ.get("SMOKE_POWEROFF_TIMEOUT", "90"))
 # TODO: tighten to {"running"} once the degraded units are fixed.
 ACCEPT = {"running", "degraded"}
 
-# A root shell prompt: a login shell with no PS1 shows `-bash-5.3#`; also accept `bash-5.3#` and the
-# `[root@host ~]#` form. The leading `-` marks a login shell (argv[0] is `-bash`).
-PROMPT = re.compile(rb"-?(?:bash|sh)-[0-9.]+[#$]|\][#$]")
+# A root shell prompt: a login shell with no PS1 shows `-bash-5.3#`; also accept `bash-5.3#`, the
+# `[root@host ~]#` form, and the `root@host:~#` one Debian's own bashrc sets. The leading `-` marks
+# a login shell (argv[0] is `-bash`).
+PROMPT = re.compile(rb"-?(?:bash|sh)-[0-9.]+[#$]|\][#$]|@[^\s:]+:[^\s]*[#$]")
 # Sentinels the guest echoes back; the bracketed value only appears in printf's output, never in the
 # echoed command line, so matching it can't trip over the command itself.
 READY = re.compile(rb"TINE_READY\[ok\]")
