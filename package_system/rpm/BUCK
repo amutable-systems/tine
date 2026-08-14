@@ -12,14 +12,19 @@ tine_python_library(name = "rpmfile", srcs = ["rpmfile.py"], deps = ["//:util"])
 tine_python_binary(
     name = "extract",
     main = "extract.py",
-    deps = [":rpmfile", "//:specs", "//archive:cpio", "//rootfs:rootfs"],
+    deps = [":rpmfile", "//archive:cpio", "//package:extractor"],
 )
 
 tine_python_binary(name = "install", main = "install.py", boxes = [_BOX], deps = ["//package:installer"])
 
 # The capture driver implements the terminal-image contract, so it takes that library.
 tine_python_binary(name = "pkgdb", main = "pkgdb.py", deps = ["//:specs", "//image:finalize"])
-tine_python_binary(name = "createrepo", main = "createrepo.py", boxes = [_BOX], deps = ["//:specs"])
+tine_python_binary(
+    name = "createrepo",
+    main = "createrepo.py",
+    boxes = [_BOX],
+    deps = ["//:specs", "//:util"],
+)
 tine_python_binary(
     name = "plan",
     main = "plan.py",

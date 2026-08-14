@@ -5,22 +5,12 @@ and the cpio unpacked. Metadata and scriptlets are deferred to the real install.
 """
 
 import mmap
-import sys
 import tempfile
 from pathlib import Path
-from typing import TypedDict
-
-import specs
 
 import cpio
-import rootfs
+import extractor
 import rpmfile
-
-
-class Spec(TypedDict):
-    out: str
-    # Raw rpms, uncompressed payloads, or directories of either.
-    packages: list[str]
 
 
 def extract(rpm_path: Path, dest: Path) -> int:
@@ -40,25 +30,13 @@ def extract_payload(payload: Path, dest: Path) -> int:
         return cpio.unpack(stream.fileno(), dest)
 
 
-def _expand(paths: list[Path]) -> list[Path]:
-    """Expand any directory argument to the (sorted) files it contains."""
-    out: list[Path] = []
-    for p in paths:
-        out += sorted(p.iterdir()) if p.is_dir() else [p]
-    return out
+def unpack(package: Path, dest: Path) -> int:
+    """Extract an rpm, or a payload already framed off one."""
+    return extract_payload(package, dest) if package.suffix == ".cpio" else extract(package, dest)
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("extract", argv)
-    dest = Path(spec["out"])
-    rpms = _expand([Path(package) for package in spec["packages"]])
-    if not rpms:
-        raise SystemExit("extract: no packages to extract")
-    total = 0
-    for package in rpms:
-        total += extract_payload(package, dest) if package.suffix == ".cpio" else extract(package, dest)
-    rootfs.capture(dest)
-    print(f"extracted {total} files from {len(rpms)} rpm(s) into {dest}", file=sys.stderr)
+    extractor.run("extract", unpack, argv)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,24 @@ class ImageSpec(TypedDict):
     tmpfiles: list[str]
 
 
+# The directories whose whole point is a mode, so a layer cannot carry them: sticky and
+# world-writable, which is exactly what Buck cannot store and the tar filter strips.
+_WORLD_WRITABLE = ("tmp", "var/tmp")
+
+
+def world_writable(tree: Path) -> None:
+    """Restore the mode on the temporary directories, which nothing upstream of here can keep.
+
+    Buck stores no mode beyond the executable bit, so a package's `0o1777` is gone by the time a
+    layer is a build artifact however faithfully it was extracted. Here is the last point before
+    the image is written, and the only one where the mode survives into it.
+    """
+    for name in _WORLD_WRITABLE:
+        path = tree / name
+        if path.is_dir() and not path.is_symlink():
+            path.chmod(0o1777)
+
+
 @contextlib.contextmanager
 def image(
     spec: ImageSpec,
@@ -37,6 +55,8 @@ def image(
     with rootfs.rootfs(
         "/buildroot", lowers=spec["lower"] if lowers is None else lowers, binds=binds
     ) as tree:
+        # Before the snippets, so an image that states a mode of its own still wins.
+        world_writable(tree)
         apply_tmpfiles(tree, spec["tmpfiles"], program=program)
         yield tree
 

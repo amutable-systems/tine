@@ -61,12 +61,11 @@ class Spec(finalize.ImageSpec):
     splash: str | None
 
 
-def _kvers(tree: Path) -> list[str]:
-    modules = tree / "usr/lib/modules"
-    kvers = sorted(p.name for p in modules.iterdir() if (p / "vmlinuz").exists()) if modules.is_dir() else []
-    if not kvers:
-        raise SystemExit("uki: found no kernels under /usr/lib/modules")
-    return kvers
+def _kernels(tree: Path) -> list[kmod.Kernel]:
+    found = kmod.kernels(tree)
+    if not found:
+        raise SystemExit("uki: found no kernel under /usr/lib/modules or /boot")
+    return sorted(found)
 
 
 def _select(tree: Path, kver: str, patterns: list[str]) -> kmod.Selection:
@@ -200,14 +199,14 @@ def main(argv: list[str] | None = None) -> None:
         tempfile.TemporaryDirectory(prefix="boot.") as scratch_dir,
     ):
         scratch = Path(scratch_dir)
-        kvers = _kvers(tree)
-        if len(kvers) > 1:
+        found = _kernels(tree)
+        if len(found) > 1:
             raise SystemExit(
                 "uki: one image holds one kernel, found: "
-                + ", ".join(kvers)
+                + ", ".join(installed.release for installed in found)
                 + " — split kernel variants into separate images"
             )
-        kver = kvers[0]
+        kver, kernel = found[0]
         os_release = tree / "usr/lib/os-release"
         if not os_release.exists():
             raise SystemExit(
@@ -253,7 +252,6 @@ def main(argv: list[str] | None = None) -> None:
         signing = _signing_arguments(secure_boot, pcr, profiles, _ukify_options() if pcr else set())
 
         modules = scratch / f"modules-{kver}.cpio"
-        prefix = f"usr/lib/modules/{kver}"
         selection = _select(tree, kver, spec["initrd_modules"])
         cpio.pack_paths(tree, modules, epoch, [entry.path for entry in selection.entries])
         Path(spec["modules_manifest"]).write_text(
@@ -266,7 +264,7 @@ def main(argv: list[str] | None = None) -> None:
         )
 
         output = out / f"{spec['image_id']}_{spec['version']}_{spec['systemd_arch']}.efi"
-        cmd = ["ukify", "build", "--linux", str(tree / prefix / "vmlinuz")]
+        cmd = ["ukify", "build", "--linux", str(kernel)]
         for initrd in [*initrds, modules]:
             cmd += ["--initrd", str(initrd)]
         cmd += [

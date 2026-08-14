@@ -8,7 +8,7 @@ load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:repository.bzl", "LocalPackageInfo", "RepositoryPin", "declare_remote_repository")
 load("//package:system.bzl", "PackageSystemInfo")
 
-_RPM_PACKAGE_SYSTEM = "@tine//package_system/rpm:package_system"
+PACKAGE_SYSTEM = "@tine//package_system/rpm:package_system"
 
 def rpm_remote_repository(
     name: str,
@@ -30,7 +30,7 @@ def rpm_remote_repository(
         name = name,
         what = "rpm_remote_repository",
         label = "tine:rpm-remote-repository",
-        package_system = _RPM_PACKAGE_SYSTEM,
+        package_system = PACKAGE_SYSTEM,
         baseurl = baseurl,
         pin = pin,
         **kwargs,

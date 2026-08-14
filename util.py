@@ -1,7 +1,6 @@
 """Generic helpers shared by tine's Python entry points."""
 
 import bz2
-import compression.zstd
 import errno
 import gzip
 import http.client
@@ -22,17 +21,37 @@ from typing import IO, TextIO, cast
 
 # Fall back only when the filesystem does not support the range copy or linking.
 _COPY_FALLBACK_ERRNOS = frozenset({errno.EINVAL, errno.ENOSYS, errno.EOPNOTSUPP, errno.EXDEV})
-_LINK_FALLBACK_ERRNOS = frozenset({errno.EMLINK, errno.EOPNOTSUPP, errno.EXDEV})
+# EPERM covers a source another uid owns under fs.protected_hardlinks, or an immutable one.
+_LINK_FALLBACK_ERRNOS = frozenset({errno.EMLINK, errno.EOPNOTSUPP, errno.EPERM, errno.EXDEV})
 
 _TRANSIENT_HTTP_STATUS = frozenset((408, 429, 500, 502, 503, 504))
 _FETCH_ATTEMPTS = 4
+
+
+def _zstd(stream: IO[bytes]) -> io.BufferedIOBase:
+    """Open a zstd stream, saying plainly when this interpreter is too old to.
+
+    A driver that runs inside a box runs under that box's own python, which is whatever its
+    distribution ships: `compression.zstd` arrived in 3.14, and Debian trixie is on 3.13. Reaching
+    for it lazily keeps a box usable for the formats it does read, and a box asked for one it
+    cannot read gets told which of the two is missing rather than an import error at startup.
+    """
+    try:
+        import compression.zstd
+    except ImportError:
+        raise SystemExit(
+            f"this stream is zstd-compressed and {sys.executable} has no compression.zstd, which "
+            "arrived in python 3.14"
+        ) from None
+
+    return compression.zstd.ZstdFile(stream, mode="rb")
 
 
 # What a compressed stream starts with, and what opens it. A file's name is not authoritative
 # about how it was compressed, and a repository is free to change compressor between releases,
 # so every reader here selects one from the bytes instead.
 _COMPRESSORS = (
-    (b"\x28\xb5\x2f\xfd", lambda stream: compression.zstd.ZstdFile(stream, mode="rb")),
+    (b"\x28\xb5\x2f\xfd", _zstd),
     (b"\x1f\x8b", lambda stream: gzip.GzipFile(fileobj=stream, mode="rb")),
     (b"\xfd7zXZ\x00", lambda stream: lzma.LZMAFile(stream, mode="rb")),
     (b"BZh", lambda stream: bz2.BZ2File(stream, mode="rb")),

@@ -5,13 +5,13 @@ Runs inside the box so the pinned createrepo_c produces the metadata.
 """
 
 import os
-import shutil
 import sys
 from pathlib import Path
 from typing import TypedDict
 
 import createrepo_c as cr
 import specs
+import util
 
 
 class Spec(TypedDict):
@@ -30,14 +30,6 @@ _STREAMS = (
 )
 
 
-def _link_or_copy(src: Path, dst: Path) -> None:
-    # Symlinks would dangle when the repository is rebound into a sandbox.
-    try:
-        os.link(src, dst)
-    except OSError:
-        shutil.copy2(src, dst)
-
-
 def createrepo(entries: list[tuple[str, Path]], out: Path, revision: str) -> None:
     out.mkdir(parents=True, exist_ok=True)
     entries = sorted(entries)
@@ -48,7 +40,9 @@ def createrepo(entries: list[tuple[str, Path]], out: Path, revision: str) -> Non
     for href, rpm in entries:
         dst = out / href
         dst.parent.mkdir(parents=True, exist_ok=True)
-        _link_or_copy(rpm, dst)
+        # Hardlinked rather than symlinked, which would dangle once the repository is rebound into
+        # a sandbox.
+        util.clone_file(rpm, dst, allow_link=True)
 
     repodata = out / "repodata"
     repodata.mkdir(exist_ok=True)

@@ -5,21 +5,11 @@ no package tooling and no separate payload representation. Its metadata and inst
 are deferred to the real install that follows.
 """
 
-import sys
 from contextlib import ExitStack
 from pathlib import Path
-from typing import TypedDict
-
-import specs
 
 import alpm
-import rootfs
-
-
-class Spec(TypedDict):
-    out: str
-    # Packages, or directories of them.
-    packages: list[str]
+import extractor
 
 
 def extract(package: Path, dest: Path) -> int:
@@ -32,29 +22,13 @@ def extract(package: Path, dest: Path) -> int:
             # the package installs. Their contents belong to the real install that follows.
             if member.name.startswith("."):
                 continue
-            # The `tar` filter keeps modes and links but refuses to escape the destination.
             archive.extract(member, dest, filter="tar")
             written += 1
     return written
 
 
-def _expand(paths: list[Path]) -> list[Path]:
-    """Expand any directory argument to the (sorted) files it contains."""
-    out: list[Path] = []
-    for path in paths:
-        out += sorted(path.iterdir()) if path.is_dir() else [path]
-    return out
-
-
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("extract", argv)
-    dest = Path(spec["out"])
-    packages = _expand([Path(package) for package in spec["packages"]])
-    if not packages:
-        raise SystemExit("extract: no packages to extract")
-    total = sum(extract(package, dest) for package in packages)
-    rootfs.capture(dest)
-    print(f"extracted {total} entries from {len(packages)} package(s) into {dest}", file=sys.stderr)
+    extractor.run("extract", extract, argv)
 
 
 if __name__ == "__main__":

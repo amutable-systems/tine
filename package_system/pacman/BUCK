@@ -13,7 +13,7 @@ tine_python_library(name = "alpm", srcs = ["alpm.py"], deps = ["//:util"])
 tine_python_binary(
     name = "extract",
     main = "extract.py",
-    deps = [":alpm", "//:specs", "//rootfs:rootfs"],
+    deps = [":alpm", "//package:extractor"],
 )
 
 tine_python_binary(
@@ -24,7 +24,7 @@ tine_python_binary(
 
 # The capture driver implements the terminal-image contract, so it takes that library.
 tine_python_binary(name = "pkgdb", main = "pkgdb.py", deps = [":alpm", "//:specs", "//image:finalize"])
-tine_python_binary(name = "index", main = "index.py", deps = [":alpm", "//:specs"])
+tine_python_binary(name = "index", main = "index.py", deps = [":alpm", "//:specs", "//:util"])
 tine_python_binary(
     name = "plan",
     main = "plan.py",

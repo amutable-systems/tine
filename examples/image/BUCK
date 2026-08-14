@@ -243,8 +243,11 @@ vm_smoke(
     vm = ":boot-demo-vm",
     checks = [
         # The distribution that booted is the one that was asked for. A select reaches here through
-        # the alias the macro declares, which configures this target too.
-        select({d["distribution"]: "grep -q '^ID={}$' /etc/os-release".format(d["os_release_id"]) for d in DISTRIBUTIONS.values()}),
+        # the alias the macro declares, which configures this target too. This reads the file the
+        # build produced rather than the `/etc` symlink to it: a `/usr`-only disk boots with a
+        # volatile root, and whether anything recreates that symlink is a property of the
+        # distribution's own systemd rather than of the image.
+        select({d["distribution"]: "grep -q '^ID={}$' /usr/lib/os-release".format(d["os_release_id"]) for d in DISTRIBUTIONS.values()}),
         "bootctl | grep -F 'Secure Boot: disabled (setup)'",
         # The build compiled the hardware database into /usr, which is read-only here, so a guest
         # that has it got it from the build rather than from a boot-time regeneration.
