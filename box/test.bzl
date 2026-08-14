@@ -2,26 +2,12 @@
 
 load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapSources")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//python:defs.bzl", "flat_tree", "ty_check")
 
 def _box_python_test_impl(ctx: AnalysisContext) -> list[Provider]:
-    tree = {}
-    for source in [src for dep in ctx.attrs.deps for src in dep[PythonBootstrapSources].srcs] + ctx.attrs.srcs:
-        # The tree is flat, so two files sharing a name would silently shadow one another and the
-        # suite would exercise whichever landed last.
-        if tree.get(source.short_path, source) != source:
-            fail(
-                "{}: {} and {} are both named {} in the flat tree; rename one".format(
-                    ctx.label,
-                    tree[source.short_path],
-                    source,
-                    source.short_path,
-                )
-            )
-        tree[source.short_path] = source
-
     # Copied, not symlinked: a test reaches the module under test through its own __file__, which
     # must not escape into the source checkout behind buck's back.
-    root = ctx.actions.copied_dir("tree", tree)
+    root = ctx.actions.copied_dir("tree", flat_tree(ctx.attrs.srcs, ctx.attrs.deps))
 
     # -B keeps __pycache__ out of the tree; discover's top-level dir defaults to the start dir.
     command = cmd_args(
@@ -52,11 +38,11 @@ def _box_python_test_impl(ctx: AnalysisContext) -> list[Provider]:
         ),
     ]
 
-box_python_test = rule(
+_box_python_test = rule(
     doc = """One package's `*_test.py` files, run by `buck test` in a flat tree inside a box.
 
     Same-package sources go in `srcs`; anything from another package comes in through `deps` on a
-    `python_bootstrap_library`. Both land beside the tests, so ordinary Python modules are imported
+    `tine_python_library`. Both land beside the tests, so ordinary Python modules are imported
     directly; a test uses `Path(__file__).parent` only for non-module inputs such as `.bzl` files
     written in the Python subset and extensionless commands such as `bin/tine`.
     """,
@@ -72,6 +58,17 @@ box_python_test = rule(
         "srcs": attrs.list(attrs.source(), doc = "the tests and the sources they exercise"),
     },
 )
+
+def box_python_test(
+    name: str,
+    box: str,
+    srcs: list[str] | Select,
+    deps: list[str] | Select | None = None,
+    **kwargs,
+) -> None:
+    """Declare a box-hosted Python suite and the ty check over its sources, in the box that runs them."""
+    _box_python_test(name = name, box = box, deps = deps, srcs = srcs, **kwargs)
+    ty_check(name = name + "-ty", srcs = srcs, deps = deps, boxes = [box])
 
 def _box_sh_test_impl(ctx: AnalysisContext) -> list[Provider]:
     if (ctx.attrs.script == None) == (ctx.attrs.test == None):

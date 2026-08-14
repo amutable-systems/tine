@@ -1,8 +1,9 @@
 """Terminal image-output format drivers."""
 
 load("//box:test.bzl", "box_python_test")
+load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "archive",
     main = "archive.py",
     deps = [
@@ -14,7 +15,7 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "disk",
     main = "disk.py",
     deps = [
@@ -26,19 +27,19 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-python_bootstrap_library(
+tine_python_library(
     name = "repart_signing",
     srcs = ["repart_signing.py"],
 )
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "convert",
     main = "convert.py",
     deps = ["//:specs"],
     visibility = ["PUBLIC"],
 )
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "sysext",
     main = "sysext.py",
     deps = [
@@ -53,10 +54,10 @@ python_bootstrap_binary(
 
 # The default module list, written in the Starlark subset that is also plain Python: the uki rule
 # loads it, and tine//image:test exec()s the same file rather than restating the list.
-python_bootstrap_library(
+tine_python_library(
     name = "modules",
     srcs = ["modules.bzl"],
-    visibility = ["tine//image:test"],
+    visibility = ["tine//image:test", "tine//image:test-ty"],
 )
 
 box_python_test(

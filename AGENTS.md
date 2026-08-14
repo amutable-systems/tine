@@ -15,17 +15,28 @@
 
 The `tine` cell contains reusable machinery organized by subsystem. Starlark rules and their
 drivers live together in `box`, `package`, `package_system`, `cargo`, `go`, `image`, `image_format`,
-`rootfs`, and `archive`. Vendored code lives in `vendor`, and `bin` holds the `tine` command. The default
-catalog is `tine//catalog`; consumers may instead declare a project-specific `//catalog` package.
+`rootfs`, and `archive`; `python` owns their shared driver rules. Vendored code lives in `vendor`, and
+`bin` holds the `tine` command. The default catalog is `tine//catalog`; consumers may instead declare a
+project-specific `//catalog` package.
 `examples` holds the demo images that CI builds and boot-tests, plus a dev box. Package sources and
 targets live in the OS.git root that consumes this cell, under `packages/` (built as `//packages/...`).
 
 Unit tests sit beside the driver they exercise as `<driver>_test.py`, run by a `box_python_test`
 target in the same package (`tine//box:defs.bzl`), which only `buck test` runs. Cross-package
-sources reach a suite through `deps` on a `python_bootstrap_library`, never `export_file`. An
+sources reach a suite through `deps` on a `tine_python_library`, never `export_file`. An
 assertion about what a build produced is a `box_sh_test` beside the target that produced it: a
 script taking artifacts as `$(location)` arguments, run in a box so it reaches pinned tools
 rather than the host'"'"'s. `tests` holds what those share, like the VM boot smoke driver.
+
+Python drivers use `tine_python_library` and `tine_python_binary`, macros that declare the prelude's
+bootstrap target and, beside it, a `<name>-ty` check over that target's own sources in a flat tree of their
+transitive runtime. `lint` discovers those checks by label; never declare a bootstrap target directly or
+add its ty check by hand. A dep's sources are in the tree to resolve imports and are checked by their own
+target, so each file is checked once, wherever it is declared (`typecheck = False` declares no check at
+all, for vendored sources that follow their own rules). Every check names the environment its imports
+resolve against, so none can pass on what a developer happens to have installed: the pinned interpreter by
+default, or the `boxes` a driver reaching for third-party modules lists, one check per box. A box Python
+test checks its own sources against the box that runs them.
 
 ## Commands
 

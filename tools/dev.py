@@ -110,20 +110,10 @@ def _lint(args: argparse.Namespace) -> None:
     _run([args.ruff, "format", "--check", "--no-cache", cell])
     _run([args.ruff, "check", "--no-cache", cell])
     _bold("ty")
-    # Resolve third-party imports from the pinned box runtime. ty's own walk only picks up `.py`,
-    # so a driver that is a command rather than a module has to be named for it to be checked.
-    _run(
-        [
-            args.ty,
-            "check",
-            "--project",
-            cell,
-            "--python",
-            Path(args.box) / "usr",
-            cell,
-            cell / "bin" / "tine",
-        ]
-    )
+    targets = _buck_out(args.buck, "uquery", "attrfilter(labels, 'python-typecheck', tine//...)").split()
+    if not targets:
+        raise SystemExit("ty: no generated type-check targets found")
+    _run([args.buck, "build", *targets])
     _bold("starlark_fmt")
     # starlark_fmt has no check mode, so diff each file and fail on the first rewrite it would make.
     if diffs := [diff for src in srcs if (diff := _fmt_diff(args, src))]:
@@ -255,9 +245,7 @@ def main(argv: list[str] | None = None) -> None:
         ("check", _check, "run the source lints, then every unit-test suite"),
     ):
         verb = sub.add_parser(name, parents=[common, starlark], help=help_text)
-        for tool in ("ruff", "ty"):
-            verb.add_argument(f"--{tool}", required=True)
-        verb.add_argument("--box", required=True, help="box root for ty --python")
+        verb.add_argument("--ruff", required=True)
         verb.set_defaults(func=func)
 
     fmt = sub.add_parser("fmt", parents=[common, starlark], help="auto-format and auto-fix lints")

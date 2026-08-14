@@ -1,9 +1,10 @@
 """Go source builds: one online, go.sum-verified module fetch, then an offline compile."""
 
 load("//box:test.bzl", "box_python_test")
+load("//python:defs.bzl", "tine_python_binary")
 
 # The project's source artifacts in, the module root its go.mod marks out.
-python_bootstrap_binary(
+tine_python_binary(
     name = "workspace",
     main = "workspace.py",
     visibility = ["PUBLIC"],
@@ -11,7 +12,7 @@ python_bootstrap_binary(
 )
 
 # Runs inside the box with the network: go.mod and go.sum in, the verified module cache out.
-python_bootstrap_binary(
+tine_python_binary(
     name = "fetch",
     main = "fetch.py",
     visibility = ["PUBLIC"],
@@ -19,9 +20,9 @@ python_bootstrap_binary(
 )
 
 # Runs inside the box offline: the source tree and its module cache in, the declared binaries out.
-python_bootstrap_binary(
+tine_python_binary(
     name = "build",
-    main = "go_build.py",
+    main = "build.py",
     visibility = ["PUBLIC"],
     deps = [
         "//:specs",
@@ -33,8 +34,8 @@ box_python_test(
     name = "test",
     box = "//tools:dev.box",
     srcs = [
+        "build.py",
         "build_test.py",
-        "go_build.py",
         "workspace.py",
         "workspace_test.py",
     ],

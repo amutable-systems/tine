@@ -1,6 +1,7 @@
 """Pinned tool binaries and development commands fetched by Buck."""
 
 load("//box:defs.bzl", "box", "box_python_test")
+load("//python:defs.bzl", "tine_python_binary")
 load(":defs.bzl", "http_tool")
 load(":tools.json", _pins = "value")
 
@@ -29,7 +30,7 @@ http_tool(
 )
 
 # Decompressor for the above; the pinned CPython is new enough to have zstd in its standard library.
-python_bootstrap_binary(
+tine_python_binary(
     name = "unzstd",
     main = "unzstd.py",
 )
@@ -46,6 +47,7 @@ http_tool(
     name = "ty",
     path = "ty",
     spec = _pins["ty"],
+    visibility = ["PUBLIC"],
 )
 
 # SBOM generator (static release binary; not packaged in Fedora). Scans an assembled image tree for the
@@ -88,19 +90,19 @@ box(
 )
 
 # Runtime driver for the source-tree commands below.
-python_bootstrap_binary(
+tine_python_binary(
     name = "dev",
     main = "dev.py",
 )
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "catalog",
     main = "catalog.py",
     deps = ["//:util"],
 )
 
 # PUBLIC: a consuming project bumps its own tools.json with this, passing --data.
-python_bootstrap_binary(
+tine_python_binary(
     name = "bump-driver",
     main = "bump.py",
     deps = ["//:util"],
@@ -113,9 +115,6 @@ command_alias(
     exe = ":bump-driver",
 )
 
-# ty resolves imports against the box root.
-# FIXME: type check python in every box? Some python dependencies will only be
-# available in certain boxes.
 _SOURCE_ARGS = [
     "--starlark-fmt",
     "$(location_exec :starlark-fmt)",
@@ -123,10 +122,6 @@ _SOURCE_ARGS = [
     "$(source starlark-fmt.json)",
     "--ruff",
     "$(location_exec :ruff)",
-    "--ty",
-    "$(location_exec :ty)",
-    "--box",
-    "$(location_exec tine//catalog:fedora.rawhide.box)",
 ]
 
 command_alias(

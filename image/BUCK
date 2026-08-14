@@ -1,6 +1,7 @@
 """Logical image mutation and boot assembly drivers."""
 
 load("//box:test.bzl", "box_python_test")
+load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
 load(":image.bzl", "image_tools")
 
 # The one bundle every image rule resolves its drivers through.
@@ -21,7 +22,7 @@ image_tools(
     visibility = ["PUBLIC"],
 )
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "layer",
     main = "layer.py",
     deps = [
@@ -34,7 +35,7 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "uki",
     main = "uki.py",
     deps = [
@@ -46,13 +47,13 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-python_bootstrap_library(
+tine_python_library(
     name = "kmod",
     srcs = ["kmod.py"],
 )
 
 # A project's own template in, the file an image installs out.
-python_bootstrap_binary(
+tine_python_binary(
     name = "substitute",
     main = "substitute.py",
     deps = ["//:specs"],
@@ -86,7 +87,7 @@ box_python_test(
     ],
 )
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "sbom",
     main = "sbom.py",
     deps = [
@@ -96,7 +97,7 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "manifest",
     main = "manifest.py",
     deps = [
@@ -106,16 +107,17 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-python_bootstrap_library(
+tine_python_library(
     name = "finalize",
     srcs = ["finalize.py"],
     deps = ["//rootfs:rootfs"],
     visibility = ["PUBLIC"],
 )
 
-python_bootstrap_library(
+tine_python_library(
     name = "artifacts-lib",
     srcs = ["artifacts.py"],
+    boxes = ["tine//catalog:fedora.rawhide.box"],
     deps = [
         ":finalize",
         "//:specs",
@@ -123,9 +125,10 @@ python_bootstrap_library(
     ],
 )
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "artifacts",
     main = "artifacts.py",
+    boxes = ["tine//catalog:fedora.rawhide.box"],
     deps = [
         ":finalize",
         "//:specs",
@@ -134,7 +137,7 @@ python_bootstrap_binary(
     visibility = ["PUBLIC"],
 )
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "boot",
     main = "boot.py",
     deps = [

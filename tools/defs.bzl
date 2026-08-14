@@ -29,7 +29,7 @@ _tool = rule(
         "args": attrs.list(attrs.string(), default = []),
         "src": attrs.source(),
         # Only set for compressed downloads: an unconditional dep would cycle, since the decompressor
-        # is a python_bootstrap_binary and the bootstrap interpreter is itself an http_tool.
+        # is a tine_python_binary and the bootstrap interpreter is itself an http_tool.
         "unzstd": attrs.option(attrs.exec_dep(providers = [RunInfo]), default = None),
     },
 )
