@@ -1,11 +1,14 @@
 """Vendored runtime dependencies."""
 
-python_bootstrap_library(
+load("//python:defs.bzl", "tine_python_library")
+
+tine_python_library(
     name = "mkosi",
     srcs = [
         "mkosi/__init__.py",
         "mkosi/sandbox.py",
         "mkosi/versioncomp.py",
     ],
+    typecheck = False,
     visibility = ["tine//..."],
 )

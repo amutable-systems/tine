@@ -1,30 +1,34 @@
 """The RPM native package system and its driver bundle."""
 
 load("//package:system.bzl", "package_system")
+load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
 
-# Host tools bootstrap the box; remaining drivers run inside it.
+# Host tools bootstrap the box; remaining drivers run inside it. The drivers that reach for libdnf5
+# or createrepo_c are type-checked against the box that supplies them.
+_BOX = "tine//catalog:fedora.rawhide.box"
 
-python_bootstrap_library(name = "rpmfile", srcs = ["rpmfile.py"], deps = ["//:util"])
+tine_python_library(name = "rpmfile", srcs = ["rpmfile.py"], deps = ["//:util"])
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "extract",
     main = "extract.py",
     deps = [":rpmfile", "//:specs", "//archive:cpio", "//rootfs:rootfs"],
 )
 
-python_bootstrap_binary(name = "install", main = "install.py", deps = ["//package:installer"])
+tine_python_binary(name = "install", main = "install.py", boxes = [_BOX], deps = ["//package:installer"])
 
 # The capture driver implements the terminal-image contract, so it takes that library.
-python_bootstrap_binary(name = "pkgdb", main = "pkgdb.py", deps = ["//:specs", "//image:finalize"])
-python_bootstrap_binary(name = "createrepo", main = "createrepo.py", deps = ["//:specs"])
-python_bootstrap_binary(
+tine_python_binary(name = "pkgdb", main = "pkgdb.py", deps = ["//:specs", "//image:finalize"])
+tine_python_binary(name = "createrepo", main = "createrepo.py", boxes = [_BOX], deps = ["//:specs"])
+tine_python_binary(
     name = "plan",
     main = "plan.py",
+    boxes = [_BOX],
     deps = ["//:specs", "//package:transaction", "//rootfs:rootfs"],
 )
-python_bootstrap_binary(name = "build", main = "build.py", deps = ["//:specs", "//:util", "//rootfs:rootfs"])
+tine_python_binary(name = "build", main = "build.py", deps = ["//:specs", "//:util", "//rootfs:rootfs"])
 
-python_bootstrap_binary(
+tine_python_binary(
     name = "snapshot",
     deps = ["//:util", "//package:href", "//package:snapshotter"],
     main = "snapshot.py",

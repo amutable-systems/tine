@@ -1,6 +1,8 @@
 """Pinned execution-environment launcher."""
 
-python_bootstrap_binary(
+load("//python:defs.bzl", "tine_python_binary")
+
+tine_python_binary(
     name = "sandbox",
     main = "sandbox.py",
     deps = ["//vendor:mkosi"],

@@ -1,6 +1,8 @@
 """Shared archive primitives."""
 
-python_bootstrap_library(
+load("//python:defs.bzl", "tine_python_library")
+
+tine_python_library(
     name = "cpio",
     srcs = ["cpio.py"],
     visibility = ["tine//..."],

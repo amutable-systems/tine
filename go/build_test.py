@@ -9,7 +9,7 @@ read and which declarations it refuses. The box these tests run in carries no go
 import unittest
 from pathlib import Path
 
-import go_build as build
+import build
 
 # What `go list -e -json=ImportPath,Name,Target` prints for a v2 module whose command sits at the
 # module root, beside one in cmd/ and a library. go names the first after the second-to-last element
