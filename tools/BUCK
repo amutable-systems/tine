@@ -7,8 +7,8 @@ load(":tools.json", _pins = "value")
 
 _RELEASE = "tine//catalog:fedora.rawhide.release"
 
-# The shell bootstrap fetches Buck; Buck then fetches and verifies the remaining tools. Their pinned
-# releases live in ./tools.json and are refreshed by `bump` (see docs/images.md).
+# Every pinned tool is declared in ./tools.json and refreshed by `bump` (see docs/images.md). Buck
+# fetches and verifies all but one: `bin/tine` fetches Buck2 itself.
 
 # Relocatable bootstrap Python; 3.14 provides stdlib zstd for RPM payloads.
 # PUBLIC: the toolchain reaching it is `tine//:python_bootstrap`, and a project that declares a
@@ -21,8 +21,8 @@ http_tool(
     visibility = ["PUBLIC"],
 )
 
-# Starlark formatter, published as a bare zstd-compressed binary alongside Buck itself, whose pin
-# `tine bump` keeps in `.buckconfig`; bumping both together keeps them from the same release.
+# Starlark formatter, published as a bare zstd-compressed binary alongside Buck itself; both are
+# declared in tools.json, so one `bump` run keeps them from the same release.
 http_tool(
     name = "starlark-fmt",
     compressed = True,

@@ -54,12 +54,8 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email 'noreply@amutable.com'
           before=$(git rev-parse HEAD)
-          # Buck2 first, and committed on its own: its pin lives in .buckconfig rather than
-          # tools.json. starlark-fmt, bumped below, ships from that same fork release, so the two
-          # are resolved in one run to land on one tag.
-          bin/tine bump
-          git diff --quiet -- .buckconfig ||
-              git commit --message 'tool: Bump the pinned Buck2 release' -- .buckconfig
+          # Buck2 and starlark-fmt ship from one fork release, and are pinned in one file with
+          # everything else, so a single run lands them on one tag.
           bin/tine buck run tine//tools:bump -- --all --commit
           [ "$(git rev-parse HEAD)" = "$before" ] || echo bumped=true >> "$GITHUB_OUTPUT"
           echo "before=$before" >> "$GITHUB_OUTPUT"
@@ -74,7 +70,7 @@ jobs:
         run: |
           branch=bump/$(date -u +%Y-%m-%dT%H%MZ)  # ref can't contain ':'
           git push origin "HEAD:refs/heads/$branch"
-          # every commit the step made, since bumping Buck2 makes one of its own
+          # every commit the step made
           range=${{ steps.bump.outputs.before }}..HEAD
           # the blank line matters: the commit body ends in a list, which would swallow a lazy line
           # --reverse: git log is newest-first, and these read in the order they were made

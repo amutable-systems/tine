@@ -12,10 +12,10 @@ configuration flags at all, so a wrapper that injected `-c` would complete again
 configuration than it builds with. That file is the highest-precedence one Buck reads without being
 told to, which an external cell has to be overridden from and a project should not have to opt into.
 
-Self-contained, and needs only git and a host python: a project consuming the tine cell vendors this
-file, and at that point Buck has fetched no cell to read anything else out of. That host python is
-whatever the machine has, and older than the one Buck fetches, which is why a union annotation is
-quoted here and nowhere else in the tree: unquoted, it is evaluated where `X | None` is a TypeError.
+Self-contained, and needs only git and a host python: it runs before Buck has fetched anything, so the
+checkout it is part of is all there is to read. That host python is whatever the machine has, and older
+than the one Buck fetches, which is why a union annotation is quoted here and nowhere else in the tree:
+unquoted, it is evaluated where `X | None` is a TypeError.
 """
 
 import os
@@ -36,8 +36,12 @@ COMMAND = "bin/tine"
 # override by writing into the block below and what it reads one back out of.
 EXTERNAL = "external_cell_"
 
-# Where the project pins the Buck2 this fetches. In `[tine]` rather than `[buck2]`, which is Buck2's
-# own to define keys in, and not in a `[tine.buck2]` of its own, which `audit config` cannot address.
+# Where this cell declares its Buck2: the rules here are written against that fork and version.
+PINS = "tools/tools.json"
+
+# Where that pin can be overridden, one key at a time. In `[tine]` rather than `[buck2]`, which is
+# Buck2's own to define keys in, and not in a `[tine.buck2]` of its own, which `audit config` cannot
+# address.
 SECTION = "tine"
 BUCK2 = "buck2-"
 
@@ -615,23 +619,56 @@ def _download(url: str, sha256: str, into: Path) -> Path:
     return binary
 
 
-def buck2(config: dict[str, dict[str, str]], *, fetch: bool = True) -> "Path | None":
+def cell_root() -> Path:
+    """The checkout this command is part of, which is the cell whose rules a project builds.
+
+    A project registers a checkout of this repository as the cell and runs its `bin/tine`, so the
+    command and the rules always come from one revision, and the pin is a file beside this one.
+    Resolved, because a project that puts the command on `PATH` does so with a symlink.
+    """
+    return Path(__file__).resolve().parent.parent
+
+
+def declared_pin(cell: Path, platform: str) -> dict[str, str]:
+    """The Buck2 a cell declares for this machine, as the configuration keys it stands in for."""
+    import json
+
+    path = cell / PINS
+    try:
+        spec = json.loads(path.read_text(encoding="utf-8"))["buck2"]
+        entry = spec["platforms"][platform]
+        return {
+            f"{BUCK2}repository": spec["repository"],
+            f"{BUCK2}release": spec["release"],
+            f"{BUCK2}{platform}-artifact": entry["artifact"],
+            f"{BUCK2}{platform}-sha256": entry["sha256"],
+        }
+    except OSError as error:
+        raise fail(f"cannot read {path}: {error}") from error
+    except (KeyError, TypeError, ValueError) as error:
+        raise fail(f"{path} declares no Buck2 for {platform}: {error}") from error
+
+
+def buck2(config: dict[str, dict[str, str]], cell: Path, *, fetch: bool = True) -> "Path | None":
     """The pinned Buck2 binary, fetched and verified the first time it is asked for.
 
-    Keyed by its own hash, so a bumped pin lands beside the old one rather than replacing it, and a
+    The pin comes out of this cell; a project can override it key by key in `[tine]`.
+
+    Cached by its own hash, so a bumped pin lands beside the old one rather than replacing it, and a
     checkout that goes back to the old pin finds it already there. Without `fetch` an uncached pin is
     None rather than a download.
     """
-    pin = config.get(SECTION, {})
     platform = _platform()
+    pin = declared_pin(cell, platform)
+    pin |= {key: value for key, value in config.get(SECTION, {}).items() if key.startswith(BUCK2)}
     repository = pin.get(f"{BUCK2}repository")
     release = pin.get(f"{BUCK2}release")
     artifact = pin.get(f"{BUCK2}{platform}-artifact")
     sha256 = pin.get(f"{BUCK2}{platform}-sha256")
     if not (repository and release and artifact and sha256):
-        raise fail(f"no Buck2 pinned for {platform} in [{SECTION}]; `tine init` writes one")
+        raise fail(f"{cell / PINS} and [{SECTION}] between them pin no whole Buck2 for {platform}")
     if not is_hex(sha256, 64):
-        raise fail(f"[{SECTION}] {BUCK2}{platform}-sha256 is not a SHA-256: {sha256!r}")
+        raise fail(f"the Buck2 pinned for {platform} has no SHA-256 to verify against: {sha256!r}")
 
     cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
     into = cache / "tine" / "buck2" / sha256
@@ -921,7 +958,7 @@ def _digest(assets: dict[str, str], artifact: str, repository: str, tag: str) ->
 
 
 def bump(buckconfig: Path) -> None:
-    """Rewrite the Buck2 pin to the repository's latest release, in place.
+    """Rewrite a project's own Buck2 pin to the repository's latest release, in place.
 
     Read from the file it rewrites rather than from the project's merged configuration: a Buck2
     someone pins for themselves in `.buckconfig.local` is theirs, and is not the committed pin
@@ -931,7 +968,10 @@ def bump(buckconfig: Path) -> None:
     pin = parse_buckconfig(buckconfig).get(SECTION, {})
     repository = pin.get(f"{BUCK2}repository")
     if not repository:
-        raise fail(f"no [{SECTION}] {BUCK2}repository in {buckconfig} to bump from")
+        raise fail(
+            f"no [{SECTION}] {BUCK2}repository in {buckconfig} to bump from; a project building the"
+            f" {CELL} cell from a checkout is pinned by that checkout's {PINS} instead"
+        )
 
     tag, assets = _release(repository)
     values = {f"{BUCK2}release": tag}
@@ -1267,7 +1307,7 @@ def buck(argv: list[str]) -> None:
     # A keypress in a completing shell must not turn into a download; it completes nothing until
     # some other command has fetched the binary.
     name = buck_subcommand(argv)
-    binary = buck2(config, fetch=name != "complete")
+    binary = buck2(config, cell_root(), fetch=name != "complete")
     if binary is None:
         return
     # That keypress runs `complete`, which reads the configuration and must not race a build that is
@@ -1323,7 +1363,7 @@ def main(argv: list[str]) -> None:
             reason = str(error).removeprefix("tine: ")
             raise fail(f"{reason}; the script comes out of the Buck2 a project pins") from None
         handover(root, argv)
-        binary = buck2(project_config(root))
+        binary = buck2(project_config(root), cell_root())
         assert binary is not None
         print(completion(_buck2_completion(binary, rest[0]), rest[0]), end="")
     elif name in ("-h", "--help", "help", None):

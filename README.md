@@ -56,73 +56,21 @@ rootfs_archive(
 
 ## Consuming the cell
 
-`tine init` writes the configuration a project needs, given the tine cell to build against:
+Check this repository out inside the project, as a pinned git clone, worktree, or submodule. Register
+that directory as the `tine` cell with `init`, then build:
 
 ```sh
-tine init https://github.com/amutable-systems/tine   # or a checkout: tine init ~/Projects/tine
-tine init --local ~/Projects/tine                    # that checkout, and follow it as it moves
+git submodule add https://github.com/amutable-systems/tine tine
+tine/bin/tine init          # write the project's .buckconfig
+tine/bin/tine buck build //packages/...
 ```
 
-That writes a `.buckconfig` registering Tine as a
-[Buck2 external cell](https://buck2.build/docs/users/advanced/external_cells/) pinned to the origin's
-current `HEAD`, a `.gitignore`, and the Buck2 release to fetch. Buck2 has an `init` of its own, which this
-shadows: a project here needs the tine cell rather than an empty prelude project. A checkout on this
-machine is an origin like any other and is pinned the same way; `tine cell override` is what makes a cell
-follow one, and `--local` is that override declared as the project is written (see Development below).
+The configuration `init` writes is this repository's own [`.buckconfig`](.buckconfig) with `root = .` added,
+the `tine` cell pointing at the checkout, and `root//` in the platform detector. The entry point is that
+checkout's [`bin/tine`](bin/tine). Move to a newer tine with `git submodule update` or the equivalent
+change in your pinned `git clone`.
 
-The result is the configuration below, which can equally be written by hand; `init` writes an artifact
-and a SHA-256 for each platform tine supports, of which one is shown:
-
-```ini
-[cells]
-root = .
-tine = tine
-prelude = prelude
-none = none
-
-[cell_aliases]
-config = prelude
-# The tine cell's own aliases are honoured even as an external cell, and it aliases fbsource to
-# satisfy the bundled prelude, so `none` has to resolve here too.
-fbsource = none
-# The toolchain the tine cell declares. An alias rather than a nested cell, so that a consuming project
-# can pull tine in as an external cell.
-toolchains = tine
-
-[external_cells]
-prelude = bundled
-tine = git
-
-[external_cell_tine]
-git_origin = <url of this repository>
-commit_hash = <sha1 to pin>
-
-[parser]
-target_platform_detector_spec = target:root//...->prelude//platforms:default target:tine//...->prelude//platforms:default
-
-# VCS state, dependency and build trees, and the caches tools keep, so that none of them
-# invalidates Buck's file watcher.
-[project]
-ignore = .git, .jj, **/.git, **/.jj, **/.hg, **/.svn, \
-    **/buck-out, **/target, **/node_modules, **/__pycache__, **/.venv, **/venv, \
-    **/.cache, **/.direnv, **/.gradle, **/.tox, **/.nox, \
-    **/.mypy_cache, **/.pytest_cache, **/.ruff_cache, \
-    **/.next, **/.parcel-cache, **/.turbo, **/.idea, **/.vscode
-
-[build]
-execution_platforms = prelude//platforms:default
-
-# The Buck2 `tine` fetches and verifies before running anything; `tine bump` rewrites these.
-[tine]
-buck2-repository = daandemeyer/buck2
-buck2-release = <release tag>
-buck2-Linux-x86_64-artifact = buck2-x86_64-unknown-linux-musl.zst
-buck2-Linux-x86_64-sha256 = <sha256 of that artifact>
-```
-
-Buck fetches the pinned commit into its own cache; nothing is checked into the consuming repo. The `tine`
-path is only the location the cell would occupy, and no `tine/` or `prelude/` or `none/` directory needs to
-exist. The `toolchains` cell Buck2 looks a toolchain up in is an alias to the tine cell, whose root package
+The `toolchains` cell Buck2 looks a toolchain up in is an alias to the tine cell, whose root package
 declares the bootstrap interpreter one: Buck2 forbids a nested cell inside an external cell, so a
 `toolchains/` directory in this repository would be a copy every consuming project needs of its own. A
 project that wants toolchains beyond that one can still declare the cell itself, dropping the alias and
@@ -132,19 +80,10 @@ forwarding what it does not declare:
 toolchain_alias(name = "python_bootstrap", actual = "tine//:python_bootstrap", visibility = ["PUBLIC"])
 ```
 
-The one thing to vendor is [`bin/tine`](bin/tine) itself: it is what fetches Buck2, so it cannot come from
-a cell Buck has not fetched yet. It is self-contained for that reason, so vendoring it is a copy and
-nothing else, and refreshing it is the same copy from a newer checkout of this repository. Updating the
-cell itself is an edit to `commit_hash` above.
+Buck reads the checkout in place, so a branch or an uncommitted edit is active immediately.
 
-`init` refuses to run where a `.buckconfig` already exists, and leaves any other file the project
-already has alone. A repository with a `.gitignore` of its own keeps it: what that file would have
-said (`/buck-out`, `**/buck-out`, `/.buckconfig.local`, and a `.*.tmp` alongside the last) goes into
-`.git/info/exclude` instead, which belongs to the checkout and is committed nowhere. Only what is
-missing is added, so running it again adds nothing.
-
-To build against a checkout of this repository instead of the commit `.buckconfig` pins, override the
-cell with it:
+For developing tine, you can also build against a different checkout of this repository than the one the
+project registers, via a cell override:
 
 ```sh
 tine cell override tine ~/Projects/tine                   # follow that checkout as it is committed to
@@ -153,24 +92,11 @@ tine cell list                                            # what is overridden, 
 tine cell revert tine                                     # back to what the project pins
 ```
 
-The declaration lands in the block `tine` owns in `.buckconfig.local`, which is what Buck reads and
-is gitignored because it names a path only this machine has. There is no second file to keep in step
-with it: what a build reads is what was declared, and `tine cell` is what edits it. A commit named
-with `--commit` is recorded as `[tine] cell-<cell>-commit` there, which is what says the
-`commit_hash` beside it is not to be resolved again. Overriding the tine cell hands the command over
-too: every command that runs in the project re-executes that checkout's `bin/tine`, so the rules being
-built and the command configuring them come from one checkout rather than pairing a vendored copy with
-a checkout's rules. Every commit in that checkout is picked up by the next command; uncommitted work is
-not, since Buck fetches the cell by commit. A declaration that stops resolving, because the checkout
-moved or went away, fails every command that runs Buck
-until it is pointed elsewhere or reverted: quietly building what `.buckconfig` pins instead would
-build something other than what was asked for. `tine cell list` and reverting the checkout that went
-away both keep working, so the way out is always open.
+That lands in the gitignored `.buckconfig.local`.
 
-Editing the cell in place, with no commit in the loop, is the other way and not a further step: run
-`tine cell revert tine` first, since the generated block declares an overridden cell a git cell on
-every command and outranks the `.buckconfig` entry you are about to comment out. Then run
-`tine buck expand-external-cell tine` and comment out `[external_cells] tine`.
+Overriding the tine cell hands the command over too: the project's `tine/bin/tine` re-executes the
+overridden checkout's copy, so the rules being built and the command configuring them come from one
+checkout. Only a project that registers no checkout at all has to invoke that path itself.
 
 A consuming OS monorepo ("OS.git" in these docs) additionally holds package sources under
 `packages/<distro>/<branch>/<package>`, imported and updated from upstream dist-gits (Fedora, or CentOS
@@ -211,7 +137,7 @@ tine init [<origin>]     # write the configuration a project needs, against this
 tine completion <shell>  # print the completion script for bash, fish or zsh
 ```
 
-`tine buck` fetches the Buck2 the project pins, verifies it against the pinned SHA-256, caches it
+`tine buck` fetches the Buck2 this cell pins, verifies it against the pinned SHA-256, caches it
 under `${XDG_CACHE_HOME:-~/.cache}/tine/buck2/<sha256>`, and execs it, forwarding everything after
 `buck` untouched. Before handing over, it rewrites its own block in `.buckconfig.local`, the
 highest-precedence configuration Buck reads without being told to. The exception is `tine buck
@@ -247,10 +173,13 @@ tine completion bash > ~/.local/share/bash-completion/completions/tine
 tine completion zsh > ~/.local/share/zsh/site-functions/_tine   # any directory on $fpath
 ```
 
+[`tools/tools.json`](tools/tools.json) is where this cell declares the Buck2 its rules are tested
+against, alongside every other pinned tool. `bin/tine` reads it and bootstraps Buck2 itself.
+A `[tine] buck2-*` key in the consuming project can override that pin. Be careful though: tine depends
+on fixes that exist only in that fork, so running another Buck2 is unsupported.
+
 `tine bump` and `tine init` ask GitHub which release to pin, and honour `GH_TOKEN` or `GITHUB_TOKEN`;
-without one, GitHub allows 60 API requests an hour per address. `bump` reads and rewrites `.buckconfig`
-alone, so a Buck2 you pin for yourself in `.buckconfig.local` still wins for `tine buck` without the
-committed pin drifting to meet it.
+without one, GitHub allows 60 API requests an hour per address.
 
 The binary it caches is a plain Buck2 and can be run directly, with whatever the last `tine` left
 behind in `.buckconfig.local`; `tine` exports its path as `BUCK2_BINARY` so that a tool Buck runs can

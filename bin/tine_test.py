@@ -51,6 +51,21 @@ def checkout(case: unittest.TestCase) -> Path:
     return path
 
 
+def pins(cell: Path, spec: object | None = None) -> Path:
+    """The `tools.json` a cell declares its Buck2 in, holding a usable entry unless given one."""
+    path = cell / tine.PINS
+    path.parent.mkdir(parents=True, exist_ok=True)
+    default = {
+        "buck2": {
+            "repository": "example/buck2",
+            "release": "2026-01-01",
+            "platforms": {tine._platform(): {"artifact": "buck2.zst", "sha256": "a" * 64}},
+        }
+    }
+    path.write_text(json.dumps(default if spec is None else spec))
+    return path
+
+
 def isolate_git(case: unittest.TestCase) -> None:
     """Keep the developer's own git configuration out of it; `tag.gpgSign` alone breaks the suite."""
     patched = unittest.mock.patch.dict(
@@ -759,30 +774,46 @@ class TestBuck2(unittest.TestCase):
         binary.write_text("")
         return home
 
-    def test_a_cached_pin_is_the_binary(self) -> None:
+    def cell(self, spec: object | None = None) -> Path:
+        cell = scratch(self, "tine-test-cell.")
+        pins(cell, spec)
+        return cell
+
+    def test_the_cell_declares_the_pin(self) -> None:
         home = self.cache("a" * 64)
         with unittest.mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(home)}):
-            self.assertEqual(tine.buck2(self.pin()), home / "tine" / "buck2" / ("a" * 64) / "buck2")
+            self.assertEqual(tine.buck2({}, self.cell()), home / "tine" / "buck2" / ("a" * 64) / "buck2")
+
+    def test_a_project_pin_overrides_the_cell_key_by_key(self) -> None:
+        platform = tine._platform()
+        home = self.cache("b" * 64)
+        config = {"tine": {f"buck2-{platform}-sha256": "b" * 64}}
+        with unittest.mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(home)}):
+            binary = tine.buck2(config, self.cell())
+        self.assertEqual(binary, home / "tine" / "buck2" / ("b" * 64) / "buck2")
 
     def test_an_uncached_pin_is_nothing_to_complete_with(self) -> None:
         with unittest.mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(scratch(self))}):
-            self.assertIsNone(tine.buck2(self.pin(), fetch=False))
+            self.assertIsNone(tine.buck2(self.pin(), self.cell(), fetch=False))
 
-    def test_no_pin_at_all(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "no Buck2 pinned"):
-            tine.buck2({})
+    def test_a_cell_declaring_no_buck2(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "declares no Buck2"):
+            tine.buck2({}, self.cell({"ruff": {}}))
+
+    def test_a_cell_with_no_tools_json(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "cannot read .*tools.json"):
+            tine.buck2({}, scratch(self, "tine-test-cell."))
 
     def test_a_machine_buck2_is_not_published_for(self) -> None:
-        pin = self.pin()
         uname = os.uname_result(("Linux", "host", "7.0", "#1", "m68k"))
         with unittest.mock.patch.object(os, "uname", return_value=uname):
             with self.assertRaisesRegex(SystemExit, "unsupported platform: Linux-m68k"):
-                tine.buck2(pin)
+                tine.buck2(self.pin(), scratch(self, "tine-test-cell."))
 
     def test_a_pin_that_is_not_a_sha256(self) -> None:
         platform = tine._platform()
-        with self.assertRaisesRegex(SystemExit, "not a SHA-256"):
-            tine.buck2(self.pin(**{f"buck2-{platform}-sha256": "abc"}))
+        with self.assertRaisesRegex(SystemExit, "no SHA-256 to verify against"):
+            tine.buck2(self.pin(**{f"buck2-{platform}-sha256": "abc"}), self.cell())
 
 
 class TestRelease(unittest.TestCase):
