@@ -5,6 +5,8 @@ load("//box:test.bzl", "box_python_test")
 box_python_test(
     name = "test",
     box = "//tools:dev.box",
+    # Runtime path setup handles imports, but the type checker still needs the dependency.
+    deps = ["//vendor:mkosi"],
     srcs = [
         "tine",
         "tine_test.py",

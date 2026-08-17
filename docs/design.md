@@ -32,8 +32,8 @@ Images currently mix locally built packages with pinned upstream packages.
 
 ### Repository and cell layout
 
-This repository is the `tine` cell; a consuming project registers it as an external cell and adds its own
-package tree:
+This repository is the `tine` cell; a consuming project points a `tine` cell at a checkout of it and adds
+its own package tree:
 
 ```text
 //packages/               (consuming project) independently versioned package sources and BUCK files
@@ -71,6 +71,43 @@ release that may consume it.
 The package source tree lives in the OS.git repository (which consumes this `tine` cell) under `packages/`.
 It is intentionally not part of the reusable `tine` cell: package policy and imported source data change
 independently of build machinery.
+
+### Building a path from outside the tree
+
+A cell root must be project-relative, so Buck cannot point a cell directly at an external directory.
+`tine mount` provides that indirection before Buck starts:
+
+- acquire a user namespace that maps the caller's uid;
+- create a mount namespace, which the kernel keeps private because a fresh user namespace owns it, so
+  nothing mounted in it reaches the host;
+- copy the root `.buckconfig` into a private tmpfs, append the mount digest as its daemon constraint, and
+  bind the copy over the original;
+- bind each declared source over its project-relative target;
+- re-execute `bin/tine` inside that namespace. If the tine cell is mounted, this runs the mounted copy,
+  keeping the rules and their command in sync.
+
+Buck continues to see project-relative paths while the bind mounts provide their contents.
+
+Tine creates a regular unprivileged user namespace directly with `unshare(CLONE_NEWUSER)` and maps only
+the caller. It makes the namespace capabilities ambient so they survive `execve` and remain available to
+build actions.
+
+A Buck2 daemon stays in the namespace where it started. Every client creates a fresh equivalent namespace;
+the first one that starts a daemon supplies the namespace it remains in. Buck reads startup constraints
+directly from the root config without following includes, so the private copy appends `[buck2]
+daemon_buster` there. The digest covers the mount declarations, source inodes, and exact root config bytes.
+Buck therefore reuses a daemon with the same namespace inputs or replaces one while holding its own
+lifecycle lock. `.buckconfig.local` and files included by the root config remain live, while a root config
+edit conservatively replaces the daemon holding its old snapshot. `buck-out` remains valid because changed
+sources produce different input digests.
+
+`TINE_MOUNTS` carries the digest and mount-namespace identity only across Tine's re-exec, preventing an
+inherited or manually exported value from skipping namespace creation. It is not a daemon protocol.
+
+Buck's default file watcher runs inside the daemon's namespace, so edits to mounted files invalidate the
+right targets without restarting the daemon. An external Watchman server would instead observe the
+unmounted tree and is not supported. Shell completion creates the same short-lived client namespace as a
+build so it sees the daemon constraint too.
 
 ### Component model
 
@@ -1201,6 +1238,20 @@ universe never forces the branch to build. Collapsing them would either force bu
 push closure computation into every static repository, so both remain until the planned per-package
 source/prebuilt provider model (see Roadmap) subsumes them.
 
+### Use bind mounts for out-of-tree content
+
+The previous implementation declared the checkout as an external git cell, which Buck fetched like any
+other pinned repository. As a result, Buck could only see committed changes. Bind mounting the checkout
+at the cell root exposes the working copy, preserves file watching, and keeps Buck's declared paths
+unchanged. This only works on Linux with unprivileged user namespaces and only when the build runs through
+`bin/tine`; a direct `buck2 build` uses the checked-in path. Those constraints are acceptable for a local
+development feature.
+
+Using the namespace digest as the Buck2 isolation directory would avoid daemon replacement entirely, but
+each mount set would also get a separate `buck-out`. Keeping one isolation directory preserves build
+outputs when switching between checkouts, while `daemon_buster` lets Buck compare the digest and replace
+the daemon under its native lifecycle lock.
+
 ## Operating the current system
 
 Host requirements, the wrapper commands, and representative smoke builds are documented in
@@ -1211,6 +1262,9 @@ Host requirements, the wrapper commands, and representative smoke builds are doc
 These are properties of the implementation today, not merely ideas for future optimization. Limitations that
 belong to one package system are listed in its own section instead:
 
+- Buck preserves `buck-out` across daemon replacement. This is safe for hermetic actions because source
+  changes produce new input digests. An action that reads an undeclared input can still reuse stale output
+  after a mount change.
 - Two native package systems are implemented, and only one of them can build packages.
 - A transaction describes packages to add. An install that would have to remove or replace something a
   lower layer carries is refused rather than expressed.

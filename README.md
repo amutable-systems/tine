@@ -89,21 +89,26 @@ toolchain_alias(name = "python_bootstrap", actual = "tine//:python_bootstrap", v
 
 Buck reads the checkout in place, so a branch or an uncommitted edit is active immediately.
 
-For developing tine, you can also build against a different checkout of this repository than the one the
-project registers, via a cell override:
+To develop tine against a different checkout, mount it over the checkout registered by the project:
 
 ```sh
-tine cell override tine ~/Projects/tine                   # follow that checkout as it is committed to
-tine cell override tine ~/Projects/tine --commit v0.3.0   # or stay on one revision of it
-tine cell list                                            # what is overridden, and with what
-tine cell revert tine                                     # back to what the project pins
+tine mount add tine ~/Projects/tine    # use this checkout as tine/
+tine mount list                        # list active mounts
+tine mount remove tine                 # use the project's checkout again
 ```
 
-That lands in the gitignored `.buckconfig.local`.
+The command records the mount in the gitignored `.buckconfig.local`. It runs the build in a private mount
+namespace where `tine/` is a bind mount of `~/Projects/tine`, so uncommitted edits are available
+immediately. When the tine cell is mounted, `tine/bin/tine` re-executes the mounted copy of itself. The
+rules and the command configuring them therefore come from the same checkout.
 
-Overriding the tine cell hands the command over too: the project's `tine/bin/tine` re-executes the
-overridden checkout's copy, so the rules being built and the command configuring them come from one
-checkout. Only a project that registers no checkout at all has to invoke that path itself.
+Mounts cannot overlap or cover `.buck/`. Nested mounts would depend on application order, while `.buck/`
+holds Tine's namespace-private Buck configuration, so `tine mount add` rejects both.
+
+`tine mount` does not restart Buck2 immediately. On the next `tine buck`, Buck itself reuses a daemon
+started for the same mounts or replaces one started for different mounts, under its own lifecycle lock.
+Replacing the daemon does not remove `buck-out`.
+Mounting requires unprivileged user namespaces, which some distributions disable.
 
 A consuming OS monorepo ("OS.git" in these docs) additionally holds package sources under
 `packages/<distro>/<branch>/<package>`, imported and updated from upstream dist-gits (Fedora, or CentOS
@@ -137,7 +142,7 @@ Design:
 
 ```sh
 tine buck <arguments>    # run the pinned Buck2, which every other command configures
-tine cell <verb>         # build a cell from another local checkout, or go back to the registered one
+tine mount <verb>        # manage external directories mounted over project paths
 tine init [<path>]       # write the configuration a project needs, for the checkout this command is in
 tine completion <shell>  # print the completion script for bash, fish or zsh
 ```
@@ -146,17 +151,16 @@ tine completion <shell>  # print the completion script for bash, fish or zsh
 under `${XDG_CACHE_HOME:-~/.cache}/tine/buck2/<sha256>`, and execs it, forwarding everything after
 `buck` untouched. Before handing over, it rewrites its own block in `.buckconfig.local`, the
 highest-precedence configuration Buck reads without being told to. The exception is `tine buck
-complete`, which a completing shell runs on every keypress: it neither downloads nor writes, and
-completes nothing until another command has fetched the binary. Everything else in that file is
-yours and is left alone, and because the block comes first, a key you set for yourself still wins over
-the one it writes:
+complete`, which a completing shell runs on every keypress: it neither downloads nor rewrites the shared
+configuration, and completes nothing until another command has fetched the binary. Everything else in
+that file is yours and is left alone, and because the block comes first, a key you set for yourself still
+wins over one it writes. While mounts are active, Tine bind-mounts a private copy of the root
+`.buckconfig` with a `[buck2] daemon_buster` appended. A project cannot set that key while mounts are
+active. The generated local configuration remains live:
 
-- `[external_cells]` and `[external_cell_<cell>] git_origin`/`commit_hash` for every cell
-  `tine cell override` was pointed at a checkout on this machine, which is the declaration as well
-  as what Buck reads: the checkout's `HEAD`, or the revision the override named, which
-  `[tine] cell-<cell>-commit` records as one to keep. Buck fetches that commit like any other pin, so
-  uncommitted work in that checkout stays invisible until it is committed. A declaration that no longer
-  resolves stops the command rather than quietly building what the project pins instead.
+- `[tine_mounts] <project path> = <external directory>` for each `tine mount add`. Buck parses the
+  section, but no rule consumes it; `tine buck` uses it to set up the mount namespace before Buck starts.
+  An invalid declaration stops the command instead of silently using the checked-in directory.
 - `[tine] version-base`, `version-count`, `version-height`, `version-commit` and, for a tree carrying
   uncommitted work, `version-dirty`: what an image version is derived from, queried from git. The
   components rather than a version, because how much of the commit hash fits is a question each image's
@@ -185,9 +189,9 @@ on fixes that exist only in that fork, so running another Buck2 is unsupported.
 
 `tine//tools:bump` moves that pin with every other one, so nothing in this command asks GitHub anything.
 
-The binary it caches is a plain Buck2 and can be run directly, with whatever the last `tine` left
-behind in `.buckconfig.local`; `tine` exports its path as `BUCK2_BINARY` so that a tool Buck runs can
-nest a command without refreshing configuration underneath the one that started it.
+The binary it caches is a plain Buck2, but running it directly does not enter a declared mount namespace.
+`tine` exports its path as `BUCK2_BINARY` so that a tool Buck runs can nest a command without refreshing
+configuration underneath the one that started it.
 
 ```sh
 tine buck build tine//...                 # the examples, the catalog, and the tooling

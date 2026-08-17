@@ -1,16 +1,15 @@
 # Standalone root cell. Consuming projects supply their own; see README.md.
 
 [cells]
-# Named `tine`, not `root`, so same-cell labels read `tine//...` exactly as in a consuming project.
-# An alias would not do: as an external cell, `tine` must resolve to itself.
+# Named `tine`, not `root`, so same-cell labels match those in a consuming project. This must be the
+# cell's real name rather than an alias because labels retain the name of the cell they resolve to.
 tine = .
 prelude = prelude
 none = none
 
 [cell_aliases]
 config = prelude
-# The toolchain the tine cell declares. An alias rather than a nested cell, so that a consuming project
-# can pull tine in as an external cell.
+# Keep the toolchain attached to the tine cell when a project points that cell at this checkout.
 toolchains = tine
 # Satisfy the bundled prelude's internal platform alias.
 fbsource = none
@@ -28,7 +27,7 @@ execution_platforms = prelude//platforms:default
 # VCS state, dependency and build trees, and the caches tools keep must not invalidate Buck's file
 # watcher. Only names that are always generated: `build`, `dist` and `out` are ordinary package names,
 # and ignoring one would hide the targets in it rather than only its churn.
-ignore = .git, .jj, **/.git, **/.jj, **/.hg, **/.svn, .buck, \
+ignore = .git, .jj, **/.git, **/.jj, **/.hg, **/.svn, .buck, **/.buck, \
     **/buck-out, **/target, **/node_modules, **/__pycache__, **/.venv, **/venv, \
     **/.cache, **/.direnv, **/.gradle, **/.tox, **/.nox, \
     **/.mypy_cache, **/.pytest_cache, **/.ruff_cache, \
