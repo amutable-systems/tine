@@ -44,7 +44,9 @@ def write_config(directory: Path, arch: str, langs: list[str], docs: bool) -> Pa
         "SigLevel = Never",
     ]
     # Arch ships licenses apart from the documentation, so dropping the one keeps the other.
-    lines += [f"NoExtract = {'!' if keep else ''}{glob}" for keep, glob in installer.path_rules(docs, langs)]
+    lines += [
+        f"NoExtract = {'!' if keep else ''}{tree}/*" for keep, tree in installer.path_rules(docs, langs)
+    ]
 
     config = directory / "pacman.conf"
     config.write_text("\n".join(lines) + "\n")

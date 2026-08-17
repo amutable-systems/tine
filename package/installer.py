@@ -39,17 +39,20 @@ LOCALES = "usr/share/locale"
 
 
 def path_rules(docs: bool, langs: list[str]) -> list[tuple[bool, str]]:
-    """Express what rpm's `nodocs` and `_install_langs` do, for a package manager that filters by path.
+    """Return the directory trees that an install without docs or with selected languages leaves out.
 
-    Each rule is whether to keep what a glob matches, relative to the root. A later rule wins,
-    which is how the kept languages are carved back out of the locales.
+    rpm implements `nodocs` and `_install_langs` itself. pacman and dpkg filter by path, and this
+    function returns the paths for them. Each rule is a flag and a directory tree relative to the
+    root. The flag says whether the install keeps the tree. A later rule overrides an earlier rule,
+    so the rule that keeps a language follows the rule that excludes all locales. Each package
+    system renders the trees in its own glob syntax.
     """
     rules = []
     if not docs:
-        rules += [(False, f"{path}/*") for path in DOC_PATHS]
+        rules += [(False, path) for path in DOC_PATHS]
     if langs:
-        rules.append((False, f"{LOCALES}/*"))
-        rules += [(True, f"{LOCALES}/{lang}/*") for lang in langs]
+        rules.append((False, LOCALES))
+        rules += [(True, f"{LOCALES}/{lang}") for lang in langs]
     return rules
 
 

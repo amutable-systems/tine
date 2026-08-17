@@ -4,10 +4,11 @@
 # SPDX-License-Identifier: MPL-2.0
 
 # A package database is captured as one file, named after the format the package system keeps it in.
-# rpm keeps one sqlite database, so the file is that. alpm keeps a directory of per-package entries,
-# so the file is a tar of them. The caller states the expected path, format and package system; two
-# systems can share a format, so what is inside is checked against the system rather than the
-# format.
+# rpm keeps one sqlite database, so the file is that database. alpm keeps a directory with one entry
+# per package, so the file is a tar of the directory. dpkg keeps a status file and a directory with
+# files per package, so the file is a tar of the status file and the directory. The caller passes
+# the expected path, format and package system. alpm and dpkg share a format, so the test checks
+# the content by package system.
 set -euo pipefail
 
 pkgdb=$1 format=$2 system=$3
@@ -34,6 +35,22 @@ alpm)
     # Dropped on capture: pacman alone reads it, and it is the largest part of an entry.
     if grep -q '/mtree$' <<< "$entries"; then
         echo "pkgdb: $pkgdb still carries the per-package mtree manifests" >&2
+        r=1
+    fi
+    ;;
+dpkg)
+    entries=$(zstdcat "$pkgdb" | tar -t)
+    if ! grep -qx './status' <<< "$entries"; then
+        echo "pkgdb: $pkgdb carries no status file" >&2
+        r=1
+    fi
+    if ! grep -q '/info/.*\.list$' <<< "$entries"; then
+        echo "pkgdb: $pkgdb carries no package file lists" >&2
+        r=1
+    fi
+    # pkgdb.py drops the `.md5sums` files, because only dpkg reads them and they are large.
+    if grep -q '\.md5sums$' <<< "$entries"; then
+        echo "pkgdb: $pkgdb still carries the per-package md5sums manifests" >&2
         r=1
     fi
     ;;

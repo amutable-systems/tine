@@ -82,8 +82,9 @@ if [ "$mode" = github ]; then
     trap 'printf "::endgroup::\n::error::ci group %s failed\n" "$groupname"' ERR
 fi
 
-# Arch only has an x86_64 repository, so bootstrapping/verifying the catalog fails on other arches.
-has_arch_box() { [ "$(uname -m)" = x86_64 ]; }
+# The catalog pins Arch repositories for x86_64 only. On another architecture, the Arch root box
+# cannot be built and the catalog cannot be verified.
+x86_only_catalog() { [ "$(uname -m)" = x86_64 ]; }
 
 # All available build targets; see tools/dev.py for why that is not always `tine//...`.
 universe() { "${buck[@]}" run tine//tools:dev -- universe; }
@@ -182,20 +183,22 @@ group graph             -- "${buck[@]}" bxl tine//tools/graph.bxl:analyze -- --p
 # First invocation fetches buck's pinned tools and builds the shared box; kept its own group so
 # bootstrap time stays visible.
 group box               -- "${buck[@]}" build tine//catalog:fedora.rawhide.box
-# The second package system's box is a root box of its own, so its bootstrap is its own group.
-if has_arch_box; then
+# The Arch box and the Debian box are root boxes, so each box is bootstrapped from scratch and
+# gets its own group.
+if x86_only_catalog; then
     group arch-box      -- "${buck[@]}" build tine//catalog:arch.rolling.box
 fi
+group deb-box           -- "${buck[@]}" build tine//catalog:debian.testing.box
 group check             -- "${buck[@]}" run tine//tools:check
 # Every repository the catalog declares is pinned to a mirror serving immutable snapshots, so the whole
 # catalog is verifiable rather than the boxes that happen to be pinned.
-if has_arch_box; then
+if x86_only_catalog; then
     group verify-catalog -- "${buck[@]}" run tine//tools:verify-catalog
 fi
 # Everything the cell declares, rather than the handful of targets someone remembered to name here:
-# every example image over both package systems, the boxes, and the source-build demos.
+# every example image over every package system, the boxes, and the source-build demos.
 group build             -- whole_cell build
-# Everything `check` left out: the boot smokes over both package systems, which take minutes each,
+# Everything `check` left out: the boot smokes over every package system, which take minutes each,
 # and the assertions about what the images above produced. Adding one is declaring it, not naming it
 # here as well.
 group image-tests       -- whole_cell test --include image "${vm_filter[@]}"

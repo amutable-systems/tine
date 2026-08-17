@@ -31,6 +31,8 @@ box. The default catalog is [`tine//catalog`](../catalog/BUCK) and currently dec
 - `fedora.rawhide`: pinned to an rpmrepo compose snapshot, so packages never vanish underneath the pins
 - `arch.rolling`: pinned to a day in the Arch Linux Archive, whose dated trees serve databases that never
   change under a committed pin
+- `debian.testing`: pinned to a timestamp in the Debian archive, whose dated trees serve indexes that
+  never change under a committed pin
 
 Every one of them is pinned to a mirror that publishes immutable snapshots, which is what a release has to
 have to be buildable from a committed pin at all.
@@ -47,8 +49,8 @@ package with the same macros. The naming scheme and the pinning mechanism are de
 A **box** is a pinned, reproducible execution environment that runs every build action. It supplies its
 package system's own tools, Python, core utilities, and the image assembly tools; these stay in the box
 and out of the built images. Both RPM releases share `tine//catalog:fedora.rawhide.box`, while
-`arch.rolling` has its own. A box's base release only records where its userspace came from: the Rawhide
-box also serves Fedora 44. How a box bootstraps itself is described in
+`arch.rolling` and `debian.testing` have their own. A box's base release only records where its userspace
+came from: the Rawhide box also serves Fedora 44. How a box bootstraps itself is described in
 [architecture.md](../design/architecture.md).
 
 ## Commands
@@ -894,14 +896,15 @@ tine buck build //examples/image:boot-demo.arch
 tine buck run //examples/image:boot-demo-vm-smoke.arch
 ```
 
-Nothing in the declarations names pacman, and nothing is written twice.
+and `.debian` in place of `.arch` builds the same declarations over Debian. Nothing in them names
+pacman or dpkg, and nothing is written twice.
 
 ### Choosing a distribution
 
 An image's distribution is a configuration its target carries, so one declaration serves every
 distribution the catalog offers. An image rule names itself once per distribution its package
-serves, so declaring `boot-demo` also declares `boot-demo.fedora` and `boot-demo.arch` with nothing
-further to write. A rule tine does not own says so itself:
+serves, so declaring `boot-demo` also declares `boot-demo.fedora`, `boot-demo.arch` and
+`boot-demo.debian` with nothing further to write. A rule tine does not own says so itself:
 
 ```Starlark
 distribution.alias(
@@ -929,9 +932,9 @@ nor the rules underneath. The mechanism is described in
 
 The examples deliberately have no default. `//examples/image:boot-demo` is declared for no distribution
 in particular, so building it by that name fails as incompatible and `//examples/image/...` skips it;
-`:boot-demo.fedora` and `:boot-demo.arch` are what build. A default would make whichever distribution it
-named the only one anybody builds, and the other one would rot. A package gets that behaviour by
-saying once, in its `PACKAGE` file, which distributions its images serve:
+`:boot-demo.fedora`, `:boot-demo.arch` and `:boot-demo.debian` are what build. A default would make
+whichever distribution it named the only one anybody builds, and the others would rot. A package gets
+that behaviour by saying once, in its `PACKAGE` file, which distributions its images serve:
 
 ```Starlark
 load("@tine//distribution:defs.bzl", "distribution")

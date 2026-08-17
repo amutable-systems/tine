@@ -1,0 +1,140 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
+"""The Debian package planner, repository snapshotter, and the metadata readers they share."""
+
+load("//box:test.bzl", "box_python_test")
+load("//package:system.bzl", "package_system")
+load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
+
+tine_python_library(
+    name = "aptget",
+    srcs = ["aptget.py"],
+    deps = ["//:util"],
+)
+
+tine_python_library(
+    name = "deb822",
+    srcs = ["deb822.py"],
+    deps = ["//:util", "//package:href", "//package:snapshotter"],
+)
+
+tine_python_library(
+    name = "debfile",
+    srcs = ["debfile.py"],
+    deps = ["//:util"],
+)
+
+tine_python_library(
+    name = "release",
+    srcs = ["release.py"],
+    deps = [":deb822", "//:util", "//package:href", "//package:snapshotter"],
+)
+
+tine_python_binary(
+    name = "extract",
+    main = "extract.py",
+    deps = [":debfile", "//package:extractor"],
+)
+
+tine_python_binary(
+    name = "plan",
+    main = "plan.py",
+    deps = [
+        ":aptget",
+        ":deb822",
+        "//:specs",
+        "//:util",
+        "//package:href",
+        "//package:transaction",
+        "//rootfs:rootfs",
+    ],
+)
+
+tine_python_binary(
+    name = "snapshot",
+    main = "snapshot.py",
+    deps = [
+        ":deb822",
+        ":release",
+        "//:util",
+        "//package:href",
+        "//package:snapshotter",
+    ],
+)
+
+tine_python_binary(
+    name = "verify",
+    main = "verify.py",
+    deps = [":deb822", ":release", "//:specs", "//:util", "//package:snapshotter"],
+)
+
+tine_python_binary(
+    name = "install",
+    main = "install.py",
+    deps = [":aptget", ":debfile", "//:util", "//package:installer"],
+)
+
+tine_python_binary(
+    name = "pkgdb",
+    main = "pkgdb.py",
+    deps = [":debfile", "//:specs", "//:util", "//archive:tar", "//image:finalize"],
+)
+
+# tine has no rule that builds a Debian package yet. No local repository exists to index, so
+# `build` and `index` are unset. `keyring` is unset because sqv reads the declared key files
+# directly.
+package_system(
+    name = "package_system",
+    arch_schema = "deb",
+    database_format = "tar.zst",
+    # Keep in sync with `ADMINDIR` in debfile.py.
+    database_paths = ["var/lib/dpkg"],
+    # `apt-get update` builds the cache of APT during the solve, so no action prebuilds a cache.
+    solver_cache = False,
+    extract = ":extract",
+    install = ":install",
+    # The signed Release lists the checksum of the index, and the index lists the checksum of each package.
+    metadata_vouches = True,
+    package_suffix = ".deb",
+    pkgdb = ":pkgdb",
+    plan = ":plan",
+    snapshot = ":snapshot",
+    verify = ":verify",
+    visibility = ["PUBLIC"],
+)
+
+# The tests sign a Release with gpg and verify it with sqv. The dev box has gpg and sqv.
+box_python_test(
+    name = "test",
+    box = "//tools:dev.box",
+    srcs = [
+        "deb822_test.py",
+        "debfile_test.py",
+        "extract.py",
+        "extract_test.py",
+        "install.py",
+        "install_test.py",
+        "plan.py",
+        "plan_test.py",
+        "release_test.py",
+        "snapshot.py",
+        "snapshot_test.py",
+        "verify.py",
+        "verify_test.py",
+    ],
+    deps = [
+        ":aptget",
+        ":deb822",
+        ":debfile",
+        ":release",
+        "//:specs",
+        "//:util",
+        "//package:extractor",
+        "//package:href",
+        "//package:installer",
+        "//package:snapshotter",
+        "//package:transaction",
+        "//rootfs:rootfs",
+    ],
+)
