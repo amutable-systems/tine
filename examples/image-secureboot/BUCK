@@ -125,14 +125,19 @@ generate_signing_key(name = "demo-ext-signing")
 
 # Everything a release of this example publishes, gathered under the names it publishes them
 # under: the disk and its qcow2 encoding, the UKI, the kernel and initrd a direct kernel boot
-# needs, the signed extension, and the /usr partitions an update transfers. Each name comes from
-# the target that built the artifact, so nothing here decides what anything is called.
+# needs, the signed extension, the /usr partitions an update transfers, and the SBOMs and
+# package database. Each name comes from the target that built the artifact, so nothing here
+# decides what anything is called.
 image_artifacts(
     name = "release",
     targets = [
         ":demo-ext",
+        ":demo-ext[sbom]",
         ":image",
+        ":image[initrd][sbom]",
+        ":image[pkgdb]",
         ":image[qcow2]",
+        ":image[sbom]",
     ],
 )
 

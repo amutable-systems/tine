@@ -32,6 +32,9 @@ load(
 SysextImageInfo = provider(
     doc = "A systemd system-extension DDI generated from a logical image.",
     fields = {
+        # What the logical image is published under: the DDI adds the suffixes systemd matches a
+        # transfer against, the metadata views the ones that say what each of them is.
+        "basename": provider_field(str),
         "box": provider_field(Dependency),
         "extension": provider_field(str),
         "image": provider_field(Artifact),
@@ -61,7 +64,8 @@ def declare_image_sysext(
 
     # The DDI leaves the build as an update artifact, so it is named the way it is published:
     # systemd-sysupdate matches an extension transfer against <extension>_<version>_<arch>.sysext.raw.
-    stem = "{}_{}_{}.sysext".format(extension, version, systemd_arch)
+    basename = "{}_{}_{}".format(extension, version, systemd_arch)
+    stem = basename + ".sysext"
     out = ctx.actions.declare_output(stem + ".raw")
 
     # systemd-sysext refuses images without these fields. Without a base there is nothing to
@@ -120,7 +124,7 @@ def declare_image_sysext(
         **external_signing_execution(signing_access),
     )
 
-    return SysextImageInfo(box = image.box, extension = extension, image = out, manifest = manifest)
+    return SysextImageInfo(basename = basename, box = image.box, extension = extension, image = out, manifest = manifest)
 
 def sysext_published(info: SysextImageInfo) -> PublishedInfo:
     """What a release carries for one extension: the DDI, and the listing of what it holds."""

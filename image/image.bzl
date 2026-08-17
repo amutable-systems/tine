@@ -224,9 +224,13 @@ def image_providers(
     sub_targets: dict[str, list[Provider]] = {},
     extra: list[Provider] = [],
 ) -> list[Provider]:
-    """Publish a terminal result together with its logical image and lazy metadata views."""
-    merged = dict(sub_targets)
-    merged.update(image_metadata_subtargets(image))
+    """Publish a terminal result together with its logical image and lazy metadata views.
+
+    A caller's own entry for a view wins, which is how a rule that knows the name its artifacts are
+    published under lets the views publish themselves under it too.
+    """
+    merged = image_metadata_subtargets(image)
+    merged.update(sub_targets)
     return [
         DefaultInfo(
             default_outputs = default_outputs,

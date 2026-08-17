@@ -48,14 +48,13 @@ load(
     "declare_image",
     "flatten_operations",
     "generated",
-    "image_metadata_subtargets",
     "image_providers",
     "install_systemd_boot",
     "merge_os_release",
     "sign_systemd_boot",
 )
 load(":initrd.bzl", "InitrdInfo", "initrd_image")
-load(":publish.bzl", "PublishedInfo")
+load(":publish.bzl", "PublishedInfo", "published_metadata_subtargets")
 load(
     ":sign.bzl",
     "SigningKeyInfo",  # @unused Used as a function argument type.
@@ -170,7 +169,7 @@ def _sysext_image_impl(ctx: AnalysisContext) -> list[Provider]:
         default_outputs = [sysext.image],
         extra = [sysext, sysext_published(sysext)],
         image = image,
-        sub_targets = sysext_subtargets(sysext),
+        sub_targets = sysext_subtargets(sysext) | published_metadata_subtargets(image, sysext.basename),
     )
 
 _sysext_image = rule(
@@ -381,7 +380,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         "initrd": [
             DefaultInfo(
                 default_output = initrd_info.cpio.archive,
-                sub_targets = image_metadata_subtargets(initrd),
+                sub_targets = published_metadata_subtargets(initrd, "{}.initrd".format(basename)),
             ),
             initrd_info,
         ],
@@ -426,7 +425,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         default_outputs = [raw],
         extra = [directory, disk.info, initrd_info, published, uki],
         image = esp,
-        sub_targets = sub_targets,
+        sub_targets = sub_targets | published_metadata_subtargets(esp, basename),
     )
 
 _bootable_disk_image = rule(
