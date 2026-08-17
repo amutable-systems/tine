@@ -11,8 +11,8 @@ _RELEASE = "tine//catalog:fedora.rawhide.release"
 # releases live in ./tools.json and are refreshed by `bump` (see docs/images.md).
 
 # Relocatable bootstrap Python; 3.14 provides stdlib zstd for RPM payloads.
-# PUBLIC, not just `toolchains//:python_bootstrap`: a consuming project owns its own toolchains cell
-# (Buck2 forbids nested cells inside an external cell), so the consumer is a different label.
+# PUBLIC: the toolchain reaching it is `tine//:python_bootstrap`, and a project that declares a
+# `toolchains` cell of its own rather than aliasing this one forwards to that target from outside.
 http_tool(
     name = "python3",
     args = ["-B"],

@@ -4,12 +4,14 @@
 # Named `tine`, not `root`, so same-cell labels read `tine//...` exactly as in a consuming project.
 # An alias would not do: as an external cell, `tine` must resolve to itself.
 tine = .
-toolchains = toolchains
 prelude = prelude
 none = none
 
 [cell_aliases]
 config = prelude
+# The toolchain the tine cell declares. An alias rather than a nested cell, so that a consuming project
+# can pull tine in as an external cell.
+toolchains = tine
 # Satisfy the bundled prelude's internal platform alias.
 fbsource = none
 

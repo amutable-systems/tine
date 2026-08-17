@@ -975,18 +975,6 @@ def _rewrite(buckconfig: Path, values: dict[str, str]) -> str:
     return "\n".join(kept) + "\n"
 
 
-TOOLCHAINS = '''"""The toolchains cell a Buck2 project needs, pointed at the interpreter tine pins."""
-
-load("@prelude//toolchains:python.bzl", "python_bootstrap_toolchain")
-
-# Repoint the cell, or override only `[tine] python_interpreter`.
-python_bootstrap_toolchain(
-    name = "python_bootstrap",
-    interpreter = read_config("tine", "python_interpreter", "tine//tools:python3"),
-    visibility = ["PUBLIC"],
-)
-'''
-
 GITIGNORE = f"""/buck-out
 **/buck-out
 /{LOCAL}
@@ -1015,7 +1003,6 @@ def _skeleton(origin: str, commit: str, release: str, digests: dict[str, str]) -
     buckconfig = f"""[cells]
 root = .
 tine = tine
-toolchains = toolchains
 prelude = prelude
 none = none
 
@@ -1024,6 +1011,9 @@ config = prelude
 # The tine cell's own aliases are honoured even as an external cell, and it aliases fbsource to
 # satisfy the bundled prelude, so `none` has to resolve here too.
 fbsource = none
+# The toolchain the tine cell declares. An alias rather than a nested cell, so that a consuming project
+# can pull tine in as an external cell.
+toolchains = tine
 
 [external_cells]
 prelude = bundled
@@ -1047,7 +1037,7 @@ execution_platforms = prelude//platforms:default
 """
     # `.buckconfig` last: it is what a second run refuses to overwrite, so nothing that can fail
     # should come after it.
-    return {"toolchains/BUCK": TOOLCHAINS, ".gitignore": GITIGNORE, ".buckconfig": buckconfig}
+    return {".gitignore": GITIGNORE, ".buckconfig": buckconfig}
 
 
 def exclude(directory: Path, entries: str) -> None:
@@ -1080,7 +1070,7 @@ def init(directory: Path, arguments: list[str]) -> None:
     """Write the configuration a project needs to build against this cell.
 
     Buck2 has an `init` of its own; this shadows it, because what a project needs here is the tine
-    cell, a toolchains cell pointed at the interpreter it pins, and a Buck2 to fetch.
+    cell and a Buck2 to fetch, rather than an empty prelude project.
     """
     import argparse
 
