@@ -42,8 +42,7 @@ test checks its own sources against the box that runs them.
 
 `bin/tine` is the entry point, a command of its own, and `mise.toml` puts `./bin` on `PATH` so it is
 spelled `tine`. **Every `buck` below means `tine buck`**: nothing else on this machine is the Buck2 this
-project pins. `tine buck <arguments>` fetches that Buck2 (pinned in `.buckconfig`, merged with
-`.buckconfig.local`, and rewritten by `tine bump`, which reads `.buckconfig` alone) and execs it with
+project pins. `tine buck <arguments>` fetches that Buck2 (pinned in `tools/tools.json`) and execs it with
 everything after `buck` untouched. `tine init` writes a project's configuration, and `tine init --local
 <path>` writes one already overridden to that checkout; `tine cell override
 <cell> <path>` builds a cell from a checkout on this machine, `tine cell revert <cell>` goes back to
@@ -53,8 +52,7 @@ gitignored `.buckconfig.local`, which is also what Buck reads, so there is nothi
 with it. One
 that stops resolving fails every command that runs Buck rather than falling back to what `.buckconfig`
 pins, and overriding the `tine` cell hands the command over to that checkout's `bin/tine` as well.
-Everything else (python3, ruff, ty, starlark_fmt) is pinned in `tools/tools.json` and fetched by buck
-itself; the dev commands are `buck run` targets.
+Every pinned tool is declared in `tools/tools.json`. The dev commands are `buck run` targets.
 
 It also injects configuration derived from the checkout and from those overrides (a block it owns in
 `.buckconfig.local`; see README) and serves its own shell completion, Buck2's own hanging off
