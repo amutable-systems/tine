@@ -982,7 +982,9 @@ consumer request exactly the capability it needs without fields duplicating anot
 Storing an artifact in a provider does not build it. Optional actions run only when a consumer uses the
 corresponding artifact or a user selects its subtarget. They must not appear in the result's
 `DefaultInfo.default_outputs` or `DefaultInfo.other_outputs`. SPDX and CycloneDX still come from one scan,
-so requesting either format runs the same SBOM action.
+so requesting either format runs the same SBOM action. A metadata view publishes itself the same way a
+conversion does: `[sbom]` and `[pkgdb]` carry a `PublishedInfo` naming them after the image they describe, so
+a release gathers what a scanner reads while an image's own published set stays what an update transfers.
 
 `bootable_disk_image` is one rule that owns the complete composition action graph. Provider-oriented action
 helpers are shared with the standalone `image`, `repart`, `uki`, and terminal-format rules, so the

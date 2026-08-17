@@ -11,6 +11,7 @@ the metadata written beside it. That is the whole reason `image_artifacts` assem
 from a dynamic action: everything else in it is known while the graph is still being built.
 """
 
+load("//image:image.bzl", "ImageInfo", "image_metadata_subtargets")
 load("//image_format:disk.bzl", "PartitionInfo")
 
 PublishedInfo = provider(
@@ -20,6 +21,27 @@ PublishedInfo = provider(
         "partitions": provider_field(list[PartitionInfo], default = []),
     },
 )
+
+def published_metadata_subtargets(image: ImageInfo, basename: str) -> dict[str, list[Provider]]:
+    """The metadata views of an image, publishing themselves under the name it is published as.
+
+    Each view publishes itself rather than travelling in the image's own set, exactly as a re-encoding
+    does, so a release builds the metadata it lists and nothing else.
+    """
+    sub_targets = image_metadata_subtargets(image)
+    sub_targets["sbom"] += [
+        PublishedInfo(
+            artifacts = {
+                "{}.cdx.json".format(basename): image.sbom.cyclonedx,
+                "{}.spdx.json".format(basename): image.sbom.spdx,
+            },
+        ),
+    ]
+    if image.pkgdb != None:
+        # The directory a package database occupies, because how many files that is and what they
+        # are called is the package system's business, not a name composed here.
+        sub_targets["pkgdb"] += [PublishedInfo(artifacts = {"{}.pkgdb".format(basename): image.pkgdb})]
+    return sub_targets
 
 def _assemble_impl(
     actions: AnalysisActions,
