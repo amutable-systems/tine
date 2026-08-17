@@ -378,7 +378,8 @@ box.sh_test(
     labels = ["image"],
     box = "@tine//tools:dev.box",
     test = "pkgdb-format.sh",
-    args = ["$(location :demo[pkgdb])"] + distribution.select({"arch": ["tar.zst"], "fedora": ["sqlite"]}),
+    args = ["$(location :demo[pkgdb])"]
+    + distribution.select({"arch": ["tar.zst", "alpm"], "debian": ["tar.zst", "dpkg"], "fedora": ["sqlite", "rpm"]}),
     **distribution.distributed("pkgdb-format-test"),
 )
 

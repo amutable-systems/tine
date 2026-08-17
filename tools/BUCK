@@ -106,6 +106,8 @@ box.new(
         # the license headers lint, see the `reuse` alias below
         "reuse",
         "sed",
+        # package_system/deb's tests verify a Release they signed with what the driver runs
+        "sequoia-sqv",
     ],
     release = _RELEASE,
     visibility = ["PUBLIC"],

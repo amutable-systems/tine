@@ -24,7 +24,7 @@ tine uses Buck2 to build native packages and compose operating-system images. Th
 monorepo in which a useful core package set is rebuilt from source, scheduled in dependency order, cached
 by content, and suitable for remote execution. The current implementation already provides:
 
-- two native package systems, each with pinned repositories and a repository-owned package artifact pool;
+- three native package systems, each with pinned repositories and a repository-owned package artifact pool;
 - bootstrap box roots containing the pinned userspace used by build actions;
 - configured package managers and shared buildroots for several OS releases;
 - package builds from imported source metadata, including self-hosted buildroot dependencies;
@@ -803,6 +803,86 @@ Limitations specific to this system:
 Entry points: `package_system/pacman/{rules,catalog}.bzl` and
 `package_system/pacman/{alpm,snapshot,plan,install,pkgdb,index,extract,keyring,verify}.py`.
 
+### The deb package system
+
+The third implementation of `PackageSystemInfo` covers Debian. Like alpm it declares no rule of its
+own beyond its pin, and it borrows nothing from either predecessor except the neutral machinery both
+already use.
+
+APT resolves and dpkg installs, but neither is driven the way a shell would drive it. A plan is a
+data structure, so the planner runs APT with an external solver of its own registered under
+`Dir::Bin::Solvers`, and that solver is this driver re-entered: it captures the EDSP scenario APT
+writes and the solution APT's own internal solver returns, then hands the answer back unchanged.
+Resolution semantics therefore stay APT's, while the plan the build consumes is the exact set APT
+chose, each entry named by the checksum its repository published. Removals arrive in that solution
+and are refused by name rather than silently applied.
+
+Everything around that is configuration APT must not take from the box it runs in. A repository is
+staged as a flat one under `file:`, labelled so that Tine's repository priority can be expressed as
+an APT pin, and every pin sits above 1000 so a lower priority wins even across versions. Two settings
+cannot be passed on the command line at all: APT resolves `Dir::Etc::main` and `Dir::Etc::parts`
+while it is still loading configuration, so a `-o` naming them lands after `/etc/apt/apt.conf.d` has
+been read, and the solver is a process of APT's own whose configuration comes only from
+`APT_CONFIG`. Both live in the file that variable names, which is also why `APT::Install-Recommends`
+is stated there: the front end's `--no-install-recommends` never reaches the process that does the
+resolving.
+
+Debian's essential set is what every package may assume is already installed, so nothing declares a
+dependency on any of it and a closure resolved from names alone comes back without a shell. The
+planner asks APT for it by pattern, leaving what counts as essential to the archive that states it.
+
+`deb822.py` reads the stanza format both a `Release` and a `Packages` index are written in, and
+`debfile.py` frames the `ar` container a `.deb` is. That framing is bounded rather than handed the
+whole file, because gzip and zstd read past the end of their own stream to see whether another was
+concatenated onto it. The snapshot follows the archive's own chain of checksums once and keeps its
+ends and its root: the one index a solve reads, pinned by its `Acquire-By-Hash` URL where the archive
+offers one, the inventory every package is fetched by, and the signed `InRelease` the chain starts
+from. A `Filename` is relative to the archive root, which is why that root rather than the suite is
+the base URL a transaction composes against.
+
+Debian signs the `Release` and nothing below it, so the verifier follows that chain again at build
+time: `sqv`, which APT itself verifies with on this box, checks the pinned `InRelease` against the
+declared archive keys, the index the closure was solved from has to be one the authenticated
+`Release` states, and each selected package's bytes have to be ones that index describes. One good
+signature from a declared key counts, as it does for APT: the archive signs with its current key and
+the one before it. The keyring is the declared certificates in binary form, checked to be the keys
+they are declared as by a reader of just enough OpenPGP to frame a packet and hash a fingerprint,
+since the box carries no gpg. sqv judges a key as of the signature it made, so a key expiring later
+invalidates nothing; the time a repository is pinned to bounds when the Release may have been signed
+and selects the cryptographic policy as of the snapshot, so a build of it verifies the same way
+however much later it runs. An unpinned repository judges as of the build. A lock retains the
+`InRelease` and index it was resolved against, and a package the pinned index has since dropped is
+vouched for through that retained generation, judged as of the pin the lock recorded with it.
+
+Installation lays a fresh root down before dpkg is asked to do anything with it. dpkg cannot defer a
+pre-install script, so the first `preinst` calling a shell would fail in a root that has none, and
+the merged-`usr` symlinks no package ships have to exist before the first binary looks its own ELF
+interpreter up under `/lib64`. Extracting the closure first, without scripts, is what debootstrap
+does for the same reason. The transaction then runs as unpack-everything followed by configure, with
+daemon startup denied for its duration by a `policy-rc.d` the install removes again.
+
+`debian.testing.box` is a root box, bootstrapped by a deb extraction followed by a dpkg install, and it
+resolves its own lock from its own root. Its first lock could not come from itself, so one resolve
+pointed `resolver_box` at a throwaway Arch box, which packages apt and dpkg; making it `root`
+afterwards left the box self-sufficient. The suite is testing rather than stable because assembling
+this image format needs systemd 258's repart, and stable is two releases behind that.
+
+Limitations specific to this system:
+
+- It cannot build packages, so a Debian image can only install upstream ones and no target builds a
+  local deb repository. The index driver is unit-tested, but nothing exercises that path end to end.
+- One repository is one suite component for one architecture, because that is the one `Packages`
+  index a solve reads.
+- The snapshot reads the `Release` out of its signature without checking it, since the host contract
+  is a pinned Buck and a pinned Python; the build verifies the pinned file, so a refresh that pinned a
+  forged one fails to build rather than to refresh.
+- A repository APT would downgrade a package from is refused rather than resolved: the front end marks
+  a downgrade and its solver leaves it out of the EDSP answer, so the two are compared and a plan that
+  would silently drop one fails instead.
+
+Entry points: `package_system/deb/rules.bzl`, `package_system/deb/{deb822,debfile,edsp,arches}.py` and
+`package_system/deb/{snapshot,plan,install,pkgdb,index,extract,release,openpgp,keyring,verify}.py`.
+
 ### Rust source builds
 
 A consuming repository can build a Rust project it has checked out instead of packaging it first.
@@ -1522,7 +1602,10 @@ belong to one package system are listed in its own section instead:
 - Directory image output cannot represent backslashes in names; archive outputs should be used instead.
 - The default `/usr`-only disk has a volatile root, so the `/etc` a build writes is not what such an image
   boots with; first-boot defaults come from credentials instead. Package and authored state outside `/usr`
-  is not yet translated into factory defaults or another persistent partition.
+  is not yet translated into factory defaults or another persistent partition. How much of `/etc` a booted
+  image has therefore depends on the distribution: Fedora's and Arch's systemd ship upstream's `etc.conf`,
+  whose `L` lines recreate `/etc/os-release` and its neighbours, while Debian drops that file because
+  Debian populates `/etc` from packages instead.
 - The generators cover the databases under `/usr`. System users, volatile files and directories, and unit
   presets are left to the boot-time units systemd ships for them, so an image whose `/etc` is created at
   first boot gets them then and one that ships a populated `/etc` does not get them at all.
@@ -1566,7 +1649,8 @@ package against them as it is selected, a box using its predecessor. What remain
 2. Arch verifies through the box's `archlinux-keyring`, so a packager key the catalog's box predates is
    refused until the box lock is refreshed; a keyring taken from the pinned repository itself would need
    verifying first, by the previous one, which is the same bootstrap pacman has.
-3. Repository metadata stays unsigned upstream; the snapshot diff is its review.
+3. rpm and alpm repository metadata stays unsigned upstream; the snapshot diff is its review. Debian's
+   is the one signed thing, and its verifier starts from it.
 
 A later release pipeline needs repository composition, package-group metadata, source/debuginfo publication
 policy, provenance/attestations, and signing. Secure Boot signing should use deterministic RSA PKCS#1 v1.5

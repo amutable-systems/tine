@@ -154,16 +154,18 @@ group graph             -- "${buck[@]}" bxl tine//tools/graph.bxl:analyze
 # First invocation fetches buck's pinned tools and builds the shared box; kept its own group so
 # bootstrap time stays visible.
 group box               -- "${buck[@]}" build tine//catalog:fedora.rawhide.box
-# The second package system's box is a root box of its own, so its bootstrap is its own group.
+# The second and third package systems' boxes are root boxes of their own, so each bootstrap is
+# its own group.
 group arch-box          -- "${buck[@]}" build tine//catalog:arch.rolling.box
+group deb-box           -- "${buck[@]}" build tine//catalog:debian.testing.box
 group check             -- "${buck[@]}" run tine//tools:check
 # Every repository the catalog declares is pinned to a mirror serving immutable snapshots, so the whole
 # catalog is verifiable rather than the boxes that happen to be pinned.
 group verify-catalog    -- "${buck[@]}" run tine//tools:verify-catalog
 # Everything the cell declares, rather than the handful of targets someone remembered to name here:
-# every example image over both package systems, the boxes, and the source-build demos.
+# every example image over every package system, the boxes, and the source-build demos.
 group build             -- "${buck[@]}" build tine//...
-# Everything `check` left out: the boot smokes over both package systems, which take minutes each,
+# Everything `check` left out: the boot smokes over every package system, which take minutes each,
 # and the assertions about what the images above produced. Adding one is declaring it, not naming it
 # here as well.
 group image-tests       -- "${buck[@]}" test tine//... --include image

@@ -17,6 +17,11 @@ distribution.set_for_package({
         "os_release_id": "arch",
         "package_manager": "tine//catalog:arch.rolling.package-manager",
     },
+    "debian": {
+        "distribution": "tine//catalog:debian.testing.distribution",
+        "os_release_id": "debian",
+        "package_manager": "tine//catalog:debian.testing.package-manager",
+    },
     "fedora": {
         "distribution": "tine//catalog:fedora.rawhide.distribution",
         "os_release_id": "fedora",

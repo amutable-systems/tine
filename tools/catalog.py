@@ -4,9 +4,9 @@
 """Refresh pure catalog snapshots, then resolve box transactions against those pins.
 
 With `--advance`, repositories pinned to a mirror that publishes snapshots first advance their
-declaration to the newest one: an rpmrepo gateway enumerates them, while the Arch Linux Archive
-publishes a tree per day. Repositories sharing one pin advance together, and rolling back means
-editing the pin.
+declaration to the newest one: an rpmrepo gateway enumerates them, the Arch Linux Archive publishes
+a tree per day and records when it last finished one, and the Debian archive lists every timestamp
+it holds. Repositories sharing one pin advance together, and rolling back means editing the pin.
 
 Remote box-lock entries retain their package transports, so a repository's package pool keeps
 the committed box available after its repodata advances.
@@ -29,8 +29,8 @@ import itertools
 import json
 import subprocess
 import sys
-from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -53,6 +53,7 @@ BOX_LOCK_INFIX = ".lock."
 REMOTE_REPOSITORY_LABEL = "tine:remote-repository"
 RPM_REMOTE_REPOSITORY_LABEL = "tine:rpm-remote-repository"
 PACMAN_REMOTE_REPOSITORY_LABEL = "tine:pacman-remote-repository"
+DEB_REMOTE_REPOSITORY_LABEL = "tine:deb-remote-repository"
 
 # Keep in sync with SIGNING_KEY_DIRECTORY/SIGNING_KEY_SUFFIX in package/repository.bzl.
 SIGNING_KEY_DIRECTORY = Path("snapshot/key")
@@ -138,6 +139,9 @@ class Pin:
     snapshot: str
     # What the mirror serves, and so what the pin names one snapshot of each.
     architectures: tuple[str, ...]
+    # The rest of the package system's own namespace, for a mirror that needs more than its URL to
+    # be asked what it published. Out of the comparison because a dict cannot be hashed.
+    metadata: Mapping[str, str] = field(default_factory=dict, compare=False)
 
     @property
     def name(self) -> str:
@@ -169,6 +173,7 @@ def _pinned_repositories(buck: str, catalog: str, label: str, prefix: str) -> li
                     mirror=pin["mirror"],
                     snapshot=pin["snapshot"],
                     architectures=tuple(attributes["architectures"]),
+                    metadata=pin,
                 )
             )
     return pins
@@ -361,6 +366,34 @@ def _newest_archive_snapshot(pins: list[Pin]) -> str:
     return max(with_retries("archive: lastsync", lastsync), pin.snapshot)
 
 
+def _newest_debian_snapshot(pins: list[Pin]) -> str:
+    """The newest timestamp the Debian archive has published.
+
+    The archive publishes a tree per timestamp rather than an index to enumerate, and lists every
+    one it holds under a machine-readable endpoint of its own; the last is the newest. Every
+    component in a group shares the pin, so one listing answers for all of them.
+    """
+    pin = pins[0]
+    archive = pin.metadata["archive"]
+    # Keep in sync with deb_remote_repository's base URL, whose mirror this is rooted at. The
+    # trailing slash is load-bearing: without it the archive answers 308 to a plain `http://` of
+    # the same path, and urllib follows a redirect wherever it points.
+    url = pin.mirror.rstrip("/").removesuffix("/archive") + "/mr/timestamp/"
+
+    def timestamps() -> str:
+        with urlopen(url, agent="tine-catalog") as response:
+            published = json.load(response)["result"][archive]
+        # A timestamp names a tree the archive has finished writing, so unlike the Arch mirror
+        # there is no separate marker that says the newest one is complete.
+        offered = [stamp for stamp in published if isinstance(stamp, str)]
+        if not offered:
+            fail(f"archive: {url} lists no {archive} snapshots")
+        return max(offered)
+
+    # An advance never moves a pin backwards.
+    return max(with_retries("archive: timestamps", timestamps), pin.snapshot)
+
+
 def _advance_snapshots(
     checkout: _Checkout, buck: str, catalog: str, catalog_dir: Path, selected: list[str]
 ) -> None:
@@ -381,6 +414,7 @@ def _advance_snapshots(
             functools.partial(_newest_rpmrepo_snapshot, buck),
         ),
         (PACMAN_REMOTE_REPOSITORY_LABEL, "archlinux", "archive_snapshot", _newest_archive_snapshot),
+        (DEB_REMOTE_REPOSITORY_LABEL, "debian", "archive_snapshot", _newest_debian_snapshot),
     ):
         pinned = _pinned_repositories(buck, catalog, label, prefix)
         advanced += _advance(checkout, pinned, wanted, newest, declaration, attribute)
