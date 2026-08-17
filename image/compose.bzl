@@ -16,8 +16,15 @@ load(
     "declare_repart",
     "encode_definitions",
     "format_partition_labels",
+    "manifest_sub_targets",
 )
-load("//image_format:sysext.bzl", "SYSEXT_ATTRS", "declare_image_sysext")
+load(
+    "//image_format:sysext.bzl",
+    "SYSEXT_ATTRS",
+    "declare_image_sysext",
+    "sysext_published",
+    "sysext_subtargets",
+)
 load(
     "//image_format:uki.bzl",
     "UKI_ATTRS",
@@ -161,8 +168,9 @@ def _sysext_image_impl(ctx: AnalysisContext) -> list[Provider]:
     )
     return image_providers(
         default_outputs = [sysext.image],
-        extra = [sysext, PublishedInfo(artifacts = {sysext.image.basename: sysext.image})],
+        extra = [sysext, sysext_published(sysext)],
         image = image,
+        sub_targets = sysext_subtargets(sysext),
     )
 
 _sysext_image = rule(
@@ -356,7 +364,12 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     # image ships. Declared here so a caller does not have to point a second target at the ESP.
     boot = declare_boot_artifacts(ctx, tools = tools, identifier = "boot", image = esp)
 
+    # The system partitions are filled by their own repart run and imported into this one, so what
+    # the disk holds is what the two runs between them listed.
+    written = system.info.written + disk.info.written
+
     sub_targets = dict(disk.sub_targets)
+    sub_targets.update(manifest_sub_targets(written))
     sub_targets.update({
         "boot": [
             DefaultInfo(
@@ -387,14 +400,25 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     # An update carries the partitions and the UKI; the disk itself is the installation medium, and
     # the kernel and initrd are what boots one without a boot loader. The ESP is none of those: what
     # it holds arrives as transfers of its own, so it is left out rather than published as a
-    # partition nothing ever writes back.
+    # partition nothing ever writes back. The listings join them: one per partition, naming what
+    # that partition puts on a machine and nothing the image happens to hold besides, and one for
+    # the disk, which is what an installation of it leaves behind.
+    artifacts = {
+        "{}.efi".format(basename): boot.uki,
+        "{}.initrd".format(basename): boot.initrd,
+        "{}.vmlinuz".format(basename): boot.kernel,
+        raw.basename: raw,
+    }
+    for partition in written:
+        if partition.manifest != None:
+            name = partition.definition["name"]
+            artifacts["{}.{}.Uapi16Manifest".format(basename, name)] = partition.manifest
+    whole = disk.info.manifest
+    if whole != None:
+        artifacts[whole.basename] = whole
+
     published = PublishedInfo(
-        artifacts = {
-            "{}.efi".format(basename): boot.uki,
-            "{}.initrd".format(basename): boot.initrd,
-            "{}.vmlinuz".format(basename): boot.kernel,
-            raw.basename: raw,
-        },
+        artifacts = artifacts,
         partitions = [partition for partition in disk.info.partitions if partition.definition["type"] != "esp"],
     )
 

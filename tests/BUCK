@@ -17,3 +17,11 @@ export_file(
     src = "contains.sh",
     visibility = ["PUBLIC"],
 )
+
+# Assert a listing stays inside what the artifact it describes actually carries. Shared because a
+# DDI, a partition and a disk each answer that question the same way.
+export_file(
+    name = "manifest-scope.sh",
+    src = "manifest-scope.sh",
+    visibility = ["PUBLIC"],
+)

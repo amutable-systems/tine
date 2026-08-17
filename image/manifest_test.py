@@ -10,6 +10,7 @@ import socket
 import stat
 import tempfile
 import unittest
+from collections.abc import Sequence
 from pathlib import Path
 from typing import override
 
@@ -37,8 +38,8 @@ class TreeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tree = Path(self.enterContext(tempfile.TemporaryDirectory(prefix="manifest.")))
 
-    def manifest(self, tree: Path | None = None) -> list[dict[str, object]]:
-        return parse(b"".join(manifest.records(tree or self.tree, EPOCH)))
+    def manifest(self, tree: Path | None = None, roots: Sequence[str] = ()) -> list[dict[str, object]]:
+        return parse(b"".join(manifest.records(tree or self.tree, EPOCH, roots)))
 
     def named(self, tree: Path | None = None) -> dict[str, dict[str, object]]:
         return {str(obj["name"]): obj for obj in self.manifest(tree)[1:]}
@@ -305,6 +306,113 @@ class TestWrite(TreeTest):
         out = Path(self.enterContext(tempfile.TemporaryDirectory(prefix="manifest.out."))) / "m"
         self.assertEqual(manifest.write(self.tree, out, EPOCH), 2)
         self.assertEqual([obj.get("name") for obj in parse(out.read_bytes())], [None, "file"])
+
+
+class TestScope(unittest.TestCase):
+    def test_a_leading_and_trailing_slash_is_not_part_of_the_name(self) -> None:
+        self.assertEqual(manifest.scope(["/usr:", "/boot/"]), ["boot", "usr:"])
+
+    def test_the_same_root_named_twice_is_listed_once(self) -> None:
+        self.assertEqual(manifest.scope(["/usr", "usr/"]), ["usr"])
+
+    def test_a_root_below_another_is_dropped_rather_than_listed_twice(self) -> None:
+        self.assertEqual(manifest.scope(["/usr", "/usr/lib", "/boot"]), ["boot", "usr"])
+
+    def test_a_name_that_merely_shares_a_prefix_is_kept(self) -> None:
+        self.assertEqual(manifest.scope(["/usr", "/usrfoo"]), ["usr", "usrfoo"])
+
+    def test_the_whole_tree_covers_every_other_root(self) -> None:
+        self.assertEqual(manifest.scope(["/", "/usr"]), [""])
+
+
+class TestScopedTree(TreeTest):
+    @override
+    def setUp(self) -> None:
+        super().setUp()
+        for name in ("usr/bin", "opt/thing", "var/lib"):
+            (self.tree / name).mkdir(parents=True)
+            (self.tree / name / "file").write_text(name)
+
+    def test_only_the_roots_named_are_listed(self) -> None:
+        names = {str(obj["name"]) for obj in self.manifest(roots=["usr", "opt"])[1:]}
+        self.assertEqual(names, {"opt", "opt/thing", "opt/thing/file", "usr", "usr/bin", "usr/bin/file"})
+
+    def test_a_root_is_listed_before_the_contents_it_holds(self) -> None:
+        names = [str(obj["name"]) for obj in self.manifest(roots=["usr"])[1:]]
+        self.assertEqual(names, ["usr", "usr/bin", "usr/bin/file"])
+
+    def test_a_root_the_image_does_not_have_is_skipped(self) -> None:
+        names = {str(obj["name"]) for obj in self.manifest(roots=["usr", "efi"])[1:]}
+        self.assertEqual(names, {"usr", "usr/bin", "usr/bin/file"})
+
+    def test_a_root_naming_a_file_lists_that_file_alone(self) -> None:
+        objects = self.manifest(roots=["usr/bin/file"])[1:]
+        self.assertEqual([obj["name"] for obj in objects], ["usr/bin/file"])
+        self.assertEqual(objects[0]["type"], "reg")
+
+    def test_no_roots_is_the_whole_tree(self) -> None:
+        names = {str(obj["name"]) for obj in self.manifest()[1:]}
+        self.assertIn("var/lib/file", names)
+
+
+class TestMerge(TreeTest):
+    def part(self, name: str, roots: Sequence[str]) -> Path:
+        out = self.tree / name
+        manifest.write(self.tree / "parts", out, EPOCH, roots)
+        return out
+
+    @override
+    def setUp(self) -> None:
+        super().setUp()
+        self.parts = self.tree / "parts"
+        for name in ("usr/bin", "boot/EFI"):
+            (self.parts / name).mkdir(parents=True)
+            (self.parts / name / "file").write_text(name)
+
+    def merged(self, *sources: Path) -> list[dict[str, object]]:
+        out = self.tree / "merged"
+        manifest.merge(sources, out)
+        return parse(out.read_bytes())
+
+    def test_the_whole_is_every_part_under_one_root_object(self) -> None:
+        objects = self.merged(self.part("a", ["usr"]), self.part("b", ["boot"]))
+        self.assertEqual(objects[0], {"mediaType": "application/vnd.uapi.16.manifest"})
+        self.assertEqual(
+            [obj["name"] for obj in objects[1:]],
+            ["boot", "boot/EFI", "boot/EFI/file", "usr", "usr/bin", "usr/bin/file"],
+        )
+
+    def test_the_parts_are_ordered_by_what_they_hold_rather_than_by_the_order_given(self) -> None:
+        objects = self.merged(self.part("a", ["boot"]), self.part("b", ["usr"]))
+        self.assertEqual([obj["name"] for obj in objects[1:]][0], "boot")
+
+    def test_a_name_two_parts_carry_is_taken_from_the_one_mounted_over_the_other(self) -> None:
+        under = self.part("under", ["boot"])
+        (self.parts / "boot").chmod(0o701)
+        over = self.part("over", ["boot"])
+        objects = {str(obj["name"]): obj for obj in self.merged(under, over)[1:]}
+        self.assertEqual(objects["boot"]["mode"], 0o701)
+
+    def test_a_directory_still_comes_before_the_contents_it_holds(self) -> None:
+        (self.parts / "usr.txt").write_text("a sibling sorting between usr and usr/bin")
+        names = [obj["name"] for obj in self.merged(self.part("a", ["usr", "usr.txt"]))[1:]]
+        self.assertEqual(names, ["usr", "usr/bin", "usr/bin/file", "usr.txt"])
+
+    def test_each_part_keeps_its_own_inodes_grouped(self) -> None:
+        for name in ("usr/bin", "boot/EFI"):
+            os.link(self.parts / name / "file", self.parts / name / "link")
+        objects = {
+            str(obj["name"]): obj
+            for obj in self.merged(self.part("a", ["usr"]), self.part("b", ["boot"]))[1:]
+        }
+        self.assertEqual(objects["usr/bin/file"]["inodeToken"], objects["usr/bin/link"]["inodeToken"])
+        self.assertEqual(objects["boot/EFI/file"]["inodeToken"], objects["boot/EFI/link"]["inodeToken"])
+        self.assertNotEqual(objects["usr/bin/file"]["inodeToken"], objects["boot/EFI/file"]["inodeToken"])
+
+    def test_something_that_is_not_a_manifest_is_refused(self) -> None:
+        (self.tree / "junk").write_bytes(b'{"mediaType":"application/json"}\n')
+        with self.assertRaises(SystemExit):
+            self.merged(self.tree / "junk")
 
 
 if __name__ == "__main__":

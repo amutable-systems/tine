@@ -18,21 +18,31 @@ import specs
 import util
 
 import finalize
+import manifest
 import repart_signing
 
 _SEED_NAMESPACE = uuid.UUID("5af2de99-4f9f-4e0b-a04b-bde36b068c4f")
 
 
+class WrittenPartitionSpec(TypedDict):
+    definition: dict[str, Any]
+    # Where to write it as a standalone artifact and the metadata describing it, for an invocation
+    # that splits its partitions back out; absent for one that only composes them into a disk.
+    blocks: str | None
+    metadata: str | None
+    # Where to list what it carries; absent for a partition that copies nothing, so there is
+    # nothing to list: a verity partition holds a hash tree, and a filesystem created empty is
+    # populated by the system that grows it rather than by this build.
+    manifest: str | None
+
+
 class ImportedPartitionSpec(TypedDict):
     definition: dict[str, Any]
+    # Where it already is, written by the invocation that filled it, and the metadata describing it.
     blocks: str
     metadata: str
-
-
-class SplitOutputSpec(TypedDict):
-    name: str
-    blocks: str
-    metadata: str
+    # What it carries, listed by that same invocation; absent for the same reason.
+    manifest: str | None
 
 
 class Spec(finalize.ImageSpec):
@@ -44,13 +54,14 @@ class Spec(finalize.ImageSpec):
     output_size: str | None
     seed: str | None
     signing: repart_signing.KeySpec | None
-    definitions: list[dict[str, Any]]
-    # Independent partitions copied into the result, and the new ones written out.
+    # The partitions this invocation writes, and the independent ones copied into the result.
+    definitions: list[WrittenPartitionSpec]
     partitions: list[ImportedPartitionSpec]
-    split_outputs: list[SplitOutputSpec]
     root_hash_out: str | None
     # Image paths holding the package database, stripped from the partitions.
     pkgdb_paths: list[str]
+    # Where to list what the composed disk carries, its partitions taken together.
+    manifest: str | None
     # Filesystem -> the options mkfs is given for it.
     mkfs_options: dict[str, list[str]]
 
@@ -84,6 +95,11 @@ class Definition:
             verity=value["verity"],
             verity_match_key=value["verity_match_key"],
         )
+
+    @property
+    def sources(self) -> tuple[str, ...]:
+        """The image paths this partition is populated from, whatever it is they are copied to."""
+        return tuple(copy.split(":", 1)[0] for copy in self.copy_files)
 
     def render(self, *, split: bool) -> str:
         lines = ["[Partition]", f"Type={self.type}"]
@@ -126,17 +142,19 @@ class Definition:
 
 
 @dataclass(frozen=True)
+class WrittenPartition:
+    definition: Definition
+    blocks: Path | None
+    metadata: Path | None
+    manifest: Path | None
+
+
+@dataclass(frozen=True)
 class ImportedPartition:
     definition: Definition
     blocks: Path
     metadata: Path
-
-
-@dataclass(frozen=True)
-class SplitOutput:
-    name: str
-    blocks: Path
-    metadata: Path
+    manifest: Path | None
 
 
 def _setting(lines: list[str], name: str, value: object | None) -> None:
@@ -166,17 +184,17 @@ def _derived_seed(
 
 def _write_definitions(
     directory: Path,
-    definitions: list[Definition],
+    written: list[WrittenPartition],
     partitions: list[ImportedPartition],
     *,
     split: bool,
 ) -> dict[str, str]:
     files = {}
     index = 0
-    for definition in definitions:
-        filename = f"{index:04}-{definition.name}.conf"
-        (directory / filename).write_text(definition.render(split=split))
-        files[definition.name] = filename
+    for partition in written:
+        filename = f"{index:04}-{partition.definition.name}.conf"
+        (directory / filename).write_text(partition.definition.render(split=split))
+        files[partition.definition.name] = filename
         index += 1
     for partition in partitions:
         metadata: dict[str, Any] = json.loads(partition.metadata.read_text())
@@ -194,31 +212,31 @@ def _partition_row(rows: list[dict[str, Any]], filename: str) -> dict[str, Any]:
     return matches[0]
 
 
-def _copy_partition(row: dict[str, Any], output: SplitOutput) -> None:
+def _copy_partition(row: dict[str, Any], name: str, blocks: Path, metadata: Path) -> None:
     source_value = row.get("split_path")
     if not source_value or source_value == "-":
-        raise SystemExit(f"repart: no split artifact was produced for {output.name}")
+        raise SystemExit(f"repart: no split artifact was produced for {name}")
     source = Path(source_value)
-    output.blocks.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, output.blocks)
+    blocks.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, blocks)
 
     # systemd strips padding from signature split files. CopyBlocks requires a
     # sector-aligned artifact, so restore the partition's declared raw size.
     raw_size = int(row["raw_size"])
-    if output.blocks.stat().st_size > raw_size:
-        raise SystemExit(f"repart: split artifact for {output.name} exceeds its partition")
-    with output.blocks.open("r+b") as f:
+    if blocks.stat().st_size > raw_size:
+        raise SystemExit(f"repart: split artifact for {name} exceeds its partition")
+    with blocks.open("r+b") as f:
         f.truncate(raw_size)
 
-    metadata = {
+    described = {
         "label": row.get("label"),
         "published": source.name,
         "raw_size": raw_size,
         "type": row["type"],
         "uuid": row["uuid"],
     }
-    output.metadata.parent.mkdir(parents=True, exist_ok=True)
-    output.metadata.write_text(json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n")
+    metadata.parent.mkdir(parents=True, exist_ok=True)
+    metadata.write_text(json.dumps(described, sort_keys=True, separators=(",", ":")) + "\n")
 
 
 def _write_root_hash(rows: list[dict[str, Any]], output: Path) -> None:
@@ -251,32 +269,40 @@ def _grow(disk: Path, size: str) -> None:
 def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("repart", argv)
 
-    if not spec["out"] and not spec["split_outputs"]:
-        raise SystemExit("repart: specify a disk output, split outputs, or both")
     if not spec["definitions"] and not spec["partitions"]:
         raise SystemExit("repart: specify at least one definition or imported partition")
-    raw_definitions = spec["definitions"]
-    definitions = [Definition.parse(value) for value in raw_definitions]
+    raw_definitions = [entry["definition"] for entry in spec["definitions"]]
+    written = [
+        WrittenPartition(
+            Definition.parse(entry["definition"]),
+            Path(entry["blocks"]) if entry["blocks"] else None,
+            Path(entry["metadata"]) if entry["metadata"] else None,
+            Path(entry["manifest"]) if entry["manifest"] else None,
+        )
+        for entry in spec["definitions"]
+    ]
     partitions = [
         ImportedPartition(
             Definition.parse(partition["definition"]),
             Path(partition["blocks"]),
             Path(partition["metadata"]),
+            Path(partition["manifest"]) if partition["manifest"] else None,
         )
         for partition in spec["partitions"]
     ]
-    outputs = [
-        SplitOutput(
-            output["name"],
-            Path(output["blocks"]),
-            Path(output["metadata"]),
-        )
-        for output in spec["split_outputs"]
+    # A partition named as its own artifact is one repart splits back out, which is a property of
+    # the invocation rather than of any one partition: it splits all of them or none.
+    splits = [
+        (partition.definition.name, partition.blocks, partition.metadata)
+        for partition in written
+        if partition.blocks is not None and partition.metadata is not None
     ]
+    if not spec["out"] and not splits:
+        raise SystemExit("repart: specify a disk output, split outputs, or both")
 
     binds: list[tuple[str | Path, str | Path]] = [
         (partition.blocks, f"/run/tine/repart/{index}.raw")
-        for index, partition in enumerate(partitions, start=len(definitions))
+        for index, partition in enumerate(partitions, start=len(written))
     ]
     with (
         finalize.image(spec, program="repart", binds=binds) as tree,
@@ -287,14 +313,31 @@ def main(argv: list[str] | None = None) -> None:
         for relative in spec["pkgdb_paths"]:
             util.remove_path(tree / relative, with_parents=True)
 
+        # What each partition ends up carrying, listed from the tree repart is about to copy. A
+        # definition takes the paths it names and nothing else, so a disk whose definitions are a
+        # /usr partition and an ESP has no listing of /var, which lands nowhere.
+        epoch = int(os.environ["SOURCE_DATE_EPOCH"])
+        listings = []
+        for partition in written:
+            if partition.manifest is not None:
+                manifest.write(tree, partition.manifest, epoch, roots=partition.definition.sources)
+                listings.append(partition.manifest)
+
+        # An imported partition was listed by the invocation that filled it, and this one holds
+        # what it copies itself, so between them they list the whole disk. Imported first: a
+        # partition this invocation mounts over a directory another one holds is the one on top.
+        if spec["manifest"]:
+            imported = [it.manifest for it in partitions if it.manifest is not None]
+            manifest.merge(imported + listings, Path(spec["manifest"]))
+
         scratch = Path(scratch_dir)
         repart_definitions = scratch / "repart.d"
         repart_definitions.mkdir()
         files = _write_definitions(
             repart_definitions,
-            definitions,
+            written,
             partitions,
-            split=bool(outputs),
+            split=bool(splits),
         )
 
         seed = (
@@ -305,7 +348,7 @@ def main(argv: list[str] | None = None) -> None:
         out = Path(spec["out"]) if spec["out"] else None
         # A split artifact is named after the image repart writes, so the scratch file carries the
         # published basename even when only the partitions leave this invocation.
-        disk = scratch / f"{spec['basename']}.raw" if outputs else out
+        disk = scratch / f"{spec['basename']}.raw" if splits else out
         assert disk is not None  # one of a disk output and split outputs is required
         cmd = [
             "systemd-repart",
@@ -321,7 +364,7 @@ def main(argv: list[str] | None = None) -> None:
             "--definitions",
             str(repart_definitions),
         ]
-        if outputs:
+        if splits:
             cmd.append("--split=yes")
         cmd += repart_signing.key_arguments(spec["signing"])
         # repart reads one variable per filesystem it formats and splits each on whitespace.
@@ -332,11 +375,11 @@ def main(argv: list[str] | None = None) -> None:
         result = subprocess.run([*cmd, str(disk)], check=True, env=env, stdout=subprocess.PIPE, text=True)
         rows: list[dict[str, Any]] = json.loads(result.stdout)
 
-        for output in outputs:
-            _copy_partition(_partition_row(rows, files[output.name]), output)
+        for name, blocks, metadata in splits:
+            _copy_partition(_partition_row(rows, files[name]), name, blocks, metadata)
         if spec["root_hash_out"]:
             _write_root_hash(rows, Path(spec["root_hash_out"]))
-        if out and outputs:
+        if out and splits:
             shutil.copyfile(disk, out)
         if out and spec["output_size"]:
             _grow(out, spec["output_size"])
@@ -344,8 +387,8 @@ def main(argv: list[str] | None = None) -> None:
     artifacts = []
     if out:
         artifacts.append(out.name)
-    if outputs:
-        artifacts.append(f"{len(outputs)} partitions")
+    if splits:
+        artifacts.append(f"{len(splits)} partitions")
     mode = " and ".join(artifacts)
     print(f"repart: wrote {mode} (seed={seed})", file=sys.stderr)
 

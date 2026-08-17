@@ -107,6 +107,17 @@ tine_python_binary(
     visibility = ["PUBLIC"],
 )
 
+# A driver that packages a tree lists it from inside its own action, where the tree is final.
+tine_python_library(
+    name = "manifest-lib",
+    srcs = ["manifest.py"],
+    deps = [
+        ":finalize",
+        "//:specs",
+    ],
+    visibility = ["//image_format:"],
+)
+
 tine_python_library(
     name = "finalize",
     srcs = ["finalize.py"],

@@ -239,3 +239,43 @@ box_sh_test(
     test = "release-artifacts.sh",
     args = ["$(location :release)", "$(location :image[roothash])"],
 )
+
+# The disk's own listing is the union of its partitions': what an installation of it leaves behind,
+# whichever partition each path arrives on.
+box_sh_test(
+    name = "disk-manifest-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    test = "@tine//tests:contains.sh",
+    args = [
+        "$(location :image[disk-manifest])",
+        '"name":"usr/bin/bash"',
+        '"name":"boot/EFI/Linux',
+    ],
+)
+
+box_sh_test(
+    name = "extension-manifest-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    test = "extension-manifest.sh",
+    args = ["$(location :demo-ext[ddi-manifest])"],
+)
+
+# Each listing covers what its own artifact carries: a DDI holds the two merged hierarchies, and a
+# partition holds what its definition copies, which is why the image's /var is in no listing at all.
+[
+    box_sh_test(
+        name = "manifest-scope-test." + name,
+        labels = ["image"],
+        box = "@tine//tools:dev.box",
+        test = "@tine//tests:manifest-scope.sh",
+        args = [target] + hierarchies,
+    )
+    for name, target, hierarchies in [
+        ("ddi", "$(location :demo-ext[ddi-manifest])", ["usr", "opt"]),
+        ("disk", "$(location :image[disk-manifest])", ["boot", "efi", "usr"]),
+        ("esp", "$(location :image[manifests][esp])", ["boot", "efi"]),
+        ("usr", "$(location :image[manifests][usr])", ["usr"]),
+    ]
+]

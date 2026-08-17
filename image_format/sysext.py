@@ -12,6 +12,7 @@ import specs
 import util
 
 import finalize
+import manifest
 import repart_signing
 import rootfs
 
@@ -19,6 +20,8 @@ import rootfs
 class Spec(finalize.ImageSpec):
     # Leading lowers forming the base image; only the delta above them is packaged.
     base: int
+    # Where to list what the DDI ends up carrying.
+    manifest: str
     identity: str
     seed: str | None
     name: str
@@ -31,6 +34,9 @@ class Spec(finalize.ImageSpec):
 
 
 _SEED_NAMESPACE = uuid.UUID("b388a973-3ffa-44aa-90b7-afcc4573ea9f")
+
+# The hierarchies --make-ddi=sysext copies, and so the whole of what a DDI can carry.
+_HIERARCHIES = ("opt", "usr")
 
 # erofs dedup keys off the filesystem UUID, so combined with a stable seed these keep the DDI
 # reproducible.
@@ -96,6 +102,15 @@ def main(argv: list[str] | None = None) -> None:
         content = "".join(f"{key}={value}\n" for key, value in release.items())
         (release_dir / f"extension-release.{spec['name']}").write_text(content)
 
+        # Here rather than beside the DDI as an action of its own: this is the tree repart is about
+        # to copy, edits and all, and nothing outside this driver has it.
+        written = manifest.write(
+            tree,
+            Path(spec["manifest"]),
+            int(os.environ["SOURCE_DATE_EPOCH"]),
+            roots=_HIERARCHIES,
+        )
+
         seed = (
             uuid.UUID(spec["seed"])
             if spec["seed"]
@@ -121,7 +136,7 @@ def main(argv: list[str] | None = None) -> None:
         env = os.environ | {"SYSTEMD_REPART_MKFS_OPTIONS_EROFS": _MKFS_OPTIONS_EROFS}
         subprocess.run(cmd, check=True, env=env)
 
-    print(f"sysext: wrote {out.name} (seed={seed})", file=sys.stderr)
+    print(f"sysext: wrote {out.name} and {written} manifest objects (seed={seed})", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ tine_python_binary(
         "//:specs",
         "//:util",
         "//image:finalize",
+        "//image:manifest-lib",
     ],
     visibility = ["PUBLIC"],
 )
@@ -47,6 +48,7 @@ tine_python_binary(
         "//:specs",
         "//:util",
         "//image:finalize",
+        "//image:manifest-lib",
         "//rootfs:rootfs",
     ],
     visibility = ["PUBLIC"],
@@ -72,5 +74,6 @@ box_python_test(
         "//:specs",
         "//:util",
         "//image:finalize",
+        "//image:manifest-lib",
     ],
 )
