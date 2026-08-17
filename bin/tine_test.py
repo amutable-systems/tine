@@ -1095,8 +1095,7 @@ class TestSkeleton(unittest.TestCase):
 
     def test_it_writes_a_project_buck_can_be_run_in(self) -> None:
         files = self.skeleton("https://example.invalid/tine")
-        self.assertEqual(set(files), {".buckconfig", "toolchains/BUCK", ".gitignore"})
-        self.assertIn("python_bootstrap_toolchain", files["toolchains/BUCK"])
+        self.assertEqual(set(files), {".buckconfig", ".gitignore"})
         self.assertIn("/buck-out\n", files[".gitignore"])
         self.assertIn(f"/{tine.LOCAL}\n", files[".gitignore"])
         # The name an interrupted write leaves behind, which is nobody's to commit either.
@@ -1120,6 +1119,13 @@ class TestSkeleton(unittest.TestCase):
         for platform, artifact in tine.BUCK2_ARTIFACTS.items():
             self.assertIn(f"buck2-{platform}-artifact = {artifact}\n", buckconfig)
             self.assertIn(f"buck2-{platform}-sha256 = {'b' * 64}\n", buckconfig)
+
+    def test_toolchain_is_reachable_from_consuming_project(self) -> None:
+        root = scratch(self)
+        (root / ".buckconfig").write_text(self.skeleton("/home/me/tine")[".buckconfig"])
+        config = tine.project_config(root)
+        self.assertEqual(config["cell_aliases"]["toolchains"], "tine")
+        self.assertNotIn("toolchains", config["cells"])
 
     def test_the_pin_it_writes_is_the_pin_it_reads(self) -> None:
         # The section and keys `buck2()` looks for, spelled by the command that writes them.
@@ -1198,14 +1204,6 @@ class TestInit(RepositoryTestCase):
         (self.into / ".gitignore").write_text("mine\n")
         self.init(str(self.repo))
         self.assertFalse((self.into / ".git").exists())
-
-    def test_a_project_it_could_not_finish_writing_can_be_written_again(self) -> None:
-        # `.buckconfig` is what a second run refuses to overwrite, so it is written last.
-        self.commit()
-        (self.into / "toolchains").write_text("in the way")
-        with self.assertRaisesRegex(SystemExit, "cannot create"):
-            self.init(str(self.repo))
-        self.assertFalse((self.into / ".buckconfig").exists())
 
     def test_it_takes_one_origin(self) -> None:
         # `--help` is argparse's to answer, and neither it nor a second origin writes a project.

@@ -42,10 +42,9 @@ def _starlark_srcs(buck: str) -> list[Path]:
     files = sorted(
         project / f for f in _buck_out(buck, "uquery", f"allbuildfiles({universe})").splitlines() if f
     )
-    # Keep the tine cell's own files, plus those of cells nested inside it (standalone, tine is the
-    # root cell and owns a nested `toolchains`). Reject by owning cell rather than by path prefix,
-    # because nested `none`/`prelude` are not on disk, so a prefix test would hand the formatter
-    # paths that do not exist.
+    # Keep the tine cell's own files, plus those of any cell nested inside it. Reject by owning cell
+    # rather than by path prefix, because nested `none`/`prelude` are not on disk, so a prefix test
+    # would hand the formatter paths that do not exist.
     cell_roots = sorted(
         ((Path(path), name) for name, path in cells.items()),
         key=lambda item: len(item[0].parts),

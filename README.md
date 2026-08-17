@@ -65,11 +65,10 @@ tine init --local ~/Projects/tine                    # that checkout, and follow
 
 That writes a `.buckconfig` registering Tine as a
 [Buck2 external cell](https://buck2.build/docs/users/advanced/external_cells/) pinned to the origin's
-current `HEAD`, a `toolchains/BUCK` pointing at the interpreter this cell pins, a `.gitignore`, and the
-Buck2 release to fetch. Buck2 has an `init` of its own, which this shadows: a project here needs the
-tine cell rather than an empty prelude project. A checkout on this machine is an origin like any other
-and is pinned the same way; `tine cell override` is what makes a cell follow one, and `--local` is
-that override declared as the project is written (see Development below).
+current `HEAD`, a `.gitignore`, and the Buck2 release to fetch. Buck2 has an `init` of its own, which this
+shadows: a project here needs the tine cell rather than an empty prelude project. A checkout on this
+machine is an origin like any other and is pinned the same way; `tine cell override` is what makes a cell
+follow one, and `--local` is that override declared as the project is written (see Development below).
 
 The result is the configuration below, which can equally be written by hand; `init` writes an artifact
 and a SHA-256 for each platform tine supports, of which one is shown:
@@ -78,7 +77,6 @@ and a SHA-256 for each platform tine supports, of which one is shown:
 [cells]
 root = .
 tine = tine
-toolchains = toolchains
 prelude = prelude
 none = none
 
@@ -87,6 +85,9 @@ config = prelude
 # The tine cell's own aliases are honoured even as an external cell, and it aliases fbsource to
 # satisfy the bundled prelude, so `none` has to resolve here too.
 fbsource = none
+# The toolchain the tine cell declares. An alias rather than a nested cell, so that a consuming project
+# can pull tine in as an external cell.
+toolchains = tine
 
 [external_cells]
 prelude = bundled
@@ -121,8 +122,15 @@ buck2-Linux-x86_64-sha256 = <sha256 of that artifact>
 
 Buck fetches the pinned commit into its own cache; nothing is checked into the consuming repo. The `tine`
 path is only the location the cell would occupy, and no `tine/` or `prelude/` or `none/` directory needs to
-exist. Buck2 forbids nested cells inside an external cell, so the consuming project owns its own
-`toolchains` cell, which is why `init` writes one.
+exist. The `toolchains` cell Buck2 looks a toolchain up in is an alias to the tine cell, whose root package
+declares the bootstrap interpreter one: Buck2 forbids a nested cell inside an external cell, so a
+`toolchains/` directory in this repository would be a copy every consuming project needs of its own. A
+project that wants toolchains beyond that one can still declare the cell itself, dropping the alias and
+forwarding what it does not declare:
+
+```Starlark
+toolchain_alias(name = "python_bootstrap", actual = "tine//:python_bootstrap", visibility = ["PUBLIC"])
+```
 
 The one thing to vendor is [`bin/tine`](bin/tine) itself: it is what fetches Buck2, so it cannot come from
 a cell Buck has not fetched yet. It is self-contained for that reason, so vendoring it is a copy and
