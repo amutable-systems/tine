@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 import unittest
 import unittest.mock
 from importlib.machinery import SourceFileLoader
@@ -43,12 +44,6 @@ def scratch(case: unittest.TestCase, prefix: str = "tine-test.") -> Path:
     tmp = tempfile.TemporaryDirectory(prefix=prefix)
     case.addCleanup(tmp.cleanup)
     return Path(tmp.name)
-
-
-def checkout(case: unittest.TestCase) -> Path:
-    path = scratch(case)
-    git("init", "--quiet", cwd=path)
-    return path
 
 
 def pins(cell: Path, spec: object | None = None) -> Path:
@@ -230,7 +225,7 @@ class TestNoComponents(RepositoryTestCase):
         self.assertEqual(tine.components(self.repo), "tag 'v1.2.3+dirty' is not a valid version")
 
     def test_reason_is_recorded_in_the_generated_config(self) -> None:
-        self.assertIn("# no version components: not a git checkout", tine.generate(scratch(self), {}, {}))
+        self.assertIn("# no version components: not a git checkout", tine.generate(scratch(self), {}))
 
 
 class TestGenerate(RepositoryTestCase):
@@ -238,7 +233,7 @@ class TestGenerate(RepositoryTestCase):
         commit = self.commit()
         git("tag", "v1.2.3", cwd=self.repo)
         self.assertEqual(
-            tine.generate(self.repo, {}, {}),
+            tine.generate(self.repo, {}),
             [
                 tine.BLOCK_BEGIN,
                 tine.BLOCK_NOTE,
@@ -254,17 +249,17 @@ class TestGenerate(RepositoryTestCase):
 
     def test_the_dirty_bit_appears_only_for_an_uncommitted_tree(self) -> None:
         self.commit()
-        self.assertNotIn("version-dirty = 1", tine.generate(self.repo, {}, {}))
+        self.assertNotIn("version-dirty = 1", tine.generate(self.repo, {}))
         self.dirty()
-        self.assertIn("version-dirty = 1", tine.generate(self.repo, {}, {}))
+        self.assertIn("version-dirty = 1", tine.generate(self.repo, {}))
 
     def test_every_line_it_writes_is_buckconfig(self) -> None:
         # A checkout without commits fails `rev-parse` with three lines of git advice; all but the
         # first would land in the file as configuration, and Buck would refuse to parse it.
         (self.repo / ".buckconfig").write_text("")
-        tine.refresh(self.repo, {})
+        tine.refresh(self.repo)
         for line in (self.repo / tine.LOCAL).read_text().splitlines():
-            self.assertTrue(not line or line.startswith("#") or "=" in line or line.startswith("["))
+            self.assertTrue(not line or line.startswith(("#", "[", "<")) or "=" in line)
         self.assertEqual(tine.project_config(self.repo), {"": {}})
 
 
@@ -463,291 +458,581 @@ class TestParseBuckconfig(unittest.TestCase):
         self.assertEqual(config["cells"]["sub"], "elsewhere")
 
 
-class TestLocalCheckout(unittest.TestCase):
-    def test_a_plain_absolute_path(self) -> None:
-        path = checkout(self)
-        self.assertEqual(tine.local_checkout(str(path)), path)
-
-    def test_a_file_url(self) -> None:
-        path = checkout(self)
-        self.assertEqual(tine.local_checkout(f"file://{path}"), path)
-
-    def test_a_file_url_with_an_authority_and_an_escape(self) -> None:
-        path = checkout(self)
-        escaped = str(path).replace("/", "%2F", 1)
-        self.assertEqual(tine.local_checkout(f"file://localhost{escaped}"), path)
-
-    def test_a_home_relative_path(self) -> None:
-        path = checkout(self)
-        with unittest.mock.patch.dict(os.environ, {"HOME": str(path.parent)}):
-            self.assertEqual(tine.local_checkout(f"~/{path.name}"), path)
-
-    def test_a_remote_is_not_a_checkout(self) -> None:
-        self.assertIsNone(tine.local_checkout("https://example.invalid/repo"))
-        self.assertIsNone(tine.local_checkout("git@example.invalid:repo.git"))
-
-    def test_a_relative_path_names_nothing_a_fetch_could_reach(self) -> None:
-        self.assertIsNone(tine.local_checkout("../sibling"))
-
-    def test_a_directory_that_is_not_a_repository(self) -> None:
-        self.assertIsNone(tine.local_checkout(str(scratch(self))))
-
-    def test_a_bare_repository(self) -> None:
-        # Buck2 fetches from one of these too, and `init` is a plausible way to name one.
-        path = scratch(self)
-        git("init", "--quiet", "--bare", cwd=path)
-        self.assertEqual(tine.local_checkout(str(path)), path)
-
-
-class TestCheckoutAt(unittest.TestCase):
-    """What an argument names, which is a path the caller typed rather than a recorded origin."""
-
-    def test_a_path_relative_to_the_caller(self) -> None:
-        path = checkout(self)
-        self.addCleanup(os.chdir, Path.cwd())
-        os.chdir(path)
-        self.assertEqual(tine.checkout_at(f"../{path.name}"), path.resolve())
-
-    def test_a_home_relative_path(self) -> None:
-        path = checkout(self)
-        with unittest.mock.patch.dict(os.environ, {"HOME": str(path.parent)}):
-            self.assertEqual(tine.checkout_at(f"~/{path.name}"), path.resolve())
-
-    def test_what_is_not_a_path_at_all(self) -> None:
-        # It would otherwise be resolved against the caller's directory and land somewhere real.
-        self.assertIsNone(tine.checkout_at("https://example.invalid/repo"))
-        self.assertIsNone(tine.checkout_at(""))
-
-
-class CellTestCase(RepositoryTestCase):
-    """`self.repo` is the checkout a cell is overridden with; `self.root` the project overriding it."""
+class MountTestCase(unittest.TestCase):
+    """Test mounts from `self.source` into the project at `self.root`."""
 
     @override
     def setUp(self) -> None:
-        super().setUp()
-        self.root = scratch(self, "tine-test-project.")
+        # Commands resolve the project root from the working directory.
+        self.root = scratch(self, "tine-test-project.").resolve()
         (self.root / ".buckconfig").write_text("[cells]\nroot = .\nsub = sub\n")
+        (self.root / "sub").mkdir()
+        self.source = scratch(self, "tine-test-source.").resolve()
 
-    def cell(self, *arguments: str) -> str:
-        """The command, reporting to a string rather than into the suite's output."""
+    def mount(self, *arguments: str) -> str:
+        """Run `tine mount` and return its stderr."""
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
-            tine.cell(self.root, list(arguments))
+            tine.mount(self.root, list(arguments))
         return stderr.getvalue()
 
-    def declared(self) -> dict[str, tuple[str, str | None]]:
-        return tine.declared_cells(self.root)
+    def declared(self) -> dict[str, str]:
+        return tine.declared_mounts(self.root)
 
     def local(self) -> str:
         return (self.root / tine.LOCAL).read_text()
 
 
-class TestCellOverride(CellTestCase):
-    def test_a_cell_follows_the_head_of_the_checkout_it_is_overridden_with(self) -> None:
-        commit = self.commit()
-        report = self.cell("override", "sub", str(self.repo))
-        self.assertEqual(report, f"tine: cell sub is {self.repo} at HEAD\n")
-        self.assertEqual(self.declared(), {"sub": (str(self.repo), None)})
-        self.assertIn(f"[external_cell_sub]\ngit_origin = {self.repo}\ncommit_hash = {commit}", self.local())
-        # The entry too, so that a cell the project pins differently, or not at all, is overridable.
-        self.assertIn("[external_cells]\nsub = git", self.local())
+class TestMountAdd(MountTestCase):
+    def test_add_records_an_external_source(self) -> None:
+        report = self.mount("add", str(self.root / "sub"), str(self.source))
+        self.assertEqual(report, f"tine: sub is built from {self.source}\n")
+        self.assertEqual(self.declared(), {"sub": str(self.source)})
+        self.assertIn(f"[{tine.MOUNTS}]\nsub = {self.source}", self.local())
 
-    def test_the_pin_moves_with_the_checkout(self) -> None:
-        self.commit()
-        self.cell("override", "sub", str(self.repo))
-        second = self.commit("second")
-        tine.refresh(self.root, tine.project_config(self.root))
-        self.assertIn(f"commit_hash = {second}", self.local())
-
-    def test_uncommitted_work_in_the_checkout_does_not_move_the_pin(self) -> None:
-        commit = self.commit()
-        self.dirty()
-        self.cell("override", "sub", str(self.repo))
-        self.assertIn(f"commit_hash = {commit}", self.local())
-
-    def test_a_named_revision_stays_where_it_was_put(self) -> None:
-        first = self.commit()
-        git("tag", "v1.0.0", cwd=self.repo)
-        self.cell("override", "sub", str(self.repo), "--commit", "v1.0.0")
-        self.commit("second")
-        tine.refresh(self.root, tine.project_config(self.root))
-        self.assertEqual(self.declared(), {"sub": (str(self.repo), first)})
-        self.assertIn(f"commit_hash = {first}", self.local())
-
-    def test_a_revision_the_checkout_does_not_have(self) -> None:
-        self.commit()
-        with self.assertRaisesRegex(SystemExit, "has no revision v9"):
-            self.cell("override", "sub", str(self.repo), "--commit", "v9")
-
-    def test_a_relative_path_is_recorded_as_one_buck_can_fetch_from(self) -> None:
-        commit = self.commit()
+    def test_target_is_project_relative(self) -> None:
         self.addCleanup(os.chdir, Path.cwd())
-        os.chdir(self.repo.parent)
-        self.cell("override", "sub", self.repo.name)
-        self.assertEqual(self.declared(), {"sub": (str(self.repo), None)})
-        self.assertIn(f"commit_hash = {commit}", self.local())
+        os.chdir(self.root)
+        self.mount("add", "sub", str(self.source))
+        self.assertEqual(self.declared(), {"sub": str(self.source)})
 
-    def test_an_alias_is_recorded_as_the_cell_it_resolves_to(self) -> None:
-        self.commit()
-        (self.root / ".buckconfig").write_text("[cells]\nroot = .\nsub = sub\n[cell_aliases]\nalias = sub\n")
-        self.cell("override", "alias", str(self.repo))
-        self.assertEqual(set(self.declared()), {"sub"})
+    def test_add_replaces_an_existing_mount(self) -> None:
+        other = scratch(self).resolve()
+        self.mount("add", str(self.root / "sub"), str(self.source))
+        self.mount("add", str(self.root / "sub"), str(other))
+        self.assertEqual(self.declared(), {"sub": str(other)})
 
-    def test_declaring_it_again_without_a_revision_goes_back_to_following(self) -> None:
-        commit = self.commit()
-        self.cell("override", "sub", str(self.repo), "--commit", commit)
-        self.cell("override", "sub", str(self.repo))
-        self.assertEqual(self.declared(), {"sub": (str(self.repo), None)})
+    def test_concurrent_adds_preserve_both_mounts(self) -> None:
+        (self.root / "other").mkdir()
+        first_read = threading.Event()
+        second_waiting = threading.Event()
+        release = threading.Event()
+        errors: list[BaseException] = []
+        generated = tine.generated
+        config_lock = tine.ConfigLock
 
-    def test_a_cell_whose_name_cannot_be_configured(self) -> None:
-        # Buck2 reads `[external_cell_x # y]` as a section marker it cannot parse.
-        self.commit()
-        (self.root / ".buckconfig").write_text("[cells]\nroot = .\nx # y = sub\n")
-        with self.assertRaisesRegex(SystemExit, "cannot be configured in a buckconfig"):
-            self.cell("override", "x # y", str(self.repo))
+        def delayed(path: Path) -> dict[str, dict[str, str]]:
+            declarations = generated(path)
+            if threading.current_thread().name == "first mount":
+                first_read.set()
+                release.wait(5)
+            return declarations
 
-    def test_a_cell_the_project_does_not_have(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "no cell named absent"):
-            self.cell("override", "absent", str(self.repo))
+        @contextlib.contextmanager
+        def observed(root: Path) -> collections.abc.Iterator[None]:
+            if threading.current_thread().name == "second mount":
+                second_waiting.set()
+            with config_lock(root):
+                yield
 
-    def test_the_project_itself_is_not_a_cell_to_override(self) -> None:
-        # Buck2 answers this one with `External cell 'root' cannot have a nested cell`.
-        self.commit()
-        with self.assertRaisesRegex(SystemExit, "cell root is this project"):
-            self.cell("override", "root", str(self.repo))
+        def add(target: str) -> None:
+            try:
+                tine.mount(self.root, ["add", str(self.root / target), str(self.source)])
+            except BaseException as error:
+                errors.append(error)
 
-    def test_a_path_that_cannot_be_written_as_a_declaration(self) -> None:
-        # A trailing backslash continues the line, swallowing the declaration written after it.
-        self.commit()
-        odd = scratch(self) / "cell\\"
-        git("clone", "--quiet", str(self.repo), str(odd), cwd=self.repo)
-        with self.assertRaisesRegex(SystemExit, "cannot be configured"):
-            self.cell("override", "sub", str(odd))
+        first = threading.Thread(target=add, args=("sub",), name="first mount", daemon=True)
+        second = threading.Thread(target=add, args=("other",), name="second mount", daemon=True)
+        with (
+            unittest.mock.patch.object(tine, "generated", side_effect=delayed),
+            unittest.mock.patch.object(tine, "ConfigLock", side_effect=observed),
+            unittest.mock.patch("builtins.print"),
+        ):
+            first.start()
+            try:
+                self.assertTrue(first_read.wait(5))
+                second.start()
+                self.assertTrue(second_waiting.wait(5))
+            finally:
+                release.set()
+                first.join(5)
+                if second.ident is not None:
+                    second.join(5)
+
+        self.assertFalse(first.is_alive() or second.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(self.declared(), {"other": str(self.source), "sub": str(self.source)})
+
+    def test_target_cannot_hide_tines_private_config(self) -> None:
+        (self.root / tine.HOME / "nested").mkdir(parents=True)
+        for target in (self.root / tine.HOME, self.root / tine.HOME / "nested"):
+            with self.subTest(target=target), self.assertRaisesRegex(SystemExit, "reserved for tine"):
+                self.mount("add", str(target), str(self.source))
+
+    def test_add_rejects_a_project_daemon_buster(self) -> None:
+        (self.root / ".buckconfig").write_text(
+            f"[cells]\nroot = .\nsub = sub\n[buck2]\n{tine.DAEMON_BUSTER} = project-owned\n"
+        )
+        with self.assertRaisesRegex(SystemExit, "daemon_buster is reserved"):
+            self.mount("add", str(self.root / "sub"), str(self.source))
         self.assertEqual(self.declared(), {})
 
-    def test_a_path_that_is_not_a_checkout(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "is not a git repository"):
-            self.cell("override", "sub", str(scratch(self)))
+    def test_add_rejects_overlapping_mounts(self) -> None:
+        (self.root / "sub" / "inner").mkdir()
+        for existing, target in (("sub", "sub/inner"), ("sub/inner", "sub")):
+            with self.subTest(existing=existing, target=target):
+                self.mount("add", str(self.root / existing), str(self.source))
+                with self.assertRaisesRegex(SystemExit, "overlaps mount"):
+                    self.mount("add", str(self.root / target), str(self.source))
+                self.assertEqual(self.declared(), {existing: str(self.source)})
+                self.mount("remove", str(self.root / existing))
 
-    def test_a_checkout_without_commits(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "has no commit to follow"):
-            self.cell("override", "sub", str(self.repo))
-        # The declaration does not outlive the failure to make it.
+    def test_target_must_be_inside_the_project(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "outside the project"):
+            self.mount("add", str(self.source), str(self.source))
+
+    def test_target_cannot_be_the_project_root(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "project root"):
+            self.mount("add", str(self.root), str(self.source))
+
+    def test_target_must_be_a_directory(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "no such directory"):
+            self.mount("add", str(self.root / "missing"), str(self.source))
+
+    def test_source_must_be_a_directory(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "is not a directory"):
+            self.mount("add", str(self.root / "sub"), str(self.source / "missing"))
+
+    def test_source_must_round_trip_through_buckconfig(self) -> None:
+        # A trailing backslash swallows the line written after it.
+        awkward = self.source / "trailing\\"
+        awkward.mkdir()
+        with self.assertRaisesRegex(SystemExit, "cannot be represented"):
+            self.mount("add", str(self.root / "sub"), str(awkward))
+
+    def test_target_must_round_trip_through_buckconfig(self) -> None:
+        # An equals sign in the key changes where buckconfig splits the entry.
+        (self.root / "a=b").mkdir()
+        with self.assertRaisesRegex(SystemExit, "cannot be represented"):
+            self.mount("add", str(self.root / "a=b"), str(self.source))
+
+    def test_target_cannot_parse_as_buckconfig_syntax(self) -> None:
+        # These names parse as a section and an include instead of mount keys.
+        for name in ("[weird]", "<weird>"):
+            (self.root / name).mkdir()
+            with self.assertRaisesRegex(SystemExit, "cannot be represented"):
+                self.mount("add", str(self.root / name), str(self.source))
+            self.assertEqual(self.declared(), {})
+
+    def test_target_cannot_be_a_symlink(self) -> None:
+        # The kernel would apply the bind mount to the symlink's destination.
+        (self.root / "link").symlink_to(self.root / "sub")
+        with self.assertRaisesRegex(SystemExit, "target is a symlink"):
+            self.mount("add", str(self.root / "link"), str(self.source))
+
+    def test_source_must_be_outside_the_project(self) -> None:
+        (self.root / "inside").mkdir()
+        with self.assertRaisesRegex(SystemExit, "must be outside the project"):
+            self.mount("add", str(self.root / "sub"), str(self.root / "inside"))
+
+
+class TestMountRemove(MountTestCase):
+    def test_remove_restores_the_project_directory(self) -> None:
+        self.mount("add", str(self.root / "sub"), str(self.source))
+        report = self.mount("remove", str(self.root / "sub"))
+        self.assertEqual(report, "tine: sub is no longer mounted\n")
         self.assertEqual(self.declared(), {})
+        self.assertNotIn(tine.MOUNTS, self.local())
 
-
-class TestCellRevert(CellTestCase):
-    def test_the_cell_goes_back_to_what_the_project_pins(self) -> None:
-        self.commit()
-        self.cell("override", "sub", str(self.repo))
-        self.cell("revert", "sub")
-        self.assertEqual(self.declared(), {})
-        self.assertNotIn("external_cell_sub", self.local())
-        # Nothing declared, so nothing is left in the block to declare it.
-        self.assertNotIn("cell-sub-commit", self.local())
-
-    def test_only_the_cell_named_is_reverted(self) -> None:
-        self.commit()
-        (self.root / ".buckconfig").write_text("[cells]\nroot = .\nsub = sub\nother = other\n")
-        self.cell("override", "sub", str(self.repo))
-        self.cell("override", "other", str(self.repo))
-        self.cell("revert", "sub")
+    def test_remove_preserves_other_mounts(self) -> None:
+        (self.root / "other").mkdir()
+        self.mount("add", str(self.root / "sub"), str(self.source))
+        self.mount("add", str(self.root / "other"), str(self.source))
+        self.mount("remove", str(self.root / "sub"))
         self.assertEqual(set(self.declared()), {"other"})
 
-    def test_a_cell_that_is_not_overridden(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "cell sub is not overridden"):
-            self.cell("revert", "sub")
+    def test_remove_rejects_an_unknown_mount(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "sub is not mounted"):
+            self.mount("remove", str(self.root / "sub"))
 
-    def test_a_cell_the_project_no_longer_declares(self) -> None:
-        self.commit()
-        self.cell("override", "sub", str(self.repo))
-        (self.root / ".buckconfig").write_text("[cells]\nroot = .\n")
-        self.cell("revert", "sub")
+    def test_remove_accepts_a_stale_declaration(self) -> None:
+        # Removing a mount must not require its missing source to validate.
+        declare(self.root, f"[{tine.MOUNTS}]\nsub = /nonexistent/source\n")
+        self.mount("remove", str(self.root / "sub"))
         self.assertEqual(self.declared(), {})
 
 
-class TestCellList(CellTestCase):
+class TestMountList(MountTestCase):
     def listed(self) -> tuple[str, str]:
         stdout = io.StringIO()
         with contextlib.redirect_stdout(stdout):
-            report = self.cell("list")
+            report = self.mount("list")
         return stdout.getvalue(), report
 
-    def test_nothing_is_overridden(self) -> None:
+    def test_nothing_is_mounted(self) -> None:
         printed, report = self.listed()
         self.assertEqual(printed, "")
-        self.assertIn("no cell is overridden", report)
+        self.assertIn("nothing is mounted", report)
 
-    def test_what_each_cell_is_overridden_with(self) -> None:
-        commit = self.commit()
-        self.cell("override", "sub", str(self.repo))
-        self.assertEqual(self.listed()[0], f"sub {self.repo} HEAD\n")
-        self.cell("override", "sub", str(self.repo), "--commit", commit)
-        self.assertEqual(self.listed()[0], f"sub {self.repo} {commit}\n")
+    def test_list_prints_target_and_source(self) -> None:
+        self.mount("add", str(self.root / "sub"), str(self.source))
+        self.assertEqual(self.listed()[0], f"sub {self.source}\n")
 
 
-class TestOverriddenCells(CellTestCase):
-    """A declaration that cannot be honoured stops the command, rather than building something else."""
+class TestDeclaredMounts(MountTestCase):
+    """Invalid declarations stop the command instead of falling back to project contents."""
 
-    def overridden(self) -> dict[str, tuple[str, str]]:
-        config = tine.project_config(self.root)
-        return tine.overridden_cells(config, tine.declared_cells(self.root))
+    def test_missing_source_is_rejected(self) -> None:
+        declare(self.root, f"[{tine.MOUNTS}]\nsub = /nonexistent/source\n")
+        with self.assertRaisesRegex(SystemExit, "is not a directory; `tine mount remove sub`"):
+            self.declared()
 
-    def test_a_checkout_that_is_no_longer_there(self) -> None:
-        declare(self.root, "[external_cell_sub]\ngit_origin = /nonexistent/checkout\n")
-        with self.assertRaisesRegex(SystemExit, "is not a git repository; `tine cell revert sub`"):
-            self.overridden()
+    def test_missing_target_is_rejected(self) -> None:
+        declare(self.root, f"[{tine.MOUNTS}]\ngone = {self.source}\n")
+        with self.assertRaisesRegex(SystemExit, "no such directory; `tine mount remove gone`"):
+            self.declared()
 
-    def test_a_checkout_with_no_commit_left_to_follow(self) -> None:
-        declare(self.root, f"[external_cell_sub]\ngit_origin = {self.repo}\n")
-        with self.assertRaisesRegex(SystemExit, "cell sub: git rev-parse .*HEAD"):
-            self.overridden()
+    def test_parent_target_is_rejected(self) -> None:
+        declare(self.root, f"[{tine.MOUNTS}]\n../elsewhere = {self.source}\n")
+        with self.assertRaisesRegex(SystemExit, "target must be a project-relative path"):
+            self.declared()
 
-    def test_a_cell_the_project_stopped_declaring(self) -> None:
-        # A branch switch does this, and Buck2 answers with `dep is not a known cell alias`.
-        self.commit()
-        self.cell("override", "sub", str(self.repo))
-        (self.root / ".buckconfig").write_text("[cells]\nroot = .\n")
-        with self.assertRaisesRegex(SystemExit, "cell sub is overridden but this project has none"):
-            self.overridden()
+    def test_absolute_target_is_rejected(self) -> None:
+        declare(self.root, f"[{tine.MOUNTS}]\n{self.root / 'sub'} = {self.source}\n")
+        with self.assertRaisesRegex(SystemExit, "target must be a project-relative path"):
+            self.declared()
+
+    def test_relative_source_is_rejected(self) -> None:
+        declare(self.root, f"[{tine.MOUNTS}]\nsub = ../elsewhere\n")
+        with self.assertRaisesRegex(SystemExit, "source must be an absolute path"):
+            self.declared()
+
+    def test_reserved_target_is_rejected(self) -> None:
+        (self.root / tine.HOME).mkdir()
+        declare(self.root, f"[{tine.MOUNTS}]\n{tine.HOME} = {self.source}\n")
+        with self.assertRaisesRegex(SystemExit, "reserved for tine"):
+            self.declared()
+
+    def test_overlapping_mounts_are_rejected(self) -> None:
+        # The outer mount can hide the inner target, making the result order-dependent.
+        (self.root / "sub" / "inner").mkdir()
+        declare(self.root, f"[{tine.MOUNTS}]\nsub = {self.source}\nsub/inner = {self.source}\n")
+        with self.assertRaisesRegex(SystemExit, "overlaps mount"):
+            self.declared()
+
+    def test_target_that_becomes_a_symlink_is_rejected(self) -> None:
+        # A target can become a symlink after the declaration was written.
+        elsewhere = scratch(self).resolve()
+        declare(self.root, f"[{tine.MOUNTS}]\nsub = {self.source}\n")
+        (self.root / "sub").rmdir()
+        (self.root / "sub").symlink_to(elsewhere)
+        with self.assertRaisesRegex(SystemExit, "target is a symlink.*`tine mount remove sub`"):
+            self.declared()
+
+    def test_symlink_target_can_still_be_removed(self) -> None:
+        elsewhere = scratch(self).resolve()
+        declare(self.root, f"[{tine.MOUNTS}]\nsub = {self.source}\n")
+        (self.root / "sub").rmdir()
+        (self.root / "sub").symlink_to(elsewhere)
+        self.mount("remove", str(self.root / "sub"))
+        self.assertEqual(self.declared(), {})
+
+    def test_hand_written_internal_source_is_rejected(self) -> None:
+        # An internal source can itself be covered by a mount, making its digest namespace-dependent.
+        (self.root / "inside").mkdir()
+        declare(self.root, f"[{tine.MOUNTS}]\nsub = {self.root / 'inside'}\n")
+        with self.assertRaisesRegex(SystemExit, "must be outside the project"):
+            self.declared()
 
     def test_a_project_with_no_block_to_read(self) -> None:
-        self.assertEqual(self.overridden(), {})
+        self.assertEqual(self.declared(), {})
 
-    def test_a_commit_declared_by_hand_is_taken_as_it_stands(self) -> None:
-        # Not resolved again here: Buck fetches it, and reports it if the checkout has lost it.
-        declare(
-            self.root,
-            f"[external_cell_sub]\ngit_origin = {self.repo}\ncommit_hash = {'a' * 40}\n"
-            f"[tine]\ncell-sub-commit = {'a' * 40}\n",
+    def test_only_the_generated_block_declares_mounts(self) -> None:
+        # A checked-in [tine_mounts] section remains ordinary Buck configuration.
+        (self.root / ".buckconfig").write_text(f"[cells]\nroot = .\n[{tine.MOUNTS}]\nsub = {self.source}\n")
+        self.assertEqual(self.declared(), {})
+
+
+class TestMountDigest(MountTestCase):
+    """Mount digests identify equivalent namespaces to Buck's daemon constraint."""
+
+    def digest(self, mounts: dict[str, str]) -> str | None:
+        return tine.mount_digest(mounts, (self.root / ".buckconfig").read_bytes())
+
+    def test_no_mounts_need_no_digest(self) -> None:
+        self.assertIsNone(self.digest({}))
+
+    def test_replaced_source_changes_the_digest(self) -> None:
+        # A stale namespace retains the old directory even when its path is reused.
+        first, second = self.source / "a", self.source / "b"
+        first.mkdir()
+        second.mkdir()
+        before = self.digest({"sub": str(first)})
+        first.rmdir()
+        second.rename(first)
+        self.assertNotEqual(self.digest({"sub": str(first)}), before)
+
+    def test_target_changes_the_digest(self) -> None:
+        self.assertNotEqual(
+            self.digest({"sub": str(self.source)}),
+            self.digest({"other": str(self.source)}),
         )
-        self.assertEqual(self.overridden(), {"sub": (str(self.repo), "a" * 40)})
 
-    def test_a_commit_the_block_records_without_pinning_it_is_resolved_again(self) -> None:
-        # `commit_hash` alone is what following a checkout leaves behind, and is not a declaration
-        # to stay there: the next command asks the checkout again.
-        commit = self.commit()
-        declare(self.root, f"[external_cell_sub]\ngit_origin = {self.repo}\ncommit_hash = {'a' * 40}\n")
-        self.assertEqual(self.overridden(), {"sub": (str(self.repo), commit)})
+    def test_root_config_changes_the_digest(self) -> None:
+        before = self.digest({"sub": str(self.source)})
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\nsub = elsewhere\n")
+        self.assertNotEqual(self.digest({"sub": str(self.source)}), before)
 
-    def test_an_origin_declared_by_hand_that_cannot_be_configured(self) -> None:
-        # The command refuses to write one; the file it writes can still be edited.
-        declare(self.root, f"[external_cell_sub]\ngit_origin = {self.repo}\\\n")
-        with self.assertRaisesRegex(SystemExit, "cannot be configured"):
-            self.overridden()
+    def test_unreadable_source_is_rejected(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "cannot read"):
+            tine.mount_digest({"sub": "/nonexistent/source"}, b"")
 
-    def test_a_commit_declared_by_hand_that_is_not_one(self) -> None:
-        # It would be written into the block as a commit_hash Buck2 reads.
-        declare(
-            self.root,
-            f"[external_cell_sub]\ngit_origin = {self.repo}\n[tine]\ncell-sub-commit = wip\n",
+
+class TestNamespaces(MountTestCase):
+    """Create and inspect bind mounts in child-process namespaces."""
+
+    def answer(self, work: collections.abc.Callable[[], str]) -> str:
+        """Run namespace-changing work in a child and return its result."""
+        read, write = os.pipe()
+        pid = os.fork()
+        if pid == 0:
+            code = 0
+            try:
+                os.close(read)
+                with contextlib.redirect_stderr(io.StringIO()):
+                    answer = work()
+                os.write(write, answer.encode())
+            except BaseException:
+                code = 1
+            os._exit(code)
+        os.close(write)
+        with os.fdopen(read, "rb") as pipe:
+            answer = pipe.read().decode()
+        self.assertEqual(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]), 0)
+        return answer
+
+    def create(self, mounts: dict[str, str]) -> None:
+        buckconfig = (self.root / ".buckconfig").read_bytes()
+        digest = tine.mount_digest(mounts, buckconfig)
+        assert digest is not None
+        tine.create(self.root, mounts, digest, buckconfig)
+
+    @override
+    def setUp(self) -> None:
+        super().setUp()
+        (self.root / "sub" / "witness").write_text("the project's own")
+        (self.source / "witness").write_text("the mounted directory's")
+
+    def test_bind_mount_replaces_target_contents(self) -> None:
+        def mounted() -> str:
+            self.create({"sub": str(self.source)})
+            return (self.root / "sub" / "witness").read_text()
+
+        self.assertEqual(self.answer(mounted), "the mounted directory's")
+        # The child's mount must not propagate back into the test process.
+        self.assertEqual((self.root / "sub" / "witness").read_text(), "the project's own")
+
+    def test_user_namespace_maps_only_the_caller_without_nsresourced(self) -> None:
+        def mapped() -> str:
+            tine._vendored()
+            from mkosi import sandbox
+
+            # A systemd namespace service may be available on the test host, but tine must not use it.
+            with unittest.mock.patch.object(
+                sandbox, "varlink", side_effect=AssertionError("systemd-nsresourced was used")
+            ):
+                self.create({"sub": str(self.source)})
+            return Path("/proc/self/uid_map").read_text()
+
+        lines = self.answer(mapped).splitlines()
+        uid = str(os.getuid())
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0].split(), [uid, uid, "1"])
+
+    def test_all_declared_mounts_are_applied(self) -> None:
+        (self.root / "other").mkdir()
+        other = scratch(self).resolve()
+        (other / "witness").write_text("the other one's")
+
+        def mounted() -> str:
+            self.create({"sub": str(self.source), "other": str(other)})
+            return (self.root / "other" / "witness").read_text()
+
+        self.assertEqual(self.answer(mounted), "the other one's")
+
+    def test_mount_error_names_its_target(self) -> None:
+        def mounted() -> str:
+            with self.assertRaisesRegex(SystemExit, "mount sub: cannot build it from"):
+                tine.create(
+                    self.root,
+                    {"sub": "/nonexistent/source"},
+                    "digest",
+                    (self.root / ".buckconfig").read_bytes(),
+                )
+            return "refused"
+
+        self.assertEqual(self.answer(mounted), "refused")
+
+    def test_symlinked_root_config_is_rejected(self) -> None:
+        original = self.root / ".buckconfig"
+        shared = scratch(self).resolve() / ".buckconfig"
+        shared.write_bytes(original.read_bytes())
+        original.unlink()
+        original.symlink_to(shared)
+
+        def mounted() -> str:
+            with self.assertRaisesRegex(
+                SystemExit, "is a symlink, so the daemon constraint cannot be bound over it"
+            ):
+                self.create({"sub": str(self.source)})
+            return "refused"
+
+        self.assertEqual(self.answer(mounted), "refused")
+
+    def test_root_config_is_constrained_only_inside_the_namespace(self) -> None:
+        mounts = {"sub": str(self.source)}
+        buckconfig = (self.root / ".buckconfig").read_bytes()
+        digest = tine.mount_digest(mounts, buckconfig)
+        assert digest is not None
+
+        def mounted() -> str:
+            tine.create(self.root, mounts, digest, buckconfig)
+            return (self.root / ".buckconfig").read_text()
+
+        self.assertEqual(
+            self.answer(mounted),
+            tine.constrained_config(buckconfig, digest).decode(),
         )
-        with self.assertRaisesRegex(SystemExit, "is not a commit"):
-            self.overridden()
+        self.assertEqual((self.root / ".buckconfig").read_bytes(), buckconfig)
+        self.assertFalse((self.root / tine.PRIVATE_CONFIG).exists())
 
-    def test_a_declaration_with_no_checkout_to_it(self) -> None:
-        declare(self.root, "[external_cell_sub]\ncommit_hash = abc\n[tine]\ncell-other-commit = abc\n")
-        self.assertEqual(self.overridden(), {})
+
+class TestEntrypoint(MountTestCase):
+    """Select the command to run after entering the namespace."""
+
+    def config(self, cell: str) -> dict[str, dict[str, str]]:
+        return {"cells": {"root": ".", tine.CELL: cell}}
+
+    def command(self) -> Path:
+        path = self.root / "sub" / tine.COMMAND
+        path.parent.mkdir(parents=True)
+        path.write_text("")
+        return path
+
+    def test_mounted_cell_uses_its_own_command(self) -> None:
+        command = self.command()
+        mounts = {"sub": str(self.source)}
+        self.assertEqual(tine.entrypoint(self.root, self.config("sub"), mounts), command)
+
+    def test_unmounted_cell_keeps_current_command(self) -> None:
+        self.command()
+        mounts = {"other": str(self.source)}
+        entrypoint = tine.entrypoint(self.root, self.config("sub"), mounts)
+        self.assertEqual(entrypoint, TOOL_PATH.absolute())
+
+    def test_mounted_cell_requires_a_command(self) -> None:
+        # Falling back would combine the outer command with mounted rules.
+        with self.assertRaisesRegex(SystemExit, "mounted tine cell has no bin/tine"):
+            tine.entrypoint(self.root, self.config("sub"), {"sub": str(self.source)})
+
+    def test_mount_covering_cell_uses_mounted_command(self) -> None:
+        # Keep the rules and Buck2 pin from the same checkout.
+        path = self.root / "sub" / "vendor" / tine.COMMAND
+        path.parent.mkdir(parents=True)
+        path.write_text("")
+        config = self.config("sub/vendor")
+        self.assertEqual(tine.entrypoint(self.root, config, {"sub": str(self.source)}), path)
+
+    def test_shared_path_prefix_does_not_cover_cell(self) -> None:
+        self.command()
+        config = self.config("subsidiary")
+        (self.root / "subsidiary").mkdir()
+        entrypoint = tine.entrypoint(self.root, config, {"sub": str(self.source)})
+        self.assertEqual(entrypoint, TOOL_PATH.absolute())
+
+    def test_project_without_tine_cell_keeps_current_command(self) -> None:
+        entrypoint = tine.entrypoint(self.root, {"cells": {"root": "."}}, {"sub": str(self.source)})
+        self.assertEqual(entrypoint, TOOL_PATH.absolute())
+
+    def test_empty_cells_do_not_fall_back_to_repositories(self) -> None:
+        self.command()
+        config = {"cells": {}, "repositories": {tine.CELL: "sub"}}
+        entrypoint = tine.entrypoint(self.root, config, {"sub": str(self.source)})
+        self.assertEqual(entrypoint, TOOL_PATH.absolute())
+
+
+class TestEnter(MountTestCase):
+    """Choose and enter a namespace without performing real namespace operations."""
+
+    @override
+    def setUp(self) -> None:
+        super().setUp()
+        self.made: list[object] = []
+        created = unittest.mock.patch.object(
+            tine, "create", side_effect=lambda *args: self.made.append(args)
+        )
+        created.start()
+        self.addCleanup(created.stop)
+        patched = unittest.mock.patch.dict(os.environ)
+        patched.start()
+        os.environ.pop("BUCK2_BINARY", None)
+        os.environ.pop(tine.MARKER, None)
+        self.addCleanup(patched.stop)
+
+    @contextlib.contextmanager
+    def running(self) -> collections.abc.Iterator[list[object]]:
+        execve: list[object] = []
+        with unittest.mock.patch.object(os, "execve", side_effect=lambda *a: execve.extend(a)):
+            yield execve
+
+    def declare_one(self) -> str:
+        self.mount("add", str(self.root / "sub"), str(self.source))
+        digest = tine.mount_digest(self.declared(), (self.root / ".buckconfig").read_bytes())
+        assert digest is not None
+        return digest
+
+    def test_no_mounts_need_no_namespace(self) -> None:
+        with self.running() as execve:
+            tine.enter(self.root, {}, ["buck", "build"])
+        self.assertEqual((self.made, execve), ([], []))
+
+    def test_buck_child_process_is_already_inside(self) -> None:
+        self.declare_one()
+        with (
+            unittest.mock.patch.dict(os.environ, {"BUCK2_BINARY": "/somewhere/buck2"}),
+            self.running() as execve,
+        ):
+            tine.enter(self.root, {}, ["buck", "build"])
+        self.assertEqual((self.made, execve), ([], []))
+
+    def test_matching_current_namespace_needs_no_handover(self) -> None:
+        digest = self.declare_one()
+        config = {"buck2": {tine.DAEMON_BUSTER: f"{tine.BUSTER_PREFIX}{digest}"}}
+        with (
+            unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.marker(digest)}),
+            self.running() as execve,
+        ):
+            tine.enter(self.root, config, ["buck", "build"])
+        self.assertEqual((self.made, execve), ([], []))
+
+    def test_stale_marker_does_not_skip_namespace_creation(self) -> None:
+        # A manually exported or inherited marker does not prove that this process is in its namespace.
+        digest = self.declare_one()
+        with (
+            unittest.mock.patch.dict(os.environ, {tine.MARKER: f"{digest} wrong-namespace"}),
+            self.running() as execve,
+        ):
+            tine.enter(self.root, {}, ["buck", "build"])
+        self.assertEqual(len(self.made), 1)
+        self.assertTrue(execve)
+
+    def test_mounts_create_an_equivalent_namespace_and_handover(self) -> None:
+        digest = self.declare_one()
+        buckconfig = (self.root / ".buckconfig").read_bytes()
+        with self.running() as execve:
+            tine.enter(self.root, {}, ["buck", "build"])
+        self.assertEqual(self.made, [(self.root, {"sub": str(self.source)}, digest, buckconfig)])
+        _, argv, environment = execve
+        self.assertEqual(argv, [str(TOOL_PATH.absolute()), "buck", "build"])
+        assert isinstance(environment, dict)
+        self.assertEqual(environment[tine.MARKER], tine.marker(digest))
+
+    def test_project_daemon_buster_is_rejected(self) -> None:
+        self.declare_one()
+        config = {"buck2": {tine.DAEMON_BUSTER: "project-owned"}}
+        with self.assertRaisesRegex(SystemExit, "daemon_buster is reserved"), self.running() as execve:
+            tine.enter(self.root, config, ["buck", "build"])
+        self.assertEqual((self.made, execve), ([], []))
 
 
 class TestBuck2(unittest.TestCase):
@@ -853,58 +1138,6 @@ class TestDownload(unittest.TestCase):
             with contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaisesRegex(SystemExit, "not a whole zstd stream"):
                     tine._download(path.as_uri(), hashlib.sha256(payload).hexdigest(), scratch(self))
-
-
-class TestHandover(CellTestCase):
-    """A project overriding the tine cell runs that checkout's command rather than this one."""
-
-    def command(self, checkout: Path) -> Path:
-        path = checkout / tine.COMMAND
-        path.parent.mkdir(parents=True)
-        path.write_text("#!/usr/bin/python3 -SI\n")
-        return path
-
-    @contextlib.contextmanager
-    def running(self) -> collections.abc.Iterator[list[object]]:
-        execv: list[object] = []
-        with unittest.mock.patch.object(os, "execv", side_effect=lambda *a: execv.extend(a)):
-            yield execv
-
-    def declare(self, origin: Path, cell: str = tine.CELL) -> None:
-        declare(self.root, f"[external_cell_{cell}]\ngit_origin = {origin}\n")
-
-    def test_the_overridden_checkouts_command_runs_instead(self) -> None:
-        command = self.command(self.repo)
-        self.declare(self.repo)
-        with self.running() as execv:
-            tine.handover(self.root, ["buck", "build", "//x"])
-        self.assertEqual(execv, [str(command), [str(command), "buck", "build", "//x"]])
-
-    def test_the_checkouts_own_command_is_where_it_stops(self) -> None:
-        # Otherwise the command handed to would find the same declaration and hand over again.
-        command = self.command(self.repo)
-        self.declare(self.repo)
-        with unittest.mock.patch.object(tine, "__file__", str(command)), self.running() as execv:
-            tine.handover(self.root, ["buck"])
-        self.assertEqual(execv, [])
-
-    def test_a_checkout_carrying_no_command_is_left_to_the_generated_block(self) -> None:
-        self.declare(self.repo)
-        with self.running() as execv:
-            tine.handover(self.root, ["buck"])
-        self.assertEqual(execv, [])
-
-    def test_another_cell_overridden_is_not_this_one(self) -> None:
-        self.command(self.repo)
-        self.declare(self.repo, "sub")
-        with self.running() as execv:
-            tine.handover(self.root, ["buck"])
-        self.assertEqual(execv, [])
-
-    def test_nothing_overridden_hands_nothing_over(self) -> None:
-        with self.running() as execv:
-            tine.handover(self.root, ["buck"])
-        self.assertEqual(execv, [])
 
 
 class TestBuck(unittest.TestCase):

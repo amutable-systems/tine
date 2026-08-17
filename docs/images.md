@@ -10,13 +10,14 @@ The host contract is intentionally small:
 
 - the pinned Buck2 binary and its bundled prelude;
 - the pinned bootstrap Python used to run the minimal extractor and development tools;
-- unprivileged user namespaces and the filesystem/kernel facilities required by mkosi-sandbox/overlayfs;
+- unprivileged user namespaces and the filesystem/kernel facilities required by mkosi-sandbox/overlayfs,
+  which `tine mount` also needs;
 - `/dev/kvm` only when running a VM target.
 
 The bootstrap is [`bin/tine`](../bin/tine), which needs a `/usr/bin/python3` of 3.9 or newer, `git` for
 the version components it derives, and, unless that python is 3.14 or newer, `zstd`.
-It verifies the pinned Buck binary against the SHA-256 in `.buckconfig`, or in the `.buckconfig.local`
-a developer pins their own Buck2 in, and caches it under
+It verifies the pinned Buck binary against the SHA-256 in `tools/tools.json`, or in the
+`.buckconfig.local` a developer pins their own Buck2 in, and caches it under
 `${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2/<sha256>`; cached invocations work offline.
 
 ## Concepts
