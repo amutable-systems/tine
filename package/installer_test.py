@@ -14,6 +14,16 @@ from unittest import mock
 import installer
 
 
+class TestPathRules(unittest.TestCase):
+    def test_every_rule_names_a_directory_tree(self) -> None:
+        self.assertEqual(installer.path_rules(docs=True, langs=[]), [])
+        rules = installer.path_rules(docs=False, langs=["en"])
+        self.assertIn((False, "usr/share/doc"), rules)
+        self.assertLess(rules.index((False, "usr/share/locale")), rules.index((True, "usr/share/locale/en")))
+        for _, tree in rules:
+            self.assertNotIn("*", tree)
+
+
 class TestRun(unittest.TestCase):
     def test_package_scripts_tolerate_unmapped_acl_groups(self) -> None:
         # The test box mounts /var/tmp as tmpfs, so a host mounted with noacl cannot hide this failure.

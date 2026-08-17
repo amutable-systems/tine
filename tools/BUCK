@@ -106,6 +106,8 @@ box.new(
         # the license headers lint, see the `reuse` alias below
         "reuse",
         "sed",
+        # The tests of package_system/deb verify a Release with sqv, as verify.py does.
+        "sequoia-sqv",
     ],
     release = _RELEASE,
     visibility = ["PUBLIC"],

@@ -9,6 +9,7 @@
 # one as a retained lock. Signing keys are fetched once, when a repository first declares them.
 load("//box:defs.bzl", "box")
 load("//distribution:arch.bzl", "arch_release", "arch_signing_keys")
+load("//distribution:debian.bzl", "debian_release", "debian_signing_keys")
 load("//distribution:fedora.bzl", "fedora_release", "fedora_signing_keys")
 load("//platforms:architecture.bzl", "architecture")
 
@@ -18,6 +19,10 @@ _FEDORA_ARCHITECTURES = ["x86_64", "arm64"]
 
 # Arch publishes only x86_64. Arch ARM is a separate distribution with its own mirrors and no archive.
 _ARCH_ARCHITECTURES = ["x86_64"]
+
+# Debian puts the architecture into the path of the Packages index and not into the mirror URL.
+# One repository serves every architecture in this list, and each architecture gets its own snapshot.
+_DEBIAN_ARCHITECTURES = ["x86_64", "arm64"]
 
 # Pinned rpmrepo compose snapshot: packages never vanish underneath committed pins.
 # refresh-catalog --advance enumerates the mirror and moves the snapshot pin to the newest compose.
@@ -125,6 +130,56 @@ box.new(
         "zstd",
     ],
     release = ":arch.rolling.release",
+    root = True,
+    visibility = ["PUBLIC"],
+)
+
+debian_release(
+    name = "debian.testing",
+    architectures = _DEBIAN_ARCHITECTURES,
+    archive_snapshot = "20260816T082418Z",
+    box = ":debian.testing.box",
+    # The archive signs a Release with its current key and with the previous key.
+    signing_keys = debian_signing_keys("archive-key-12", "archive-key-13"),
+    visibility = ["PUBLIC"],
+)
+
+box.new(
+    name = "debian.testing.box",
+    architectures = _DEBIAN_ARCHITECTURES,
+    packages = [
+        "apt",
+        "bash",
+        "ca-certificates",
+        "coreutils",
+        "cryptsetup-bin",
+        "dosfstools",
+        "dpkg",
+        "e2fsprogs",
+        "erofs-utils",
+        "kmod",
+        # image/kmod.py loads libkmod.so.2 with dlopen(), and no package in this list depends on it.
+        "libkmod2",
+        "libseccomp2",
+        "mtools",
+        "python3",
+        # ukify imports `cryptography` and `pefile`. systemd-ukify only recommends their packages, and
+        # the install skips recommended packages.
+        "python3-cryptography",
+        "python3-pefile",
+        # package_system/deb/verify.py runs sqv. apt depends on sqv today, but list it explicitly.
+        "sqv",
+        "systemd",
+        "systemd-boot-efi",
+        "systemd-boot-tools",
+        "systemd-repart",
+        # systemd-tpm ships systemd-measure, which ukify runs to sign the policy for the expected PCRs.
+        "systemd-tpm",
+        "systemd-ukify",
+        "udev",
+        "zstd",
+    ],
+    release = ":debian.testing.release",
     root = True,
     visibility = ["PUBLIC"],
 )
