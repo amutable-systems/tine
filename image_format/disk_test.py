@@ -50,7 +50,8 @@ class TestCopyPartition(unittest.TestCase):
             scratch = Path(scratch_dir)
             source = scratch / PUBLISHED
             source.write_bytes(contents)
-            output = disk.SplitOutput("usr", scratch / "out" / "usr.raw", scratch / "out" / "usr.json")
+            blocks = scratch / "out" / "usr.raw"
+            metadata = scratch / "out" / "usr.json"
             row = {
                 "split_path": str(source),
                 "label": "AmutableOS_9",
@@ -58,9 +59,9 @@ class TestCopyPartition(unittest.TestCase):
                 "type": "usr-x86-64",
                 "uuid": UUID,
             }
-            disk._copy_partition(row, output)
-            self.assertEqual(output.blocks.stat().st_size, raw_size)
-            return json.loads(output.metadata.read_text())
+            disk._copy_partition(row, "usr", blocks, metadata)
+            self.assertEqual(blocks.stat().st_size, raw_size)
+            return json.loads(metadata.read_text())
 
     def test_records_the_published_name(self) -> None:
         metadata = self._copy(contents=b"x" * 512, raw_size=512)
@@ -79,9 +80,8 @@ class TestCopyPartition(unittest.TestCase):
     def test_refuses_a_partition_repart_did_not_split(self) -> None:
         with tempfile.TemporaryDirectory(prefix="disk_test.") as scratch_dir:
             scratch = Path(scratch_dir)
-            output = disk.SplitOutput("usr", scratch / "usr.raw", scratch / "usr.json")
             with self.assertRaises(SystemExit):
-                disk._copy_partition({"split_path": "-"}, output)
+                disk._copy_partition({"split_path": "-"}, "usr", scratch / "usr.raw", scratch / "usr.json")
 
 
 if __name__ == "__main__":

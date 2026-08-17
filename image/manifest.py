@@ -6,6 +6,11 @@ per inode, each directory immediately followed by its own contents. Two consumer
 comparison of the paths two images ship (a path in both a system extension and the /usr it merges
 onto silently shadows an OS file), and per-image size accounting. Both need every inode type an OS
 tree holds, so a type that cannot be listed is an error rather than an omission.
+
+A driver writing a listing of what it is about to package imports this rather than running it: only
+the driver holds the finished tree, and only it knows which paths of that tree its artifact carries.
+`roots` is how it says so, and names stay relative to the image, so a listing reads as where each
+path lands on a machine rather than where it sits inside one partition.
 """
 
 import base64
@@ -89,13 +94,43 @@ def check_name(name: str) -> str:
     return name
 
 
-def entries(tree: Path) -> Iterator[Entry]:
-    """Yield every inode below `tree` in manifest order.
+def scope(roots: Sequence[str]) -> list[str]:
+    """The image paths to list, as manifest names: deduplicated, ordered, and non-overlapping.
+
+    A path already covered by another is dropped rather than listed twice, which is what a partition
+    copying both a directory and something below it would otherwise produce.
+    """
+    names = sorted({root.strip("/") for root in roots}, key=os.fsencode)
+    if "" in names:  # the whole tree, which covers every other root by definition
+        return [""]
+    kept: list[str] = []
+    for name in names:
+        if not any(name == covered or name.startswith(covered + "/") for covered in kept):
+            kept.append(name)
+    return kept
+
+
+def entries(tree: Path, roots: Sequence[str] = ()) -> Iterator[Entry]:
+    """Yield every inode below `tree` in manifest order, or only those `roots` reach.
 
     Pre-order, because the format wants a directory's contents to follow it immediately, and sorted
     on the raw name bytes, which is an order neither the locale nor the filesystem can shift.
+
+    A root the image does not have is skipped rather than refused: repart copies what a definition
+    names if it is there, so the ESP definition can name both /boot and /efi for images that have
+    one or the other.
     """
-    yield from _below(tree, "")
+    for name in scope(roots) if roots else [""]:
+        if name == "":
+            yield from _below(tree, "")
+            continue
+        path = tree / name
+        if not path.is_symlink() and not path.exists():
+            continue
+        st = path.lstat()
+        yield Entry(name=check_name(name), path=path, st=st)
+        if stat.S_ISDIR(st.st_mode):
+            yield from _below(path, name + "/")
 
 
 def _below(directory: Path, prefix: str) -> Iterator[Entry]:
@@ -168,23 +203,81 @@ def _record(obj: dict[str, object]) -> bytes:
     return _RS + json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + _LF
 
 
-def records(tree: Path, epoch: int) -> Iterator[bytes]:
+def records(tree: Path, epoch: int, roots: Sequence[str] = ()) -> Iterator[bytes]:
     """The whole sequence for `tree`: the root object, then one object per inode below it."""
     # The root object carries the media type alone, which is what marks the sequence a manifest.
     # Its mode and mtime would be the ephemeral overlay upper's rather than the image's, and the
     # format defaults a nameless first object to a directory anyway.
     yield _record({"mediaType": MEDIA_TYPE})
-    found = list(entries(tree))
+    found = list(entries(tree, roots))
     tokens = hardlink_tokens(found)
     for entry in found:
         yield _record(file_object(entry, epoch=epoch, token=tokens.get(entry.inode)))
 
 
-def write(tree: Path, out: Path, epoch: int) -> int:
+def write(tree: Path, out: Path, epoch: int, roots: Sequence[str] = ()) -> int:
     written = 0
+    out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("wb") as stream:
-        for record in records(tree, epoch):
+        for record in records(tree, epoch, roots):
             stream.write(record)
+            written += 1
+    return written
+
+
+def _objects(source: Path) -> Iterator[dict[str, object]]:
+    """The named objects of a manifest, the root object it opens with aside."""
+    data = source.read_bytes()
+    head, separator, rest = data.partition(_RS)
+    if not separator or head:
+        raise SystemExit(f"manifest: {source} does not open with a record")
+    for index, record in enumerate(rest.split(_RS)):
+        if not record.endswith(_LF):
+            raise SystemExit(f"manifest: {source} holds a record that no line feed ends")
+        obj: dict[str, object] = json.loads(record)
+        if index == 0:
+            if obj != {"mediaType": MEDIA_TYPE}:
+                raise SystemExit(f"manifest: {source} does not open with a {MEDIA_TYPE} object")
+            continue
+        yield obj
+
+
+def order(name: str) -> list[bytes]:
+    """Sort a name before the contents it holds, which sorting the names themselves does not.
+
+    A manifest is in pre-order, and "dir/x" belongs directly after "dir" even though "dir.txt"
+    sorts between the two: the components decide, not the bytes of the whole name.
+    """
+    return [os.fsencode(component) for component in name.split("/")]
+
+
+def merge(sources: Sequence[Path], out: Path) -> int:
+    """Write the listing of a whole from the listings of the parts it is assembled from.
+
+    A disk is filled one partition at a time, so what it carries is what its partitions carry
+    between them. A name more than one of them lists is taken from the last, which is the partition
+    mounted over a directory the others merely hold.
+    """
+    objects: dict[str, dict[str, object]] = {}
+    offset = 0
+    for source in sources:
+        highest = 0
+        for obj in _objects(source):
+            token = obj.get("inodeToken")
+            if isinstance(token, int):
+                # A token numbers an inode within one manifest, so each part keeps its own grouping
+                # by carrying on where the part before it left off.
+                highest = max(highest, token)
+                obj["inodeToken"] = token + offset
+            objects[str(obj["name"])] = obj
+        offset += highest
+
+    written = 1
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("wb") as stream:
+        stream.write(_record({"mediaType": MEDIA_TYPE}))
+        for name in sorted(objects, key=order):
+            stream.write(_record(objects[name]))
             written += 1
     return written
 

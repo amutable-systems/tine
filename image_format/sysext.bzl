@@ -35,6 +35,9 @@ SysextImageInfo = provider(
         "box": provider_field(Dependency),
         "extension": provider_field(str),
         "image": provider_field(Artifact),
+        # What the DDI carries, as a UAPI.16 file manifest: the /usr and /opt of the delta alone,
+        # unlike the manifest of the logical image, which is the whole tree it merges onto.
+        "manifest": provider_field(Artifact),
     },
 )
 
@@ -58,7 +61,8 @@ def declare_image_sysext(
 
     # The DDI leaves the build as an update artifact, so it is named the way it is published:
     # systemd-sysupdate matches an extension transfer against <extension>_<version>_<arch>.sysext.raw.
-    out = ctx.actions.declare_output("{}_{}_{}.sysext.raw".format(extension, version, systemd_arch))
+    stem = "{}_{}_{}.sysext".format(extension, version, systemd_arch)
+    out = ctx.actions.declare_output(stem + ".raw")
 
     # systemd-sysext refuses images without these fields. Without a base there is nothing to
     # match strictly, so accept any host; with one, the driver pins the base's ID/VERSION_ID.
@@ -83,6 +87,10 @@ def declare_image_sysext(
             fail("image_sysext: image must layer a delta on top of base")
         layers = len(base.layers)
 
+    # Written by the driver from the tree it packages, and named after the DDI so a release
+    # publishes the listing under a name that says which image it belongs to.
+    manifest = ctx.actions.declare_output(stem + ".Uapi16Manifest")
+
     signing_access = merge_signing_access([verity_key])
     cmd = terminal_image_command(
         ctx,
@@ -94,6 +102,7 @@ def declare_image_sysext(
         spec = {
             "base": layers,
             "identity": str(ctx.label),
+            "manifest": manifest.as_output(),
             "name": extension,
             "out": out.as_output(),
             # A merged extension must not shadow the host's package database.
@@ -111,7 +120,20 @@ def declare_image_sysext(
         **external_signing_execution(signing_access),
     )
 
-    return SysextImageInfo(box = image.box, extension = extension, image = out)
+    return SysextImageInfo(box = image.box, extension = extension, image = out, manifest = manifest)
+
+def sysext_published(info: SysextImageInfo) -> PublishedInfo:
+    """What a release carries for one extension: the DDI, and the listing of what it holds."""
+    return PublishedInfo(
+        artifacts = {
+            info.image.basename: info.image,
+            info.manifest.basename: info.manifest,
+        }
+    )
+
+def sysext_subtargets(info: SysextImageInfo) -> dict[str, list[Provider]]:
+    """The extension's own views, beside whichever ones the rule exposes for its logical image."""
+    return {"ddi-manifest": [DefaultInfo(default_output = info.manifest)]}
 
 def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
     info = declare_image_sysext(
@@ -127,8 +149,8 @@ def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
         version = ctx.attrs.version,
     )
     return [
-        DefaultInfo(default_output = info.image),
-        PublishedInfo(artifacts = {info.image.basename: info.image}),
+        DefaultInfo(default_output = info.image, sub_targets = sysext_subtargets(info)),
+        sysext_published(info),
         info,
     ]
 

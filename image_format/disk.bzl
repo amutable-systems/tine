@@ -192,10 +192,19 @@ def encode_definitions(
         fail("repart: Verity=signature and signing credentials must be specified together")
     return [json.encode(definition) for definition in definitions]
 
+WrittenPartitionInfo = record(
+    definition = Partition,
+    # What it carries; absent for a partition whose content no listing describes.
+    manifest = Artifact | None,
+)
+
 PartitionInfo = record(
     definition = Partition,
     blocks = Artifact,
     metadata = Artifact,
+    # What it carries; absent for the same reason. An imported partition brings this with it, so
+    # the invocation that copies it in can list the whole disk without listing that partition.
+    manifest = Artifact | None,
 )
 
 RootHashInfo = provider(
@@ -210,8 +219,13 @@ RepartInfo = provider(
     doc = "A repart result containing an optional disk and any independent partition artifacts.",
     fields = {
         "disk": provider_field(Artifact | None, default = None),
+        # What the composed disk carries, its own partitions and its imported ones taken together.
+        "manifest": provider_field(Artifact | None, default = None),
         "partitions": provider_field(list[PartitionInfo]),
         "root_hash": provider_field(RootHashInfo | None, default = None),
+        # The partitions this invocation populates itself. Imported ones are in `partitions`
+        # instead, already listed by the invocation that filled them.
+        "written": provider_field(list[WrittenPartitionInfo], default = []),
     },
 )
 
@@ -242,6 +256,23 @@ def _partition_sub_targets(partitions: list[PartitionInfo]) -> dict[str, list[Pr
             DefaultInfo(default_output = partition.blocks, other_outputs = [partition.metadata]),
         ]
         for partition in partitions
+    }
+
+def _output(artifact: Artifact | None) -> OutputArtifact | None:
+    return artifact.as_output() if artifact != None else None
+
+def manifest_sub_targets(written: list[WrittenPartitionInfo]) -> dict[str, list[Provider]]:
+    """What each partition carries, under the name of the definition that carries it."""
+    listings = {it.definition["name"]: it.manifest for it in written if it.manifest != None}
+    if not listings:
+        return {}
+    return {
+        "manifests": [
+            DefaultInfo(
+                default_outputs = listings.values(),
+                sub_targets = {name: [DefaultInfo(default_output = out)] for name, out in listings.items()},
+            ),
+        ],
     }
 
 def declare_repart(
@@ -303,10 +334,50 @@ def declare_repart(
     if len(names) != len({name: True for name in names}):
         fail("repart: new and imported partition names must be unique")
 
+    definition_specs = []
+    outputs = []
+    new_partitions = []
+    written = []
+    for definition in decoded:
+        name = definition["name"]
+
+        # A definition that copies nothing carries nothing to list: verity partitions hold a hash
+        # tree, and a filesystem created empty is populated by the system that grows it rather than
+        # by this build.
+        listing = None
+        if definition["copy_files"]:
+            listing = declare_out(ctx, identifier, "manifests/{}.Uapi16Manifest".format(name))
+
+        # A partition leaves this invocation as an artifact of its own only when it splits them
+        # back out; otherwise it exists solely inside the disk they are composed into.
+        blocks = None
+        metadata = None
+        if split:
+            blocks = declare_out(ctx, identifier, "partitions/{}.raw".format(name))
+            metadata = declare_out(ctx, identifier, "partitions/{}.json".format(name))
+            outputs.append(blocks)
+            new_partitions.append(
+                PartitionInfo(
+                    definition = definition,
+                    blocks = blocks,
+                    manifest = listing,
+                    metadata = metadata,
+                ),
+            )
+
+        definition_specs.append({
+            "blocks": _output(blocks),
+            "definition": definition,
+            "manifest": _output(listing),
+            "metadata": _output(metadata),
+        })
+        written.append(WrittenPartitionInfo(definition = definition, manifest = listing))
+
     spec = {
         "basename": basename,
-        "definitions": decoded,
+        "definitions": definition_specs,
         "identity": "{}[{}]".format(ctx.label, identifier or "repart"),
+        "manifest": None,
         "mkfs_options": mkfs_options,
         "out": None,
         "output_size": output_size,
@@ -314,6 +385,7 @@ def declare_repart(
             {
                 "blocks": value.blocks,
                 "definition": value.definition,
+                "manifest": value.manifest,
                 "metadata": value.metadata,
             }
             for value in imported_partitions
@@ -322,34 +394,20 @@ def declare_repart(
         "root_hash_out": None,
         "seed": seed,
         "signing": signing_key_spec(verity_key),
-        "split_outputs": [],
     }
 
-    outputs = []
-    new_partitions = []
-    if split:
-        for definition in decoded:
-            name = definition["name"]
-            blocks = declare_out(ctx, identifier, "partitions/{}.raw".format(name))
-            metadata = declare_out(ctx, identifier, "partitions/{}.json".format(name))
-            spec["split_outputs"].append({
-                "blocks": blocks.as_output(),
-                "metadata": metadata.as_output(),
-                "name": name,
-            })
-            outputs.append(blocks)
-            new_partitions.append(
-                PartitionInfo(
-                    definition = definition,
-                    blocks = blocks,
-                    metadata = metadata,
-                )
-            )
-
     out = None
+    manifest = None
     if disk:
         out = declare_out(ctx, identifier, basename + ".raw")
         spec["out"] = out.as_output()
+
+        # Nothing to assemble a listing of the whole from when no part of this disk was listed,
+        # which is a disk of imported verity partitions and nothing else.
+        listed = [it for it in imported_partitions + written if it.manifest != None]
+        if listed:
+            manifest = declare_out(ctx, identifier, basename + ".Uapi16Manifest")
+            spec["manifest"] = manifest.as_output()
 
     kind = _verity_kind(decoded)
     if kind != None and imported_root_hash != None:
@@ -363,10 +421,17 @@ def declare_repart(
     available_partitions = imported_partitions + new_partitions
     info = RepartInfo(
         disk = out,
+        manifest = manifest,
         partitions = available_partitions,
         root_hash = root_hash,
+        written = written,
     )
-    sub_targets = {}
+    sub_targets = manifest_sub_targets(written)
+    if manifest != None:
+        # Qualified, unlike the provider field: a logical image publishes a `manifest` subtarget of
+        # its own (image.bzl:image_metadata_subtargets) listing its whole tree, and a composition
+        # merges both sets of subtargets into one namespace.
+        sub_targets["disk-manifest"] = [DefaultInfo(default_output = manifest)]
     if root_hash != None:
         sub_targets["roothash"] = [DefaultInfo(default_output = root_hash.hash), info]
 
