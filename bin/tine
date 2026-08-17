@@ -45,29 +45,15 @@ PINS = "tools/tools.json"
 SECTION = "tine"
 BUCK2 = "buck2-"
 
-# What a project `tine init` writes pins itself to. The tine cell needs the Buck2 its rules were
-# written against, which is this fork rather than upstream.
-TINE_ORIGIN = "https://github.com/amutable-systems/tine"
-BUCK2_REPOSITORY = "daandemeyer/buck2"
-# Keyed as `uname` answers, so what a pin is named needs no second table to be derived from. Linux
-# spells these machines and nothing else: `arm64` and `amd64` are other systems' names for two.
-BUCK2_ARTIFACTS = {
-    "Linux-aarch64": "buck2-aarch64-unknown-linux-musl.zst",
-    "Linux-riscv64": "buck2-riscv64gc-unknown-linux-gnu.zst",
-    "Linux-x86_64": "buck2-x86_64-unknown-linux-musl.zst",
-}
+# The platforms a pin is looked up under, keyed as `uname` answers so that nothing has to derive one
+# name from another. Linux spells these machines and nothing else: `arm64` and `amd64` are other
+# systems' names for two.
+PLATFORMS = ("Linux-aarch64", "Linux-riscv64", "Linux-x86_64")
 
-# What must not invalidate Buck's file watcher, as the lines a continued value is written across:
-# VCS state, dependency and build trees, and the caches tools keep. Only names that are always
-# generated, which `build`, `dist` and `out` are not: those are ordinary package names, and ignoring
-# one would hide the targets in it rather than only its churn.
-IGNORED = (
-    ".git, .jj, **/.git, **/.jj, **/.hg, **/.svn",
-    "**/buck-out, **/target, **/node_modules, **/__pycache__, **/.venv, **/venv",
-    "**/.cache, **/.direnv, **/.gradle, **/.tox, **/.nox",
-    "**/.mypy_cache, **/.pytest_cache, **/.ruff_cache",
-    "**/.next, **/.parcel-cache, **/.turbo, **/.idea, **/.vscode",
-)
+# What a project decides for itself in the configuration `tine init` writes it, everything else there
+# being the cell's own.
+DETECTOR = "target_platform_detector_spec"
+DEFAULT_PLATFORM = "prelude//platforms:default"
 
 # The block this owns in that file. Everything else there is the developer's, and stays; theirs
 # comes after this block, so a key they set for themselves still wins over the one written here.
@@ -554,7 +540,7 @@ def refresh(
 
 def _platform() -> str:
     system, _, _, _, machine = os.uname()
-    if (platform := f"{system}-{machine}") not in BUCK2_ARTIFACTS:
+    if (platform := f"{system}-{machine}") not in PLATFORMS:
         raise fail(f"unsupported platform: {platform}")
     return platform
 
@@ -683,9 +669,8 @@ def buck2(config: dict[str, dict[str, str]], cell: Path, *, fetch: bool = True) 
 # What the usage message, and every shell's completion of the first word, are generated from.
 VERBS = {
     "buck": "run the pinned Buck2, which every other command configures",
-    "cell": "build a cell from a local checkout, or go back to the pinned one",
-    "bump": "rewrite the pinned Buck2 release to the latest one published",
-    "init": "write the configuration a project needs to build against the tine cell",
+    "cell": "build a cell from a local checkout, or go back to the one the project registers",
+    "init": "write the configuration a project needs to build against a checkout of the tine cell",
     "completion": "print the completion script for bash, fish or zsh",
 }
 
@@ -828,7 +813,6 @@ end
 __TINE_VERBS__
 complete -c tine -n '__fish_seen_subcommand_from completion' -f -a 'bash fish zsh'
 complete -c tine -n '__fish_seen_subcommand_from init' -F
-complete -c tine -n '__fish_seen_subcommand_from bump' -f
 complete -c tine -n __tine_cell_verb -f -a 'override revert list'
 complete -c tine -n __tine_cell_path -F
 """
@@ -891,130 +875,6 @@ fi
 """
 
 
-def _release(repository: str) -> tuple[str, dict[str, str]]:
-    """The repository's latest release as its tag and the SHA-256 of each asset it publishes.
-
-    The full release, or the newest published one where the repository has none.
-    """
-    import json
-    import urllib.error
-    import urllib.request
-
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "tine"}
-    if token := os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN"):
-        headers["Authorization"] = f"Bearer {token}"
-
-    def get(url: str) -> object:
-        request = urllib.request.Request(url, headers=headers)
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                return json.load(response)
-        except urllib.error.HTTPError:
-            # Answered, and the answer was no; the caller decides which of those it can live with.
-            raise
-        except (OSError, ValueError) as error:
-            # ValueError: something answered, with something other than the JSON GitHub sends.
-            raise fail(f"GitHub: {url}: {error}") from error
-
-    api = f"https://api.github.com/repos/{repository}/releases"
-    try:
-        latest = get(f"{api}/latest")
-    except urllib.error.HTTPError as error:
-        # A repository publishing only prereleases has no "latest", and only that is recoverable.
-        if error.code != 404:
-            raise fail(f"GitHub: {api}/latest: {error}") from error
-        latest = None
-    if not isinstance(latest, dict):
-        try:
-            listed = get(f"{api}?per_page=100")
-        except urllib.error.HTTPError as error:
-            raise fail(f"GitHub: {api}: {error}") from error
-        published = [
-            release
-            for release in (listed if isinstance(listed, list) else [])
-            if isinstance(release, dict) and not release.get("draft") and release.get("published_at")
-        ]
-        if not published:
-            raise fail(f"GitHub reports no published releases for {repository}")
-        latest = max(published, key=lambda release: str(release["published_at"]))
-
-    tag = str(latest.get("tag_name") or "")
-    if not tag or not round_trips(tag):
-        raise fail(f"{repository} reports {tag!r} as the tag of its latest release")
-    assets = latest.get("assets")
-    return tag, {
-        str(asset.get("name")): str(asset.get("digest") or "").removeprefix("sha256:")
-        for asset in (assets if isinstance(assets, list) else [])
-        if isinstance(asset, dict)
-    }
-
-
-def _digest(assets: dict[str, str], artifact: str, repository: str, tag: str) -> str:
-    """The SHA-256 a release publishes an artifact under, which a pin is no use without."""
-    digest = assets.get(artifact, "")
-    if not is_hex(digest, 64):
-        raise fail(f"{repository} {tag} publishes no {artifact} with a SHA-256")
-    return digest
-
-
-def bump(buckconfig: Path) -> None:
-    """Rewrite a project's own Buck2 pin to the repository's latest release, in place.
-
-    Read from the file it rewrites rather than from the project's merged configuration: a Buck2
-    someone pins for themselves in `.buckconfig.local` is theirs, and is not the committed pin
-    catching up with it. Only the values move, and the SHA-256 comes off the release asset's digest,
-    so nothing is downloaded.
-    """
-    pin = parse_buckconfig(buckconfig).get(SECTION, {})
-    repository = pin.get(f"{BUCK2}repository")
-    if not repository:
-        raise fail(
-            f"no [{SECTION}] {BUCK2}repository in {buckconfig} to bump from; a project building the"
-            f" {CELL} cell from a checkout is pinned by that checkout's {PINS} instead"
-        )
-
-    tag, assets = _release(repository)
-    values = {f"{BUCK2}release": tag}
-    for platform in sorted(BUCK2_ARTIFACTS):
-        # The artifact names carry no version, so the one pinned is the one to look for.
-        if (artifact := pin.get(f"{BUCK2}{platform}-artifact")) is not None:
-            values[f"{BUCK2}{platform}-sha256"] = _digest(assets, artifact, repository, tag)
-
-    if all(pin.get(key) == value for key, value in values.items()):
-        print(f"tine: buck2 {tag} is already pinned", file=sys.stderr)
-        return
-    write_if_changed(buckconfig, _rewrite(buckconfig, values))
-    print(f"tine: buck2 {pin.get(f'{BUCK2}release')} -> {tag}", file=sys.stderr)
-
-
-def _rewrite(buckconfig: Path, values: dict[str, str]) -> str:
-    """The file with each named key given its new value, and nothing else touched."""
-    kept: list[str] = []
-    section = None
-    written = set()
-    continued = False
-    for line in read_lines(buckconfig):
-        body, ending = (line[:-1], "\r") if line.endswith("\r") else (line, "")
-        if continued:
-            # What is left of a value written across several lines, and now written on one.
-            continued = body.endswith("\\")
-            continue
-        if (marker := section_marker(body)) is not None:
-            section = marker
-        elif section == SECTION and (key := body.split("=", 1)[0].strip()) in values:
-            continued = body.endswith("\\")
-            written.add(key)
-            indent = body[: len(body) - len(body.lstrip())]
-            line = f"{indent}{key} = {values[key]}{ending}"
-        kept.append(line)
-    if missing := sorted(set(values) - written):
-        raise fail(
-            f"{buckconfig}: [{SECTION}] has no {', '.join(missing)} to rewrite; a pin reached"
-            " through an include is not this command's to move"
-        )
-    return "\n".join(kept) + "\n"
-
-
 GITIGNORE = f"""/buck-out
 **/buck-out
 /{LOCAL}
@@ -1022,62 +882,42 @@ GITIGNORE = f"""/buck-out
 """
 
 
-def _skeleton(origin: str, commit: str, release: str, digests: dict[str, str]) -> dict[str, str]:
-    """What a project needs before Buck can be run in it, as file contents.
+def project_buckconfig(source: Path, cell: str) -> str:
+    """This cell's own buckconfig, as a project consuming it from `cell` needs it.
 
-    The tine cell is pinned by commit like any other external cell, an origin naming a checkout on
-    this machine included: `tine cell override` is what makes one follow a checkout as it moves.
+    Copied rather than written afresh, so that what a project has no say in cannot fall out of step
+    with the cell: the aliases the bundled prelude and the toolchain need, the paths Buck must not
+    watch, the platform it builds for. Only the cells are the project's own, this cell being one of
+    them rather than the root, and with them the detector that gives the project's own targets a
+    platform. The comments in `[cells]` go with the lines they explain, being about a standalone
+    layout this is not.
     """
-    cell = [f"git_origin = {origin}", f"commit_hash = {commit}"]
-    ignore = "ignore = " + ", \\\n    ".join(IGNORED)
-    detector = (
-        "target_platform_detector_spec = target:root//...->prelude//platforms:default"
-        " target:tine//...->prelude//platforms:default"
-    )
-    pins = [f"buck2-repository = {BUCK2_REPOSITORY}", f"buck2-release = {release}"]
-    for platform in sorted(BUCK2_ARTIFACTS):
-        pins += [
-            f"buck2-{platform}-artifact = {BUCK2_ARTIFACTS[platform]}",
-            f"buck2-{platform}-sha256 = {digests[platform]}",
-        ]
-    buckconfig = f"""[cells]
-root = .
-tine = tine
-prelude = prelude
-none = none
-
-[cell_aliases]
-config = prelude
-# The tine cell's own aliases are honoured even as an external cell, and it aliases fbsource to
-# satisfy the bundled prelude, so `none` has to resolve here too.
-fbsource = none
-# The toolchain the tine cell declares. An alias rather than a nested cell, so that a consuming project
-# can pull tine in as an external cell.
-toolchains = tine
-
-[external_cells]
-prelude = bundled
-tine = git
-
-[external_cell_tine]
-{chr(10).join(cell)}
-
-[parser]
-{detector}
-
-[project]
-{ignore}
-
-[build]
-execution_platforms = prelude//platforms:default
-
-# The Buck2 `tine` fetches and verifies before running anything; `tine bump` rewrites these.
-[tine]
-{chr(10).join(pins)}
-"""
-    # `.buckconfig` last: it is what a second run refuses to overwrite, so nothing that can fail
-    # should come after it.
-    return {".gitignore": GITIGNORE, ".buckconfig": buckconfig}
+    lines = [
+        f"# Written by `tine init` from {cell}/.buckconfig, the {CELL} cell this project builds.",
+        "# The cells are this project's; everything below them is that file's.",
+        "",
+    ]
+    section = None
+    for line in read_lines(source):
+        stripped = line.strip()
+        if (marker := section_marker(stripped)) is not None:
+            section = marker
+        elif section is None:
+            # Whatever the cell's own file says about itself before its first section.
+            continue
+        elif section == "cells":
+            if stripped.startswith("#"):
+                continue
+            if stripped.split("=", 1)[0].strip() == CELL:
+                lines += ["root = .", f"{CELL} = {cell}"]
+                continue
+        elif stripped.startswith(DETECTOR):
+            lines.append(
+                f"{DETECTOR} = target:root//...->{DEFAULT_PLATFORM} target:{CELL}//...->{DEFAULT_PLATFORM}"
+            )
+            continue
+        lines.append(line)
+    return "\n".join(lines) + "\n"
 
 
 def exclude(directory: Path, entries: str) -> None:
@@ -1107,68 +947,50 @@ def exclude(directory: Path, entries: str) -> None:
 
 
 def init(directory: Path, arguments: list[str]) -> None:
-    """Write the configuration a project needs to build against this cell.
+    """Write the configuration a project needs to build against a checkout of this cell.
 
-    Buck2 has an `init` of its own; this shadows it, because what a project needs here is the tine
-    cell and a Buck2 to fetch, rather than an empty prelude project.
+    Buck2 has an `init` of its own; this shadows it, because what a project needs here is this cell
+    and what it ships, rather than an empty prelude project.
     """
     import argparse
 
     parser = argparse.ArgumentParser(prog="tine init", description="write the configuration a project needs")
     parser.add_argument(
-        "origin",
+        "cell",
         nargs="?",
-        default=TINE_ORIGIN,
-        metavar="<origin>",
-        help=f"the tine cell to build against (default: {TINE_ORIGIN})",
-    )
-    parser.add_argument(
-        "--local",
-        action="store_true",
-        help="follow the checkout that origin names, as `tine cell override` does, rather than the"
-        " commit it is on now",
+        metavar="<path>",
+        help="a checkout of this cell in the project, a submodule of it or any other directory"
+        " (default: the checkout this command is part of)",
     )
     args = parser.parse_args(arguments)
     if (directory / ".buckconfig").exists():
         raise fail(f"{directory / '.buckconfig'} already exists")
 
-    # `ls-remote` reads a path on this machine as readily as a URL, so both kinds of origin are
-    # pinned to the commit they are on now; `tine cell override` is what follows one afterwards.
-    checkout = checkout_at(args.origin)
-    if args.local and checkout is None:
-        raise fail(f"--local needs an origin that is a checkout on this machine, and {args.origin} is not")
-    origin = str(checkout or args.origin)
-    if not round_trips(origin):
-        raise fail(f"{origin!r} cannot be written to .buckconfig as it stands")
-    remote = _git("ls-remote", "--end-of-options", origin, "HEAD", directory=directory)
-    commit = remote.split()[0] if remote else ""
-    if not is_hex(commit, 40, 64):
-        raise fail(f"{origin} reports no HEAD to pin the tine cell to")
+    # Against the project rather than the working directory, which is the same thing for the command
+    # and not for a caller that passes one.
+    checkout = (directory / Path(args.cell).expanduser()).absolute() if args.cell else cell_root()
+    # A Buck2 cell is a path in the project, so a checkout anywhere else cannot be one, however
+    # readable it is from here.
+    try:
+        path = checkout.relative_to(directory.absolute())
+    except ValueError:
+        raise fail(f"{checkout} is not in {directory}, so it cannot be a cell of this project") from None
+    if not (checkout / PINS).is_file():
+        raise fail(f"{checkout} is no checkout of the {CELL} cell: it has no {PINS}")
+    if not round_trips(str(path)):
+        raise fail(f"{path} cannot be written to .buckconfig as it stands")
 
-    tag, assets = _release(BUCK2_REPOSITORY)
-    digests = {
-        platform: _digest(assets, artifact, BUCK2_REPOSITORY, tag)
-        for platform, artifact in BUCK2_ARTIFACTS.items()
-    }
-
-    for name, content in _skeleton(origin, commit, tag, digests).items():
-        path = directory / name
-        if path.exists():
+    # `.buckconfig` last: it is what a second run refuses to overwrite, so nothing that can fail
+    # should come after it.
+    files = {".gitignore": GITIGNORE, ".buckconfig": project_buckconfig(checkout / ".buckconfig", str(path))}
+    for name, content in files.items():
+        if (directory / name).exists():
             print(f"tine: {name} exists, left alone", file=sys.stderr)
             if name == ".gitignore":
                 exclude(directory, content)
             continue
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-        except OSError as error:
-            raise fail(f"cannot create {path.parent}: {error}") from error
-        write_if_changed(path, content)
+        write_if_changed(directory / name, content)
         print(f"tine: wrote {name}", file=sys.stderr)
-
-    if checkout is not None and args.local:
-        # The whole verb, so that a declaration made here is the one every other command reads, and
-        # is refused here for the same reasons.
-        cell(directory, ["override", CELL, str(checkout)])
 
 
 def cells_of(config: dict[str, dict[str, str]]) -> dict[str, str]:
@@ -1346,12 +1168,6 @@ def main(argv: list[str]) -> None:
     elif name == "init":
         # Before the project root is resolved, because writing one is what this is for.
         init(cwd(), rest)
-    elif name == "bump":
-        if rest:
-            raise fail("bump takes no arguments")
-        root = project_root(cwd())
-        handover(root, argv)
-        bump(root / ".buckconfig")
     elif name == "completion":
         # Passing an unknown shell through would print Buck2's own script, which names buck2
         # throughout and would complete against whatever buck2 the shell finds.

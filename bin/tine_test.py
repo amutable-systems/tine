@@ -816,56 +816,6 @@ class TestBuck2(unittest.TestCase):
             tine.buck2(self.pin(**{f"buck2-{platform}-sha256": "abc"}), self.cell())
 
 
-class TestRelease(unittest.TestCase):
-    """What GitHub is asked for, against canned answers rather than the network."""
-
-    def answers(self, **replies: object) -> contextlib.AbstractContextManager[object]:
-        """Each URL suffix mapped to the JSON GitHub would return, or an HTTPError to raise."""
-
-        def urlopen(request: object, **_: object) -> object:
-            url = getattr(request, "full_url", request)
-            reply = next(value for part, value in replies.items() if part in str(url))
-            if isinstance(reply, Exception):
-                raise reply
-            return contextlib.nullcontext(io.BytesIO(json.dumps(reply).encode()))
-
-        return unittest.mock.patch("urllib.request.urlopen", side_effect=urlopen)
-
-    def not_found(self) -> Exception:
-        """What GitHub answers for a repository whose releases are all prereleases."""
-        import email.message
-        import urllib.error
-
-        # Closed when the test ends: urllib gives it the body of a temporary file, which complains
-        # at collection if nothing closed it.
-        error = urllib.error.HTTPError("https://api.github.com", 404, "n", email.message.Message(), None)
-        self.addCleanup(error.close)
-        return error
-
-    def release(self, name: str, **fields: object) -> dict[str, object]:
-        assets = [{"name": name, "digest": f"sha256:{'b' * 64}"}]
-        return {"tag_name": "2026-01-01", "assets": assets, "published_at": "2026-01-01"} | fields
-
-    def test_the_latest_release_and_its_digests(self) -> None:
-        with self.answers(latest=self.release("buck2.zst")):
-            self.assertEqual(tine._release("e/b"), ("2026-01-01", {"buck2.zst": "b" * 64}))
-
-    def test_a_repository_that_publishes_only_prereleases(self) -> None:
-        # It has no "latest"; the newest of what it does publish stands in.
-        listed = [
-            self.release("old.zst", tag_name="2025-01-01", published_at="2025-01-01"),
-            self.release("new.zst", tag_name="2026-06-06", published_at="2026-06-06"),
-            self.release("draft.zst", tag_name="2027-01-01", published_at="2027-01-01", draft=True),
-        ]
-        with self.answers(latest=self.not_found(), per_page=listed):
-            self.assertEqual(tine._release("e/b"), ("2026-06-06", {"new.zst": "b" * 64}))
-
-    def test_a_repository_that_publishes_nothing(self) -> None:
-        with self.answers(latest=self.not_found(), per_page=[]):
-            with self.assertRaisesRegex(SystemExit, "no published releases"):
-                tine._release("e/b")
-
-
 class TestDownload(unittest.TestCase):
     """The pin is what makes an unverified binary safe to run, so it is checked before it is kept."""
 
@@ -996,273 +946,140 @@ class TestBuck(unittest.TestCase):
         self.assertFalse((self.root / tine.LOCAL).exists())
 
 
-class TestRewrite(unittest.TestCase):
-    """`tine bump` moves values and leaves the file it found them in otherwise alone."""
+CELL_BUCKCONFIG = """# Standalone root cell. Consuming projects supply their own; see README.md.
 
-    def buckconfig(self, content: str) -> Path:
-        path = scratch(self) / ".buckconfig"
-        path.write_text(content)
-        return path
+[cells]
+# Named `tine`, not `root`, so same-cell labels read `tine//...` as in a consuming project.
+tine = .
+prelude = prelude
+none = none
 
-    def test_values_move_and_nothing_else_does(self) -> None:
-        before = "[cells]\nroot = .\n\n# keep me\n[tine]\nbuck2-release = old\nbuck2-repository = e/b\n"
-        path = self.buckconfig(before)
+[cell_aliases]
+config = prelude
+toolchains = tine
+# Satisfy the bundled prelude's internal platform alias.
+fbsource = none
+
+[external_cells]
+prelude = bundled
+
+[parser]
+target_platform_detector_spec = target:tine//...->prelude//platforms:default
+
+[project]
+ignore = .git, **/buck-out, \\
+    **/target
+
+[buck2]
+defer_write_actions = true
+"""
+
+
+class TestProjectBuckconfig(unittest.TestCase):
+    """What a project's configuration takes from the cell's own, and what it decides for itself."""
+
+    def written(self, cell: str = "tine") -> str:
+        source = scratch(self) / ".buckconfig"
+        source.write_text(CELL_BUCKCONFIG)
+        return tine.project_buckconfig(source, cell)
+
+    def config(self, cell: str = "tine") -> dict[str, dict[str, str]]:
+        root = scratch(self, "tine-test-project.")
+        (root / ".buckconfig").write_text(self.written(cell))
+        return tine.project_config(root)
+
+    def test_the_cell_is_a_path_in_the_project_rather_than_its_root(self) -> None:
+        cells = self.config("vendor/tine")["cells"]
+        self.assertEqual(cells["root"], ".")
+        self.assertEqual(cells["tine"], "vendor/tine")
+        # Cells the project has no say in are the cell's own, and the toolchain is reached through an
+        # alias to this cell rather than a cell of the project's.
+        self.assertEqual(cells["prelude"], "prelude")
+        self.assertEqual(self.config("vendor/tine")["cell_aliases"]["toolchains"], "tine")
+
+    def test_the_project_gets_a_platform_for_its_own_targets_too(self) -> None:
+        detector = self.config()["parser"][tine.DETECTOR].split()
         self.assertEqual(
-            tine._rewrite(path, {"buck2-release": "new"}),
-            before.replace("old", "new"),
+            detector, [f"target:{cell}//...->{tine.DEFAULT_PLATFORM}" for cell in ("root", "tine")]
         )
 
-    def test_the_line_keeps_the_indentation_it_had(self) -> None:
-        path = self.buckconfig("[tine]\n    buck2-release = old\n")
-        self.assertEqual(tine._rewrite(path, {"buck2-release": "new"}), "[tine]\n    buck2-release = new\n")
+    def test_what_the_project_has_no_say_in_is_copied_with_its_comments(self) -> None:
+        written = self.written()
+        for kept in ("fbsource = none", "# Satisfy the bundled prelude", "**/target", "prelude = bundled"):
+            self.assertIn(kept, written)
+        # A value written across lines stays one, which is what Buck2 reads it as.
+        self.assertEqual(self.config()["project"]["ignore"], ".git, **/buck-out, **/target")
 
-    def test_a_key_of_the_same_name_in_another_section_is_left_alone(self) -> None:
-        path = self.buckconfig("[other]\nbuck2-release = theirs\n[tine]\nbuck2-release = old\n")
-        self.assertEqual(
-            tine._rewrite(path, {"buck2-release": "new"}),
-            "[other]\nbuck2-release = theirs\n[tine]\nbuck2-release = new\n",
-        )
-
-    def test_a_key_that_is_not_there_to_rewrite(self) -> None:
-        path = self.buckconfig("[tine]\nbuck2-release = old\n")
-        with self.assertRaisesRegex(SystemExit, "has no buck2-Linux-x86_64-sha256"):
-            tine._rewrite(path, {"buck2-Linux-x86_64-sha256": "a" * 64})
-
-    def test_a_section_marker_with_a_trailing_comment_is_still_the_section(self) -> None:
-        path = self.buckconfig("[tine] # @oss-enable\nbuck2-release = old\n")
-        self.assertEqual(
-            tine._rewrite(path, {"buck2-release": "new"}), "[tine] # @oss-enable\nbuck2-release = new\n"
-        )
-
-    def test_the_line_endings_the_file_had_are_the_ones_it_keeps(self) -> None:
-        # Python reads a lone carriage return as a line break; Buck2 reads it as part of a value.
-        path = self.buckconfig("[tine]\r\nbuck2-release = old\r\nnote = one\rtwo\r\n")
-        self.assertEqual(
-            tine._rewrite(path, {"buck2-release": "new"}),
-            "[tine]\r\nbuck2-release = new\r\nnote = one\rtwo\r\n",
-        )
-
-    def test_a_value_written_across_lines_is_replaced_whole(self) -> None:
-        # Buck2 refuses to parse a file whose continuation is left behind without its key.
-        path = self.buckconfig("[tine]\nbuck2-release = \\\n  old\nbuck2-repository = e/b\n")
-        self.assertEqual(
-            tine._rewrite(path, {"buck2-release": "new"}),
-            "[tine]\nbuck2-release = new\nbuck2-repository = e/b\n",
-        )
+    def test_what_the_cell_says_about_being_one_is_left_behind(self) -> None:
+        written = self.written()
+        self.assertNotIn("Standalone root cell", written)
+        self.assertNotIn("Named `tine`, not `root`", written)
+        self.assertIn("`tine init`", written.splitlines()[0])
 
 
-class TestBump(unittest.TestCase):
-    """The whole verb, against a release GitHub is not asked for."""
-
-    PLATFORMS = sorted(tine.BUCK2_ARTIFACTS)
-
-    def buckconfig(self, release: str = "old", digest: str = "a" * 64) -> Path:
-        path = scratch(self) / ".buckconfig"
-        entries = {"buck2-repository": "example/buck2", "buck2-release": release}
-        for platform in self.PLATFORMS:
-            entries[f"buck2-{platform}-artifact"] = tine.BUCK2_ARTIFACTS[platform]
-            entries[f"buck2-{platform}-sha256"] = digest
-        path.write_text("[tine]\n" + "".join(f"{k} = {v}\n" for k, v in entries.items()))
-        return path
-
-    def bump(self, path: Path, tag: str, assets: dict[str, str]) -> str:
-        with unittest.mock.patch.object(tine, "_release", return_value=(tag, assets)):
-            with contextlib.redirect_stderr(io.StringIO()) as stderr:
-                tine.bump(path)
-        return stderr.getvalue()
-
-    def published(self, digest: str = "b" * 64) -> dict[str, str]:
-        return dict.fromkeys(tine.BUCK2_ARTIFACTS.values(), digest)
-
-    def test_the_release_and_every_digest_move(self) -> None:
-        path = self.buckconfig()
-        self.bump(path, "2026-02-02", self.published())
-        pin = tine.parse_buckconfig(path)[tine.SECTION]
-        self.assertEqual(pin["buck2-release"], "2026-02-02")
-        for platform in self.PLATFORMS:
-            self.assertEqual(pin[f"buck2-{platform}-sha256"], "b" * 64)
-
-    def test_a_release_already_pinned_is_not_rewritten(self) -> None:
-        path = self.buckconfig(release="2026-02-02", digest="b" * 64)
-        before = path.stat().st_mtime_ns
-        self.assertIn("already pinned", self.bump(path, "2026-02-02", self.published()))
-        self.assertEqual(path.stat().st_mtime_ns, before)
-
-    def test_a_platform_the_project_does_not_pin_is_not_added(self) -> None:
-        path = self.buckconfig()
-        text = path.read_text().replace(f"buck2-{self.PLATFORMS[0]}-artifact", "unpinned")
-        path.write_text(text)
-        self.bump(path, "2026-02-02", self.published())
-        self.assertNotIn(f"buck2-{self.PLATFORMS[0]}-sha256 = b", path.read_text())
-
-    def test_a_release_that_does_not_publish_what_is_pinned(self) -> None:
-        path = self.buckconfig()
-        with self.assertRaisesRegex(SystemExit, "publishes no .* with a SHA-256"):
-            self.bump(path, "2026-02-02", {})
-        with self.assertRaisesRegex(SystemExit, "publishes no .* with a SHA-256"):
-            self.bump(path, "2026-02-02", self.published("not-a-digest"))
-
-    def test_it_reads_the_file_it_rewrites(self) -> None:
-        # A pin someone set for themselves in .buckconfig.local is theirs, not the committed pin
-        # catching up with it.
-        path = self.buckconfig()
-        (path.parent / tine.LOCAL).write_text("[tine]\nbuck2-release = 2026-02-02\n")
-        self.bump(path, "2026-02-02", self.published())
-        self.assertIn("buck2-release = 2026-02-02", path.read_text())
-
-    def test_nothing_to_bump_from(self) -> None:
-        path = scratch(self) / ".buckconfig"
-        path.write_text("[tine]\nbuck2-release = old\n")
-        with self.assertRaisesRegex(SystemExit, "no .tine. buck2-repository"):
-            tine.bump(path)
-
-
-class TestSkeleton(unittest.TestCase):
-    """What `tine init` writes, short of asking git or GitHub what to pin."""
-
-    def skeleton(self, origin: str, commit: str = "c" * 40) -> dict[str, str]:
-        digests = dict.fromkeys(tine.BUCK2_ARTIFACTS, "b" * 64)
-        return tine._skeleton(origin, commit, "2026-01-01", digests)
-
-    def test_it_writes_a_project_buck_can_be_run_in(self) -> None:
-        files = self.skeleton("https://example.invalid/tine")
-        self.assertEqual(set(files), {".buckconfig", ".gitignore"})
-        self.assertIn("/buck-out\n", files[".gitignore"])
-        self.assertIn(f"/{tine.LOCAL}\n", files[".gitignore"])
-        # The name an interrupted write leaves behind, which is nobody's to commit either.
-        self.assertIn(f"/{tine.LOCAL}.*.tmp\n", files[".gitignore"])
-
-    def test_the_watcher_is_told_what_not_to_watch(self) -> None:
-        # buck-out inside the project above all: a build writing into a watched tree never settles.
-        root = scratch(self)
-        (root / ".buckconfig").write_text(self.skeleton("/home/me/tine")[".buckconfig"])
-        ignored = tine.project_config(root)["project"]["ignore"].split(", ")
-        self.assertEqual(ignored, [pattern for group in tine.IGNORED for pattern in group.split(", ")])
-        self.assertIn("**/buck-out", ignored)
-
-    def test_nothing_a_package_could_be_named_is_ignored(self) -> None:
-        # Ignoring one of these would hide the targets in it rather than only its churn.
-        ignored = {pattern.removeprefix("**/") for group in tine.IGNORED for pattern in group.split(", ")}
-        self.assertEqual(ignored & {"build", "dist", "out", "lib", "src", "vendor"}, set())
-
-    def test_every_architecture_is_pinned(self) -> None:
-        buckconfig = self.skeleton("/home/me/tine")[".buckconfig"]
-        for platform, artifact in tine.BUCK2_ARTIFACTS.items():
-            self.assertIn(f"buck2-{platform}-artifact = {artifact}\n", buckconfig)
-            self.assertIn(f"buck2-{platform}-sha256 = {'b' * 64}\n", buckconfig)
-
-    def test_toolchain_is_reachable_from_consuming_project(self) -> None:
-        root = scratch(self)
-        (root / ".buckconfig").write_text(self.skeleton("/home/me/tine")[".buckconfig"])
-        config = tine.project_config(root)
-        self.assertEqual(config["cell_aliases"]["toolchains"], "tine")
-        self.assertNotIn("toolchains", config["cells"])
-
-    def test_the_pin_it_writes_is_the_pin_it_reads(self) -> None:
-        # The section and keys `buck2()` looks for, spelled by the command that writes them.
-        root = scratch(self)
-        (root / ".buckconfig").write_text(self.skeleton("/home/me/tine")[".buckconfig"])
-        pin = tine.project_config(root)[tine.SECTION]
-        platform = tine._platform()
-        self.assertEqual(pin[f"{tine.BUCK2}{platform}-sha256"], "b" * 64)
-        self.assertEqual(pin[f"{tine.BUCK2}repository"], tine.BUCK2_REPOSITORY)
-
-
-class TestInit(RepositoryTestCase):
-    """The whole command, short of asking GitHub which Buck2 to pin."""
+class TestInit(unittest.TestCase):
+    """The whole command, against a checkout that is a directory with a tools.json in it."""
 
     @override
     def setUp(self) -> None:
-        super().setUp()
+        isolate_git(self)
         self.into = scratch(self, "tine-test-project.")
-        digests = dict.fromkeys(tine.BUCK2_ARTIFACTS.values(), "b" * 64)
-        patched = unittest.mock.patch.object(tine, "_release", return_value=("2026-01-01", digests))
-        patched.start()
-        self.addCleanup(patched.stop)
+        self.checkout = self.into / "tine"
+        pins(self.checkout)
+        (self.checkout / ".buckconfig").write_text(CELL_BUCKCONFIG)
 
     def init(self, *arguments: str) -> dict[str, dict[str, str]]:
-        stderr = io.StringIO()
-        with contextlib.redirect_stderr(stderr):
+        with contextlib.redirect_stderr(io.StringIO()):
             tine.init(self.into, list(arguments))
         return tine.project_config(self.into)
 
-    def test_a_checkout_is_pinned_to_the_commit_it_is_on(self) -> None:
-        commit = self.commit()
-        self.assertEqual(
-            self.init(str(self.repo))["external_cell_tine"],
-            {"git_origin": str(self.repo), "commit_hash": commit},
-        )
+    def test_it_writes_a_project_buck_can_be_run_in(self) -> None:
+        self.assertEqual(self.init("tine")["cells"]["tine"], "tine")
+        self.assertEqual(sorted(p.name for p in self.into.iterdir()), [".buckconfig", ".gitignore", "tine"])
+        gitignore = (self.into / ".gitignore").read_text()
+        self.assertIn("/buck-out\n", gitignore)
+        self.assertIn(f"/{tine.LOCAL}\n", gitignore)
+        # The name an interrupted write leaves behind, which is nobody's to commit either.
+        self.assertIn(f"/{tine.LOCAL}.*.tmp\n", gitignore)
 
-    def test_a_path_is_recorded_as_one_buck_can_fetch_from(self) -> None:
-        self.commit()
-        self.addCleanup(os.chdir, Path.cwd())
-        os.chdir(self.repo.parent)
-        self.assertEqual(self.init(self.repo.name)["external_cell_tine"]["git_origin"], str(self.repo))
+    def test_the_checkout_it_is_part_of_is_the_one_it_writes(self) -> None:
+        with unittest.mock.patch.object(tine, "cell_root", return_value=self.checkout):
+            self.assertEqual(self.init()["cells"]["tine"], "tine")
 
-    def test_an_origin_that_is_not_a_path_is_left_as_it_was_given(self) -> None:
-        # Resolving one against the caller's directory would write `<cwd>/https:/…` into the file.
-        url = "https://example.invalid/tine"
-        with unittest.mock.patch.object(tine, "_git", return_value=f"{'c' * 40}\tHEAD"):
-            self.assertEqual(self.init(url)["external_cell_tine"]["git_origin"], url)
+    def test_a_checkout_outside_the_project(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "cannot be a cell of this project"):
+            self.init(str(scratch(self)))
+        self.assertFalse((self.into / ".buckconfig").exists())
 
-    def test_an_origin_with_no_head_to_pin(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "reports no HEAD"):
-            self.init(str(checkout(self)))
+    def test_a_directory_that_is_no_checkout_of_the_cell(self) -> None:
+        (self.into / "elsewhere").mkdir()
+        with self.assertRaisesRegex(SystemExit, "no checkout of the tine cell"):
+            self.init("elsewhere")
 
     def test_it_refuses_to_overwrite_a_project(self) -> None:
         (self.into / ".buckconfig").write_text("")
         with self.assertRaisesRegex(SystemExit, "already exists"):
-            self.init()
+            self.init("tine")
 
     def test_it_leaves_a_file_the_project_already_has(self) -> None:
-        self.commit()
         (self.into / ".gitignore").write_text("mine\n")
-        self.init(str(self.repo))
+        self.init("tine")
         self.assertEqual((self.into / ".gitignore").read_text(), "mine\n")
 
     def test_a_gitignore_it_may_not_write_is_excluded_in_the_checkout_instead(self) -> None:
-        self.commit()
         git("init", "--quiet", cwd=self.into)
         (self.into / ".gitignore").write_text("mine\n")
-        self.init(str(self.repo))
+        self.init("tine")
         excluded = (self.into / ".git" / "info" / "exclude").read_text()
         for entry in tine.GITIGNORE.split():
             self.assertIn(f"{entry}\n", excluded)
-        self.assertEqual((self.into / ".gitignore").read_text(), "mine\n")
 
-    def test_a_project_git_cannot_answer_for_is_left_as_it_is(self) -> None:
-        self.commit()
-        (self.into / ".gitignore").write_text("mine\n")
-        self.init(str(self.repo))
-        self.assertFalse((self.into / ".git").exists())
-
-    def test_it_takes_one_origin(self) -> None:
-        # `--help` is argparse's to answer, and neither it nor a second origin writes a project.
+    def test_it_takes_one_path(self) -> None:
+        # `--help` is argparse's to answer, and neither it nor a second path writes a project.
         for arguments in (["one", "two"], ["--help"], ["--nope"]):
             with contextlib.redirect_stdout(io.StringIO()):
                 with self.assertRaises(SystemExit):
                     self.init(*arguments)
-        self.assertFalse((self.into / ".buckconfig").exists())
-
-    def test_local_follows_the_checkout_it_was_given(self) -> None:
-        commit = self.commit()
-        config = self.init("--local", str(self.repo))
-        self.assertEqual(tine.declared_cells(self.into), {tine.CELL: (str(self.repo), None)})
-        # Pinned to the commit it is on now, and following it from here on.
-        self.assertEqual(config["external_cell_tine"]["commit_hash"], commit)
-        self.assertIn(
-            f"[external_cell_tine]\ngit_origin = {self.repo}", (self.into / tine.LOCAL).read_text()
-        )
-
-    def test_local_without_it_leaves_the_cell_pinned(self) -> None:
-        self.commit()
-        self.init(str(self.repo))
-        self.assertEqual(tine.declared_cells(self.into), {})
-        self.assertFalse((self.into / tine.LOCAL).exists())
-
-    def test_local_needs_a_checkout_to_follow(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "checkout on this machine"):
-            self.init("--local", "https://example.invalid/tine")
         self.assertFalse((self.into / ".buckconfig").exists())
 
 
@@ -1437,13 +1254,11 @@ class TestMain(unittest.TestCase):
             self.assertEqual(self.usage(*argv), tine.USAGE)
 
     def test_asking_a_verb_for_help_does_not_do_its_job(self) -> None:
-        # `init --help` would otherwise take `--help` for an origin and pin git's usage message.
+        # `init --help` would otherwise take `--help` for the checkout to register.
         printed = io.StringIO()
         with contextlib.redirect_stdout(printed), self.assertRaises(SystemExit):
             tine.main(["init", "--help"])
-        self.assertIn("--local", printed.getvalue())
-        with self.assertRaisesRegex(SystemExit, "no arguments"):
-            tine.main(["bump", "--help"])
+        self.assertIn("usage: tine init", printed.getvalue())
 
     def test_no_such_command(self) -> None:
         with self.assertRaisesRegex(SystemExit, "no such command: nope"):

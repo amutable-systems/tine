@@ -61,12 +61,13 @@ that directory as the `tine` cell with `init`, then build:
 
 ```sh
 git submodule add https://github.com/amutable-systems/tine tine
-tine/bin/tine init          # write the project's .buckconfig
+tine/bin/tine init          # write the project's .buckconfig and .gitignore
 tine/bin/tine buck build //packages/...
 ```
 
 The configuration `init` writes is this repository's own [`.buckconfig`](.buckconfig) with `root = .` added,
-the `tine` cell pointing at the checkout, and `root//` in the platform detector. The entry point is that
+the `tine` cell pointing at the checkout, and `root//` in the platform detector. Everything else is copied
+verbatim, so what a project has no say in cannot fall out of step with the cell. The entry point is that
 checkout's [`bin/tine`](bin/tine). Move to a newer tine with `git submodule update` or the equivalent
 change in your pinned `git clone`.
 
@@ -130,10 +131,8 @@ Design:
 
 ```sh
 tine buck <arguments>    # run the pinned Buck2, which every other command configures
-tine cell <verb>         # build a cell from a local checkout, or go back to the pinned one
-tine bump                # rewrite the pinned Buck2 release to the latest one published
-tine init [<origin>]     # write the configuration a project needs, against this repository by default
-                         # (--local follows the checkout it names rather than pinning its commit)
+tine cell <verb>         # build a cell from another local checkout, or go back to the registered one
+tine init [<path>]       # write the configuration a project needs, for the checkout this command is in
 tine completion <shell>  # print the completion script for bash, fish or zsh
 ```
 
@@ -178,8 +177,7 @@ against, alongside every other pinned tool. `bin/tine` reads it and bootstraps B
 A `[tine] buck2-*` key in the consuming project can override that pin. Be careful though: tine depends
 on fixes that exist only in that fork, so running another Buck2 is unsupported.
 
-`tine bump` and `tine init` ask GitHub which release to pin, and honour `GH_TOKEN` or `GITHUB_TOKEN`;
-without one, GitHub allows 60 API requests an hour per address.
+`tine//tools:bump` moves that pin with every other one, so nothing in this command asks GitHub anything.
 
 The binary it caches is a plain Buck2 and can be run directly, with whatever the last `tine` left
 behind in `.buckconfig.local`; `tine` exports its path as `BUCK2_BINARY` so that a tool Buck runs can
