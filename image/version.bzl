@@ -20,6 +20,11 @@ load(
 
 _SECTION = "tine"
 
+# What an uncommitted tree adds to the version it is built on. Written after the hash so that it
+# sorts above the commit it carries, and kept to two characters because they come out of the same
+# 36-character label budget the hash shrinks against.
+_DIRTY = "-d"
+
 def _components(declared: str | None) -> struct | None:
     base = read_root_config(_SECTION, "version-base")
     commit = read_root_config(_SECTION, "version-commit")
@@ -30,13 +35,12 @@ def _components(declared: str | None) -> struct | None:
     if base == None or commit == None or count == None:
         return None
 
-    # Only a dirty tree has seconds, so their absence is what makes a build a release or a snapshot.
-    seconds = read_root_config(_SECTION, "version-seconds")
+    # Only an uncommitted tree carries the key, so its absence is what says the checkout was clean.
     return struct(
         base = base,
         count = int(count),
         commit = commit,
-        seconds = int(seconds) if seconds != None else None,
+        dirty = read_root_config(_SECTION, "version-dirty") != None,
     )
 
 def _room(labels: list[str], image_id: str) -> struct:
@@ -59,24 +63,22 @@ def _room(labels: list[str], image_id: str) -> struct:
 def _render(what: str, components: struct, declared: str | None, image_id: str, room: struct) -> str:
     base = declared if declared != None else components.base
     count = components.count
+    dirty = _DIRTY if components.dirty else ""
 
-    if components.seconds != None:
-        # Seconds only grow, and nothing here can shorten them, so this is the one shape whose fit
-        # can lapse with time rather than with what the checkout says.
-        version = "{}^{}^{}".format(base, count, components.seconds)
-    elif declared == None and count == 0:
-        # Only the version a tag names can be spelled bare. A declared base names no commit, so it
-        # always carries what tells two builds of it apart.
-        version = base
+    if declared == None and count == 0:
+        # Only the version a tag names can be spelled bare, and an uncommitted tree holds more than
+        # the tag does. A declared base names no commit, so it always carries what tells two builds
+        # of it apart.
+        version = base + dirty
     else:
         # git only lengthens the abbreviation on ambiguity, so shrink manually: the hash names the
         # commit for tracking, ordering comes from the base and the commit count. Never below four
         # characters, so a budget that cannot hold one leaves the shortest candidate to be reported.
-        version = "{}^{}-{}".format(base, count, components.commit[:12])
+        version = "{}^{}-{}{}".format(base, count, components.commit[:12], dirty)
         for length in range(11, 3, -1):
             if len(version) <= room.characters:
                 break
-            version = "{}^{}-{}".format(base, count, components.commit[:length])
+            version = "{}^{}-{}{}".format(base, count, components.commit[:length], dirty)
 
     if len(version) > room.characters:
         fail(

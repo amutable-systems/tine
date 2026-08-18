@@ -22,7 +22,6 @@ import os
 import re
 import signal
 import sys
-import time
 from pathlib import Path
 
 LOCAL = ".buckconfig.local"
@@ -452,7 +451,8 @@ def components(root: Path) -> "dict[str, object] | str":
 
     `height` is the commits in HEAD's history, which a version whose base no tag named counts its
     distance in: a new tag resets `count` and would order that build below the one before it.
-    `seconds` is only a dirty tree's, and its absence is what makes a build a release or a snapshot.
+    `dirty` is only an uncommitted tree's, and its absence is what says a checkout held nothing but
+    what its commit holds.
 
     A checkout git cannot answer for still has to run every command that needs no version, so the
     reason is reported through the generated file rather than by failing here.
@@ -484,16 +484,15 @@ def components(root: Path) -> "dict[str, object] | str":
         if not is_version(base):
             return f"tag {described!r} is not a valid version"
 
-        seconds = None
         # -unormal because `status.showUntrackedFiles=no` in the caller's git configuration would
-        # otherwise present a tree carrying uncommitted work as a release.
-        if _git("status", "--porcelain", "-unormal", directory=root):
-            committed = int(_git("log", "-1", "--format=%ct", directory=root))
-            # A clock behind the committer time must not order the build below the commit.
-            seconds = max(0, int(time.time()) - committed)
+        # otherwise present a tree carrying uncommitted work as a clean checkout.
+        dirty = bool(_git("status", "--porcelain", "-unormal", directory=root))
     except SystemExit as error:
         return str(error).removeprefix("tine: ")
-    return {"base": base, "count": count, "height": height, "commit": head, "seconds": seconds}
+    derived: dict[str, object] = {"base": base, "count": count, "height": height, "commit": head}
+    if dirty:
+        derived["dirty"] = 1
+    return derived
 
 
 def generate(
@@ -515,8 +514,7 @@ def generate(
         # Recorded rather than raised: whatever wanted a version reports its absence, pointing here.
         lines.append(f"# no version components: {derived}")
     else:
-        # A clean checkout has no seconds, and an absent key is how a reader tells the two apart.
-        settings += [f"version-{key} = {value}" for key, value in derived.items() if value is not None]
+        settings += [f"version-{key} = {value}" for key, value in derived.items()]
     if settings:
         lines += ["", f"[{SECTION}]", *settings]
     return lines + [BLOCK_END]

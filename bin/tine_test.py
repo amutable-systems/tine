@@ -91,9 +91,6 @@ class RepositoryTestCase(unittest.TestCase):
     def dirty(self) -> None:
         (self.repo / "uncommitted").write_text("wip")
 
-    def committer_epoch(self) -> int:
-        return int(git("log", "-1", "--format=%ct", cwd=self.repo))
-
 
 class TestComponents(RepositoryTestCase):
     def test_release(self) -> None:
@@ -101,7 +98,7 @@ class TestComponents(RepositoryTestCase):
         git("tag", "v1.2.3", cwd=self.repo)
         self.assertEqual(
             tine.components(self.repo),
-            {"base": "1.2.3", "count": 0, "height": 1, "commit": commit, "seconds": None},
+            {"base": "1.2.3", "count": 0, "height": 1, "commit": commit},
         )
 
     def test_snapshot_counts_commits(self) -> None:
@@ -112,14 +109,14 @@ class TestComponents(RepositoryTestCase):
         commit = self.commit("third")
         self.assertEqual(
             tine.components(self.repo),
-            {"base": "1.2.3", "count": 2, "height": 3, "commit": commit, "seconds": None},
+            {"base": "1.2.3", "count": 2, "height": 3, "commit": commit},
         )
 
     def test_no_tag(self) -> None:
         commit = self.commit()
         self.assertEqual(
             tine.components(self.repo),
-            {"base": "0.0.0", "count": 1, "height": 1, "commit": commit, "seconds": None},
+            {"base": "0.0.0", "count": 1, "height": 1, "commit": commit},
         )
 
     def test_v_prefixed_word_is_not_a_version_tag(self) -> None:
@@ -128,7 +125,7 @@ class TestComponents(RepositoryTestCase):
         git("tag", "vendor-drop-2024", cwd=self.repo)
         self.assertEqual(
             tine.components(self.repo),
-            {"base": "0.0.0", "count": 1, "height": 1, "commit": commit, "seconds": None},
+            {"base": "0.0.0", "count": 1, "height": 1, "commit": commit},
         )
 
     def test_latest_tag_wins(self) -> None:
@@ -138,7 +135,7 @@ class TestComponents(RepositoryTestCase):
         git("tag", "v2.0.0", cwd=self.repo)
         self.assertEqual(
             tine.components(self.repo),
-            {"base": "2.0.0", "count": 0, "height": 2, "commit": commit, "seconds": None},
+            {"base": "2.0.0", "count": 0, "height": 2, "commit": commit},
         )
 
     def test_tag_sharing_a_branch_name(self) -> None:
@@ -149,41 +146,43 @@ class TestComponents(RepositoryTestCase):
         commit = self.commit("second")
         self.assertEqual(
             tine.components(self.repo),
-            {"base": "1.2.3", "count": 1, "height": 2, "commit": commit, "seconds": None},
+            {"base": "1.2.3", "count": 1, "height": 2, "commit": commit},
         )
 
-    def test_dirty_tree_has_seconds(self) -> None:
+    def test_uncommitted_work_sets_the_dirty_bit(self) -> None:
         self.commit()
         git("tag", "v1.2.3", cwd=self.repo)
         commit = self.commit("second")
         self.dirty()
-        with unittest.mock.patch("time.time", return_value=self.committer_epoch() + 86400):
-            self.assertEqual(
-                tine.components(self.repo),
-                {"base": "1.2.3", "count": 1, "height": 2, "commit": commit, "seconds": 86400},
-            )
+        self.assertEqual(
+            tine.components(self.repo),
+            {"base": "1.2.3", "count": 1, "height": 2, "commit": commit, "dirty": 1},
+        )
+
+    def test_the_bit_does_not_move_as_the_tree_keeps_changing(self) -> None:
+        # It says that a checkout holds more than its commit, and nothing about how much: the
+        # version it renders has to stand still while the work on top of that commit goes on.
+        commit = self.commit()
+        self.dirty()
+        first = tine.components(self.repo)
+        (self.repo / "uncommitted").write_text("more")
+        (self.repo / "another").write_text("wip")
+        git("add", "another", cwd=self.repo)
+        self.assertEqual(tine.components(self.repo), first)
+        self.assertEqual(
+            first,
+            {"base": "0.0.0", "count": 1, "height": 1, "commit": commit, "dirty": 1},
+        )
 
     def test_untracked_files_are_dirty_whatever_git_is_configured_to_show(self) -> None:
-        # A dirty tree is never a release, even right at the tag.
         commit = self.commit()
         git("tag", "v1.2.3", cwd=self.repo)
         git("config", "status.showUntrackedFiles", "no", cwd=self.repo)
         self.dirty()
-        with unittest.mock.patch("time.time", return_value=self.committer_epoch()):
-            self.assertEqual(
-                tine.components(self.repo),
-                {"base": "1.2.3", "count": 0, "height": 1, "commit": commit, "seconds": 0},
-            )
-
-    def test_clock_skew_clamps(self) -> None:
-        commit = self.commit()
-        git("tag", "v1.2.3", cwd=self.repo)
-        self.dirty()
-        with unittest.mock.patch("time.time", return_value=self.committer_epoch() - 100):
-            self.assertEqual(
-                tine.components(self.repo),
-                {"base": "1.2.3", "count": 0, "height": 1, "commit": commit, "seconds": 0},
-            )
+        self.assertEqual(
+            tine.components(self.repo),
+            {"base": "1.2.3", "count": 0, "height": 1, "commit": commit, "dirty": 1},
+        )
 
     def test_height_ignores_tags(self) -> None:
         # A version whose base a tag never named counts in the height, so a new tag must not move it.
@@ -204,7 +203,7 @@ class TestComponents(RepositoryTestCase):
         with unittest.mock.patch.dict(os.environ, {"GIT_DIR": str(other / ".git")}):
             self.assertEqual(
                 tine.components(self.repo),
-                {"base": "1.2.3", "count": 0, "height": 1, "commit": commit, "seconds": None},
+                {"base": "1.2.3", "count": 0, "height": 1, "commit": commit},
             )
 
 
@@ -253,12 +252,11 @@ class TestGenerate(RepositoryTestCase):
             ],
         )
 
-    def test_seconds_appear_only_for_a_dirty_tree(self) -> None:
+    def test_the_dirty_bit_appears_only_for_an_uncommitted_tree(self) -> None:
         self.commit()
+        self.assertNotIn("version-dirty = 1", tine.generate(self.repo, {}, {}))
         self.dirty()
-        self.assertTrue(
-            any(line.startswith("version-seconds = ") for line in tine.generate(self.repo, {}, {}))
-        )
+        self.assertIn("version-dirty = 1", tine.generate(self.repo, {}, {}))
 
     def test_every_line_it_writes_is_buckconfig(self) -> None:
         # A checkout without commits fails `rev-parse` with three lines of git advice; all but the

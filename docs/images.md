@@ -648,17 +648,24 @@ A version derived from the current commit or any other dynamic query cannot be c
 graph, so it arrives as build configuration and is rendered where the image is declared. It takes three
 shapes against the latest `v*` tag (or 0.0.0 if there is no tag):
 
-| build    | git state                            | version          |
-|----------|--------------------------------------|------------------|
-| release  | clean checkout of v1.4.2             | `1.4.2`          |
-| snapshot | clean, 3 commits past the tag        | `1.4.2^3-08f2c4` |
-| dev      | dirty, 86400 s after the last commit | `1.4.2^3^86400`  |
+| build    | git state                     | version            |
+|----------|-------------------------------|--------------------|
+| release  | checkout of v1.4.2            | `1.4.2`            |
+| snapshot | 3 commits past the tag        | `1.4.2^3-08f2c4`   |
+| dirty    | uncommitted work on top       | `1.4.2^3-08f2c4-d` |
 
-systemd version comparison orders these correctly (`tag` < `tag^count-hash` < `tag^count^seconds` <
-`nexttag`), which systemd-sysupdate needs to recognize an update. The hash names the commit for tracking; it
-shrinks (never below 4 characters) until the longest partition label still fits GPT's 36-character limit. A
-dev build carries the seconds since the last commit instead, so every rebuild of a dirty tree gets a strictly
-increasing version; `-` sorts below `^`, so dev builds are always newer than snapshot builds.
+systemd version comparison orders these correctly (`tag` < `tag^count-hash` < `tag^count-hash-d` <
+`nexttag`), which systemd-sysupdate needs to recognize an update. Right on a tag it reads the same way:
+`1.4.2` < `1.4.2-d` < `1.4.2^1-08f2c4`. The hash names the commit for tracking; it shrinks (never below 4
+characters) until the longest partition label still fits GPT's 36-character limit, and the marker is
+inside what it shrinks against, which is why it is `-d` and not `-dirty`.
+
+The marker is a bit, not a measure: it says the checkout held more than its commit, not how much of it or
+for how long. That is what keeps it out of the inner loop, since it flips on the first uncommitted change
+and then stands still however far the work goes. A version that measured the work instead, seconds since
+the commit or a digest of it, would be a different string on every build, and every image carrying one
+would be rebuilt for it whether or not anything that image is built from had changed. So two dirty trees
+on one commit render one version; commit to tell them apart.
 
 The split between the two halves runs along what Buck can ask for itself. [`bin/tine`](../bin/tine)
 queries git, which the graph cannot, and writes what a version is made of into its own block in
@@ -670,14 +677,14 @@ version-base = 1.4.2
 version-count = 3
 version-height = 43
 version-commit = 08f2c4d9ab7e...
-version-seconds = 86400
+version-dirty = 1
 ```
 
 Rendering those into the version above stays inside the graph, in `image/version.bzl`, because the hash
 length is a question only the image being versioned can answer: a project with several images has one git
 state but one label budget per image, and a single rendered version would have to shrink every image's
-hash to the tightest of them. `version-seconds` is present only for a dirty tree, so its absence is what
-makes a build a release or a snapshot rather than a dev build.
+hash to the tightest of them. `version-dirty` is written only for an uncommitted tree, so its absence is
+what says a checkout held nothing but what its commit holds.
 
 An image asks for that version with `version = "auto"`, or names its own base with
 `version = "auto:<base>"` and takes only what tells one build of that base from the next:
@@ -693,11 +700,11 @@ bootable_disk_image(
 
 For an image whose labels carry no version, and which therefore keeps the whole 12-character hash:
 
-| declaration       | at tag v2.0.0            | 3 commits past it        | dirty tree               |
-|-------------------|--------------------------|--------------------------|--------------------------|
-| `"auto"`          | `2.0.0`                  | `2.0.0^3-08f2c4d9ab7e`   | `2.0.0^3^86400`          |
-| `"auto:1.4.2"`    | `1.4.2^40-08f2c4d9ab7e`  | `1.4.2^43-08f2c4d9ab7e`  | `1.4.2^43^86400`         |
-| `"1.4.2"`         | `1.4.2`                  | `1.4.2`                  | `1.4.2`                  |
+| declaration       | at tag v2.0.0            | 3 commits past it        | dirty, 3 commits past it  |
+|-------------------|--------------------------|--------------------------|---------------------------|
+| `"auto"`          | `2.0.0`                  | `2.0.0^3-08f2c4d9ab7e`   | `2.0.0^3-08f2c4d9ab7e-d`  |
+| `"auto:1.4.2"`    | `1.4.2^40-08f2c4d9ab7e`  | `1.4.2^43-08f2c4d9ab7e`  | `1.4.2^43-08f2c4d9ab7e-d` |
+| `"1.4.2"`         | `1.4.2`                  | `1.4.2`                  | `1.4.2`                   |
 
 The disk declared above renders `1.4.2^43-08f2c4d9ab7` instead: `demo_{version}_verity_sig` has to stay
 inside 36 characters, which leaves 20 for the version and one fewer hex digit for the hash.
@@ -720,10 +727,9 @@ Three things are errors rather than fallbacks, because an unversioned or stale b
 version that promises something else is worse than a build that stops:
 
 - A budget that cannot hold even a 4-character hash. The message names the label, what it leaves, and
-  what the image_id took out of it. The dev shape is the one that can start failing without the
-  declaration changing: its seconds only grow and nothing can shorten them, so an image whose budget is
-  nearly spent stops building some time after the tree is dirtied. Commit, or take characters back from
-  the image_id.
+  what the image_id took out of it. The dirty marker spends two characters of that budget, so an image
+  that builds on a clean checkout can still fail on a dirty one. Take characters back from the image_id,
+  or declare a shorter base.
 - Either `"auto"` spelling with no components in configuration. `bin/tine` writes the reason it had none
   into that block (see below), and the message points there.
 - A sentinel that reaches the build unresolved: `image()`, `uki()` and `image_sysext()` render nothing,
