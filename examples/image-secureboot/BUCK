@@ -259,6 +259,20 @@ box_sh_test(
     ],
 )
 
+# The kernel install hook is bypassed, it didn't generate its own initrd
+box_sh_test(
+    name = "esp-kernel-leftovers-test",
+    labels = ["image"],
+    args = ["$(location :image[manifests][esp])"],
+    box = "@tine//tools:dev.box",
+    script = """
+if grep -o '"name":"boot/initramfs[^"]*"' "$1"; then
+    echo "ERROR: a kernel package's leftovers reached the ESP" >&2
+    exit 1
+fi
+""",
+)
+
 box_sh_test(
     name = "extension-manifest-test",
     labels = ["image"],

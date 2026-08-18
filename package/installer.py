@@ -7,6 +7,7 @@ the same work whichever system fills it, so it happens here and the driver is le
 transaction itself.
 """
 
+import os
 import shutil
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -98,6 +99,10 @@ def run(
     it is layering over packages a lower stack already carries.
     """
     spec: InstallSpec = specs.parse(prog, argv)
+    # We already build the kernel/initrd in the ESP. Prevent systemd's `kernel-install` (called via
+    # package install scripts) from building and writing its own (dead weight and waste of time).
+    os.environ["KERNEL_INSTALL_BYPASS"] = "1"
+
     # An installer resolves its own paths against the root, so give it no relative ones.
     packages_dir = Path(spec["packages_dir"]).absolute()
     layered = bool(spec["lower"])
