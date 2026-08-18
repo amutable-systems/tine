@@ -157,13 +157,13 @@ the one it writes:
   `[tine] cell-<cell>-commit` records as one to keep. Buck fetches that commit like any other pin, so
   uncommitted work in that checkout stays invisible until it is committed. A declaration that no longer
   resolves stops the command rather than quietly building what the project pins instead.
-- `[tine] version-base`, `version-count`, `version-height`, `version-commit` and, for a dirty tree,
-  `version-seconds`: what an image version is derived from, queried from git. The components rather than
-  a version, because how much of the commit hash fits is a question each image's own partition labels
-  answer: an image declaring `version = "auto"` (or `"auto:1.4.2"`, to name its own base) renders them
-  against its own label budget. A checkout git cannot answer for gets a recorded reason instead of
-  components, and no command fails until something asks for a version. See "Image versioning" in
-  [images.md](docs/images.md).
+- `[tine] version-base`, `version-count`, `version-height`, `version-commit` and, for a tree carrying
+  uncommitted work, `version-dirty`: what an image version is derived from, queried from git. The
+  components rather than a version, because how much of the commit hash fits is a question each image's
+  own partition labels answer: an image declaring `version = "auto"` (or `"auto:1.4.2"`, to name its own
+  base) renders them against its own label budget. A checkout git cannot answer for gets a recorded reason
+  instead of components, and no command fails until something asks for a version. See "Image versioning"
+  in [images.md](docs/images.md).
 
 That configuration goes into a file rather than onto the command line because `buck2 complete`, which
 serves shell completion, accepts no configuration flags at all: a wrapper injecting `-c` would complete
