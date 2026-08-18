@@ -31,10 +31,24 @@ def _cargo_build_impl(
         # out the work tree, and cargo resolves a replaced git source against the repository.
         git_dir = actions.declare_output(_PRIVATE + "/git", commit[:12] + ".git", dir = True)
         work_tree = actions.declare_output(_PRIVATE + "/git", commit[:12] + ".work-tree", dir = True)
+
+        # `git init` records an absolute path to the work tree it makes, which breaks when mounting it
+        # into a sandbox under a different path. Nothing needs the work tree, so make it a bare repo.
+        # Sadly git_fetch() can't do that. That is a second command, and an action runs one, so
+        # it needs a shell wrapper.
         actions.run(
             cmd_args(
+                "/bin/sh",
+                "-c",
+                """set -eu
+git_dir=$1
+shift
+"$@" --git-dir="$git_dir"
+git --git-dir="$git_dir" config --unset core.worktree
+git --git-dir="$git_dir" config --bool core.bare true""",
+                "sh",  # $0, which only names the shell in its own diagnostics
+                git_dir.as_output(),
                 fetch,
-                cmd_args(git_dir.as_output(), format = "--git-dir={}"),
                 cmd_args(work_tree.as_output(), format = "--work-tree={}"),
                 cmd_args(fields["git"], format = "--repo={}"),
                 cmd_args(commit, format = "--rev={}"),
