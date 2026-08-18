@@ -14,6 +14,13 @@ from typing import NoReturn
 
 import mkosi.sandbox
 
+# Hermetic sandbox mount point of the project (host cwd). A path of tine's own rather than just keeping
+# the host path: a project under /var/lib or /root would otherwise have to be mounted inside one of the
+# box's own read-only directories. No distribution ships a /tine, so nothing can be in the way.
+# A chrooted operation cannot use this path (would otherwise leak into the image). That binds the project
+# under /run instead; see PROJECT in image/layer.py.
+_PROJECT = "/tine/project"
+
 _BOX_LEVEL = re.compile(r":(?P<level>[1-9][0-9]*)$")
 
 # Kernel APIs and ephemeral trees supplied by the sandbox.
@@ -40,6 +47,13 @@ _BASE_ENV = {
 def _abs(p: str) -> str:
     # Bind sources are mounted after the sandbox has changed root, so they cannot stay relative.
     return str(Path(p).absolute())
+
+
+def _relocate(value: str, cwd: str) -> str:
+    """Point an absolute path into the project at where the sandbox mounts the project."""
+    if value == cwd:
+        return _PROJECT
+    return value.replace(cwd + "/", _PROJECT + "/")
 
 
 def _kv(pairs: list[str], sep: str) -> list[tuple[str, str]]:
@@ -164,10 +178,7 @@ def _argv(args: argparse.Namespace) -> list[str]:
     """Translate the request into the vendored sandbox's own command line."""
     out: list[str] = []
 
-    # Leave the cwd's top-level directory writable for the project bind.
     cwd = os.getcwd() if args.bind_cwd else None
-    cwd_parts = Path(cwd).parts if cwd else ()
-    cwd_top = cwd_parts[1] if len(cwd_parts) > 1 else None
 
     # Recreate usr-merge symlinks instead of binding through them.
     tools = Path(args.tools).resolve()
@@ -176,15 +187,6 @@ def _argv(args: argparse.Namespace) -> list[str]:
     else:
         for entry in sorted(tools.iterdir()):
             if entry.name in _PROVIDED:
-                continue
-            if entry.name == cwd_top:
-                # A non-empty tools directory cannot be hidden by the writable project bind.
-                if entry.is_dir() and any(entry.iterdir()):
-                    raise SystemExit(
-                        f"project root /{cwd_top}/… collides with non-empty tools dir "
-                        f"/{cwd_top}; check out the repo under a path whose first "
-                        f"component isn't a tools-tree entry (e.g. /home, /tmp, /srv)"
-                    )
                 continue
             dest = "/" + entry.name
             if entry.is_symlink():
@@ -195,9 +197,16 @@ def _argv(args: argparse.Namespace) -> list[str]:
     for src, dest in _kv(args.ro_bind, ":"):
         out += ["--ro-bind", _abs(src), dest]
 
-    chdir = cwd
+    chdir = None
+    command = args.cmd
     if cwd:
-        out += ["--bind", cwd, cwd]
+        out += ["--bind", cwd, _PROJECT]
+        chdir = _PROJECT
+
+        # A build action names its artifacts project-relative, but `buck run` calls the same command with
+        # an absolute path, so translate it for our PROJECT mount. Only the command needs it: a bind
+        # source is resolved on the host, and a setenv value carries a path inside the sandbox already.
+        command = [_relocate(argument, cwd) for argument in command]
 
     # Package scripts require writable API and temporary filesystems.
     out += ["--bind", "/proc", "/proc"]
@@ -246,7 +255,7 @@ def _argv(args: argparse.Namespace) -> list[str]:
     # Builds need fakeroot semantics; relaxed tools must remain the invoking user.
     if not args.relaxed:
         out += ["--suppress-chown", "--suppress-sync", "--become-root"]
-    out += ["--", *args.cmd]
+    out += ["--", *command]
     return out
 
 

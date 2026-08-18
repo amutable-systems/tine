@@ -88,6 +88,8 @@ rootfs_archive(
         python(["$(location :configure.py)", "$(location :marker.txt)", "from-python-argument"], chroot = True),
         # Unchrooted, the same interpreter sees the image at /buildroot, like any box command.
         python(["-c", "from pathlib import Path; Path('/buildroot/etc/tine/from-python-box').write_text('x\\n')"]),
+        # Ensure we don't leak the /tine sandbox mount into image builds
+        run(["/usr/bin/test", "!", "-d", "/tine"], chroot = True),
     ],
     format = "tar",
 )

@@ -78,8 +78,8 @@ def _box_sh_test_impl(ctx: AnalysisContext) -> list[Provider]:
     # not have to remember it to fail the way every other assertion does.
     test = ctx.attrs.test or ctx.actions.write("test.sh", ["set -euo pipefail", ctx.attrs.script])
 
-    # The sandbox binds the project at its own path and works there, so an artifact argument
-    # reaches the script as the same project-relative path a build would name.
+    # The sandbox binds the project and works there, so an artifact argument reaches the script as
+    # the same project-relative path a build would name.
     command = cmd_args(
         box_run(box = ctx.attrs.box[BoxInfo]),
         "bash",
