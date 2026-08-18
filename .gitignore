@@ -2,6 +2,9 @@
 /buck-out
 **/buck-out
 
+# The home directory bin/tine falls back to where the environment sets none (CI)
+/.buck
+
 # Local (non-committed) config overrides, one block of which bin/tine writes
 /.buckconfig.local
 /.buckconfig.local.*.tmp

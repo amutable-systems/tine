@@ -945,6 +945,26 @@ class TestBuck(unittest.TestCase):
         self.assertTrue(execve)
         self.assertFalse((self.root / tine.LOCAL).exists())
 
+    def test_a_run_without_a_home_gets_one(self) -> None:
+        environment = dict(os.environ)
+        environment.pop("HOME", None)
+        with unittest.mock.patch.dict(os.environ, environment, clear=True):
+            with self.running() as execve:
+                tine.buck(["build", "//x"])
+            self.assertEqual(os.environ["HOME"], str(self.root / tine.HOME))
+        home = execve[2]
+        assert isinstance(home, dict)
+        self.assertEqual(home["HOME"], str(self.root / tine.HOME))
+        self.assertTrue((self.root / tine.HOME).is_dir())
+
+    def test_a_run_with_a_home_keeps_it(self) -> None:
+        home = scratch(self, "tine-home.")
+        with unittest.mock.patch.dict(os.environ, {"HOME": str(home)}):
+            with self.running():
+                tine.buck(["build", "//x"])
+            self.assertEqual(os.environ["HOME"], str(home))
+        self.assertFalse((self.root / tine.HOME).exists())
+
 
 CELL_BUCKCONFIG = """# Standalone root cell. Consuming projects supply their own; see README.md.
 

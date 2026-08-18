@@ -15,6 +15,12 @@ that runs Buck fetches and verifies the pinned Buck2 binary into
 `${XDG_CACHE_HOME:-~/.cache}/tine/buck2` (one directory per pin, safe to delete); everything else is
 fetched and cached by Buck itself.
 
+Buck2 refuses to start without `$HOME` (some CI environments don't set it). In that case, the `bin/tine`
+command sets `$HOME` to a gitignored `.buck/` in tine's root directory before running anything: that is
+then where the cache above lands too. Buck2 keeps its daemon under `$HOME`, so a run without one gets a
+daemon of its own; keep `HOME` the same across the commands in a checkout and let CI be what has none.
+Kill the daemon if you change the home directory between runs.
+
 ## Quick start
 
 The commands below spell the entry point `tine`; it is [`bin/tine`](bin/tine) in a checkout, so run it
