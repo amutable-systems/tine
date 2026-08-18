@@ -310,6 +310,12 @@ userspace read-only over an otherwise isolated namespace, supplies API and tempo
 host environment, disables network by default, and uses mkosi-sandbox's unprivileged fakeroot behavior
 (`--suppress-chown`, `--suppress-sync`, and `--become-root`).
 
+The project is mounted at `/tine/project` and the action runs there, rather than at the path it is checked out
+under. A checkout is then free to live anywhere, including under a directory the box populates itself such
+as `/var/lib`, and an absolute path that leaks into a build output is the same for every checkout. A
+chrooted operation is a second frame and mounts the project again, under the target root's `/run`, which
+apivfs covers with a tmpfs so the mount point is not captured into the image.
+
 The sandbox only creates the execution environment. Drivers own their target-root layout through
 `rootfs.rootfs()`:
 

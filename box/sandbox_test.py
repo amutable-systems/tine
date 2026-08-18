@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import sandbox
+from sandbox import _PROJECT
 
 
 def _tools(root: Path) -> Path:
@@ -110,30 +111,53 @@ class TestHermetic(unittest.TestCase):
             self.assertEqual(_value(argv, "--dev"), "/dev")
             self.assertEqual(_values(argv, "--tmpfs"), ["/run", "/tmp", "/var/tmp"])
 
-    def test_project_is_bound_at_its_own_path(self) -> None:
+    def test_project_is_bound_at_a_fixed_path(self) -> None:
         with _project() as (project, tools):
             argv = _argv("--tools", str(tools), "--bind-cwd", "--", "true")
 
-            self.assertIn((str(project), str(project)), _pairs(argv, "--bind"))
-            self.assertEqual(_value(argv, "--chdir"), str(project))
+            self.assertIn((str(project), _PROJECT), _pairs(argv, "--bind"))
+            self.assertEqual(_value(argv, "--chdir"), _PROJECT)
 
-    def test_tools_directory_on_the_project_path_is_refused(self) -> None:
+    def test_tools_directory_on_the_project_path_is_bound_like_any_other(self) -> None:
         with _project() as (project, tools):
-            # Whatever the project's first path component is, the tools tree having one too is
-            # what the writable project bind cannot be mounted inside.
+            # A checkout under /var/lib or /root shares its first path component with a directory
+            # the box populates. The fixed project path is what keeps the two independent.
             occupied = tools / project.parts[1]
             (occupied / "lib").mkdir(parents=True)
 
-            with self.assertRaises(SystemExit):
-                _argv("--tools", str(tools), "--bind-cwd", "--", "true")
-
-    def test_empty_tools_directory_on_the_project_path_is_dropped(self) -> None:
-        with _project() as (project, tools):
-            (tools / project.parts[1]).mkdir()
-
             argv = _argv("--tools", str(tools), "--bind-cwd", "--", "true")
 
-            self.assertNotIn(str(tools / project.parts[1]), argv)
+            self.assertIn((str(occupied), "/" + occupied.name), _pairs(argv, "--ro-bind"))
+
+    def test_absolute_project_paths_in_the_command_follow_the_mount(self) -> None:
+        with _project() as (project, tools):
+            argv = _argv(
+                "--tools",
+                str(tools),
+                "--bind-cwd",
+                "--",
+                f"{project}/buck-out/driver.py",
+                f"PYTHONPATH={project}/buck-out/lib",
+                str(project),
+            )
+
+            self.assertEqual(
+                argv[-4:],
+                [
+                    "--",
+                    f"{_PROJECT}/buck-out/driver.py",
+                    f"PYTHONPATH={_PROJECT}/buck-out/lib",
+                    _PROJECT,
+                ],
+            )
+
+    def test_paths_outside_the_project_are_left_alone(self) -> None:
+        with _project() as (project, tools):
+            sibling = f"{project}-other/artifact"
+
+            argv = _argv("--tools", str(tools), "--bind-cwd", "--", "true", "/run/signer.sock", sibling)
+
+            self.assertEqual(argv[-3:], ["true", "/run/signer.sock", sibling])
 
     def test_scratch_backs_var_tmp_on_disk(self) -> None:
         with _project() as (project, tools):

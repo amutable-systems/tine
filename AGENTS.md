@@ -136,8 +136,8 @@ See [the design plan](docs/design.md).
 
 ### Paths in action scripts
 
-Buck hands drivers project-relative paths and runs them at the project root. Keep them that way by
-default; making a path absolute is a decision that needs a reason.
+Buck hands drivers project-relative paths and runs them at the project root, which a build sandbox mounts
+at `/tine/project`. Keep them that way by default; making a path absolute is a decision that needs a reason.
 
 - **Relative (the default).** Anything read, written, or passed to a subprocess that inherits the
   action's cwd. No conversion, no filesystem access.
