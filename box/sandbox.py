@@ -133,7 +133,8 @@ def _box(name: str) -> list[str]:
     return out + ["--setenv", "SHELL_PROMPT_PREFIX", prefix]
 
 
-def main(argv: list[str] | None = None) -> NoReturn:
+def _parse(argv: list[str] | None) -> argparse.Namespace:
+    """Read the request, rejecting the flag combinations that describe no sandbox."""
     p = argparse.ArgumentParser(prog="sandbox")
     p.add_argument("--tools", required=True, help="ro exec-env chroot bound onto / (the pinned tools tree)")
     p.add_argument("--ro-bind", dest="ro_bind", action="append", default=[], help="SRC:DST ro bind")
@@ -156,7 +157,11 @@ def main(argv: list[str] | None = None) -> NoReturn:
         raise SystemExit("--bind-cwd is for hermetic builds; --relaxed sees the host cwd already")
     if args.box and not args.relaxed:
         raise SystemExit("--box describes an interactive host-integrated shell; it requires --relaxed")
+    return args
 
+
+def _argv(args: argparse.Namespace) -> list[str]:
+    """Translate the request into the vendored sandbox's own command line."""
     out: list[str] = []
 
     # Leave the cwd's top-level directory writable for the project bind.
@@ -242,6 +247,13 @@ def main(argv: list[str] | None = None) -> NoReturn:
     if not args.relaxed:
         out += ["--suppress-chown", "--suppress-sync", "--become-root"]
     out += ["--", *args.cmd]
+    return out
+
+
+def main(argv: list[str] | None = None) -> NoReturn:
+    args = _parse(argv)
+    # Composing reads the environment, so compose before replacing it below.
+    out = _argv(args)
 
     # Keep only Buck's on-disk scratch path when replacing the host environment.
     if not args.relaxed:

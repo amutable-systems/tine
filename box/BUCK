@@ -1,10 +1,21 @@
 """Pinned execution-environment launcher."""
 
 load("//python:defs.bzl", "tine_python_binary")
+load(":test.bzl", "box_python_test")
 
 tine_python_binary(
     name = "sandbox",
     main = "sandbox.py",
     deps = ["//vendor:mkosi"],
     visibility = ["PUBLIC"],
+)
+
+box_python_test(
+    name = "test",
+    box = "//tools:dev.box",
+    srcs = [
+        "sandbox.py",
+        "sandbox_test.py",
+    ],
+    deps = ["//vendor:mkosi"],
 )
