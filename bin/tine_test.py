@@ -1151,6 +1151,17 @@ class TestProjectRoot(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, {"HOME": str(home)}):
             self.assertEqual(tine.project_root(home / "project"), home / "project")
 
+    def test_an_unset_home_skips_no_directory(self) -> None:
+        # Buck reads `$HOME` and nothing else, so with it unset there is no home directory to skip,
+        # whatever `Path.home()` falls back to.
+        root = scratch(self)
+        (root / ".buckconfig").write_text("")
+        environment = dict(os.environ)
+        environment.pop("HOME", None)
+        with unittest.mock.patch.dict(os.environ, environment, clear=True):
+            with unittest.mock.patch.object(tine.Path, "home", return_value=root):
+                self.assertEqual(tine.project_root(root), root)
+
     def test_no_buckconfig_at_all(self) -> None:
         with self.assertRaisesRegex(SystemExit, "no .buckconfig"):
             tine.project_root(scratch(self))

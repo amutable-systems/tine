@@ -128,13 +128,15 @@ def cwd() -> Path:
 def project_root(start: Path) -> Path:
     """The furthest ancestor holding a .buckconfig, the same root Buck itself resolves to."""
     root = None
-    home = Path.home()
+    # `$HOME`, because that is the only home directory Buck knows: it reads the variable and never
+    # falls back to the password database, unlike python's `Path.home()`.
+    home = os.environ.get("HOME")
     for directory in [start, *start.parents]:
         if (directory / ".buckconfig").is_file():
             # `~/.buckconfig` overrides configuration for every project, so Buck stops rather than
             # taking the home directory for one; a wrapper that did not would resolve a root Buck
             # never resolves.
-            if directory == home:
+            if home and directory == Path(home):
                 break
             root = directory
         if (directory / ".buckroot").is_file():
