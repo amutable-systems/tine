@@ -156,3 +156,41 @@ default; making a path absolute is a decision that needs a reason.
 - Always sign off commits.
 - Never add AI attribution — no `Co-Authored-By: Claude`, no "Generated with Claude Code" trailer,
   no mention of an AI/agent anywhere in commit messages or PR bodies.
+
+### Keep the message short
+
+A commit message is a subject plus, at most, one short paragraph. Most commits need two or three
+sentences. Two paragraphs is the ceiling, and only a genuinely subtle change earns the second. Wrap at
+80 columns.
+
+- **Subject:** under 60 characters, `area: what changed`, imperative mood. It is a title, not a summary.
+- **Body:** what was wrong or missing, then what this does about it. Nothing else. A one-line body is
+  fine; drop the body only when the change is trivial.
+- **Write it like you would say it to a colleague at their desk.** Short words, short sentences, plain
+  verbs. Read it out loud; if it sounds like a press release or a design document, rewrite it.
+- **Never restate the diff.** No file lists, no function-by-function walkthrough, no "this commit adds".
+  The reader already has the diff. What they do not have is the reason.
+- **Cut the padding.** No scene-setting sentence before the point, no sentence recapping it at the end,
+  no "in order to", "note that", "it is worth mentioning". Delete every sentence that is not the
+  problem or the fix.
+- **No bullet lists** unless the commit really does several independent things, which usually means it
+  should have been several commits.
+
+A good body reads like this:
+
+```
+The daemon kept a stale mount digest, so a second build reused a namespace
+that no longer matched. Compare the digest on startup and kill the daemon
+when it differs.
+```
+
+Not like this:
+
+```
+This commit introduces a comprehensive improvement to the daemon lifecycle
+management logic. Previously, the implementation did not take into account
+the possibility that the mount digest recorded at startup could diverge
+from the digest of the currently requested mount configuration, which in
+certain circumstances could lead to a scenario where a build would be
+executed inside a namespace that was no longer representative of ...
+```
