@@ -109,8 +109,12 @@ def parkdb(installroot: Path) -> None:
 
 
 def scrub(installroot: Path) -> None:
-    """Remove the resolver bookkeeping this package system leaves behind."""
+    """Remove what this package system's transaction leaves behind."""
     shutil.rmtree(installroot / "usr/lib/sysimage/libdnf5", ignore_errors=True)
+    # Fedora kernel package scriptlet writes it s own copy of the module symbol table into /boot;
+    # we already have that in /usr/lib/modules
+    for symvers in (installroot / "boot").glob("symvers-*.xz"):
+        symvers.unlink()
 
 
 def install_into_root(
