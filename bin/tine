@@ -27,6 +27,10 @@ from pathlib import Path
 
 LOCAL = ".buckconfig.local"
 
+# Buck2 refuses to start without $HOME (some CI environments don't set it). Fall back to setting HOME to
+# a gitignored directory (relative to our project root).
+HOME = ".buck"
+
 # This cell, and where it keeps this command: a project that overrides it with a checkout runs that
 # checkout's command as well as its rules.
 CELL = "tine"
@@ -144,6 +148,22 @@ def project_root(start: Path) -> Path:
     if root is None:
         raise fail(f"no .buckconfig in {start} or any parent directory")
     return root
+
+
+def ensure_home(root: Path) -> None:
+    """Create fallback HOME dir
+
+    BUck2, git, the tools a build runs, and any Buck2 nested through `BUCK2_BINARY` all read it, and all
+    of them have to agree on it.
+    """
+    if os.environ.get("HOME"):
+        return
+    path = (root / HOME).absolute()
+    try:
+        path.mkdir(exist_ok=True)
+    except OSError as error:
+        raise fail(f"cannot create {path} to use as a home directory: {error}") from error
+    os.environ["HOME"] = str(path)
 
 
 def section_marker(line: str) -> "str | None":
@@ -881,6 +901,7 @@ GITIGNORE = f"""/buck-out
 **/buck-out
 /{LOCAL}
 /{LOCAL}.*.tmp
+/{HOME}
 """
 
 
@@ -1126,6 +1147,7 @@ def handover(root: Path, argv: list[str]) -> None:
 def buck(argv: list[str]) -> None:
     root = project_root(cwd())
     handover(root, ["buck", *argv])
+    ensure_home(root)
     config = project_config(root)
 
     # A keypress in a completing shell must not turn into a download; it completes nothing until
@@ -1181,6 +1203,7 @@ def main(argv: list[str]) -> None:
             reason = str(error).removeprefix("tine: ")
             raise fail(f"{reason}; the script comes out of the Buck2 a project pins") from None
         handover(root, argv)
+        ensure_home(root)
         binary = buck2(project_config(root), cell_root())
         assert binary is not None
         print(completion(_buck2_completion(binary, rest[0]), rest[0]), end="")

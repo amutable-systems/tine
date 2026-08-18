@@ -28,7 +28,7 @@ execution_platforms = prelude//platforms:default
 # VCS state, dependency and build trees, and the caches tools keep must not invalidate Buck's file
 # watcher. Only names that are always generated: `build`, `dist` and `out` are ordinary package names,
 # and ignoring one would hide the targets in it rather than only its churn.
-ignore = .git, .jj, **/.git, **/.jj, **/.hg, **/.svn, \
+ignore = .git, .jj, **/.git, **/.jj, **/.hg, **/.svn, .buck, \
     **/buck-out, **/target, **/node_modules, **/__pycache__, **/.venv, **/venv, \
     **/.cache, **/.direnv, **/.gradle, **/.tox, **/.nox, \
     **/.mypy_cache, **/.pytest_cache, **/.ruff_cache, \
