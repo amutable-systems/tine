@@ -75,21 +75,39 @@ def decompressor(magic: bytes) -> Callable[[IO[bytes]], io.BufferedIOBase] | Non
     return None
 
 
+# Level 9 is the sweet spot: it beats the default 3 by 10% in a fraction of a second, where 19 buys
+# another 10% but takes 28 times as long.
+_ZSTD_LEVEL = 9
+
+
 def compress_zstd(src: Path, out: Path) -> None:
-    """Compress `src` into `out`, with the settings a build artifact wants."""
-    subprocess.run(
-        [
-            "zstd", "-q", "-f",
-            # zstd's multi-threaded output is byte-identical to its single-threaded output, so using
-            # every core stays reproducible. --adapt would not, so it stays out.
-            "--threads=0",
-            # Level 9 is the sweet spot: it beats the default 3 by 10% in a fraction of a second,
-            # where 19 buys another 10% but takes 28 times as long.
-            "-9",
-            "-o", str(out), str(src),
-        ],
-        check=True,
-    )  # fmt: skip
+    """Compress `src` into `out`, with the settings a build artifact wants.
+
+    Needs the zstd binary for python < 3.14.
+    """
+    try:
+        import compression.zstd
+    except ImportError:
+        # fall back to the zstd binary for older Pythons
+        # Multi-threaded output is byte-identical to single-threaded output, so every core stays
+        # reproducible; --threads=0 is every core to the binary, where libzstd reads 0 as no worker
+        # at all. --adapt is not reproducible, so it stays out.
+        subprocess.run(
+            ["zstd", "-q", "-f", "--threads=0", f"-{_ZSTD_LEVEL}", "-o", str(out), str(src)],
+            check=True,
+        )
+        return
+
+    # IntEnum → plain int mapping for ZstdFile
+    options: dict[int, int] = {
+        compression.zstd.CompressionParameter.compression_level: _ZSTD_LEVEL,
+        compression.zstd.CompressionParameter.nb_workers: os.process_cpu_count() or 1,
+    }
+    with (
+        src.open("rb") as source,
+        compression.zstd.ZstdFile(out, mode="wb", options=options) as sink,
+    ):
+        shutil.copyfileobj(source, sink)
 
 
 def urlopen(url: str, *, agent: str) -> http.client.HTTPResponse:
