@@ -70,7 +70,6 @@ load(":publish.bzl", _PublishedInfo = "PublishedInfo", _image_artifacts = "image
 load(
     ":sign.bzl",
     _SigningKeyInfo = "SigningKeyInfo",
-    _config_signing_key = "config_signing_key",
     _generate_signing_key = "generate_signing_key",
     _pem_signing_key = "pem_signing_key",
     _pkcs11_signing_key = "pkcs11_signing_key",
@@ -112,7 +111,6 @@ image_install = _image_install
 substitute = _substitute
 pem_signing_key = _pem_signing_key
 pkcs11_signing_key = _pkcs11_signing_key
-config_signing_key = _config_signing_key
 SigningKeyInfo = _SigningKeyInfo
 
 # Compositions.

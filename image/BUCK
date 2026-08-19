@@ -1,5 +1,6 @@
 """Logical image mutation and boot assembly drivers."""
 
+load("@prelude//:rules.bzl", "constraint_setting", "constraint_value")
 load("//box:test.bzl", "box_python_test")
 load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
 load(":image.bzl", "image_tools")
@@ -158,5 +159,16 @@ tine_python_binary(
         "//:specs",
         "//vendor:mkosi",
     ],
+    visibility = ["PUBLIC"],
+)
+
+# Nothing satisfies this value, so a target requiring it cannot be built. A key whose section has no
+# token requires it, which keeps it out of `//...` and makes an image that signs with it fail naming
+# this target. `prelude//:none` would do the same without naming a reason.
+constraint_setting(name = "signing-configuration")
+
+constraint_value(
+    name = "no-signing-token-configured",
+    constraint_setting = ":signing-configuration",
     visibility = ["PUBLIC"],
 )

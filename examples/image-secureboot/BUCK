@@ -1,10 +1,9 @@
 """Bootable image signed for Secure Boot.
 
 Without configuration, the signing keys are generated at build time and live only in buck-out, so
-nothing secret is committed. With `signing.*` configuration, the same image signs through PKCS#11
-tokens instead; see docs/signing-pkcs11.md. Real OS images should follow this shape: one definition
-serves both, and only the certificate copies below differ, since a token's certificate is a URI
-rather than an artifact.
+nothing secret is committed. Configure a section per key and the same image signs through PKCS#11
+tokens instead; see docs/signing-pkcs11.md. Only the certificate copies below differ, since a token's
+certificate is a URI rather than an artifact.
 
 The signed demo-ext system extension shows verity signing for a sysext DDI (always with a
 generated key, see below), with the image enforcing the signature through its sysext.conf image
@@ -16,13 +15,13 @@ load(
     "@tine//image:defs.bzl",
     "DEFAULT_SIGNED_USR_VERITY_PARTITIONS",
     "bootable_disk_image",
-    "config_signing_key",
     "copy",
     "generate_signing_key",
     "image_artifacts",
     "image_vm",
     "initrd_image",
     "mkdir",
+    "pkcs11_signing_key",
     "sysext_image",
 )
 load("@tine//package:defs.bzl", "package_manager")
@@ -33,17 +32,32 @@ package_manager(
     base = "tine//catalog:fedora.rawhide.package-manager",
 )
 
-_EXTERNAL = read_config("signing", "token") != None
+# This example serves two audiences, so it declares a key for each and picks: the tokens
+# `-c secure-boot-signing.{token,pin-file,socket}` configures, or pairs generated into buck-out for
+# anyone building it without a token to hand. A real image signing through a token declares the token
+# key alone, so that a configuration file that fails to arrive fails the build rather than shipping an
+# image signed out of buck-out.
+SIGN_WITH_TOKEN = read_config("secure-boot-signing", "token") != None
 
-# A token with `-c signing.{token,pin-file,socket}`, a generated development key pair without them.
-config_signing_key(name = "signing")
+pkcs11_signing_key(
+    name = "signing.token",
+    section = "secure-boot-signing",
+)
 
 # A second key, so that a compromised expected-PCR policy key cannot also sign boot binaries. Its own
-# token, hence its own configuration key: `-c signing.pcr-token`.
-config_signing_key(
-    name = "pcr-signing",
-    token_key = "pcr-token",
+# token, hence a section of its own.
+pkcs11_signing_key(
+    name = "pcr-signing.token",
+    section = "pcr-signing",
 )
+
+generate_signing_key(name = "signing.generated")
+
+generate_signing_key(name = "pcr-signing.generated")
+
+_SIGNING = ":signing.token" if SIGN_WITH_TOKEN else ":signing.generated"
+
+_PCR_SIGNING = ":pcr-signing.token" if SIGN_WITH_TOKEN else ":pcr-signing.generated"
 
 # Declaring the initrd instead of letting the disk image declare one is what makes it configurable:
 # its packages, its operations, and how the cpio the UKI carries is compressed.
@@ -74,10 +88,10 @@ bootable_disk_image(
             # The smoke test compares this against the public key the stub hands the booted system, to
             # tell which key sealed the expected-PCR policy. Sealed under verity, so it cannot be
             # swapped. Generated keys only: a token's certificate is a URI, not an artifact to copy.
-            copy(":signing[cert]", "/usr/share/tine-example/secure-boot.crt"),
-            copy(":pcr-signing[cert]", "/usr/share/tine-example/expected-pcr.crt"),
+            copy(":signing.generated[cert]", "/usr/share/tine-example/secure-boot.crt"),
+            copy(":pcr-signing.generated[cert]", "/usr/share/tine-example/expected-pcr.crt"),
         ]
-        if not _EXTERNAL
+        if not SIGN_WITH_TOKEN
         else []
     )
     + [
@@ -102,17 +116,17 @@ bootable_disk_image(
         ],
         "vfat": ["--invariant"],
     },
-    secure_boot_key = ":signing",
+    secure_boot_key = _SIGNING,
     # A signed /usr is read-only and carries no package manager, so the database in it would only be
     # weight under verity. `:image[pkgdb]` still captures it from the image itself.
     strip_pkgdb = True,
-    verity_key = ":signing",
-    sign_expected_pcr_key = ":pcr-signing",
+    verity_key = _SIGNING,
+    sign_expected_pcr_key = _PCR_SIGNING,
 )
 
 # System-extension DDI extending :image, signed so the strict policy in sysext.conf accepts the
-# merge. Its own generated key rather than :signing: the consuming image must carry the
-# certificate as a file, and with `signing.token` configured :signing's certificate is a URI.
+# merge. Its own generated key rather than the image's: the consuming image must carry the
+# certificate as a file, and a token's certificate is a URI.
 sysext_image(
     name = "demo-ext",
     base = ":image",
@@ -215,7 +229,7 @@ vm_smoke(
             '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/expected-pcr.crt >/tmp/pcr.pem && test -s /tmp/pcr.pem && test "$(cat /tmp/pcr.pem)" = "$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
             '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/secure-boot.crt >/tmp/sb.pem && test -s /tmp/sb.pem && test "$(cat /tmp/sb.pem)" \'!=\' "$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
         ]
-        if not _EXTERNAL
+        if not SIGN_WITH_TOKEN
         else []
     ),
 )
