@@ -8,8 +8,9 @@ class KeySpec(TypedDict):
 
     private_key: str
     certificate: str
-    # OpenSSL key source in systemd's spelling, None for key material in the build graph.
-    source: str | None
+    # OpenSSL sources in systemd's spelling, each None for material in the build graph.
+    private_key_source: str | None
+    certificate_source: str | None
 
 
 def key_arguments(signing: KeySpec | None) -> list[str]:
@@ -17,6 +18,8 @@ def key_arguments(signing: KeySpec | None) -> list[str]:
     if signing is None:
         return []
     arguments = ["--private-key", signing["private_key"], "--certificate", signing["certificate"]]
-    if signing["source"]:
-        arguments += ["--private-key-source", signing["source"], "--certificate-source", signing["source"]]
+    if signing["private_key_source"]:
+        arguments += ["--private-key-source", signing["private_key_source"]]
+    if signing["certificate_source"]:
+        arguments += ["--certificate-source", signing["certificate_source"]]
     return arguments

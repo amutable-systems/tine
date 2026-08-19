@@ -14,6 +14,10 @@ load("//box:runtime.bzl", "BoxInfo", "box_run")
 # it ever loads, whatever the key is held by.
 _CLIENT_MODULE = "/usr/lib64/pkcs11/p11-kit-client.so"
 
+# Reads a certificate through the same OpenSSL provider the signing tools load the key with, so a
+# token's certificate needs no second way to address it. Not on PATH, hence the full path.
+_KEYUTIL = "/usr/lib/systemd/systemd-keyutil"
+
 # Labels are pasted into URIs verbatim, so restrict them to characters no PKCS#11 URI encodes: a URI
 # then always reads as the label was written.
 _LABEL_PATTERN = "^[A-Za-z0-9._-]+$"
@@ -33,15 +37,18 @@ _UNCONFIGURED = "tine//image:no-signing-token-configured"
 SigningKeyInfo = provider(
     doc = "A signing credential, as local PEM artifacts or external URIs",
     fields = {
-        # Each a PEM artifact, or a URI when source is set
+        # Each a PEM artifact, or a URI when its own source is set
         "certificate": provider_field(Artifact | str),
+        # OpenSSL sources in systemd's spelling, each None for material in the build graph.
+        # Separate, as in mkosi: a key in a token whose certificate is a file is the combination
+        # that lets an image carry the certificate it verifies against.
+        "certificate_source": provider_field(str | None, default = None),
         "private_key": provider_field(Artifact | str),
+        "private_key_source": provider_field(str | None, default = None),
         # Host → r/o sandbox paths for external signing
         "ro_binds": provider_field(dict[str, str], default = {}),
         # Additional sandbox environment for external signing
         "setenv": provider_field(dict[str, str], default = {}),
-        # OpenSSL key source in systemd's spelling, None for local Artifacts
-        "source": provider_field(str | None, default = None),
     },
 )
 
@@ -53,7 +60,12 @@ def signing_key_spec(key: SigningKeyInfo | None) -> dict[str, typing.Any] | None
     """The key as one driver-spec object (repart_signing.py's KeySpec), None when unsigned."""
     if key == None:
         return None
-    return {"certificate": key.certificate, "private_key": key.private_key, "source": key.source}
+    return {
+        "certificate": key.certificate,
+        "certificate_source": key.certificate_source,
+        "private_key": key.private_key,
+        "private_key_source": key.private_key_source,
+    }
 
 # The verity signing role, spelled once for every rule that produces a verity-signed artifact.
 VERITY_KEY_ATTR = attrs.option(
@@ -86,9 +98,10 @@ def merge_signing_access(keys: list[SigningKeyInfo | None]) -> SigningAccess:
             if setenv.get(name, value) != value:
                 fail("signing: the keys disagree on {}: {!r} and {!r}".format(name, setenv[name], value))
             setenv[name] = value
-        # Any of the three makes the action depend on this host, and a key that needs a bind or a
+        # Any of these makes the action depend on this host, and a key that needs a bind or a
         # variable without naming a source would otherwise keep the action cacheable and remotable.
-        external = external or key.source != None or bool(key.ro_binds or key.setenv)
+        external = external or key.private_key_source != None or key.certificate_source != None
+        external = external or bool(key.ro_binds or key.setenv)
     return SigningAccess(ro_binds = ro_binds, setenv = setenv, external = external)
 
 def external_signing_execution(signing_access: SigningAccess) -> dict[str, typing.Any]:
@@ -102,10 +115,16 @@ def external_signing_execution(signing_access: SigningAccess) -> dict[str, typin
     return {"allow_cache_upload": False, "local_only": True}
 
 def key_source_arguments(key: SigningKeyInfo) -> list[str]:
-    """systemd's spelling for a key it must load through OpenSSL, empty for a key in the graph."""
-    if key.source == None:
-        return []
-    return ["--private-key-source", key.source, "--certificate-source", key.source]
+    """systemd's spelling for material it must load through OpenSSL, empty for what is in the graph.
+
+    Each half is named on its own, so the default source, a file, is what a half without one keeps.
+    """
+    arguments = []
+    if key.private_key_source != None:
+        arguments += ["--private-key-source", key.private_key_source]
+    if key.certificate_source != None:
+        arguments += ["--certificate-source", key.certificate_source]
+    return arguments
 
 def _signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
     key = ctx.actions.declare_output("signing.key")
@@ -149,7 +168,7 @@ generate_signing_key = rule(
 
 def _pem_signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
     return [
-        DefaultInfo(),
+        DefaultInfo(sub_targets = {"cert": [DefaultInfo(default_output = ctx.attrs.certificate)]}),
         SigningKeyInfo(certificate = ctx.attrs.certificate, private_key = ctx.attrs.private_key),
     ]
 
@@ -163,7 +182,8 @@ pem_signing_key = rule(
 
     The material is a stable build input, so the whole signed image graph stays cacheable and every
     build enrols the same certificate. Such a key is public to everyone with repository access: use it
-    for test images only, and never enrol it on real hardware.
+    for test images only, and never enrol it on real hardware. `:<name>[cert]` is the certificate, as
+    it is on every other key rule, so an image installing one need not know which rule it came from.
     """,
 )
 
@@ -217,9 +237,42 @@ def pkcs11_signing_key(
         **kwargs,
     )
 
+def _extract_certificate(ctx: AnalysisContext, key: SigningKeyInfo) -> Artifact:
+    """Read a key's certificate out of whatever holds it, as a PEM artifact.
+
+    An image installs a certificate as a file, which a key addressed by URI has none of. keyutil
+    loads it through the provider the signing tools already reach the key with, so this needs no
+    second way to address a token, and writes PEM on stdout, hence the shell wrapper.
+    """
+    certificate = ctx.actions.declare_output("signing.crt")
+    access = merge_signing_access([key])
+    ctx.actions.run(
+        cmd_args(
+            box_run(box = ctx.attrs.box[BoxInfo], ro_binds = access.ro_binds, setenv = access.setenv),
+            "sh",
+            "-c",
+            """set -eu
+exec > "$1"
+shift
+exec "$@"
+""",
+            "sh",  # $0, which only names the shell in its own diagnostics
+            certificate.as_output(),
+            _KEYUTIL,
+            "extract-certificate",
+            "--certificate",
+            key.certificate,
+            "--certificate-source",
+            key.certificate_source,
+        ),
+        category = "signing_certificate",
+        **external_signing_execution(access),
+    )
+    return certificate
+
 def _pkcs11_signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
     # Analysis is the first point at which something signing with this key has been found, so a
-    # section that never filled the coordinates in only becomes an error here.
+    # configuration that never filled the coordinates in only becomes an error here.
     missing = [name for name in ("pin_file", "socket", "token") if not getattr(ctx.attrs, name)]
     if missing:
         fail(
@@ -243,26 +296,55 @@ def _pkcs11_signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
     sandbox_socket = _SIGNING_CONFIG_DIR + socket
     sandbox_pin = _SIGNING_CONFIG_DIR + pin_file
     uri = "pkcs11:token={};object={};type=".format(token, object)
+    certificate_uri = "pkcs11:token={};object={};type=cert".format(
+        token,
+        _check_label("certificate_object", ctx.attrs.certificate_object) if ctx.attrs.certificate_object else object,
+    )
 
+    key = SigningKeyInfo(
+        # A certificate handed to us is a file, which is a source of its own, so the token holds
+        # only the private key and no action has to reach it to publish a certificate.
+        certificate = ctx.attrs.certificate or certificate_uri,
+        certificate_source = None if ctx.attrs.certificate else "provider:pkcs11",
+        # pin-source rather than pin-value: the URI lands in spec files and tool command lines,
+        # neither secret. RFC 7512 puts it in the query component, hence the '?'.
+        private_key = uri + "private?pin-source=" + sandbox_pin,
+        private_key_source = "provider:pkcs11",
+        ro_binds = {host_directory: _SIGNING_CONFIG_DIR + host_directory, pin_file: sandbox_pin},
+        setenv = {
+            "P11_KIT_SERVER_ADDRESS": "unix:path={}".format(sandbox_socket),
+            "PKCS11_PROVIDER_MODULE": _CLIENT_MODULE,
+        },
+    )
     return [
-        DefaultInfo(),
-        SigningKeyInfo(
-            certificate = uri + "cert",
-            # pin-source rather than pin-value: the URI lands in spec files and tool command lines,
-            # neither secret. RFC 7512 puts it in the query component, hence the '?'.
-            private_key = uri + "private?pin-source=" + sandbox_pin,
-            ro_binds = {host_directory: _SIGNING_CONFIG_DIR + host_directory, pin_file: sandbox_pin},
-            setenv = {
-                "P11_KIT_SERVER_ADDRESS": "unix:path={}".format(sandbox_socket),
-                "PKCS11_PROVIDER_MODULE": _CLIENT_MODULE,
+        # `[cert]` for the same reason a generated key has one: an image installs a certificate as a
+        # file, and a role reads it off the key it was given rather than off how that key is held.
+        DefaultInfo(
+            sub_targets = {
+                "cert": [DefaultInfo(default_output = ctx.attrs.certificate or _extract_certificate(ctx, key))],
             },
-            source = "provider:pkcs11",
         ),
+        key,
     ]
 
 _pkcs11_signing_key = rule(
     impl = _pkcs11_signing_key_impl,
     attrs = {
+        "box": attrs.dep(
+            providers = [BoxInfo],
+            default = "tine//catalog:fedora.rawhide.box",
+            doc = "box providing keyutil and the PKCS#11 provider",
+        ),
+        "certificate": attrs.option(
+            attrs.source(),
+            default = None,
+            doc = "PEM certificate for the key; taken from the token when unset",
+        ),
+        "certificate_object": attrs.option(
+            attrs.string(),
+            default = None,
+            doc = "the certificate's CKA_LABEL in the token; defaults to the key's",
+        ),
         "object": attrs.option(
             attrs.string(),
             default = None,
@@ -279,8 +361,12 @@ _pkcs11_signing_key = rule(
     },
     doc = """Address a key held by a PKCS#11 token reachable over a p11-kit server socket.
 
-    Declared through `pkcs11_signing_key()`, which reads the coordinates a section configures. Each
-    is optional so that a key can be declared from a section that has none of them yet; a key
-    something signs with needs all three, and says so naming the options it was short of.
+    Declared through `pkcs11_signing_key()`, which reads the coordinates a section configures.
+    Each is optional so that a key can be declared from configuration that has none of them yet; a
+    key something signs with needs all three, and says so naming the options it was short of.
+
+    The certificate is addressed on its own: a committed PEM keeps the material a build input and
+    leaves the token holding nothing but the private key, and without one the token is asked for it.
+    Nothing checks that such a certificate belongs to the key in the token.
     """,
 )

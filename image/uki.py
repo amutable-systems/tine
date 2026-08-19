@@ -35,8 +35,9 @@ class RootHash(TypedDict):
 class Key(TypedDict):
     private_key: str
     certificate: str
-    # OpenSSL key source in systemd's spelling, None for key material in the build graph.
-    source: str | None
+    # OpenSSL sources in systemd's spelling, each None for material in the build graph.
+    private_key_source: str | None
+    certificate_source: str | None
 
 
 class Spec(finalize.ImageSpec):
@@ -101,20 +102,32 @@ def _cmdline(arguments: list[str], root_hash: Path | None, kind: str | None) -> 
     return " ".join([*arguments, f"{parameter}={digest.lower()}"])
 
 
-def _provider_options(source: str) -> list[str]:
-    """ukify's spelling for keys it loads through an OpenSSL provider.
+def _provider(source: str) -> str:
+    """The provider in a source ukify can load through.
 
     ukify names a provider rather than taking systemd's `provider:<name>` source, and translates it
     for the systemd-sbsign and systemd-measure calls it makes.
     """
     prefix = "provider:"
     if not source.startswith(prefix):
-        raise SystemExit(f"uki: ukify can only load a key through an OpenSSL provider, got {source!r}")
-    provider = source.removeprefix(prefix)
-    return [
-        "--signing-provider", provider,
-        "--certificate-provider", provider,
-    ]  # fmt: skip
+        raise SystemExit(
+            f"uki: ukify can only load key material through an OpenSSL provider, got {source!r}"
+        )
+    return source.removeprefix(prefix)
+
+
+def _provider_options(key: Key) -> list[str]:
+    """ukify's spelling for the halves of a key it loads through an OpenSSL provider.
+
+    Each half names its own provider, so a private key in a token whose certificate is a file
+    passes only the one option, and ukify reads the certificate the way it reads any file.
+    """
+    options = []
+    if key["private_key_source"]:
+        options += ["--signing-provider", _provider(key["private_key_source"])]
+    if key["certificate_source"]:
+        options += ["--certificate-provider", _provider(key["certificate_source"])]
+    return options
 
 
 def _ukify_options() -> set[str]:
@@ -152,8 +165,7 @@ def _signing_arguments(
             "--secureboot-certificate", secure_boot["certificate"],
             "--sign-kernel",
         ]  # fmt: skip
-        if secure_boot["source"]:
-            signing += _provider_options(secure_boot["source"])
+        signing += _provider_options(secure_boot)
     # ukify measures and signs the base and each joined profile separately. All profiles are
     # signed by default; the explicit --sign-profile list is only needed when one opts out. The
     # base profile is named "main": ukify defaults it to that when anything is joined.
@@ -168,7 +180,7 @@ def _signing_arguments(
         # /usr/lib/nvpcr definitions gets past the boot's first TPM step.
         if "--sign-initrd-pcrs" in options:
             signing += ["--sign-initrd-pcrs"]
-        if pcr["source"]:
+        if pcr["private_key_source"]:
             # Only the provider path passes the certificate: ukify's systemd-measure call requires
             # one there. Everywhere else ukify derives the public key section (.pcrpkey) from the
             # private key, which cannot mismatch, and passing the certificate instead would be a

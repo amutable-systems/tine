@@ -2,12 +2,12 @@
 
 Without configuration, the signing keys are generated at build time and live only in buck-out, so
 nothing secret is committed. Configure a section per key and the same image signs through PKCS#11
-tokens instead; see docs/signing-pkcs11.md. Only the certificate copies below differ, since a token's
-certificate is a URI rather than an artifact.
+tokens instead; see docs/signing-pkcs11.md. Real OS images should follow this shape: one definition
+serves both, and nothing downstream of the keys knows which it got, since every key publishes its
+certificate whether it is held in the graph or by a token.
 
-The signed demo-ext system extension shows verity signing for a sysext DDI (always with a
-generated key, see below), with the image enforcing the signature through its sysext.conf image
-policy.
+The signed demo-ext system extension shows verity signing for a sysext DDI, with the image
+enforcing the signature through its sysext.conf image policy.
 """
 
 load("@tine//box:defs.bzl", "box_sh_test")
@@ -83,21 +83,15 @@ bootable_disk_image(
         "util-linux",
         "dbus-broker",
     ],
-    ops = (
-        [
-            # The smoke test compares this against the public key the stub hands the booted system, to
-            # tell which key sealed the expected-PCR policy. Sealed under verity, so it cannot be
-            # swapped. Generated keys only: a token's certificate is a URI, not an artifact to copy.
-            copy(":signing.generated[cert]", "/usr/share/tine-example/secure-boot.crt"),
-            copy(":pcr-signing.generated[cert]", "/usr/share/tine-example/expected-pcr.crt"),
-        ]
-        if not SIGN_WITH_TOKEN
-        else []
-    )
-    + [
+    ops = [
+        # The smoke test compares this against the public key the stub hands the booted system, to
+        # tell which key sealed the expected-PCR policy. Sealed under verity, so it cannot be
+        # swapped.
+        copy(_SIGNING + "[cert]", "/usr/share/tine-example/secure-boot.crt"),
+        copy(_PCR_SIGNING + "[cert]", "/usr/share/tine-example/expected-pcr.crt"),
         # demo-ext's signature verifies against this certificate; the sysext.conf policy next to
         # it makes that verification a requirement rather than opportunistic.
-        copy(":demo-ext-signing[cert]", "/usr/lib/verity.d/demo-ext.crt"),
+        copy(_SIGNING + "[cert]", "/usr/lib/verity.d/demo-ext.crt"),
         copy("sysext.conf", "/usr/lib/systemd/sysext.conf"),
         # Plain data for the boot smoke's negative proof: a DDI the policy must refuse.
         copy(":demo-ext-unsigned", "/usr/share/tine-example/demo-ext-unsigned.raw"),
@@ -125,17 +119,14 @@ bootable_disk_image(
 )
 
 # System-extension DDI extending :image, signed so the strict policy in sysext.conf accepts the
-# merge. Its own generated key rather than the image's: the consuming image must carry the
-# certificate as a file, and a token's certificate is a URI.
+# merge. The image's own key, whose certificate it carries in /usr/lib/verity.d.
 sysext_image(
     name = "demo-ext",
     base = ":image",
     packages = ["zsh"],
     install_docs = False,
-    verity_key = ":demo-ext-signing",
+    verity_key = _SIGNING,
 )
-
-generate_signing_key(name = "demo-ext-signing")
 
 # Everything a release of this example publishes, gathered under the names it publishes them
 # under: the disk and its qcow2 encoding, the UKI, the kernel and initrd a direct kernel boot
@@ -220,18 +211,12 @@ vm_smoke(
         # Undo the relaxed merge: without the unsigned DDI the strict refresh succeeds again,
         # demo-ext stays, and the unsigned marker vanishes.
         "rm /run/extensions/demo-ext-unsigned.raw && systemd-sysext refresh && test -x /usr/bin/zsh && test ! -d /usr/share/tine-unsigned",
-    ]
-    + (
-        [
-            # It must be the expected-PCR key, and not the Secure Boot one, compared through the
-            # certificates copied into /usr, which external builds do not carry. Derive each in the
-            # guest and insist it is non-empty, so that a comparison against nothing cannot pass.
-            '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/expected-pcr.crt >/tmp/pcr.pem && test -s /tmp/pcr.pem && test "$(cat /tmp/pcr.pem)" = "$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
-            '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/secure-boot.crt >/tmp/sb.pem && test -s /tmp/sb.pem && test "$(cat /tmp/sb.pem)" \'!=\' "$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
-        ]
-        if not SIGN_WITH_TOKEN
-        else []
-    ),
+        # It must be the expected-PCR key, and not the Secure Boot one, compared through the
+        # certificates copied into /usr. Derive each in the guest and insist it is non-empty, so
+        # that a comparison against nothing cannot pass.
+        '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/expected-pcr.crt >/tmp/pcr.pem && test -s /tmp/pcr.pem && test "$(cat /tmp/pcr.pem)" = "$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
+        '/usr/lib/systemd/systemd-keyutil extract-public --certificate /usr/share/tine-example/secure-boot.crt >/tmp/sb.pem && test -s /tmp/sb.pem && test "$(cat /tmp/sb.pem)" \'!=\' "$(cat /run/systemd/tpm2-pcr-public-key.pem)"',
+    ],
 )
 
 # This image strips the package database from its partitions, so only the logical image still
