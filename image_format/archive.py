@@ -1,16 +1,14 @@
 #!/usr/bin/python3
 """Merge a logical image into a deterministic tar, cpio, or directory.
 
-Archive ownership is normalized to uid/gid 0. Tar stores extended attributes as PAX
-headers; the newc cpio format has no general extended-attribute representation.
+Archive ownership is normalized to uid/gid 0. The newc cpio format has no general
+extended-attribute representation.
 """
 
 import os
 import subprocess
 import sys
-import tarfile
 import tempfile
-from collections.abc import Callable
 from pathlib import Path
 
 import specs
@@ -18,6 +16,7 @@ import util
 
 import cpio
 import finalize
+import tar
 
 
 class Spec(finalize.ImageSpec):
@@ -28,30 +27,6 @@ class Spec(finalize.ImageSpec):
     pkgdb_paths: list[str]
 
 
-def _xattrs(path: Path) -> dict[str, str]:
-    """Encode Linux xattrs using the convention understood by GNU tar and star."""
-    headers = {}
-    for name in sorted(os.listxattr(path, follow_symlinks=False)):
-        if name.startswith(("user.overlay.", "trusted.overlay.")):
-            continue
-        value = os.getxattr(path, name, follow_symlinks=False)
-        headers["SCHILY.xattr." + name] = value.decode("utf-8", "surrogateescape")
-    return headers
-
-
-def _reproducible(path: Path, epoch: int) -> Callable[[tarfile.TarInfo], tarfile.TarInfo]:
-    """Return a tar filter that normalizes ownership, mtimes, and extended attributes."""
-
-    def reset(info: tarfile.TarInfo) -> tarfile.TarInfo:
-        info.uid = info.gid = 0
-        info.uname = info.gname = ""
-        info.mtime = min(int(info.mtime), epoch)
-        info.pax_headers = dict(info.pax_headers) | _xattrs(path)
-        return info
-
-    return reset
-
-
 def _clamp_mtimes(tree: Path, epoch: int) -> None:
     """Clamp directory-format mtimes without an archive filter."""
     for path in [tree, *tree.rglob("*")]:
@@ -59,21 +34,9 @@ def _clamp_mtimes(tree: Path, epoch: int) -> None:
             os.utime(path, (epoch, epoch), follow_symlinks=False)
 
 
-def _tar(tree: Path, out: Path, epoch: int) -> None:
-    # Explicit sorted entries keep archive order stable.
-    with tarfile.open(out, "w", format=tarfile.PAX_FORMAT) as archive:
-        for path in sorted(tree.rglob("*")):
-            archive.add(
-                path,
-                arcname="./" + str(path.relative_to(tree)),
-                recursive=False,
-                filter=_reproducible(path, epoch),
-            )
-
-
 def _pack(tree: Path, out: Path, fmt: str, epoch: int) -> None:
     if fmt == "tar":
-        _tar(tree, out, epoch)
+        tar.pack_tree(tree, out, epoch)
     elif fmt == "cpio":
         cpio.pack_tree(tree, out, epoch)
     else:

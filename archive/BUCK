@@ -10,9 +10,15 @@ tine_python_library(
     deps = ["//:util"],
 )
 
+tine_python_library(
+    name = "tar",
+    srcs = ["tar.py"],
+    visibility = ["tine//..."],
+)
+
 box_python_test(
     name = "test",
     box = "//tools:dev.box",
-    srcs = ["cpio.py", "cpio_test.py"],
+    srcs = ["cpio.py", "cpio_test.py", "tar.py", "tar_test.py"],
     deps = ["//:util"],
 )
