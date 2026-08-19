@@ -10,6 +10,7 @@ tine_python_binary(
         "//:specs",
         "//:util",
         "//archive:cpio",
+        "//archive:tar",
         "//image:finalize",
     ],
     visibility = ["PUBLIC"],
