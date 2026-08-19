@@ -98,9 +98,13 @@ secureboot_pkcs11() {
 
     # A prod build host materializes the signing coordinates in a file and points the build at it
     cat > "$pkcs11_dir/signing.bcfg" <<EOF
-[signing]
+[secure-boot-signing]
 token = SecureBoot
-pcr-token = PcrPolicy
+pin-file = $pkcs11_dir/pin
+socket = $pkcs11_dir/sock/pkcs11
+
+[pcr-signing]
+token = PcrPolicy
 pin-file = $pkcs11_dir/pin
 socket = $pkcs11_dir/sock/pkcs11
 EOF

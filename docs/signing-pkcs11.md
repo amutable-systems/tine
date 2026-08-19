@@ -60,16 +60,15 @@ every box. On the host holding the key:
 
 ## What tine needs
 
-Signing coordinates are host-specific, so they are not committed. The `config_signing_key()` macro
-declares a key that uses a PKCS#11 token when doing the build with appropriate configuration (see below),
-and falls back to generating a development key pair without it. So one image definition serves both:
+Signing coordinates are host-specific, so they are not committed. `pkcs11_signing_key()` declares a key
+one configuration section describes. One section describes one key: give each role its own, repeating the
+socket and PIN file they share, so that a role is configured, or left unconfigured, in one place.
 
 ```Starlark
-load("@tine//image:defs.bzl", "bootable_disk_image", "config_signing_key")
+load("@tine//image:defs.bzl", "bootable_disk_image", "pkcs11_signing_key")
 
-# section defaults to "signing", token_key defaults to "token"
-config_signing_key(name = "secureboot")
-config_signing_key(name = "pcr-signing", token_key = "pcr-token")
+pkcs11_signing_key(name = "secureboot", section = "secure-boot-signing")
+pkcs11_signing_key(name = "pcr-signing", section = "pcr-signing")
 
 bootable_disk_image(
     name = "image",
@@ -79,15 +78,38 @@ bootable_disk_image(
 )
 ```
 
+An image signing with such a key fails when its section is missing an option, naming the option, and
+fails when the section is missing altogether. Nothing generates a key in its place.
+
+To get a developer build as well, where there is no token to hand, declare a generated key beside the
+token one and name one of them, as `examples/image-secureboot` does:
+
+```Starlark
+pkcs11_signing_key(name = "secureboot.token", section = "secure-boot-signing")
+generate_signing_key(name = "secureboot.generated")
+
+SIGN_WITH_TOKEN = read_config("secure-boot-signing", "token") != None
+
+bootable_disk_image(
+    name = "image",
+    secure_boot_key = ":secureboot.token" if SIGN_WITH_TOKEN else ":secureboot.generated",
+    ...
+)
+```
+
+That switch reads the same configuration the coordinates come from, so a configuration file that fails to
+arrive picks the generated key without saying so. A certificate a token holds is a URI rather than a
+file, so an image installing one has to know which key it got.
+
 `examples/image-secureboot` is the worked example of this shape, and `tools/ci.sh` builds it against
 tpm2-pkcs11 tokens on a software TPM, served by `tools/signing-server` (which exercises the steps from
 this document). The invocation supplies the host-side parameters:
 
 ```sh
 tine buck build \
-    -c signing.token=SecureBoot \
-    -c signing.pin-file="$HOME/.config/signing-pin" \
-    -c signing.socket="$XDG_RUNTIME_DIR/signing/pkcs11" \
+    -c secure-boot-signing.token=SecureBoot \
+    -c secure-boot-signing.pin-file="$HOME/.config/signing-pin" \
+    -c secure-boot-signing.socket="$XDG_RUNTIME_DIR/signing/pkcs11" \
     //your:image
 ```
 
@@ -96,8 +118,13 @@ Rather than repeating those on every invocation, your build infrastructure can p
 `.buckconfig`. Keep it out of the repository via `.gitignore`:
 
 ```ini
-[signing]
+[secure-boot-signing]
 token = SecureBoot
+pin-file = /home/build/.config/signing-pin
+socket = /run/signing/pkcs11
+
+[pcr-signing]
+token = PcrPolicy
 pin-file = /home/build/.config/signing-pin
 socket = /run/signing/pkcs11
 ```
@@ -110,24 +137,20 @@ to every cell:
 tine buck build --config-file "$CREDENTIALS_DIRECTORY/signing.bcfg" //your:image
 ```
 
-**Warning: Buck silently ignores a `--config-file` that does not exist**, and the build then signs with
-development keys. Have the invoking job check for the file, or include it from `.buckconfig.local` as
+**Warning: Buck silently ignores a `--config-file` that does not exist.** A build declaring only
+`pkcs11_signing_key()` then stops, naming the section it found nothing in; one that falls back to a
+generated key of its own accord signs with that instead and says nothing. Either way, have the invoking
+job check for the file, or include it from `.buckconfig.local` as
 `<file:/run/credentials/build.service/signing.bcfg>`, which fails when it is missing.
 
-Each signing role (`secure_boot_key`, `sign_expected_pcr_key`, etc.) can get its own token and
-configuration key. The example declares its expected-PCR key that way, so building it externally takes a
-`-c signing.pcr-token=<label>` as well; the PIN file and socket are shared.
+What a section configures:
 
-Underneath, the macro declares a `pkcs11_signing_key`, which a project with its own switching logic can
-declare directly:
-
-- `token`: the token label, used as `token=` in the generated URIs. From `<section>.<token_key>`.
-- `object`: the key's `CKA_LABEL`, used as `object=`. Rule only; defaults to `token`.
-- `pin_file`: host path to a file with the token PIN on its first line, from `<section>.pin-file`. It
-  must be readable by the user running the build; it is bound read-only into the sandbox and referenced
-  as `pin-source=` in the private key URI. There is no interactive alternative: a build action has no
-  terminal to prompt on.
-- `socket`: host path of the `p11-kit server` socket, from `<section>.socket`.
+- `<section>.token`: the token label, used as `token=` in the generated URIs.
+- `<section>.object`: the key's `CKA_LABEL`, used as `object=`. Defaults to the value of `token`.
+- `<section>.pin-file`: host path to a file with the token PIN on its first line. It must be readable by
+  the user running the build; it is bound read-only into the sandbox and referenced as `pin-source=` in
+  the private key URI. There is no interactive alternative: a build action has no terminal to prompt on.
+- `<section>.socket`: host path of the `p11-kit server` socket.
 
 All paths are absolute and resolved by the invoker, not by tine.
 

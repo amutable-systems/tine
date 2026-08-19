@@ -794,8 +794,8 @@ Development images can source a key in two ways:
   signed image graph cacheable, and every build enrolls the same certificate. Such a key is public to
   everyone with repository access: use it for test images only, and never enroll it on real hardware.
 
-A production build should sign with `pkcs11_signing_key()` or `config_signing_key()`, where the key is
-held by a PKCS#11 token and the build reaches it over a socket without ever seeing the key material. See
+A production build should sign with `pkcs11_signing_key()`, where the key is held by a PKCS#11 token and
+the build reaches it over a socket without ever seeing the key material. See
 [signing-pkcs11.md](signing-pkcs11.md).
 
 ## Running the image in a VM

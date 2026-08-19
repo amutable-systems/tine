@@ -27,6 +27,9 @@ _PATH_DELIMITERS = [":", ";", "?", "&", ",", "%"]
 # PKCS#11 client (socket and PIN) sandbox mount.
 _SIGNING_CONFIG_DIR = "/run/tine"
 
+# What a key with no token configured requires, and nothing carries.
+_UNCONFIGURED = "tine//image:no-signing-token-configured"
+
 SigningKeyInfo = provider(
     doc = "A signing credential, as local PEM artifacts or external URIs",
     fields = {
@@ -181,38 +184,51 @@ def _check_host_path(what: str, path: str) -> str:
         fail("pkcs11_signing_key: {} must not name a build artifact, got {!r}".format(what, path))
     return path
 
-def config_signing_key(name: str, section: str = "signing", token_key: str = "token") -> None:
-    """Declare a signing key that build configuration switches to a PKCS#11 token.
+def pkcs11_signing_key(
+    name: str,
+    section: str = "signing",
+    target_compatible_with: list[str] | Select | None = None,
+    **kwargs,
+) -> None:
+    """Declare a key held by a PKCS#11 token, addressed by one build configuration section.
 
-    With `-c <section>.<token_key>=<label>` the key lives in that token, addressed through
-    `<section>.pin-file` and `<section>.socket`; without it a development key pair is generated per
-    workspace. One image definition thereby serves development builds and externally signed ones.
+    `<section>.token` names the token, `<section>.object` picks the key out of it, and
+    `<section>.pin-file` and `<section>.socket` reach it. Coordinates are host state, so they come
+    from configuration rather than from the graph. One section holds one key: a build signing
+    several roles gives each its own, so a role is configured, or left unconfigured, in one place.
+
+    Without a token there is nothing here to sign with, so the key becomes a target no configuration
+    can build: `//...` skips it, and only an image that actually reaches for it fails. It never
+    stands in a generated key for a token it was not given: an image meant to be signed by a token
+    that quietly ships one from buck-out instead is the failure worth being loud about, and which
+    key an image signs with is the caller's to name.
     """
-    token = read_config(section, token_key)
-    if token == None:
-        generate_signing_key(name = name)
-        return
-
-    # Naming a token is the intent to sign with it, so incomplete coordinates are a mistake rather
-    # than a reason to fall back to a generated key
-    coordinates = {key: read_config(section, key) for key in ("pin-file", "socket")}
-    missing = [key for key in sorted(coordinates) if not coordinates[key]]
-    if missing:
-        fail(
-            "config_signing_key: {}.{} names a token; requires configuring {}".format(
-                section,
-                token_key,
-                ", ".join(["{}.{}".format(section, key) for key in missing]),
-            ),
-        )
-    pkcs11_signing_key(
+    token = read_config(section, "token")
+    _pkcs11_signing_key(
         name = name,
-        pin_file = coordinates["pin-file"],
-        socket = coordinates["socket"],
+        object = read_config(section, "object"),
+        pin_file = read_config(section, "pin-file"),
+        section = section,
+        socket = read_config(section, "socket"),
         token = token,
+        # Added to the caller's own constraints rather than replacing them, and a `select()` among
+        # them survives the concatenation.
+        target_compatible_with = (target_compatible_with or []) + ([] if token else [_UNCONFIGURED]),
+        **kwargs,
     )
 
 def _pkcs11_signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
+    # Analysis is the first point at which something signing with this key has been found, so a
+    # section that never filled the coordinates in only becomes an error here.
+    missing = [name for name in ("pin_file", "socket", "token") if not getattr(ctx.attrs, name)]
+    if missing:
+        fail(
+            "pkcs11_signing_key: signing with {} requires {}".format(
+                ctx.label.raw_target(),
+                ", ".join(["{}.{}".format(ctx.attrs.section, name.replace("_", "-")) for name in missing]),
+            ),
+        )
+
     token = _check_label("token", ctx.attrs.token)
     object = _check_label("object", ctx.attrs.object or token)
     pin_file = _check_host_path("pin_file", ctx.attrs.pin_file)
@@ -244,7 +260,7 @@ def _pkcs11_signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
         ),
     ]
 
-pkcs11_signing_key = rule(
+_pkcs11_signing_key = rule(
     impl = _pkcs11_signing_key_impl,
     attrs = {
         "object": attrs.option(
@@ -252,13 +268,19 @@ pkcs11_signing_key = rule(
             default = None,
             doc = "the key's CKA_LABEL; defaults to the token label",
         ),
-        "pin_file": attrs.string(doc = "host path to a file with the token PIN on its first line"),
-        "socket": attrs.string(doc = "host path of the p11-kit server socket"),
-        "token": attrs.string(doc = "the token label"),
+        "pin_file": attrs.option(
+            attrs.string(),
+            default = None,
+            doc = "host path to a file with the token PIN on its first line",
+        ),
+        "section": attrs.string(doc = "the build configuration section the coordinates came from"),
+        "socket": attrs.option(attrs.string(), default = None, doc = "host path of the p11-kit server socket"),
+        "token": attrs.option(attrs.string(), default = None, doc = "the token label"),
     },
     doc = """Address a key held by a PKCS#11 token reachable over a p11-kit server socket.
 
-    The paths are host state, so they come from build configuration rather than the graph, and the
-    invoker resolves them.
+    Declared through `pkcs11_signing_key()`, which reads the coordinates a section configures. Each
+    is optional so that a key can be declared from a section that has none of them yet; a key
+    something signs with needs all three, and says so naming the options it was short of.
     """,
 )
