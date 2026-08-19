@@ -337,6 +337,18 @@ box_sh_test(
     ],
 )
 
+# Both distributions, because each package system captures its database in its own format.
+box_sh_test(
+    name = "pkgdb-format-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    test = "pkgdb-format.sh",
+    args = [
+        "$(location :demo.fedora[pkgdb])",
+        "$(location :demo.arch[pkgdb])",
+    ],
+)
+
 # A DDI's file name is what a systemd-sysupdate transfer matches, so it is part of the contract
 # rather than an implementation detail. The example sets no version, so this pins the rule's
 # default alongside the shape.

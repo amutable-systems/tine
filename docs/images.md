@@ -525,8 +525,9 @@ type and UUID repart assigned, so it exists only after the build, and a consumer
 metadata written beside the partition. The ESP is not published: what it carries is transferred by other
 means, and no update writes the partition back. `[qcow2]` and `[raw.zst]` publish themselves rather than
 travelling in the disk's own set, so gathering a release does not build every encoding of it. So do the
-metadata views: `[sbom]` publishes both formats and `[pkgdb]` the directory the package database occupies,
-each named after the image they describe, and for a disk `[initrd][sbom]` covers what only early boot has.
+metadata views: `[sbom]` publishes both formats and `[pkgdb]` one file named after the format its package
+system keeps the database in, each named after the image they describe, and for a disk `[initrd][sbom]`
+covers what only early boot has.
 A scanner then reads a release without unpacking anything in it, and a release that lists no view builds
 none.
 
@@ -545,7 +546,7 @@ demo-ext_0_x86-64.sysext.raw
 image_0_x86-64.cdx.json
 image_0_x86-64.efi
 image_0_x86-64.initrd
-image_0_x86-64.pkgdb/rpmdb.sqlite
+image_0_x86-64.pkgdb.sqlite
 image_0_x86-64.qcow2
 image_0_x86-64.raw
 image_0_x86-64.spdx.json
