@@ -68,8 +68,8 @@ fi
 # with the production module: tools/signing-server serves one tpm2-pkcs11 token per key from a
 # software TPM, and the same example builds against its socket. Every tool this needs comes from the
 # swtpm-signing box, so a runner needs nothing beyond what the rest of the pipeline uses. The
-# externally signed image must also boot, which reuses the vm-smoke checks minus the two reading the
-# certificates only generated-key builds carry.
+# externally signed image must also boot, which reuses the vm-smoke checks in full: the image carries
+# the token's certificates the same way a generated key's, so the checks reading them apply here too.
 # Stopping the arrangement is one TERM, per tools/signing-server. The log surfaces only on failure;
 # the daemons keep spamming it during the build (swtpm logs every client disconnect), so it stays
 # out of the console on success.

@@ -16,9 +16,9 @@ Three signing roles can each take such a key, independently:
 | verity       | disk/sysext `*-verity-sig` partitions                | `systemd-repart`            |
 
 `image_sysext`/`sysext_image` take a verity-role key for their DDI as well. The host merging the extension
-validates the signature against the certificates in its `/usr/lib/verity.d/`; these must be files: a
-token's certificate is a URI, extract it with `/usr/lib/systemd/systemd-keyutil extract-certificate
---certificate-source provider:pkcs11 --certificate '<uri>'` (PEM on stdout).
+validates the signature against the certificates in its `/usr/lib/verity.d/`; these must be files, which a
+token's certificate is not. Every key rule therefore publishes `:<name>[cert]`, its certificate as a PEM
+artifact, so an image installs one the same way whatever holds the key.
 
 ## How the pieces connect
 
@@ -98,8 +98,8 @@ bootable_disk_image(
 ```
 
 That switch reads the same configuration the coordinates come from, so a configuration file that fails to
-arrive picks the generated key without saying so. A certificate a token holds is a URI rather than a
-file, so an image installing one has to know which key it got.
+arrive picks the generated key without saying so. Nothing else in the image follows the switch: a
+certificate copy names `[cert]` on whichever key was picked.
 
 `examples/image-secureboot` is the worked example of this shape, and `tools/ci.sh` builds it against
 tpm2-pkcs11 tokens on a software TPM, served by `tools/signing-server` (which exercises the steps from
@@ -143,7 +143,7 @@ generated key of its own accord signs with that instead and says nothing. Either
 job check for the file, or include it from `.buckconfig.local` as
 `<file:/run/credentials/build.service/signing.bcfg>`, which fails when it is missing.
 
-What a section configures:
+What a section configures, and the two arguments a key takes beside it:
 
 - `<section>.token`: the token label, used as `token=` in the generated URIs.
 - `<section>.object`: the key's `CKA_LABEL`, used as `object=`. Defaults to the value of `token`.
@@ -151,6 +151,14 @@ What a section configures:
   the user running the build; it is bound read-only into the sandbox and referenced as `pin-source=` in
   the private key URI. There is no interactive alternative: a build action has no terminal to prompt on.
 - `<section>.socket`: host path of the `p11-kit server` socket.
+- `certificate`: an argument rather than an option, naming a PEM file in the build graph to use as the
+  certificate, which leaves the token holding only the private key. Without it the certificate comes
+  from the token as well, as `type=cert`. A certificate is a build input rather than host state, which
+  is why it is named on the target. **Nothing checks that the file matches the key in the token**, and
+  nothing later in the signing stack does either, so a certificate over some other key yields signatures
+  that verify against nothing; see "Giving the key a certificate" below.
+- `certificate_object`: an argument too, the certificate's own `CKA_LABEL` for a token that files it
+  under one of its own. Defaults to the value of `object`, and means nothing beside `certificate`.
 
 All paths are absolute and resolved by the invoker, not by tine.
 
@@ -159,8 +167,14 @@ so the sandbox gets the whole directory it sits in. `$XDG_RUNTIME_DIR/p11-kit/` 
 the wrong one, since that is where other servers put their sockets too.
 
 Roles may share one key target or use separate ones, and a role without an assigned key is not signed.
-The Secure Boot and expected-PCR keys must share one source and one socket due to how `ukify` works. Only
-the verity key may sit behind a different socket.
+The Secure Boot and expected-PCR keys must agree on where their private keys come from, and on where
+their certificates come from, and share one socket, due to how `ukify` works: it has one pair of provider
+options for both roles. Only the verity key may sit behind a different socket.
+
+A key's private half and its certificate are named apart, and nothing requires them to be held the same
+way. The useful asymmetry is a private key in a token whose certificate is a file: a certificate is
+public, so committing it keeps it a build input, leaves the token holding only what must stay in it, and
+spares every build the round trip that reads the certificate back out.
 
 Signing actions with an external key run locally and never reach a shared cache, because their output
 does not follow from their declared inputs. For the same reason Buck does not know when the token's
@@ -275,7 +289,8 @@ Check the subject and public key of what came out (`openssl x509 -in cert.pem -n
 further: nothing later in the signing stack checks that a certificate and a private key belong together, so
 a certificate over the wrong key yields signatures nothing can verify.
 
-Store it in the token, so the build can address it as `type=cert` instead of needing a file. Prefer the
+Store it in the token, so the build can address it as `type=cert` instead of needing a file; a build that
+passes `certificate` a committed PEM instead can skip this and keep the file. Prefer the
 backend's own tool where there is one, because it copies the key's `CKA_ID` onto the certificate; for
 TPM:
 

@@ -91,14 +91,22 @@ def declare_uki(
         fail("uki: sign_expected_pcr_key needs Secure Boot signing, which signs the UKI it seals")
 
     # ukify has one pair of provider options for both keys, so it cannot load one from a provider and
-    # read the other from a file.
-    if sign_expected_pcr_key != None and sign_expected_pcr_key.source != secure_boot_key.source:
-        fail(
-            "uki: the Secure Boot and expected-PCR keys must come from the same source, got {!r} and {!r}".format(
-                secure_boot_key.source,
-                sign_expected_pcr_key.source,
-            )
-        )
+    # read the other from a file. Private keys and certificates are compared apart, because that is
+    # how ukify names them: one key in a token and one certificate in a file is the same arrangement
+    # for both roles or for neither.
+    if sign_expected_pcr_key != None:
+        for what, secure_boot_source, pcr_source in (
+            ("private keys", secure_boot_key.private_key_source, sign_expected_pcr_key.private_key_source),
+            ("certificates", secure_boot_key.certificate_source, sign_expected_pcr_key.certificate_source),
+        ):
+            if secure_boot_source != pcr_source:
+                fail(
+                    "uki: the Secure Boot and expected-PCR {} must come from the same source, got {!r} and {!r}".format(
+                        what,
+                        secure_boot_source,
+                        pcr_source,
+                    ),
+                )
     out = declare_out(ctx, identifier, "ukis", dir = True)
     # Declared next to the UKIs, not inside them: that directory is copied onto the ESP whole.
     modules = declare_out(ctx, identifier, "modules.json")

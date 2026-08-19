@@ -11,8 +11,18 @@ import unittest
 
 import uki
 
-SECURE_BOOT: uki.Key = {"private_key": "/keys/sb.key", "certificate": "/keys/sb.crt", "source": None}
-PCR: uki.Key = {"private_key": "/keys/pcr.key", "certificate": "/keys/pcr.crt", "source": None}
+SECURE_BOOT: uki.Key = {
+    "private_key": "/keys/sb.key",
+    "certificate": "/keys/sb.crt",
+    "private_key_source": None,
+    "certificate_source": None,
+}
+PCR: uki.Key = {
+    "private_key": "/keys/pcr.key",
+    "certificate": "/keys/pcr.crt",
+    "private_key_source": None,
+    "certificate_source": None,
+}
 
 SECURE_BOOT_ARGUMENTS = [
     "--signtool", "systemd-sbsign",
@@ -32,9 +42,13 @@ PCR_ARGUMENTS = [
 OPTIONS = {"--sign-initrd-pcrs"}
 
 
-def _token(key: uki.Key, source: str = "provider:pkcs11") -> uki.Key:
-    """The same role held in a PKCS#11 token, as pkcs11_signing_key() spells it."""
-    return {**key, "source": source}
+def _token(key: uki.Key, source: str = "provider:pkcs11", certificate: bool = True) -> uki.Key:
+    """The same role held in a PKCS#11 token, as pkcs11_signing_key() spells it.
+
+    Without `certificate` the token holds only the private key, which is the arrangement a key
+    given a PEM certificate of its own has.
+    """
+    return {**key, "private_key_source": source, "certificate_source": source if certificate else None}
 
 
 def _profiles(*ids: str, unsealed: str = "") -> list[uki.Profile]:
@@ -104,6 +118,13 @@ class TestSigningArguments(unittest.TestCase):
         self.assertEqual(
             uki._signing_arguments(None, _token(PCR), [], OPTIONS),
             [*PCR_ARGUMENTS, "--pcr-certificate", "/keys/pcr.crt"],
+        )
+
+    def test_a_token_holds_the_secure_boot_key_beside_a_file_certificate(self) -> None:
+        """Each half names its own provider, so a certificate in a file passes none at all."""
+        self.assertEqual(
+            uki._signing_arguments(_token(SECURE_BOOT, certificate=False), None, [], OPTIONS),
+            [*SECURE_BOOT_ARGUMENTS, "--signing-provider", "pkcs11"],
         )
 
     def test_a_key_source_ukify_cannot_load(self) -> None:
