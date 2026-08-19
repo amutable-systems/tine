@@ -49,6 +49,8 @@ package_system(
     package_suffix = ".rpm",
     plan = ":plan",
     build = ":build",
+    # rpm keeps one sqlite database, so a capture of it is that file.
+    database_format = "sqlite",
     # Keep in sync with install.py's DBPATH, which Starlark cannot read.
     database_paths = ["usr/lib/sysimage/rpm"],
     visibility = ["PUBLIC"],

@@ -23,7 +23,17 @@ tine_python_binary(
 )
 
 # The capture driver implements the terminal-image contract, so it takes that library.
-tine_python_binary(name = "pkgdb", main = "pkgdb.py", deps = [":alpm", "//:specs", "//image:finalize"])
+tine_python_binary(
+    name = "pkgdb",
+    main = "pkgdb.py",
+    deps = [
+        ":alpm",
+        "//:specs",
+        "//:util",
+        "//archive:tar",
+        "//image:finalize",
+    ],
+)
 tine_python_binary(name = "index", main = "index.py", deps = [":alpm", "//:specs", "//:util"])
 tine_python_binary(
     name = "plan",
@@ -46,6 +56,8 @@ tine_python_binary(
 # `build` stays unset: Arch has no makepkg rule here yet.
 package_system(
     name = "package_system",
+    # alpm keeps a directory of per-package entries, so a capture of it is an archive.
+    database_format = "tar.zst",
     # Keep in sync with alpm.py's DBPATH, which Starlark cannot read.
     database_paths = ["var/lib/pacman"],
     # pacman reads the pinned databases directly, so there is nothing to convert in advance.

@@ -4,6 +4,7 @@ PackageSystemInfo = provider(
     doc = "A native package ecosystem and the drivers that operate on it.",
     fields = {
         "build": provider_field(Dependency | None),
+        "database_format": provider_field(str),
         "database_paths": provider_field(list[str]),
         "extract": provider_field(Dependency),
         "index": provider_field(Dependency),
@@ -29,6 +30,7 @@ def _package_system_impl(ctx: AnalysisContext) -> list[Provider]:
             plan = ctx.attrs.plan,
             build = ctx.attrs.build,
             solver_cache = ctx.attrs.solver_cache,
+            database_format = ctx.attrs.database_format,
             database_paths = ctx.attrs.database_paths,
         ),
     ]
@@ -40,6 +42,9 @@ package_system = rule(
             attrs.exec_dep(providers = [RunInfo]),
             default = None,
             doc = "build a native package",
+        ),
+        "database_format": attrs.string(
+            doc = "suffix naming the format `pkgdb` captures the database in",
         ),
         "database_paths": attrs.list(
             attrs.string(),

@@ -2,8 +2,8 @@
 """Copy the rpm database out of a logical image as a separate, trimmed artifact.
 
 Useful as a basis for SBOM creation and security scanners. The database is not shipped in
-the image, so capture it as a separate artifact. The output is the directory a package
-database occupies; rpm's is the single file this driver writes into it.
+the image, so capture it as a separate artifact. rpm keeps one sqlite database, so the
+output is a copy of that file.
 
 The copy is trimmed to the ``Packages`` table alone: rpm's path/dependency lookup indexes
 (Basenames, Providename, ...) are used only by rpm itself, dropping them roughly halves
@@ -54,15 +54,13 @@ def main(argv: list[str] | None = None) -> None:
     spec: Spec = specs.parse("pkgdb", argv)
 
     out = Path(spec["out"])
-    out.mkdir(parents=True, exist_ok=True)
-    db = out / Path(DBPATH).name
     with finalize.image(spec, program="pkgdb") as tree:
         src = tree / DBPATH
         if not src.exists():
             raise SystemExit(f"no rpmdb at {src}; the image has no installed packages")
-        shutil.copy2(src, db)
-    _trim(db)
-    print(f"pkgdb: captured Packages-only database -> {db}", file=sys.stderr)
+        shutil.copy2(src, out)
+    _trim(out)
+    print(f"pkgdb: captured Packages-only database -> {out}", file=sys.stderr)
 
 
 if __name__ == "__main__":

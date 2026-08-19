@@ -38,9 +38,10 @@ def published_metadata_subtargets(image: ImageInfo, basename: str) -> dict[str, 
         ),
     ]
     if image.pkgdb != None:
-        # The directory a package database occupies, because how many files that is and what they
-        # are called is the package system's business, not a name composed here.
-        sub_targets["pkgdb"] += [PublishedInfo(artifacts = {"{}.pkgdb".format(basename): image.pkgdb})]
+        # The capture carries the format in its name, so a release says what it hands out.
+        sub_targets["pkgdb"] += [
+            PublishedInfo(artifacts = {"{}.{}".format(basename, image.pkgdb.basename): image.pkgdb}),
+        ]
     return sub_targets
 
 def _assemble_impl(

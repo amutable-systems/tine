@@ -475,7 +475,7 @@ def _declare_pkgdb(
     identifier: str | None,
 ) -> Artifact:
     system = package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
-    out = declare_out(ctx, identifier, "pkgdb", dir = True)
+    out = declare_out(ctx, identifier, "pkgdb." + system.database_format)
     cmd = _image_command(
         ctx,
         driver = "pkgdb",
