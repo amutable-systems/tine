@@ -9,6 +9,7 @@ import lzma
 import os
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -72,6 +73,23 @@ def decompressor(magic: bytes) -> Callable[[IO[bytes]], io.BufferedIOBase] | Non
         if magic.startswith(prefix):
             return opener
     return None
+
+
+def compress_zstd(src: Path, out: Path) -> None:
+    """Compress `src` into `out`, with the settings a build artifact wants."""
+    subprocess.run(
+        [
+            "zstd", "-q", "-f",
+            # zstd's multi-threaded output is byte-identical to its single-threaded output, so using
+            # every core stays reproducible. --adapt would not, so it stays out.
+            "--threads=0",
+            # Level 9 is the sweet spot: it beats the default 3 by 10% in a fraction of a second,
+            # where 19 buys another 10% but takes 28 times as long.
+            "-9",
+            "-o", str(out), str(src),
+        ],
+        check=True,
+    )  # fmt: skip
 
 
 def urlopen(url: str, *, agent: str) -> http.client.HTTPResponse:

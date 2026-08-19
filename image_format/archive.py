@@ -43,23 +43,6 @@ def _pack(tree: Path, out: Path, fmt: str, epoch: int) -> None:
         raise SystemExit(f"unknown archive format {fmt!r}")
 
 
-def _compress(src: Path, out: Path) -> None:
-    """Compress a finished archive with zstd."""
-    subprocess.run(
-        [
-            "zstd", "-q", "-f",
-            # zstd's multi-threaded output is byte-identical to its single-threaded output, so using
-            # every core stays reproducible. --adapt would not, so it stays out.
-            "--threads=0",
-            # Level 9 is the sweet spot: it beats the default 3 by 10% in a fraction of a second,
-            # where 19 buys another 10% but takes 28 times as long.
-            "-9",
-            "-o", str(out), str(src),
-        ],
-        check=True,
-    )  # fmt: skip
-
-
 def _archive(tree: Path, out: Path, fmt: str, epoch: int, compression: str) -> None:
     if fmt == "directory":
         if compression != "none":
@@ -86,7 +69,7 @@ def _archive(tree: Path, out: Path, fmt: str, epoch: int, compression: str) -> N
         with tempfile.TemporaryDirectory(dir=out.parent) as scratch:
             raw = Path(scratch) / out.name
             _pack(tree, raw, fmt, epoch)
-            _compress(raw, out)
+            util.compress_zstd(raw, out)
 
 
 def main(argv: list[str] | None = None) -> None:
