@@ -20,15 +20,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/ci-setup
 
-      # Freeing up disk space with rm -rf can take multiple minutes. Since we don't need the extra free space
-      # immediately, we remove the files in the background. However, we first move them to a different location
-      # so that nothing tries to use anything in these directories anymore while we're busy deleting them.
-      - name: Free disk space
-        run: |
-          sudo mv /usr/local /usr/local.trash
-          sudo mv /opt/hostedtoolcache /opt/hostedtoolcache.trash
-          sudo systemd-run rm -rf /usr/local.trash /opt/hostedtoolcache.trash
-
       # the actual pipeline (bootstrap, linters, catalog, image builds, and VM boot smokes)
       # emits a log group per step
       - name: CI
