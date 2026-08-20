@@ -1,0 +1,25 @@
+name: refresh catalog
+
+on:
+  schedule:
+    # quiet hours on Sundays
+    - cron: '47 1 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: refresh-catalog
+
+jobs:
+  refresh-catalog:
+    uses: ./.github/workflows/bot-pr.yml
+    with:
+      name: refresh-catalog
+      label-description: automatic catalog refreshes
+      command: bin/tine buck run tine//tools:refresh-catalog -- --commit
+      # the refresh re-snapshots every repository and re-resolves every box before CI even starts
+      timeout-minutes: 45
