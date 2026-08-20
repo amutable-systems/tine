@@ -27,6 +27,8 @@ cargo_package(
 - `srcs` defaults to `glob(["<name>/**"], exclude = ["<name>/target/**"])`: the checkout is expected in a
   directory named after the target. Pass `srcs` explicitly when it is called something else. Nothing needs
   to be added inside the checkout, i.e. a pristine project clone works.
+- Use [`git_fetch()`](git.md) for a project that is not committed to this repository, and pass its work
+  tree as the sole `srcs` entry.
 - At most one of the sources may be a `Cargo.lock`, and its directory is the workspace cargo builds in, so
   a project vendoring another project's lock has to narrow `srcs`. A project that resolves nothing has no
   lock to commit; then its sole `Cargo.toml` marks the root instead.

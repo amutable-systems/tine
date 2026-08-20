@@ -48,6 +48,7 @@ tine//box/                box bootstrap and sandbox command construction
 tine//rootfs/             bind/overlay mounting and stored-delta translation
 tine//image/              layers, boot artifacts, composition macros, and VM runners
 tine//image_format/       archive, directory, and raw-disk output rules and drivers
+tine//git/                pinned Git repositories with local checkout overrides
 tine//cargo/              vendored crate trees and offline Rust source builds
 tine//go/                 go.sum-verified module fetches and offline Go source builds
 tine//catalog/            default repositories, locks, releases, package managers, and buildroots
@@ -1277,9 +1278,9 @@ belong to one package system are listed in its own section instead:
   than the SHA-256 pinning everything else here uses.
 - `cargo-auditable` is a pinned upstream release binary rather than a source-built one, so the Rust build
   path is not itself part of the source-trust chain.
-- Two build steps reach the network, where everything else here downloads only what buck has verified
-  against a recorded byte hash: a Rust git fetch, pinned by the commit hash in the lock, and a Go module
-  fetch, whose integrity rests on the committed `go.sum` as go enforces it at build time.
+- Three build steps reach the network instead of downloading content with a recorded byte hash: Rust Git
+  dependencies use commit hashes from the lock file, project fetches use the commit passed to
+  `git_fetch()`, and Go verifies module downloads against the committed `go.sum`.
 - Crate downloads carry no recorded size, so Buck learns it from an HTTP HEAD whenever a download action
   executes. A cold daemon therefore needs the network even when every crate is already cached.
 - Upstream package signatures are not verified. SHA-256 pinning gives integrity after refresh, not
