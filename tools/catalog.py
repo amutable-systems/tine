@@ -272,16 +272,13 @@ def _repositories_for_boxes(buck: str, boxes: list[str]) -> list[str]:
     return sorted(_buck_out(buck, "uquery", query).split())
 
 
-def _refresh(
+def _plan(
     buck: str,
     catalog: str,
     selected_boxes: list[str] | None,
     advance_snapshots: bool,
-) -> Iterator[tuple[Path, str]]:
-    """Snapshot repositories and resolve selected boxes, yielding each result and where it belongs.
-
-    Nothing is written here, so a verify regenerates through the same commands a refresh does and
-    still leaves the checkout exactly as it found it.
+) -> tuple[Path, list[str], list[str]]:
+    """Pick what to refresh, advancing the mirror pins it will be resolved against.
 
     Selecting boxes also scopes the snapshotted repositories to those the boxes depend on, so a
     partial refresh or verify never touches a repository outside the selection.
@@ -299,12 +296,44 @@ def _refresh(
     catalog_dir = _catalog_directory(buck, targets)
     if advance_snapshots:
         _advance_snapshots(buck, catalog, catalog_dir, snapshots)
+    return catalog_dir, snapshots, resolves
 
+
+def _regenerate(
+    buck: str,
+    catalog_dir: Path,
+    snapshots: list[str],
+    resolves: list[str],
+) -> Iterator[tuple[Path, str]]:
+    """Snapshot repositories and resolve boxes, yielding each result and where it belongs.
+
+    Nothing is written here, so a verify regenerates through the same commands a refresh does and
+    still leaves the checkout exactly as it found it.
+    """
     for target in snapshots:
         yield catalog_dir / _repository_snapshot_path(target), _snapshot(buck, target)
 
     for target in resolves:
         yield catalog_dir / _box_snapshot_path(target), _resolve(buck, target)
+
+
+def _commit(catalog_dir: Path) -> None:
+    """Commit the refreshed catalog, pins and snapshots alike.
+
+    Scoped to the catalog directory rather than the files just written: advancing a pin rewrites
+    the declaration too, and a repository snapshotted for the first time is not tracked yet. These
+    are mechanical, machine-generated commits, so they are not signed off.
+    """
+    git = ["git", "-C", str(catalog_dir)]
+    status = subprocess.run(
+        [*git, "status", "--porcelain", "--", "."], check=True, capture_output=True, encoding="utf-8"
+    )
+    if not status.stdout:
+        print("==> the catalog is already up to date, nothing to commit", file=sys.stderr)
+        return
+    message = "catalog: Refresh pinned snapshots and box locks\n"
+    subprocess.run([*git, "add", "--", "."], check=True)
+    subprocess.run([*git, "commit", "--file=-", "--", "."], input=message, encoding="utf-8", check=True)
 
 
 def _differences(committed: Path, regenerated: str, limit: int = 24) -> str:
@@ -351,15 +380,27 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="assert the committed catalog matches what the pinned resolvers produce (CI)",
     )
+    p.add_argument(
+        "--commit",
+        action="store_true",
+        help="commit the refreshed catalog",
+    )
     args = p.parse_args(argv)
+    if args.commit and args.verify:
+        p.error("--verify leaves the checkout as it found it, so there is nothing to commit")
     catalog = _catalog_pattern(args.catalog)
 
     # Run nested commands from the project root so wrappers resolve consistently.
     with contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")) as _:
-        regenerated = _refresh(args.buck, catalog, args.box, advance_snapshots=not args.verify)
+        catalog_dir, snapshots, resolves = _plan(
+            args.buck, catalog, args.box, advance_snapshots=not args.verify
+        )
+        regenerated = _regenerate(args.buck, catalog_dir, snapshots, resolves)
         if not args.verify:
             for path, content in regenerated:
                 atomic_write_text(path, content)
+            if args.commit:
+                _commit(catalog_dir)
             return
 
         print("==> verifying the committed catalog matches", file=sys.stderr)
