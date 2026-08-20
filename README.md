@@ -125,6 +125,8 @@ User guides:
   crate graph in the executables and image SBOM
 - [Building Go projects](docs/go.md): the same for a checked-out Go project, whose module list go
   itself embeds in the executables
+- [Fetching project sources](docs/git.md): pinning an external project while allowing a local checkout
+  during development
 - [Maintaining packages](docs/importer.md): importing and updating packages from upstream distributions,
   local modifications, branch curation
 - [Development boxes](docs/box.md): pinned interactive development environments

@@ -6,6 +6,7 @@ it builds. `hello/` plays that checkout.
 
 load("@tine//box:defs.bzl", "box", "box_sh_test")
 load("@tine//cargo:defs.bzl", "cargo_package")
+load("@tine//git:defs.bzl", "git_fetch")
 load("@tine//image:defs.bzl", "copy", "image_install", "install_from", "mkdir", "rootfs_archive")
 load("@tine//package:defs.bzl", "package_manager")
 
@@ -22,20 +23,13 @@ box(
     release = "tine//catalog:fedora.rawhide.release",
 )
 
-# Stand in for the fetch a product would declare here, without needing the network a test cannot have:
-#
-#     git_fetch(
-#         name = "hello.checkout",
-#         repo = "https://github.com/example/hello",
-#         rev = "1c9e0f4b0f7d2a5e8b3c6d1a4f7b2e5c8d0a3f6b",
-#     )
-#
-# Either way cargo_package() receives one opaque directory artifact, whose Cargo.lock no analysis can
-# see, so this keeps the post-fetch workspace-discovery path covered.
-filegroup(
-    name = "hello.checkout",
-    srcs = {src.removeprefix("hello/"): src for src in glob(["hello/**"])},
-    copy = True,
+# Products use git_fetch() for projects they build but do not vendor. This example's `hello/` directory
+# overrides the fetch, avoiding network access during the test. Both paths give cargo_package() the same
+# opaque directory artifact and exercise its workspace discovery.
+git_fetch(
+    name = "hello.git",
+    repo = "https://github.com/example/hello",
+    rev = "1c9e0f4b0f7d2a5e8b3c6d1a4f7b2e5c8d0a3f6b",
 )
 
 # A fetched project needs no build file of its own. Its Cargo.lock both pins the crates and marks the
@@ -44,7 +38,7 @@ cargo_package(
     name = "hello",
     binaries = ["hello-cli"],
     box = ":rust.box",
-    srcs = [":hello.checkout"],
+    srcs = [":hello.git"],
 )
 
 # A project with no dependencies at all, which therefore commits no Cargo.lock.
