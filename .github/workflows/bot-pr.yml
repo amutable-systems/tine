@@ -1,0 +1,102 @@
+name: bot PR
+
+# Run a command that commits what it changed, run tests, and open a PR for it. Only one run of each kind
+# is ever in flight: while a PR or a failure issue having the same label is open, the run does nothing.
+on:
+  workflow_call:
+    inputs:
+      name:
+        description: what this run is, e.g. bump; it labels PRs bot-<name> and branches off <name>/
+        required: true
+        type: string
+      label-description:
+        description: what that label means, set when it is created
+        required: true
+        type: string
+      command:
+        description: the command to run; it commits whatever it changed
+        required: true
+        type: string
+      timeout-minutes:
+        description: budget for the command plus a full CI run
+        required: false
+        default: 20
+        type: number
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      NAME: ${{ inputs.name }}
+      LABEL: bot-${{ inputs.name }}
+    steps:
+      - name: Look for an open PR or issue
+        id: gate
+        run: |
+          # REST API covers PRs as well, unlike `gh issue list`
+          open=$(gh api "repos/{owner}/{repo}/issues?state=open&labels=$LABEL" \
+              --jq '.[] | "::notice::#\(.number) \(.title) is still open"')
+          blocked=false
+          if [ -n "$open" ]; then echo "$open"; blocked=true; fi
+          echo "blocked=$blocked" >> "$GITHUB_OUTPUT"
+
+      # gh does not auto-create labels
+      - name: Ensure the label exists
+        env:
+          LABEL_DESCRIPTION: ${{ inputs.label-description }}
+        run: |
+          [ -n "$(gh label list --search "$LABEL")" ] ||
+              gh label create "$LABEL" --color ededed --description "$LABEL_DESCRIPTION"
+
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.blocked == 'false'
+
+      - name: CI setup
+        uses: ./.github/actions/ci-setup
+        if: steps.gate.outputs.blocked == 'false'
+
+      - name: Run ${{ inputs.name }}
+        id: run
+        if: steps.gate.outputs.blocked == 'false'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'noreply@amutable.com'
+          before=$(git rev-parse HEAD)
+          # a literal from the calling workflow, so it goes into the script as written
+          ${{ inputs.command }}
+          [ "$(git rev-parse HEAD)" = "$before" ] || echo changed=true >> "$GITHUB_OUTPUT"
+          echo "before=$before" >> "$GITHUB_OUTPUT"
+
+      # the default GITHUB_TOKEN deliberately does not trigger further workflows, so test it right here
+      - name: Test the result
+        if: steps.run.outputs.changed
+        run: tools/ci.sh
+
+      - name: Open a PR
+        if: steps.run.outputs.changed
+        run: |
+          branch=$NAME/$(date -u +%Y-%m-%dT%H%MZ)  # ref can't contain ':'
+          git push origin "HEAD:refs/heads/$branch"
+          # every commit the step made
+          range=${{ steps.run.outputs.before }}..HEAD
+          # the blank line matters: the commit body ends in a list, which would swallow a lazy line
+          # --reverse: git log is newest-first, and these read in the order they were made
+          log=$(git log --reverse --format='%s%n%n%b' "$range")
+          body=$(printf '%s\n\nTested by %s/%s/actions/runs/%s.\n' "$log" \
+              "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          title=$(git log --reverse --format=%s "$range" |
+              awk '{ subjects = subjects sep $0; sep = "; " } END { print subjects }')
+          gh pr create --head "$branch" --base "$GITHUB_REF_NAME" --label "$LABEL" \
+              --title "$title" --body "$body"
+
+      # only keep one report open at a time via the label (see "gate" above)
+      - name: Report the failure
+        if: failure()
+        run: |
+          body=$(printf 'Nothing was pushed; %s stays paused until this issue is closed.\n\n%s\n' \
+              "$NAME" "Failed run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID")
+          gh issue create --label "$LABEL" --title "$NAME is failing" --body "$body"
