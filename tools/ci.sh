@@ -19,6 +19,11 @@ elif [ -t 1 ]; then
 else mode=plain
 fi
 
+# Space left on the filesystem holding buck-out
+free_space() {
+    df -h --output=avail . | awk 'NR == 2 { print $1 }'
+}
+
 # A full-width ━ rule in the accent colour.
 hrule() {
     local width fill
@@ -50,7 +55,8 @@ group() {
     step=$1
     shift 2
     case $mode in
-        github) printf '::group::%s\n' "$step" ;;
+        # in the label rather than the step's own output, so that we see it in the collapsed GitHub log
+        github) printf '::group::%s (%s free)\n' "$step" "$(free_space)" ;;
         tty) banner "$step" "$@" ;;
         plain) printf '\n=== %s ===\n' "$step" ;;
     esac
