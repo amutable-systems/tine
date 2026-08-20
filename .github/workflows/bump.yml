@@ -16,76 +16,8 @@ concurrency:
 
 jobs:
   bump:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-    steps:
-      # keep only one bump in flight at a time (issue or PR), locked via the "bot-bump" label
-      - name: Look for an open bump issue or PR
-        id: gate
-        run: |
-          # REST API covers PRs as well, unlike `gh issue list`
-          open=$(gh api 'repos/{owner}/{repo}/issues?state=open&labels=bot-bump' \
-              --jq '.[] | "::notice::#\(.number) \(.title) is still open"')
-          blocked=false
-          if [ -n "$open" ]; then echo "$open"; blocked=true; fi
-          echo "blocked=$blocked" >> "$GITHUB_OUTPUT"
-
-      # gh does not auto-create labels
-      - name: Ensure the "bot-bump" label exists
-        run: |
-          [ -n "$(gh label list --search bot-bump)" ] ||
-              gh label create bot-bump --color ededed --description 'automatic version bumps'
-
-      - name: Clone repo
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.gate.outputs.blocked == 'false'
-
-      - name: CI setup
-        uses: ./.github/actions/ci-setup
-        if: steps.gate.outputs.blocked == 'false'
-
-      - name: Bump pinned tools
-        id: bump
-        if: steps.gate.outputs.blocked == 'false'
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'noreply@amutable.com'
-          before=$(git rev-parse HEAD)
-          # Buck2 and starlark-fmt ship from one fork release, and are pinned in one file with
-          # everything else, so a single run lands them on one tag.
-          bin/tine buck run tine//tools:bump -- --all --commit
-          [ "$(git rev-parse HEAD)" = "$before" ] || echo bumped=true >> "$GITHUB_OUTPUT"
-          echo "before=$before" >> "$GITHUB_OUTPUT"
-
-      # the default GITHUB_TOKEN deliberately does not trigger further workflows, so test it right here
-      - name: Test the bump
-        if: steps.bump.outputs.bumped
-        run: tools/ci.sh
-
-      - name: Open a PR
-        if: steps.bump.outputs.bumped
-        run: |
-          branch=bump/$(date -u +%Y-%m-%dT%H%MZ)  # ref can't contain ':'
-          git push origin "HEAD:refs/heads/$branch"
-          # every commit the step made
-          range=${{ steps.bump.outputs.before }}..HEAD
-          # the blank line matters: the commit body ends in a list, which would swallow a lazy line
-          # --reverse: git log is newest-first, and these read in the order they were made
-          log=$(git log --reverse --format='%s%n%n%b' "$range")
-          body=$(printf '%s\n\nTested by %s/%s/actions/runs/%s.\n' "$log" \
-              "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
-          title=$(git log --reverse --format=%s "$range" |
-              awk '{ subjects = subjects sep $0; sep = "; " } END { print subjects }')
-          gh pr create --head "$branch" --base "$GITHUB_REF_NAME" --label bot-bump \
-              --title "$title" --body "$body"
-
-      # only keep one report open at a time via the "bot-bump" label (see "gate" above)
-      - name: Report the failure
-        if: failure()
-        run: |
-          body=$(printf 'No pins were pushed; the bump stays paused until this issue is closed.\n\n%s\n' \
-              "Failed run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID")
-          gh issue create --label bot-bump --title 'The weekly tool bump is failing' --body "$body"
+    uses: ./.github/workflows/bot-pr.yml
+    with:
+      name: bump
+      label-description: automatic version bumps
+      command: bin/tine buck run tine//tools:bump -- --all --commit
