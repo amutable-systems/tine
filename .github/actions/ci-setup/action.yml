@@ -4,6 +4,17 @@ description: Prepare an ubuntu-latest runner for tools/ci.sh.
 runs:
   using: composite
   steps:
+    # Freeing up disk space with rm -rf can take multiple minutes. Since we don't need the extra
+    # free space immediately, we remove the files in the background. However, we first move them to
+    # a different location so that nothing tries to use anything in these directories anymore while
+    # we're busy deleting them.
+    - name: Free disk space
+      shell: bash
+      run: |
+        sudo mv /usr/local /usr/local.trash
+        sudo mv /opt/hostedtoolcache /opt/hostedtoolcache.trash
+        sudo systemd-run rm -rf /usr/local.trash /opt/hostedtoolcache.trash
+
     # buck's mkosi-sandbox needs unprivileged user namespaces (unshare(CLONE_NEWUSER)); Ubuntu
     # restricts them via AppArmor, so lift the restriction.
     - name: Allow unprivileged user namespaces
