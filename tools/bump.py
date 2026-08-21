@@ -1,4 +1,11 @@
-"""Update pinned development-tool metadata."""
+"""Update pinned development-tool metadata.
+
+Two kinds of pin are supported:
+
+ - A release pin names a project's newest release and the artifact, digest and size of every
+   platform's download.
+ - A git pin names a ref that the bumps track, and a current commit on it.
+"""
 
 import argparse
 import functools
@@ -16,6 +23,7 @@ from typing import Any, cast
 from util import atomic_write_text
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_COMMIT = re.compile(r"[0-9a-f]{40}")
 
 
 def _string(value: object, description: str) -> str:
@@ -195,6 +203,38 @@ def _bump_tool(
     return (previous, tag) if changed else None
 
 
+def _bump_ref(name: str, spec: dict[str, Any]) -> tuple[str, str] | None:
+    """Resolve a ref to the commit it points at now; the (old, new) pair when it moved, else None.
+
+    Asking the repository rather than an API is what lets a private one resolve: the credentials git
+    is configured with are the ones this needs, and CI configures them for the checkout anyway.
+    """
+    repository = _string(spec.get("repository"), f"{name}.repository")
+    ref = _string(spec.get("ref"), f"{name}.ref")
+    previous = _string(spec.get("commit"), f"{name}.commit")
+    # --exit-code: a ref that no longer exists is a failure rather than an empty answer. The
+    # encoding is git's, not the locale's, which is what would decode a refname otherwise.
+    listing = subprocess.run(
+        ["git", "ls-remote", "--exit-code", repository, ref],
+        check=True,
+        stdout=subprocess.PIPE,
+        encoding="utf-8",
+    )
+    matched = listing.stdout.split("\n")
+    lines = [line for line in matched if line]
+    if len(lines) != 1:
+        raise ValueError(f"{ref} matches {len(lines)} refs in {repository}")
+    commit = lines[0].split()[0]
+    if not _COMMIT.fullmatch(commit):
+        raise ValueError(f"{repository} {ref} resolved to {commit!r}")
+    spec["commit"] = commit
+    if commit == previous:
+        print(f"{name}: {ref} is up to date")
+        return None
+    print(f"{name}: updated {previous[:12]} -> {commit[:12]}")
+    return (previous[:12], commit[:12])
+
+
 def _commit(path: Path, updates: list[tuple[str, str, str]]) -> None:
     """Commit the rewritten pins with a message itemizing each update.
 
@@ -249,7 +289,12 @@ def main() -> None:
         releases: dict[str, dict[str, Any]] = {}
         updates: list[tuple[str, str, str]] = []
         for name in _selected_names(args, data):
-            change = _bump_tool(name, _object(data.get(name), f"{name} in {path}"), python_minor, releases)
+            spec = _object(data.get(name), f"{name} in {path}")
+            # A checkout declares the ref it follows; everything else is a release with downloads.
+            if "ref" in spec:
+                change = _bump_ref(name, spec)
+            else:
+                change = _bump_tool(name, spec, python_minor, releases)
             if change is not None:
                 updates.append((name, *change))
         content = json.dumps(data, indent=2) + "\n"
