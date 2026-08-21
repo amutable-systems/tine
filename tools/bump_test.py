@@ -5,6 +5,7 @@
 Only the git pins: a release pin asks the GitHub API, which we can't unit-test.
 """
 
+import contextlib
 import json
 import subprocess
 import tempfile
@@ -70,6 +71,19 @@ class GitPin(unittest.TestCase):
     def test_fails_on_a_ref_that_is_gone(self) -> None:
         with self.assertRaises(subprocess.CalledProcessError):
             bump._bump_ref("hello", self.pin(ref="never-existed"))
+
+    def test_ignores_the_configuration_of_the_checkout_it_runs_in(self) -> None:
+        """A pin resolves through the credentials that clone it, not the current checkout's.
+
+        On a runner those differ: actions/checkout persists one in the local configuration that
+        reaches the repository being bumped and nothing else. Stand in for it with a local rewrite
+        sending the fixture somewhere there is no repository at all.
+        """
+        enclosing = self.root / "enclosing"
+        git(self.root, "init", "--quiet", str(enclosing))
+        git(enclosing, "config", f"url.{self.root / 'gone'}.insteadOf", str(self.repository))
+        with contextlib.chdir(enclosing):
+            self.assertEqual(bump._bump_ref("hello", self.pin()), ("0" * 12, self.head[:12]))
 
     def test_writes_the_pin_back_to_the_data_file(self) -> None:
         data = self.root / "pins.json"
