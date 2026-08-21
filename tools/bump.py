@@ -201,7 +201,7 @@ def _commit(path: Path, updates: list[tuple[str, str, str]]) -> None:
     These are mechanical, machine-generated commits, so they are not signed off.
     """
     body = "\n".join(f"- {name}: {previous} → {new}" for name, previous, new in updates)
-    message = f"tool: Bump pinned tool releases\n\n{body}\n"
+    message = f"deps: bump pinned tool releases\n\n{body}\n"
     subprocess.run(
         ["git", "-C", str(path.parent), "commit", "--file=-", "--", path.name],
         input=message,
