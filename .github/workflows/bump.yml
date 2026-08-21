@@ -16,8 +16,20 @@ concurrency:
 
 jobs:
   bump:
-    uses: ./.github/workflows/bot-pr.yml
-    with:
-      name: bump
-      label-description: automatic version bumps
-      command: bin/tine buck run tine//tools:bump -- --all --commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: GH runner setup
+        uses: ./.github/actions/gh-runner-setup
+
+      - name: Bump the pinned tool releases
+        run: |
+          python3 tools/bot_pr.py --name bump \
+              --label-description 'automatic version bumps' \
+              --command 'bin/tine buck run tine//tools:bump -- --all --commit' \
+              --test tools/ci.sh \
+              --repo '${{ github.repository }}' \
+              --token '${{ github.token }}'
