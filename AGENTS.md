@@ -78,6 +78,7 @@ from it; every other function takes what it needs as typed parameters.
 
 ## Python
 
+- Use PEP 257 docstring style: Short single-line summary, blank line, multi-line body.
 - Don't use `TypeVar`; use the 3.12+ generics syntax. Never `from __future__ import annotations`. Use
   `Self` for a class's own type, not a string type.
 - Use context managers (`ExitStack`/`AsyncExitStack` where needed) for anything that needs cleanup.
