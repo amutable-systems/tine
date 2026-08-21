@@ -10,6 +10,8 @@
 - Keep `buck run tine//tools:check` green.
 - Line break documents and plans at 109 columns.
 - Comments explain *why*, not *what*; say each thing once.
+- Do not write user-facing documentation. At most, add a TODO comment where documentation should be
+  written by a human.
 
 ## Layout
 
