@@ -3,9 +3,9 @@
     "files": [
       {
         "out": "core.db",
-        "sha256": "66ce701934326f2d2c0485d708157daae25dcf7aa984d1f65a79805c087fbfad",
-        "size": 128641,
-        "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/core.db"
+        "sha256": "6552e2be99b030173de8e5338561ea52be3b977dcb95fc538831c3ab9738d6b6",
+        "size": 129249,
+        "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/core.db"
       }
     ],
     "inline": {}
@@ -24,6 +24,7 @@
     "07c1434a09e2267377bce44ce52a2c280175cc0bce4c5b5ef8c728255e8f49f0": {"location":"glib2-devel-2.88.3-1-x86_64.pkg.tar.zst","size":167480},
     "07ca39704fd534fcb4f520550cdddad5c113521f87035fb66f66a50a6d843257": {"location":"libbpf-1.7.0-1-x86_64.pkg.tar.zst","size":273925},
     "0b40387c87793ed7b72fc3138c6877630ed66d8b5f841e436f4372a6405663e6": {"location":"libgfortran-16.2.1+r23+gd564253eb6c8-1-x86_64.pkg.tar.zst","size":948773},
+    "0b8e1c8cbec764a1f6716b5837491e2db8de6da9a75a5cd7b3101ba371420be2": {"location":"linux-lts-6.18.45-1-x86_64.pkg.tar.zst","size":151222309},
     "0d017f7b3c3ef724a56738fb96f45ee095df6446b1a7f2a1343b66e3265494bb": {"location":"man-pages-utils-6.18-1-any.pkg.tar.zst","size":11720},
     "0db32b421f67000950f7b55b531291ce8c13985c5444425b22dce94d485daed1": {"location":"attr-2.6.0-1-x86_64.pkg.tar.zst","size":74207},
     "0ea81f362bc404a4d03815d5e7f03203695403031ceca24a224aad4edba8b2ed": {"location":"audispd-plugins-zos-4.2.1-1-x86_64.pkg.tar.zst","size":19386},
@@ -79,7 +80,6 @@
     "3a26a83a117193a99daad73e009cbba08ad5b6b6b59454a1166245d3f19832f6": {"location":"gcc-d-16.2.1+r23+gd564253eb6c8-1-x86_64.pkg.tar.zst","size":23470448},
     "3be0345f3a9393f30b5e1167ab4593f55c75031daa123526a581b975d45ec5e3": {"location":"tzdata-2026c-1-x86_64.pkg.tar.zst","size":312226},
     "3d3effb23898177d0faece196ac664859d29027b64cdeee3a09a2c3967b8401d": {"location":"libseccomp-2.6.0-1-x86_64.pkg.tar.zst","size":97566},
-    "3d5c7119df06efbe6b75f81e0547a11fb279c3857c30df310836dbfe02601e1c": {"location":"linux-lts-6.18.44-1-x86_64.pkg.tar.zst","size":151124442},
     "3e77b353731dd4432a7b451fca4b6880b89405c5914324b82a294f3c5fd75393": {"location":"cryptsetup-2.8.7-1-x86_64.pkg.tar.zst","size":868833},
     "3e78bc2e4a76860a0da59c3712089dda7fe44de6a4a81ce0c118703519f32180": {"location":"net-tools-2.10-3-x86_64.pkg.tar.zst","size":137928},
     "3e984fe1d323b1c5a5fc60fef005776a4882fbca913d6fe3c41ad11128929ed1": {"location":"libcap-2.78-1-x86_64.pkg.tar.zst","size":854184},
@@ -142,6 +142,7 @@
     "7095495592ec579541478fb82dc0c0038f3b9da8adc774ffe1a1589004432992": {"location":"openssh-10.5p1-1-x86_64.pkg.tar.zst","size":1493386},
     "70be528019e04291fe52125c59121a99a3d39da8f1b89826f323ab81a92f492e": {"location":"autoconf-2.73-1-any.pkg.tar.zst","size":668651},
     "70cb736e4fdee330cd0dfab45875f6ea378ae819958dd15748c300b8d7285b42": {"location":"libedit-20260512_3.1-1-x86_64.pkg.tar.zst","size":120327},
+    "7295e79f2bc090e6eae3ebaddde956504ea91d5817d9a4cfd1299cd8c4f2e90d": {"location":"linux-lts-headers-6.18.45-1-x86_64.pkg.tar.zst","size":60597843},
     "72c334389ea37d67eb370db65852f4dca607a007ae127cc713576e99d23bee41": {"location":"sqlite-tcl-3.53.4-1-x86_64.pkg.tar.zst","size":1258601},
     "7367dad49fc3229bde804816d412ab77306d433b1f92e4126b8b3ba3502c67d6": {"location":"libgcc-16.2.1+r23+gd564253eb6c8-1-x86_64.pkg.tar.zst","size":81949},
     "740fb8d02f6a5798984f17bf09c4f9f62f42a8339499c283867d9c35cda0d8af": {"location":"dbus-1.16.2-1-x86_64.pkg.tar.zst","size":354453},
@@ -187,7 +188,6 @@
     "8e1e2220b93c0bded37652e6332a64a7b3987e12022f300fae37eb5cd4eb9a27": {"location":"iw-6.17-1-x86_64.pkg.tar.zst","size":110498},
     "90733f34fe5791b554b935998df858350bcea53061257dba06829ce3533f8e01": {"location":"sed-4.10-2-x86_64.pkg.tar.zst","size":220815},
     "910e7e59acc3a51c7e3468bb45c7ca20d5e987eaf2c26e4e8ad9f0624bef76d2": {"location":"sqlite-3.53.4-1-x86_64.pkg.tar.zst","size":2530142},
-    "917ee1398027df4d8cbc20c9ae4b43210d2f814de4afdcf5279d321c38089bf9": {"location":"linux-lts-headers-6.18.44-1-x86_64.pkg.tar.zst","size":60596972},
     "920cfea3dcac82e3d7c8ebbf64dfe341821c1118277d55b6c1e96035cd943656": {"location":"libatomic-16.2.1+r23+gd564253eb6c8-1-x86_64.pkg.tar.zst","size":14372},
     "9315ab4571be5d9764367f2e3d56004a127a7dfe6fbbfb1850c05efb674a8bdb": {"location":"libnetfilter_conntrack-1.1.1-1-x86_64.pkg.tar.zst","size":52011},
     "9322a5fb74f43341835d22d3ea0cf1d88d91eb4c98ab9fcb816955e2159b4b41": {"location":"kbd-2.10.0-1-x86_64.pkg.tar.zst","size":1341125},
@@ -235,6 +235,7 @@
     "b6722605ae0f2912d7498e87839c702275bfd9280b076e92e80474a847561bd4": {"location":"psmisc-23.7-2-x86_64.pkg.tar.zst","size":264013},
     "b765a880cb01634f1471b3437d4879d7a000aa8c80e9484ce831f8737c65bf4d": {"location":"libevent-docs-2.1.13-2-x86_64.pkg.tar.zst","size":298609},
     "b77fe84e1dda2f32fcd11a004347c0a0c6bb9806376533c78abd78b4ea779af2": {"location":"file-5.48-1-x86_64.pkg.tar.zst","size":463924},
+    "bc4294561adf43b3ca6794bd4c040fb2b7cf362803775c1857d360c50cea538c": {"location":"linux-lts-docs-6.18.45-1-x86_64.pkg.tar.zst","size":34479946},
     "bdf4500d384aa41ce78d4800a7d67c02fa7399a5cf7b36aab4664e657c22b1fc": {"location":"rpcbind-1.2.9-1-x86_64.pkg.tar.zst","size":39886},
     "bf1bd9d2f096f1446a645a89a26663371ab6ef78a8ed4b1c3f006b60569a2e28": {"location":"gettext-1.0-2-x86_64.pkg.tar.zst","size":3355456},
     "c128bf1b2f42e44cddd35b71a4bb701c6f558ed306d845cc7839329ec2e10596": {"location":"voa-verifiers-arch-20260727-1-any.pkg.tar.zst","size":1294104},
@@ -245,7 +246,6 @@
     "c63e2efc4c8d1458dbc04152db73a570a609bed245b490c161f0fc4df6baad53": {"location":"nano-9.2-1-x86_64.pkg.tar.zst","size":643683},
     "c6db8f6c787601f17fa812f2270f4e53fad1426fa9e372ab2e1a881c1368cee3": {"location":"libquadmath-16.2.1+r23+gd564253eb6c8-1-x86_64.pkg.tar.zst","size":170466},
     "c758ccf2d09d85b033b30828800844609f47016ee93cd790315dea3818a95cc5": {"location":"gnupg-2.4.9-3-x86_64.pkg.tar.zst","size":3028475},
-    "c79ad96b83fdb6bf3dddc2b33b50d04dc9023b02998ee8139789ddadb64f3d39": {"location":"linux-lts-docs-6.18.44-1-x86_64.pkg.tar.zst","size":34480358},
     "c7e67c338b709ccfaba16da8ce804ab81a5edd3667d7a3d24fa4ace5ae358672": {"location":"glibc-locales-2.44+r24+g16be1518495f-1-x86_64.pkg.tar.zst","size":12340304},
     "c827ed573b29dd488317da6b61be22c5d12154378b6bceda35ced834e8bbbc94": {"location":"iptables-1:1.8.13-1-x86_64.pkg.tar.zst","size":431248},
     "cbb4c251bfda206688531f089bdf56fb6f95f36e627061f0bfb930c5601ddef9": {"location":"libgccjit-16.2.1+r23+gd564253eb6c8-1-x86_64.pkg.tar.zst","size":12906241},

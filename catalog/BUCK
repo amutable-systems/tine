@@ -73,7 +73,7 @@ box(
 # refresh-catalog advances every repository sharing this pin to the newest complete day.
 arch_release(
     name = "arch.rolling",
-    archive_snapshot = "2026/08/19",
+    archive_snapshot = "2026/08/20",
     box = ":arch.rolling.box",
     visibility = ["PUBLIC"],
 )

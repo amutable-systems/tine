@@ -5,7 +5,7 @@
     "pkg_checksum": "dca9ec50cf51243b86a67367a55e78b1851d31240b1edaf9c011f8511765d999",
     "source": "repo",
     "size": 150821,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/acl-2.4.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/acl-2.4.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "attr-2.6.0-1",
@@ -13,7 +13,7 @@
     "pkg_checksum": "0db32b421f67000950f7b55b531291ce8c13985c5444425b22dce94d485daed1",
     "source": "repo",
     "size": 74207,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/attr-2.6.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/attr-2.6.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "audit-4.2.1-1",
@@ -21,7 +21,7 @@
     "pkg_checksum": "6b2f7e400336d05bf9a4b1b65015e4a7ac3a3842fbc67790913f9748513b964e",
     "source": "repo",
     "size": 414714,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/audit-4.2.1-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/audit-4.2.1-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "bash-5.3.15-1",
@@ -29,7 +29,7 @@
     "pkg_checksum": "2c14ce3c72790ec6b344267b39f04f921bbb34f0c1399460e71492547f6b6c65",
     "source": "repo",
     "size": 2002014,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/bash-5.3.15-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/bash-5.3.15-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "binutils-2.47-4",
@@ -37,7 +37,7 @@
     "pkg_checksum": "d9508ad848fd6c31473ac0925cf8c3ec0d2a71bbbb5c7e39274186338a285660",
     "source": "repo",
     "size": 8594742,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/binutils-2.47-4-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/binutils-2.47-4-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "brotli-1.2.0-1",
@@ -45,7 +45,7 @@
     "pkg_checksum": "4a0c95d5967476d0efdaf76d344b61e3eee02cd7920a315e457f3fd96311b7ec",
     "source": "repo",
     "size": 407149,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/brotli-1.2.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/brotli-1.2.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "bzip2-1.0.8-6",
@@ -53,7 +53,7 @@
     "pkg_checksum": "8779003d659c441b952095c19907603a738c1366f25cc51be3fd139fa4e95748",
     "source": "repo",
     "size": 59786,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/bzip2-1.0.8-6-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/bzip2-1.0.8-6-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "ca-certificates-20240618-1",
@@ -61,7 +61,7 @@
     "pkg_checksum": "982005bd5ecc998c05f561b57bb58b4457407779727e3c3d59e926d34a8b0712",
     "source": "repo",
     "size": 2135,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/ca-certificates-20240618-1-any.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/ca-certificates-20240618-1-any.pkg.tar.zst"
   },
   {
     "package_id": "ca-certificates-mozilla-3.127-1",
@@ -69,7 +69,7 @@
     "pkg_checksum": "9d58fd8a4a931e8774cf27408a03a09d62c3748786379ea1d97770671d78424d",
     "source": "repo",
     "size": 391586,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/ca-certificates-mozilla-3.127-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/ca-certificates-mozilla-3.127-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "ca-certificates-utils-20240618-1",
@@ -77,7 +77,7 @@
     "pkg_checksum": "aabd5b2b7030716ccdd465d607e734e851fe4a01adf8293a3968fe22eb89ce9b",
     "source": "repo",
     "size": 11071,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/ca-certificates-utils-20240618-1-any.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/ca-certificates-utils-20240618-1-any.pkg.tar.zst"
   },
   {
     "package_id": "coreutils-9.11-2",
@@ -85,7 +85,7 @@
     "pkg_checksum": "8d6668fba51085e680b1510f16ff43d32fbfdd068e78b2000783a4dab1c15513",
     "source": "repo",
     "size": 3062677,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/coreutils-9.11-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/coreutils-9.11-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "cryptsetup-2.8.7-1",
@@ -93,7 +93,7 @@
     "pkg_checksum": "3e77b353731dd4432a7b451fca4b6880b89405c5914324b82a294f3c5fd75393",
     "source": "repo",
     "size": 868833,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/cryptsetup-2.8.7-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/cryptsetup-2.8.7-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "curl-8.21.0-1",
@@ -101,7 +101,7 @@
     "pkg_checksum": "67f9275b591d3cc12c2c54bc38727363575d2d8c665aa4e3c26bf60b0856867b",
     "source": "repo",
     "size": 1341008,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/curl-8.21.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/curl-8.21.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "dbus-1.16.2-1",
@@ -109,7 +109,7 @@
     "pkg_checksum": "740fb8d02f6a5798984f17bf09c4f9f62f42a8339499c283867d9c35cda0d8af",
     "source": "repo",
     "size": 354453,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/dbus-1.16.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/dbus-1.16.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "dbus-broker-37-3",
@@ -117,7 +117,7 @@
     "pkg_checksum": "c3a915bb57188e6a43b9df25c0bf11f87528bc20ac50718b1772ce917c6d6117",
     "source": "repo",
     "size": 150097,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/dbus-broker-37-3-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/dbus-broker-37-3-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "dbus-broker-units-37-3",
@@ -125,7 +125,7 @@
     "pkg_checksum": "f3f73e7c8169f54e3e5447d266917ae7454bd984fc0ede0f85e2ca60e21d97df",
     "source": "repo",
     "size": 2542,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/dbus-broker-units-37-3-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/dbus-broker-units-37-3-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "dbus-units-37-3",
@@ -133,7 +133,7 @@
     "pkg_checksum": "b3c4dee19391724893993ed993522846368bb38257daae4182de980255a995cc",
     "source": "repo",
     "size": 2296,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/dbus-units-37-3-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/dbus-units-37-3-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "device-mapper-2.03.42-1",
@@ -141,7 +141,7 @@
     "pkg_checksum": "823b3ae9d616defbd61dbc7cf92f489b996ce520de54a2bbea8ced0918c069c3",
     "source": "repo",
     "size": 322057,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/device-mapper-2.03.42-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/device-mapper-2.03.42-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "dosfstools-4.2-5",
@@ -149,7 +149,7 @@
     "pkg_checksum": "03a7d8bd939a80418d9744afad00c22b91c4b411bdf9662744647c383a0ec503",
     "source": "repo",
     "size": 138775,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/dosfstools-4.2-5-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/dosfstools-4.2-5-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "e2fsprogs-1.47.4-1",
@@ -157,7 +157,7 @@
     "pkg_checksum": "a78971bbbe0ae89d15a0cbbc952e64462edc5a6f991c1bb9cefd0539ca548bd4",
     "source": "repo",
     "size": 1296838,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/e2fsprogs-1.47.4-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/e2fsprogs-1.47.4-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "expat-2.8.3-1",
@@ -165,7 +165,7 @@
     "pkg_checksum": "04785503de1fb932eec7c8a7d50a815c4706df293bf7acf92953be02882c6cad",
     "source": "repo",
     "size": 132815,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/expat-2.8.3-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/expat-2.8.3-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "file-5.48-1",
@@ -173,7 +173,7 @@
     "pkg_checksum": "b77fe84e1dda2f32fcd11a004347c0a0c6bb9806376533c78abd78b4ea779af2",
     "source": "repo",
     "size": 463924,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/file-5.48-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/file-5.48-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "filesystem-2025.10.12-1",
@@ -181,7 +181,7 @@
     "pkg_checksum": "6b6c3fee7432204840d3b6afc9bc1a68c28f591a47fb220071715c40cca956df",
     "source": "repo",
     "size": 15479,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/filesystem-2025.10.12-1-any.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/filesystem-2025.10.12-1-any.pkg.tar.zst"
   },
   {
     "package_id": "findutils-4.11.0-1",
@@ -189,7 +189,7 @@
     "pkg_checksum": "76ac56a7f03039d163306701e5c02777b9b7170ad5388e66e46c363dd2792edf",
     "source": "repo",
     "size": 539114,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/findutils-4.11.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/findutils-4.11.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "gawk-5.4.1-1",
@@ -197,7 +197,7 @@
     "pkg_checksum": "875761229b80b29078cd1fafc35a07add9ac4c2dbb9a429bd0b72ddcc14a31bd",
     "source": "repo",
     "size": 1553071,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/gawk-5.4.1-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/gawk-5.4.1-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "gdbm-1.26-2",
@@ -205,7 +205,7 @@
     "pkg_checksum": "7bb8768fc7f617c580ae4c7902aed5413984a8374915da42beeecbb085c2a29e",
     "source": "repo",
     "size": 260430,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/gdbm-1.26-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/gdbm-1.26-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "gettext-1.0-2",
@@ -213,7 +213,7 @@
     "pkg_checksum": "bf1bd9d2f096f1446a645a89a26663371ab6ef78a8ed4b1c3f006b60569a2e28",
     "source": "repo",
     "size": 3355456,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/gettext-1.0-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/gettext-1.0-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "glib2-2.88.3-1",
@@ -221,7 +221,7 @@
     "pkg_checksum": "9569884e1f670d46e40ea0b8ca4ea2a1a29689be297fed1390bc5af9a03967d2",
     "source": "repo",
     "size": 5284676,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/glib2-2.88.3-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/glib2-2.88.3-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "glibc-2.44+r24+g16be1518495f-1",
@@ -229,7 +229,7 @@
     "pkg_checksum": "5db2283f5b46b6114d06b4bc71fcf8ede5f1a04fcccb4d307048fcdc4e501d93",
     "source": "repo",
     "size": 10881502,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/glibc-2.44+r24+g16be1518495f-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/glibc-2.44+r24+g16be1518495f-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "gmp-6.3.0-3",
@@ -237,7 +237,7 @@
     "pkg_checksum": "2969061e117d2a8c19d89427b0b88e1c956a6269bc0602087d41aecd15097064",
     "source": "repo",
     "size": 453294,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/gmp-6.3.0-3-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/gmp-6.3.0-3-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "gnulib-l10n-20241231-1",
@@ -245,7 +245,7 @@
     "pkg_checksum": "86e6ea818cb331171018bef6e4486c1176064655e0d459bcecc9cc9c2bb74a2c",
     "source": "repo",
     "size": 126997,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/gnulib-l10n-20241231-1-any.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/gnulib-l10n-20241231-1-any.pkg.tar.zst"
   },
   {
     "package_id": "gnupg-2.4.9-3",
@@ -253,7 +253,7 @@
     "pkg_checksum": "c758ccf2d09d85b033b30828800844609f47016ee93cd790315dea3818a95cc5",
     "source": "repo",
     "size": 3028475,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/gnupg-2.4.9-3-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/gnupg-2.4.9-3-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "gnutls-3.8.13-2",
@@ -261,7 +261,7 @@
     "pkg_checksum": "381e8679ec096bba9d25e6bf8de1d186b1f46e892215aa2a63e1582c34a036f1",
     "source": "repo",
     "size": 1871527,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/gnutls-3.8.13-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/gnutls-3.8.13-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "gpgme-2.1.2-1",
@@ -269,7 +269,7 @@
     "pkg_checksum": "ff938d81d232ab173bb51673f47d3402206ea5f0f7e999f746266a3256853f49",
     "source": "repo",
     "size": 339305,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/gpgme-2.1.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/gpgme-2.1.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "grep-3.12-2",
@@ -277,7 +277,7 @@
     "pkg_checksum": "9dd8a5dad99e8d388b1fb1406919de218d30c7e49924f615a12d3f2deaaecfe2",
     "source": "repo",
     "size": 241270,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/grep-3.12-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/grep-3.12-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "gzip-1.14-2",
@@ -285,7 +285,7 @@
     "pkg_checksum": "e08b33c6aa9a19108d7941a78a6d137e3f700a544d21f14bf863d3c392c3a88e",
     "source": "repo",
     "size": 88751,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/gzip-1.14-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/gzip-1.14-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "hwdata-0.410-1",
@@ -293,7 +293,7 @@
     "pkg_checksum": "7fdb0f7f95bca493778d939f3a47580fb950a3c827aba337ca34412c672be083",
     "source": "repo",
     "size": 1776624,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/hwdata-0.410-1-any.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/hwdata-0.410-1-any.pkg.tar.zst"
   },
   {
     "package_id": "iana-etc-20260530-1",
@@ -301,7 +301,7 @@
     "pkg_checksum": "023d4bd30530ac507c297286b307a86432483c237c11569ad827406e19767604",
     "source": "repo",
     "size": 411461,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/iana-etc-20260530-1-any.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/iana-etc-20260530-1-any.pkg.tar.zst"
   },
   {
     "package_id": "icu-78.3-1",
@@ -309,7 +309,7 @@
     "pkg_checksum": "118fe41efa6c550f3fe67893946dcea2c6cbb5272299a6ddf4160fb17f3e4bb0",
     "source": "repo",
     "size": 12272670,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/icu-78.3-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/icu-78.3-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "jansson-2.15.0-1",
@@ -317,7 +317,7 @@
     "pkg_checksum": "d58e6b36a8a8dcd81ae4a943b859d9b7b9d72c77455aef4f82226aa8909dadb0",
     "source": "repo",
     "size": 90651,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/jansson-2.15.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/jansson-2.15.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "json-c-0.19-1",
@@ -325,7 +325,7 @@
     "pkg_checksum": "a2ebb9395bfc18a29abd21b6dd756519114e4e6241d6321588ada285ded4d63f",
     "source": "repo",
     "size": 64992,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/json-c-0.19-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/json-c-0.19-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "kbd-2.10.0-1",
@@ -333,7 +333,7 @@
     "pkg_checksum": "9322a5fb74f43341835d22d3ea0cf1d88d91eb4c98ab9fcb816955e2159b4b41",
     "source": "repo",
     "size": 1341125,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/kbd-2.10.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/kbd-2.10.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "keyutils-1.6.3-4",
@@ -341,7 +341,7 @@
     "pkg_checksum": "e3e5d4226bb7d213a6baddb997bf679a2b1106d95b5c2845b79bf8df1c3ef5fe",
     "source": "repo",
     "size": 104718,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/keyutils-1.6.3-4-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/keyutils-1.6.3-4-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "kmod-34.2-1",
@@ -349,7 +349,7 @@
     "pkg_checksum": "8cce1b4dfd2a1f354a253bb60a36c83024042eef5d47cb0214ec5d4f47f2007e",
     "source": "repo",
     "size": 133390,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/kmod-34.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/kmod-34.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "krb5-1.22.2-1",
@@ -357,7 +357,7 @@
     "pkg_checksum": "38dcaf86512559c47e9b084ce78f417b5e8b0634feb8cb80b5edeab2c40b704f",
     "source": "repo",
     "size": 1407071,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/krb5-1.22.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/krb5-1.22.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "leancrypto-1.8.0-1",
@@ -365,7 +365,7 @@
     "pkg_checksum": "5b793364a382b3f46857ce5ed96cde520466aeec5443cad04339f76078ab6589",
     "source": "repo",
     "size": 1487902,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/leancrypto-1.8.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/leancrypto-1.8.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libarchive-3.8.9-1",
@@ -373,7 +373,7 @@
     "pkg_checksum": "07b7aaec008cc4892cb2da0c599a16438d2e70869a01b90c4e20bf153f58c3b3",
     "source": "repo",
     "size": 598632,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libarchive-3.8.9-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libarchive-3.8.9-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libassuan-3.0.0-1",
@@ -381,7 +381,7 @@
     "pkg_checksum": "1843d675b324c9d549f3413dcbe653ec86876ac2898fc94423926ed30eab25a1",
     "source": "repo",
     "size": 114921,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libassuan-3.0.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libassuan-3.0.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libcap-2.78-1",
@@ -389,7 +389,7 @@
     "pkg_checksum": "3e984fe1d323b1c5a5fc60fef005776a4882fbca913d6fe3c41ad11128929ed1",
     "source": "repo",
     "size": 854184,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libcap-2.78-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libcap-2.78-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libcap-ng-0.9.3-1",
@@ -397,7 +397,7 @@
     "pkg_checksum": "858f3b207f2601f1ed32756bd8a46eaa266376efa6dd9c7ba16350c08908e41b",
     "source": "repo",
     "size": 69550,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libcap-ng-0.9.3-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libcap-ng-0.9.3-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libelf-0.196-1",
@@ -405,7 +405,7 @@
     "pkg_checksum": "0f75f1f363c60d73f563fddc82964acd01cdc5167dbe2309d5d90e833388842b",
     "source": "repo",
     "size": 733210,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libelf-0.196-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libelf-0.196-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libevent-2.1.13-2",
@@ -413,7 +413,7 @@
     "pkg_checksum": "9fd8563e3aa1c64d80257b7b4f60d37cf8589260ba3eb015f8257e2cfd118b04",
     "source": "repo",
     "size": 298430,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libevent-2.1.13-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libevent-2.1.13-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libffi-3.8.0-1",
@@ -421,7 +421,7 @@
     "pkg_checksum": "5d21227f2a1d10db60d0cf5bb02b36a1801ae61dc7dae8c3bc1afa548afd8601",
     "source": "repo",
     "size": 56862,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libffi-3.8.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libffi-3.8.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libgcc-16.2.1+r23+gd564253eb6c8-1",
@@ -429,7 +429,7 @@
     "pkg_checksum": "7367dad49fc3229bde804816d412ab77306d433b1f92e4126b8b3ba3502c67d6",
     "source": "repo",
     "size": 81949,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libgcc-16.2.1+r23+gd564253eb6c8-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libgcc-16.2.1+r23+gd564253eb6c8-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libgcrypt-1.12.2-1",
@@ -437,7 +437,7 @@
     "pkg_checksum": "27429de23607abb32994f589574d6e680ca3ddf0fdebae82b23fddb4f66ec64c",
     "source": "repo",
     "size": 753181,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libgcrypt-1.12.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libgcrypt-1.12.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libgomp-16.2.1+r23+gd564253eb6c8-1",
@@ -445,7 +445,7 @@
     "pkg_checksum": "ffad807ed2ea36a29fe6da70dd77a6c476f1a1d5357cbec0b2481dbc84f303f4",
     "source": "repo",
     "size": 236404,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libgomp-16.2.1+r23+gd564253eb6c8-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libgomp-16.2.1+r23+gd564253eb6c8-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libgpg-error-1.61-1",
@@ -453,7 +453,7 @@
     "pkg_checksum": "7d5a5b39f588b275558f5e13bd792bff84cf89abb6d48e3e494d6c30e8ea9ca4",
     "source": "repo",
     "size": 282578,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libgpg-error-1.61-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libgpg-error-1.61-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libidn2-2.3.8-1",
@@ -461,7 +461,7 @@
     "pkg_checksum": "1749bdd4c395913df18c57fdd42820d3de88738b7163b7aa254d13e3da7b1d9d",
     "source": "repo",
     "size": 135360,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libidn2-2.3.8-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libidn2-2.3.8-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libksba-1.8.0-1",
@@ -469,7 +469,7 @@
     "pkg_checksum": "9f0edb97199189416356d1902be4ca605b5bc71525f1604cffbc5d6b28894f3c",
     "source": "repo",
     "size": 154824,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libksba-1.8.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libksba-1.8.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libldap-2.6.13-1",
@@ -477,7 +477,7 @@
     "pkg_checksum": "9d37ed49d0da014fbdf89e8b1c5e55b2d58fbffc850d79ddda5f8d1d151ba3b6",
     "source": "repo",
     "size": 289146,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libldap-2.6.13-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libldap-2.6.13-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libmakepkg-dropins-20-2",
@@ -485,7 +485,7 @@
     "pkg_checksum": "78c4e32d3140d11d2fd7d1bac6bcfdbdd34d3b59b56620f987fd28fd4334648e",
     "source": "repo",
     "size": 6365,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libmakepkg-dropins-20-2-any.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libmakepkg-dropins-20-2-any.pkg.tar.zst"
   },
   {
     "package_id": "libnghttp2-1.70.0-1",
@@ -493,7 +493,7 @@
     "pkg_checksum": "332e2cb2d953dab326f97a3257594f8031ec0fce6305e2bcd5d64d9832c84778",
     "source": "repo",
     "size": 101532,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libnghttp2-1.70.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libnghttp2-1.70.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libnghttp3-1.18.0-1",
@@ -501,7 +501,7 @@
     "pkg_checksum": "4a474a6c8c2970bead13cbdf4ab47662039d43dcc48aa811ee58becd778cf890",
     "source": "repo",
     "size": 85025,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libnghttp3-1.18.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libnghttp3-1.18.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libngtcp2-1.25.0-1",
@@ -509,7 +509,7 @@
     "pkg_checksum": "e4a728d9f647f3c52a3aedd67c589be5f43e7dd31ebde6867ad535ba29ec9511",
     "source": "repo",
     "size": 227814,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libngtcp2-1.25.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libngtcp2-1.25.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libnsl-2.0.1-2",
@@ -517,7 +517,7 @@
     "pkg_checksum": "4ba7b85b42fbda5a1f07e15b8f91c60faa4c5f9168cc27d49fcd20e3a3be8bd8",
     "source": "repo",
     "size": 22606,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libnsl-2.0.1-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libnsl-2.0.1-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libp11-kit-0.26.5-1",
@@ -525,7 +525,7 @@
     "pkg_checksum": "8ddc055b304a98c2434fa5d25550c94c0bbcdb22388f752e05e619b2ee98027c",
     "source": "repo",
     "size": 533456,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libp11-kit-0.26.5-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libp11-kit-0.26.5-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libpsl-0.21.5-2",
@@ -533,7 +533,7 @@
     "pkg_checksum": "e07925c2487bd7deffdd57808b19561e80a4cb25a33e51dbd94efb673bc81944",
     "source": "repo",
     "size": 88860,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libpsl-0.21.5-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libpsl-0.21.5-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libsasl-2.1.28-5",
@@ -541,7 +541,7 @@
     "pkg_checksum": "113e1676371544e5142a46ee046a6179ace201c4f0a0d56b618a984b5c764463",
     "source": "repo",
     "size": 150083,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libsasl-2.1.28-5-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libsasl-2.1.28-5-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libseccomp-2.6.0-1",
@@ -549,7 +549,7 @@
     "pkg_checksum": "3d3effb23898177d0faece196ac664859d29027b64cdeee3a09a2c3967b8401d",
     "source": "repo",
     "size": 97566,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libseccomp-2.6.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libseccomp-2.6.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libsecret-0.21.7-1",
@@ -557,7 +557,7 @@
     "pkg_checksum": "21c96fe82e3a1ed013450a471047f5717a62a5de91212cfb1d69e7302028cc40",
     "source": "repo",
     "size": 192713,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libsecret-0.21.7-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libsecret-0.21.7-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libssh2-1.11.1-7",
@@ -565,7 +565,7 @@
     "pkg_checksum": "462cca91bff394c2719b7e8d1951f0c0a2db979d71521ac93dba6b6b6974f6b9",
     "source": "repo",
     "size": 265862,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libssh2-1.11.1-7-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libssh2-1.11.1-7-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libstdc++-16.2.1+r23+gd564253eb6c8-1",
@@ -573,7 +573,7 @@
     "pkg_checksum": "15dc6bd2f3a2ee17fcd79a14325e9e0037722a592b2bdc55e1665d92112eaa51",
     "source": "repo",
     "size": 883125,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libstdc++-16.2.1+r23+gd564253eb6c8-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libstdc++-16.2.1+r23+gd564253eb6c8-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libtasn1-4.21.0-1",
@@ -581,7 +581,7 @@
     "pkg_checksum": "00e50489d3c00951380d578cf89ebd7d7a38d97269e7ca9ccc9cde146f1e21da",
     "source": "repo",
     "size": 136141,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libtasn1-4.21.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libtasn1-4.21.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libtirpc-1.3.7-1",
@@ -589,7 +589,7 @@
     "pkg_checksum": "2d43a2bab8dbe99fa817d327bdf23ec559a337ebd25b48c691cff73f3eb138ec",
     "source": "repo",
     "size": 176427,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libtirpc-1.3.7-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libtirpc-1.3.7-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libunistring-1.4.2-1",
@@ -597,7 +597,7 @@
     "pkg_checksum": "582625bc02e710b587f4ed319e5c7ad29fd5d4d424b6384f125fc094f07ce590",
     "source": "repo",
     "size": 746290,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libunistring-1.4.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libunistring-1.4.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libusb-1.0.30-1",
@@ -605,7 +605,7 @@
     "pkg_checksum": "8b75816afbb316dc92110d9ac542df3e20d9550fe949a1a1402b25366c0a2c6d",
     "source": "repo",
     "size": 82411,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libusb-1.0.30-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libusb-1.0.30-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libverto-0.3.2-6",
@@ -613,7 +613,7 @@
     "pkg_checksum": "d0965b1b256e330e300c2bc3c699afa24f2d800dc476541039d452b606309496",
     "source": "repo",
     "size": 19195,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libverto-0.3.2-6-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libverto-0.3.2-6-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libxcrypt-4.5.2-1",
@@ -621,7 +621,7 @@
     "pkg_checksum": "7d324b88963786491391468203701efd2c812798a9c3fbcc4ff8a4ddb2d9f276",
     "source": "repo",
     "size": 94258,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libxcrypt-4.5.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libxcrypt-4.5.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libxml2-2.15.3-1",
@@ -629,7 +629,7 @@
     "pkg_checksum": "51807c20a300bf85db48ae7f2f8967bec291439764b29279e3297dff3247ed4f",
     "source": "repo",
     "size": 789927,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/libxml2-2.15.3-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/libxml2-2.15.3-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "linux-api-headers-7.2-1",
@@ -637,7 +637,7 @@
     "pkg_checksum": "d8d3483363e70b353ae31bbf8773df77780724eaeaa140faf4e4111bdb87588f",
     "source": "repo",
     "size": 1585347,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/linux-api-headers-7.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/linux-api-headers-7.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "lz4-1:1.10.0-2",
@@ -645,7 +645,7 @@
     "pkg_checksum": "c6200c776440678fe8c26adae6c104194b425d9393a9e3fc09f934363f0c39a6",
     "source": "repo",
     "size": 160028,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/lz4-1:1.10.0-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/lz4-1:1.10.0-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "mpdecimal-4.0.1-3",
@@ -653,7 +653,7 @@
     "pkg_checksum": "8679f71ed9a982c91883adfaaf0f87a1b74d92d4060283180c4a105a6c7afb19",
     "source": "repo",
     "size": 105687,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/mpdecimal-4.0.1-3-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/mpdecimal-4.0.1-3-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "mpfr-4.2.2-1",
@@ -661,7 +661,7 @@
     "pkg_checksum": "e765082b2c3260550887ccf34f6f0d24289fc5ca8c0949eb5c2e9937272ea80f",
     "source": "repo",
     "size": 447319,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/mpfr-4.2.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/mpfr-4.2.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "ncurses-6.6-2",
@@ -669,7 +669,7 @@
     "pkg_checksum": "9b80390fd681121443a45a51b74e2e2ade245ce22af8769915d63165b727e27c",
     "source": "repo",
     "size": 1226662,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/ncurses-6.6-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/ncurses-6.6-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "nettle-4.0-1",
@@ -677,7 +677,7 @@
     "pkg_checksum": "679138a8405ca383aba7836d54fdc282db9394b7dc23c097b8965f70119adf13",
     "source": "repo",
     "size": 468859,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/nettle-4.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/nettle-4.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "npth-1.8-1",
@@ -685,7 +685,7 @@
     "pkg_checksum": "2f045edab9f7fd2c04667c5ba7f70c47da7b6fcfe87a99a857ab7ef5a12f39b4",
     "source": "repo",
     "size": 28897,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/npth-1.8-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/npth-1.8-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "openssl-3.6.3-1",
@@ -693,7 +693,7 @@
     "pkg_checksum": "85fdbdd57b6773a9b94d4d54c39deecd808aac6bc48d6d42c36ce712283665b3",
     "source": "repo",
     "size": 5750527,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/openssl-3.6.3-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/openssl-3.6.3-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "p11-kit-0.26.5-1",
@@ -701,7 +701,7 @@
     "pkg_checksum": "94ad53e76eaeacac1584ace5da7751d8e7fb7aefbfd3bd99d9c34d3461d630ad",
     "source": "repo",
     "size": 261660,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/p11-kit-0.26.5-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/p11-kit-0.26.5-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "pacman-7.1.0.r9.g54d9411-2",
@@ -709,7 +709,7 @@
     "pkg_checksum": "2092ec7a0391416e4a1757c455bc071d7b58a124cedc83f582cb7d37d52f211b",
     "source": "repo",
     "size": 991730,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/pacman-7.1.0.r9.g54d9411-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/pacman-7.1.0.r9.g54d9411-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "pacman-mirrorlist-20260610-1",
@@ -717,7 +717,7 @@
     "pkg_checksum": "f6008b33d950a4e4eb5930fe3852cceb0fe1fa5fdaff36125583201531fe4ae9",
     "source": "repo",
     "size": 6631,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/pacman-mirrorlist-20260610-1-any.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/pacman-mirrorlist-20260610-1-any.pkg.tar.zst"
   },
   {
     "package_id": "pam-1.7.2-2",
@@ -725,7 +725,7 @@
     "pkg_checksum": "49f54d6b632d0e83cde032eb01f903b71ac09e7dc9bbafbd64fea70227337d48",
     "source": "repo",
     "size": 611282,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/pam-1.7.2-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/pam-1.7.2-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "pambase-20260616-1",
@@ -733,7 +733,7 @@
     "pkg_checksum": "306265b486e3f7d2854d583202409cdd90f131368c92aa56f845822a5d2bbf65",
     "source": "repo",
     "size": 3386,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/pambase-20260616-1-any.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/pambase-20260616-1-any.pkg.tar.zst"
   },
   {
     "package_id": "pcre2-10.47-1",
@@ -741,7 +741,7 @@
     "pkg_checksum": "54e0d8c998d2748f47fead1926b04357719bdd00fa1cea84901c3af501aab002",
     "source": "repo",
     "size": 1698422,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/pcre2-10.47-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/pcre2-10.47-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "pinentry-1.3.3-1",
@@ -749,7 +749,7 @@
     "pkg_checksum": "16dfcc18fc60f8c654687970a9b7253ce17a987c44119fe2ee37c760460fc557",
     "source": "repo",
     "size": 172284,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/pinentry-1.3.3-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/pinentry-1.3.3-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "popt-1.19-2",
@@ -757,7 +757,7 @@
     "pkg_checksum": "877635962b604efa79409c3d423f4fdffc4868776af3e0e804cc94a0b57ca151",
     "source": "repo",
     "size": 78173,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/popt-1.19-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/popt-1.19-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "python-3.14.7-1",
@@ -765,7 +765,7 @@
     "pkg_checksum": "8a350ce53aae01ae687f043b301931e411bf06333ba480b42b3b5432a0e6c79b",
     "source": "repo",
     "size": 14184166,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/python-3.14.7-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/python-3.14.7-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "readline-8.3.003-1",
@@ -773,7 +773,7 @@
     "pkg_checksum": "a4e861378069dcb15c6fbd52a1f5d9ed01b4bce5fb208268c7c182341f5f3960",
     "source": "repo",
     "size": 419558,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/readline-8.3.003-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/readline-8.3.003-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "sed-4.10-2",
@@ -781,7 +781,7 @@
     "pkg_checksum": "90733f34fe5791b554b935998df858350bcea53061257dba06829ce3533f8e01",
     "source": "repo",
     "size": 220815,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/sed-4.10-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/sed-4.10-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "shadow-4.20.0.arch1-1",
@@ -789,7 +789,7 @@
     "pkg_checksum": "615c819eb2d3e22158289f3cc2447f81ae981a6d11b3418da30b6085306b3e77",
     "source": "repo",
     "size": 1232280,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/shadow-4.20.0.arch1-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/shadow-4.20.0.arch1-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "sqlite-3.53.4-1",
@@ -797,7 +797,7 @@
     "pkg_checksum": "910e7e59acc3a51c7e3468bb45c7ca20d5e987eaf2c26e4e8ad9f0624bef76d2",
     "source": "repo",
     "size": 2530142,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/sqlite-3.53.4-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/sqlite-3.53.4-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "systemd-261.2-1",
@@ -805,7 +805,7 @@
     "pkg_checksum": "88ed13de43e53e6b8ba6039e7e58c1bc2a15c47234b05f48e68319c93b661cd7",
     "source": "repo",
     "size": 10886495,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/systemd-261.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/systemd-261.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "systemd-libs-261.2-1",
@@ -813,7 +813,7 @@
     "pkg_checksum": "c12d5a2c4bb7cc0088af3f6addddac3219277a14b4aefb135b508d6d9ea15de9",
     "source": "repo",
     "size": 1482646,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/systemd-libs-261.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/systemd-libs-261.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "systemd-ukify-261.2-1",
@@ -821,7 +821,7 @@
     "pkg_checksum": "af1c7f7dd8faed51f1be5ab25c629de9faf4a9f6a5170001c942ba8863e8932f",
     "source": "repo",
     "size": 38678,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/systemd-ukify-261.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/systemd-ukify-261.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "tpm2-tss-4.2.0-2",
@@ -829,7 +829,7 @@
     "pkg_checksum": "7aa2a963f99bcd51e4f3b2587fa8f374a7cfa09ec65749cc9a72fa6f3ad34fdc",
     "source": "repo",
     "size": 1042609,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/tpm2-tss-4.2.0-2-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/tpm2-tss-4.2.0-2-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "tzdata-2026c-1",
@@ -837,7 +837,7 @@
     "pkg_checksum": "3be0345f3a9393f30b5e1167ab4593f55c75031daa123526a581b975d45ec5e3",
     "source": "repo",
     "size": 312226,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/tzdata-2026c-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/tzdata-2026c-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "util-linux-2.42.2-1",
@@ -845,7 +845,7 @@
     "pkg_checksum": "60b672fad41b2b2657d8d38bfcea3029f3cf388ee3414d6cc48071507d1ac241",
     "source": "repo",
     "size": 6475975,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/util-linux-2.42.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/util-linux-2.42.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "util-linux-libs-2.42.2-1",
@@ -853,7 +853,7 @@
     "pkg_checksum": "50e5541bafc8e7013d1cfe7fe90cba2d5e96ac05acf3e8d1540f21daf24fb9c9",
     "source": "repo",
     "size": 539571,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/util-linux-libs-2.42.2-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/util-linux-libs-2.42.2-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "xz-5.8.3-1",
@@ -861,7 +861,7 @@
     "pkg_checksum": "03b9eefeb02c27c4f30fce4481cb5bd2922c0391f628665911c156970285d5d9",
     "source": "repo",
     "size": 896293,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/xz-5.8.3-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/xz-5.8.3-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "zlib-1:1.3.2-3",
@@ -869,7 +869,7 @@
     "pkg_checksum": "41cf0bb5df14e18f7fb868a97da3feb7c4127fba99bb332ad54b14322faac1b1",
     "source": "repo",
     "size": 84690,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/zlib-1:1.3.2-3-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/zlib-1:1.3.2-3-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "zstd-1.5.7-3",
@@ -877,7 +877,7 @@
     "pkg_checksum": "d4cf0049137124c8a025eedfad267a3e8a02310c9efb9d1ae4a61aa1d02789fc",
     "source": "repo",
     "size": 527400,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/core/os/x86_64/zstd-1.5.7-3-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/core/os/x86_64/zstd-1.5.7-3-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "erofs-utils-1.9.3-1",
@@ -885,7 +885,7 @@
     "pkg_checksum": "db59e989c7e050e2b1ec85019229940664b8cb5257f762bdf2e5b7513fcc6d1e",
     "source": "repo",
     "size": 176980,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/extra/os/x86_64/erofs-utils-1.9.3-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/extra/os/x86_64/erofs-utils-1.9.3-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libdeflate-1.25-1",
@@ -893,7 +893,7 @@
     "pkg_checksum": "4e9b5d01558db0cddfbd2a6a48ed6baf92bbe65af4d0dd1ae390206fe76080ee",
     "source": "repo",
     "size": 64785,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/extra/os/x86_64/libdeflate-1.25-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/extra/os/x86_64/libdeflate-1.25-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libsysprof-capture-50.0-6",
@@ -901,7 +901,7 @@
     "pkg_checksum": "4467ddc2c476f9a6249737ff1ef5714f4b376e55719968c168f3b8a86c098bbb",
     "source": "repo",
     "size": 53155,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/extra/os/x86_64/libsysprof-capture-50.0-6-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/extra/os/x86_64/libsysprof-capture-50.0-6-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "lmdb-0.9.35-1",
@@ -909,7 +909,7 @@
     "pkg_checksum": "50ae8083860e1ffadf4fab3c173a043fd97be41f5ceda7d2e77c528cd84d2386",
     "source": "repo",
     "size": 115659,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/extra/os/x86_64/lmdb-0.9.35-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/extra/os/x86_64/lmdb-0.9.35-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "mtools-1:4.0.49-1",
@@ -917,7 +917,7 @@
     "pkg_checksum": "d5098ea3b7d1795905aa30e83cdaac9b53e081c9c08d7b02fdc2f21a7a36f449",
     "source": "repo",
     "size": 218437,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/extra/os/x86_64/mtools-1:4.0.49-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/extra/os/x86_64/mtools-1:4.0.49-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "python-cffi-2.1.1-1",
@@ -925,7 +925,7 @@
     "pkg_checksum": "0d17d222658ddcfec97c86dcf6f0e948dd611f81ee8752a44030f77b5ed0e1d1",
     "source": "repo",
     "size": 306348,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/extra/os/x86_64/python-cffi-2.1.1-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/extra/os/x86_64/python-cffi-2.1.1-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "python-cryptography-50.0.0-1",
@@ -933,7 +933,7 @@
     "pkg_checksum": "f9fb518e6a6ba843753a245d59ee99455884749a33ff9c0178902c93e19e38b5",
     "source": "repo",
     "size": 1512643,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/extra/os/x86_64/python-cryptography-50.0.0-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/extra/os/x86_64/python-cryptography-50.0.0-1-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "python-pefile-2024.8.26-2",
@@ -941,7 +941,7 @@
     "pkg_checksum": "9e306ebe8b576a3a3f1d1db658e727253f29948d4145548d4dc3419532905fe5",
     "source": "repo",
     "size": 173560,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/extra/os/x86_64/python-pefile-2024.8.26-2-any.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/extra/os/x86_64/python-pefile-2024.8.26-2-any.pkg.tar.zst"
   },
   {
     "package_id": "python-pycparser-3.00-1",
@@ -949,7 +949,7 @@
     "pkg_checksum": "425162e4fa72eb8c2deee584055df6e585f4602aa5d39736427718d2d424fe39",
     "source": "repo",
     "size": 114648,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/extra/os/x86_64/python-pycparser-3.00-1-any.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/extra/os/x86_64/python-pycparser-3.00-1-any.pkg.tar.zst"
   },
   {
     "package_id": "xxhash-0.8.3-1",
@@ -957,6 +957,6 @@
     "pkg_checksum": "3d48ff40b744aa4503cd5638f620c2c39a12d27967d1db3ab46bf18ff4b2fd80",
     "source": "repo",
     "size": 100356,
-    "url": "https://archive.archlinux.org/repos/2026/08/19/extra/os/x86_64/xxhash-0.8.3-1-x86_64.pkg.tar.zst"
+    "url": "https://archive.archlinux.org/repos/2026/08/20/extra/os/x86_64/xxhash-0.8.3-1-x86_64.pkg.tar.zst"
   }
 ]
