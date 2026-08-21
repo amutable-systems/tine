@@ -55,8 +55,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.gate.outputs.blocked == 'false'
 
-      - name: CI setup
-        uses: ./.github/actions/ci-setup
+      - name: GH runner setup
+        uses: ./.github/actions/gh-runner-setup
         if: steps.gate.outputs.blocked == 'false'
 
       - name: Run ${{ inputs.name }}
