@@ -1,5 +1,5 @@
-name: CI setup
-description: Prepare an ubuntu-latest runner for tools/ci.sh.
+name: GitHub runner setup
+description: Prepare an ubuntu-latest runner for a build, here or in a project consuming this cell.
 
 runs:
   using: composite
