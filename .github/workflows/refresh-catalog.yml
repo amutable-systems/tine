@@ -16,10 +16,21 @@ concurrency:
 
 jobs:
   refresh-catalog:
-    uses: ./.github/workflows/bot-pr.yml
-    with:
-      name: refresh-catalog
-      label-description: automatic catalog refreshes
-      command: bin/tine buck run tine//tools:refresh-catalog -- --commit
-      # the refresh re-snapshots every repository and re-resolves every box before CI even starts
-      timeout-minutes: 45
+    runs-on: ubuntu-latest
+    # the refresh re-snapshots every repository and re-resolves every box before the tests even start
+    timeout-minutes: 45
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: GH runner setup
+        uses: ./.github/actions/gh-runner-setup
+
+      - name: Refresh the catalog
+        run: |
+          python3 tools/bot_pr.py --name refresh-catalog \
+              --label-description 'automatic catalog refreshes' \
+              --command 'bin/tine buck run tine//tools:refresh-catalog -- --commit' \
+              --test tools/ci.sh \
+              --repo '${{ github.repository }}' \
+              --token '${{ github.token }}'
