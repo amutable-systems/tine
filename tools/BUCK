@@ -115,6 +115,14 @@ command_alias(
     exe = ":bump-driver",
 )
 
+# PUBLIC: CI's automatic changes (see .github/workflows/bot-pr.yml). A runner invokes it as a plain
+# script with the host python, before Buck has fetched anything; this target is what type checks it.
+tine_python_binary(
+    name = "bot-pr",
+    main = "bot_pr.py",
+    visibility = ["PUBLIC"],
+)
+
 _SOURCE_ARGS = [
     "--starlark-fmt",
     "$(location_exec :starlark-fmt)",
