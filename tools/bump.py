@@ -206,8 +206,8 @@ def _bump_tool(
 def _bump_ref(name: str, spec: dict[str, Any]) -> tuple[str, str] | None:
     """Resolve a ref to the commit it points at now; the (old, new) pair when it moved, else None.
 
-    Asking the repository rather than an API is what lets a private one resolve: the credentials git
-    is configured with are the ones this needs, and CI configures them for the checkout anyway.
+    Asking the repository rather than an API is what lets a private one resolve, through the same
+    credentials that clone it.
     """
     repository = _string(spec.get("repository"), f"{name}.repository")
     ref = _string(spec.get("ref"), f"{name}.ref")
@@ -217,6 +217,9 @@ def _bump_ref(name: str, spec: dict[str, Any]) -> tuple[str, str] | None:
     listing = subprocess.run(
         ["git", "ls-remote", "--exit-code", repository, ref],
         check=True,
+        # avoid running inside of the parent repo: that may already have an Authorization: header
+        # from actions/checkout, and that would override any global git `.insteadOf` configuration
+        cwd=Path("/"),
         stdout=subprocess.PIPE,
         encoding="utf-8",
     )
