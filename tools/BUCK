@@ -115,6 +115,16 @@ command_alias(
     exe = ":bump-driver",
 )
 
+box_python_test(
+    name = "bump-test",
+    box = ":dev.box",
+    srcs = [
+        "bump.py",
+        "bump_test.py",
+    ],
+    deps = ["//:util"],
+)
+
 # PUBLIC: CI's automatic changes (see .github/workflows/bot-pr.yml). A runner invokes it as a plain
 # script with the host python, before Buck has fetched anything; this target is what type checks it.
 tine_python_binary(
