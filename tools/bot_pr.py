@@ -28,8 +28,13 @@ AUTHOR = ("github-actions[bot]", "noreply@amutable.com")
 
 
 def _output(command: list[str]) -> str:
-    """Stripped stdout of a command, with its stderr left going to the log."""
-    return subprocess.run(command, cwd=ROOT, check=True, stdout=subprocess.PIPE, text=True).stdout.strip()
+    """Stripped stdout of a command, with its stderr left going to the log.
+
+    UTF-8 rather than the locale's encoding: a commit message this reads into a pull request is
+    git's bytes, and what a runner names in LANG is no business of the title it ends up with.
+    """
+    run = subprocess.run(command, cwd=ROOT, check=True, stdout=subprocess.PIPE, encoding="utf-8")
+    return run.stdout.strip()
 
 
 def git(*args: str) -> str:
