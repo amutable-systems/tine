@@ -28,3 +28,9 @@ runs:
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm --settle
         ls -l /dev/kvm
+
+    - name: Permit unprivileged access to vhost-vsock
+      shell: bash
+      run: |
+        sudo modprobe vhost_vsock
+        sudo chmod 0666 /dev/vhost-vsock
