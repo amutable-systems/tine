@@ -112,12 +112,14 @@ def _asset_digest(asset: dict[str, Any], name: str) -> str:
     return value
 
 
-def _python_minor(path: Path) -> str:
+def _python_minor(path: Path | None) -> str:
     """The pinned CPython minor (e.g. "3.14"), read only for a CPython pin.
 
-    Lazily, because a project pinning no CPython has no reason to carry the configuration this
-    reads: every other artifact matches its successor without it.
+    Read lazily, and the option optional, because a project pinning no CPython has no reason to
+    carry the configuration this reads: every other artifact matches its successor without it.
     """
+    if path is None:
+        raise ValueError("a CPython pin needs --ty-config, the configuration pinning the minor")
     data = _object(tomllib.loads(path.read_text(encoding="utf-8")), str(path))
     environment = _object(data.get("environment"), f"environment table in {path}")
     return _string(environment.get("python-version"), f"environment.python-version in {path}")
@@ -127,8 +129,9 @@ def _asset_regex(artifact: str, tag: str, python_minor: Callable[[], str]) -> re
     """Match the successor of `artifact` across releases by wildcarding only its version parts.
 
     python-build-standalone artifacts carry both a CPython version and a date, so pin the minor (from
-    ty.toml) and the platform/variant while letting the patch and date float. Every other upstream
-    embeds at most the release tag, so wildcard the tag (with and without a leading "v").
+    the ty configuration) and the platform/variant while letting the patch and date float. Every
+    other upstream embeds at most the release tag, so wildcard the tag (with and without a leading
+    "v").
     """
     if artifact.startswith("cpython-"):
         match = re.match(r"cpython-\d+\.\d+\.\d+\+\d+-(.+)$", artifact)
@@ -264,6 +267,12 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, default=Path(__file__).with_name("tools.json"))
     parser.add_argument(
+        "--ty-config",
+        type=Path,
+        metavar="PATH",
+        help="ty configuration whose python-version pins the CPython minor to bump within",
+    )
+    parser.add_argument(
         "--tool",
         action="append",
         default=[],
@@ -286,7 +295,7 @@ def main() -> None:
     try:
         original = path.read_text(encoding="utf-8")
         data = _object(json.loads(original), str(path))
-        python_minor = functools.cache(lambda: _python_minor(path.parent.parent / "ty.toml"))
+        python_minor = functools.cache(lambda: _python_minor(args.ty_config))
         releases: dict[str, dict[str, Any]] = {}
         updates: list[tuple[str, str, str]] = []
         for name in _selected_names(args, data):

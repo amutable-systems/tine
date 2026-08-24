@@ -106,35 +106,56 @@ class ReleasePin(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
-        (self.root / "ty.toml").write_text('[environment]\npython-version = "3.14"\n')
-        self.data = self.root / "tools" / "tools.json"
-        self.data.parent.mkdir()
+        self.ty_config = self.root / "ty.toml"
+        self.ty_config.write_text('[environment]\npython-version = "3.14"\n')
+        self.data = self.root / "tools.json"
 
     @staticmethod
     def asset(name: str, size: int = 1) -> dict[str, object]:
         # The digest only has to be well-formed: what it hashes is never downloaded here.
         return {"name": name, "size": size, "digest": f"sha256:{'ab' * 32}"}
 
-    def bump(self, pins: Mapping[str, object], release: Mapping[str, object]) -> dict[str, Any]:
-        """Bump `pins` against one stubbed release; the rewritten file."""
+    @staticmethod
+    def syft() -> dict[str, object]:
+        """One pin whose artifact embeds the release, and which reads no ty configuration."""
+        return {
+            "syft": {
+                "repository": "anchore/syft",
+                "release": "v1.50.0",
+                "platforms": {"x86_64": {"artifact": "syft_1.50.0_linux_amd64.tar.gz"}},
+            },
+        }
+
+    def bump(
+        self, pins: Mapping[str, object], release: Mapping[str, object], *, ty_config: bool = True
+    ) -> dict[str, Any]:
+        """Bump `pins` against one stubbed release; the rewritten file.
+
+        `ty_config` off stands in for a consuming project, whose command passes none.
+        """
         self.data.write_text(json.dumps(pins, indent=2) + "\n")
-        argv = ["bump", "--data", str(self.data), "--all"]
+        option = ["--ty-config", str(self.ty_config)] if ty_config else []
+        argv = ["bump", "--data", str(self.data), *option, "--all"]
         with mock.patch.object(bump, "_github_json", return_value=release), mock.patch("sys.argv", argv):
             bump.main()
         return cast(dict[str, Any], json.loads(self.data.read_text()))
 
-    def test_reads_the_pinned_python_minor_from_ty_toml(self) -> None:
-        """The minor comes from the file ty is configured by, found beside the checkout's root.
+    def test_reads_the_pinned_python_minor_from_the_ty_config(self) -> None:
+        """A CPython asset is matched by minor, so it comes from the file ty resolves imports with.
 
-        Both halves matter: a CPython asset is matched by minor, so a bump that read the minor from
-        somewhere ty no longer looks would either fail or pin an interpreter ty does not check for.
+        Reading it anywhere else would pin an interpreter ty does not check against.
         """
-        self.assertEqual(bump._python_minor(self.root / "ty.toml"), "3.14")
+        self.assertEqual(bump._python_minor(self.ty_config), "3.14")
 
     def test_fails_on_a_ty_config_pinning_no_python(self) -> None:
-        (self.root / "ty.toml").write_text('[rules]\nall = "error"\n')
+        self.ty_config.write_text('[rules]\nall = "error"\n')
         with self.assertRaisesRegex(ValueError, "environment table in .*ty.toml"):
-            bump._python_minor(self.root / "ty.toml")
+            bump._python_minor(self.ty_config)
+
+    def test_fails_on_a_cpython_pin_with_no_ty_config(self) -> None:
+        """Only CPython needs one, so the option is optional and the demand is the pin's."""
+        with self.assertRaisesRegex(ValueError, "needs --ty-config"):
+            bump._python_minor(None)
 
     def test_follows_a_cpython_asset_across_patch_and_date(self) -> None:
         pins = {
@@ -176,13 +197,6 @@ class ReleasePin(unittest.TestCase):
 
     def test_follows_an_asset_named_after_the_release(self) -> None:
         """syft embeds the tag without its leading "v", so both spellings have to wildcard."""
-        pins = {
-            "syft": {
-                "repository": "anchore/syft",
-                "release": "v1.50.0",
-                "platforms": {"x86_64": {"artifact": "syft_1.50.0_linux_amd64.tar.gz"}},
-            },
-        }
         release = {
             "tag_name": "v1.51.0",
             "assets": [
@@ -190,9 +204,15 @@ class ReleasePin(unittest.TestCase):
                 self.asset("syft_1.51.0_linux_arm64.tar.gz"),
             ],
         }
-        data = self.bump(pins, release)
+        data = self.bump(self.syft(), release)
         self.assertEqual(data["syft"]["release"], "v1.51.0")
         self.assertEqual(data["syft"]["platforms"]["x86_64"]["artifact"], "syft_1.51.0_linux_amd64.tar.gz")
+
+    def test_bumps_a_pin_needing_no_python_with_no_ty_config(self) -> None:
+        """What a consuming project does: its own tools.json, and no ty configuration to pass."""
+        release = {"tag_name": "v1.51.0", "assets": [self.asset("syft_1.51.0_linux_amd64.tar.gz")]}
+        data = self.bump(self.syft(), release, ty_config=False)
+        self.assertEqual(data["syft"]["release"], "v1.51.0")
 
     def test_leaves_a_release_that_has_not_moved(self) -> None:
         pins = {
@@ -217,16 +237,9 @@ class ReleasePin(unittest.TestCase):
         self.assertEqual(self.data.read_text(), original)
 
     def test_fails_on_a_release_missing_the_pinned_platform(self) -> None:
-        pins = {
-            "syft": {
-                "repository": "anchore/syft",
-                "release": "v1.50.0",
-                "platforms": {"x86_64": {"artifact": "syft_1.50.0_linux_amd64.tar.gz"}},
-            },
-        }
         release = {"tag_name": "v1.51.0", "assets": [self.asset("syft_1.51.0_linux_arm64.tar.gz")]}
         with self.assertRaises(SystemExit):
-            self.bump(pins, release)
+            self.bump(self.syft(), release)
 
 
 if __name__ == "__main__":
