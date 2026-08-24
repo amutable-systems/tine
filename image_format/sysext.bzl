@@ -41,6 +41,9 @@ SysextImageInfo = provider(
         # What the DDI carries, as a UAPI.16 file manifest: the /usr and /opt of the delta alone,
         # unlike the manifest of the logical image, which is the whole tree it merges onto.
         "manifest": provider_field(Artifact),
+        # The DDI's verity root hash, hex plus newline. A host reports it for the merged
+        # extension (/usr/.systemd-sysext/origin)
+        "root_hash": provider_field(Artifact),
     },
 )
 
@@ -95,6 +98,9 @@ def declare_image_sysext(
     # publishes the listing under a name that says which image it belongs to.
     manifest = ctx.actions.declare_output(stem + ".Uapi16Manifest")
 
+    # The verity root hash, named like the DDI it identifies.
+    root_hash = ctx.actions.declare_output(stem + ".roothash")
+
     signing_access = merge_signing_access([verity_key])
     cmd = terminal_image_command(
         ctx,
@@ -112,6 +118,7 @@ def declare_image_sysext(
             # A merged extension must not shadow the host's package database.
             "pkgdb_paths": pkgdb_paths(image),
             "release": {key: release_fields[key] for key in sorted(release_fields)},
+            "root_hash_out": root_hash.as_output(),
             "seed": seed,
             "signing": signing_key_spec(verity_key),
         },
@@ -124,20 +131,33 @@ def declare_image_sysext(
         **external_signing_execution(signing_access),
     )
 
-    return SysextImageInfo(basename = basename, box = image.box, extension = extension, image = out, manifest = manifest)
+    return SysextImageInfo(
+        basename = basename,
+        box = image.box,
+        extension = extension,
+        image = out,
+        manifest = manifest,
+        root_hash = root_hash,
+    )
 
 def sysext_published(info: SysextImageInfo) -> PublishedInfo:
-    """What a release carries for one extension: the DDI, and the listing of what it holds."""
+    """What a release carries for one extension.
+
+    The DDI, its verity root hash, and the listing of what it holds."""
     return PublishedInfo(
         artifacts = {
             info.image.basename: info.image,
             info.manifest.basename: info.manifest,
+            info.root_hash.basename: info.root_hash,
         }
     )
 
 def sysext_subtargets(info: SysextImageInfo) -> dict[str, list[Provider]]:
     """The extension's own views, beside whichever ones the rule exposes for its logical image."""
-    return {"ddi-manifest": [DefaultInfo(default_output = info.manifest)]}
+    return {
+        "ddi-manifest": [DefaultInfo(default_output = info.manifest)],
+        "roothash": [DefaultInfo(default_output = info.root_hash)],
+    }
 
 def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
     info = declare_image_sysext(
