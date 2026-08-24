@@ -52,6 +52,11 @@ def _root() -> Path:
 # None in a standalone tine checkout; every verb needs it, so main() exits early when it is unset.
 WORKTREE = _root() / ".upstream-rpm" if ROOT else None  # persistent checkout of the upstream-rpm branch
 
+# Exit code for "conflicts committed with markers" (update/update-all): distinct from generic
+# failures (1) and argparse usage errors (2), so that bot_pr.py --draft-exit can tell an expected
+# conflict apart from a crash.
+EXIT_CONFLICT = 3
+
 # arches we build for -- srcpkg.json records each one's (arch-conditional) static BuildRequires.
 Arch = Literal["x86_64", "aarch64"]
 BuildRequiresArch = Arch | Literal["_all"]
@@ -1870,10 +1875,10 @@ def main() -> None:
     elif args.command == "update":
         assert (args.distro is None) == (args.branch is None), "specify both distro and branch, or neither"
         if not update(args.packagename, args.distro, args.branch):
-            raise SystemExit(1)  # conflicts committed with markers; fail so the PR is a red draft
+            raise SystemExit(EXIT_CONFLICT)
     elif args.command == "update-all":
         if not update_all():
-            raise SystemExit(1)
+            raise SystemExit(EXIT_CONFLICT)
     elif args.command == "rebuild":
         assert (args.distro is None) == (args.branch is None), "specify both distro and branch, or neither"
         rebuild(args.packagename, args.reason, args.distro, args.branch)
@@ -1894,7 +1899,7 @@ def main() -> None:
     elif args.command == "sync":
         assert (args.distro is None) == (args.branch is None), "specify both distro and branch, or neither"
         if not sync(args.packagename, args.distro, args.branch):
-            raise SystemExit(1)
+            raise SystemExit(1)  # sync can never conflict by design
     elif args.command == "srpm":
         assert (args.distro is None) == (args.branch is None), "specify both distro and branch, or neither"
         srpm(args.packagename, args.distro, args.branch)
