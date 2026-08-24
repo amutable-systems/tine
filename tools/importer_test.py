@@ -503,6 +503,19 @@ class UpstreamPackages(PackagesTestCase):
     Mirror upstream dist-git commits (and their koji build metadata) onto the upstream-rpm branch.
     """
 
+    def test_ensure_branch_from_origin(self) -> None:
+        """A fresh CI clone has only origin/upstream-rpm; the tool creates the local branch."""
+        git("update-ref", "refs/remotes/origin/upstream-rpm", "upstream-rpm", cwd=self.monorepo)
+        git("branch", "--quiet", "-D", "upstream-rpm", cwd=self.monorepo)
+
+        wt = self.tool.ensure_worktree()
+
+        self.assertTrue((wt / ".git").exists())
+        self.assertEqual(
+            git("rev-parse", "upstream-rpm", cwd=self.monorepo),
+            git("rev-parse", "refs/remotes/origin/upstream-rpm", cwd=self.monorepo),
+        )
+
     def test_new_package(self) -> None:
         sha = self.make_upstream("testpkg", "fedora", "rawhide")
         self.tool.import_upstream("fedora", "rawhide", "testpkg", None)
