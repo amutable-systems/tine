@@ -109,9 +109,11 @@ tine_python_binary(
     visibility = ["PUBLIC"],
 )
 
+# The ty configuration comes in by label rather than by a path bump works out from tools.json:
+# moving or renaming it then fails here, at analysis time, instead of in the next bump run.
 command_alias(
     name = "bump",
-    args = ["--data", "$(source tools.json)"],
+    args = ["--data", "$(source tools.json)", "--ty-config", "$(location_exec //:ty-config)"],
     exe = ":bump-driver",
 )
 
