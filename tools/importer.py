@@ -251,13 +251,17 @@ def git_net(*args: str) -> str:
     return git(*args)  # out of retries: this attempt's failure is the caller's
 
 
+def ensure_branch() -> None:
+    """Set up the local upstream-rpm branch from origin"""
+    if not git("branch", "--list", "upstream-rpm", cwd=_root()).strip():
+        git("branch", "upstream-rpm", "origin/upstream-rpm", cwd=_root())
+
+
 def ensure_worktree() -> Path:
-    """Return a checkout of the upstream-rpm branch. Fail if the branch is absent."""
+    """Return a checkout of the upstream-rpm branch."""
     worktree = WORKTREE
     assert worktree is not None
-    assert git("branch", "--list", "upstream-rpm", cwd=_root()).strip(), (
-        "upstream-rpm branch not present -- fetch and set up before importing"
-    )
+    ensure_branch()
     if not worktree.exists():
         git("worktree", "add", "--quiet", str(worktree), "upstream-rpm", cwd=_root())
     return worktree
@@ -1786,6 +1790,7 @@ def check(start_ref: str | None = None) -> list[str]:
     non-empty result into a non-zero exit so a PR's CI fails. Metadata *integrity* isn't checked
     here -- only a rebuild can confirm that (packages.md).
     """
+    ensure_branch()  # check_commit resolves X-Upstream-Commit: trailers against it
     revs = f"{start_ref}..HEAD" if start_ref else "HEAD"
     errors: list[str] = []
     for c in git("rev-list", revs, cwd=ROOT).split():
