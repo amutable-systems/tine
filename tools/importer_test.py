@@ -516,6 +516,36 @@ class UpstreamPackages(PackagesTestCase):
             git("rev-parse", "refs/remotes/origin/upstream-rpm", cwd=self.monorepo),
         )
 
+    def test_worktree_refreshes_from_origin(self) -> None:
+        """A stale clone's branch and worktree fast-forward to origin; an ahead one stays."""
+        origin = self._tmp / "origin.git"
+        git("clone", "--quiet", "--bare", str(self.monorepo), str(origin), cwd=self._tmp)
+        git("remote", "add", "origin", str(origin), cwd=self.monorepo)
+
+        # Simulate the mirror advancing: push a commit, then rewind the local state to before it.
+        wt = self.tool.ensure_worktree()
+        git("commit", "--quiet", "--allow-empty", "-m", "newer import", cwd=wt)
+        tip = git("rev-parse", "HEAD", cwd=wt).strip()
+        git("push", "--quiet", "origin", "upstream-rpm", cwd=wt)
+        git("reset", "--quiet", "--hard", "HEAD^", cwd=wt)
+        git("update-ref", "-d", "refs/remotes/origin/upstream-rpm", cwd=self.monorepo)
+
+        self.tool.ensure_worktree()
+        self.assertEqual(git("rev-parse", "upstream-rpm", cwd=self.monorepo).strip(), tip)
+
+        # A branch that is ahead (imports not pushed yet) is left alone.
+        git("commit", "--quiet", "--allow-empty", "-m", "local import", cwd=wt)
+        ahead = git("rev-parse", "HEAD", cwd=wt).strip()
+        self.tool.ensure_worktree()
+        self.assertEqual(git("rev-parse", "upstream-rpm", cwd=self.monorepo).strip(), ahead)
+
+        # Unpushed changes that collide with origin's fail.
+        git("push", "--quiet", "origin", "upstream-rpm", cwd=wt)
+        git("reset", "--quiet", "--hard", "HEAD^", cwd=wt)
+        git("commit", "--quiet", "--allow-empty", "-m", "colliding import", cwd=wt)
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.tool.ensure_worktree()
+
     def test_new_package(self) -> None:
         sha = self.make_upstream("testpkg", "fedora", "rawhide")
         self.tool.import_upstream("fedora", "rawhide", "testpkg", None)
