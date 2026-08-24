@@ -252,18 +252,28 @@ def git_net(*args: str) -> str:
 
 
 def ensure_branch() -> None:
-    """Set up the local upstream-rpm branch from origin"""
+    """Set up the local upstream-rpm branch from origin; no network, unlike ensure_worktree()"""
     if not git("branch", "--list", "upstream-rpm", cwd=_root()).strip():
         git("branch", "upstream-rpm", "origin/upstream-rpm", cwd=_root())
 
 
 def ensure_worktree() -> Path:
-    """Return a checkout of the upstream-rpm branch."""
+    """Return a checkout of the upstream-rpm branch, current with origin.
+
+    Fetches the upstream-rpm branch and fast-forwards the local one.
+    """
     worktree = WORKTREE
     assert worktree is not None
+    refresh = "origin" in git("remote", cwd=_root()).split()
+    if refresh:
+        git_net("-C", str(_root()), "fetch", "--quiet", "origin", "upstream-rpm")
     ensure_branch()
     if not worktree.exists():
         git("worktree", "add", "--quiet", str(worktree), "upstream-rpm", cwd=_root())
+    if refresh:
+        # Local-only fast-forward of the branch and its checkout: ahead stays as it is,
+        # diverged or dirty fails.
+        git("merge", "--ff-only", "--quiet", "origin/upstream-rpm", cwd=worktree)
     return worktree
 
 
