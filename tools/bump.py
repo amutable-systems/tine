@@ -119,17 +119,15 @@ def _python_minor(path: Path) -> str:
     reads: every other artifact matches its successor without it.
     """
     data = _object(tomllib.loads(path.read_text(encoding="utf-8")), str(path))
-    tool = _object(data.get("tool"), f"tool table in {path}")
-    ty = _object(tool.get("ty"), f"tool.ty in {path}")
-    environment = _object(ty.get("environment"), f"tool.ty.environment in {path}")
-    return _string(environment.get("python-version"), f"tool.ty.environment.python-version in {path}")
+    environment = _object(data.get("environment"), f"environment table in {path}")
+    return _string(environment.get("python-version"), f"environment.python-version in {path}")
 
 
 def _asset_regex(artifact: str, tag: str, python_minor: Callable[[], str]) -> re.Pattern[str]:
     """Match the successor of `artifact` across releases by wildcarding only its version parts.
 
     python-build-standalone artifacts carry both a CPython version and a date, so pin the minor (from
-    pyproject) and the platform/variant while letting the patch and date float. Every other upstream
+    ty.toml) and the platform/variant while letting the patch and date float. Every other upstream
     embeds at most the release tag, so wildcard the tag (with and without a leading "v").
     """
     if artifact.startswith("cpython-"):
@@ -288,7 +286,7 @@ def main() -> None:
     try:
         original = path.read_text(encoding="utf-8")
         data = _object(json.loads(original), str(path))
-        python_minor = functools.cache(lambda: _python_minor(path.parent.parent / "pyproject.toml"))
+        python_minor = functools.cache(lambda: _python_minor(path.parent.parent / "ty.toml"))
         releases: dict[str, dict[str, Any]] = {}
         updates: list[tuple[str, str, str]] = []
         for name in _selected_names(args, data):
