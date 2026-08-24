@@ -72,17 +72,31 @@ def blocked(label: str) -> bool:
     return bool(open_items)
 
 
-def commit_change(command: str) -> str | None:
-    """Run the command that commits the change; the commit it started from, or None if it made none."""
+def commit_change(command: str, draft_exit: int) -> tuple[str | None, bool]:
+    """Run the command that commits the change.
+
+    Returns the commit it started from (None if it made none), and whether the command asked for a
+    draft. Any other exception, or the draft code without commits, propagates.
+    """
     git("config", "user.name", AUTHOR[0])
     git("config", "user.email", AUTHOR[1])
     before = git("rev-parse", "HEAD")
-    shell(command)
-    return before if git("rev-parse", "HEAD") != before else None
+    draft = False
+    try:
+        shell(command)
+    except subprocess.CalledProcessError as e:
+        # Only the agreed code, and only with commits to show for it, means "draft".
+        if e.returncode != draft_exit or git("rev-parse", "HEAD") == before:
+            raise
+        draft = True
+    return (before if git("rev-parse", "HEAD") != before else None), draft
 
 
-def open_pull_request(name: str, label: str, before: str, repository: str) -> str:
-    """Push what the command committed to the branch this run owns, and open its pull request."""
+def open_pull_request(name: str, label: str, before: str, repository: str, draft_note: str) -> str:
+    """Push what the command committed to the branch this run owns, and open its pull request.
+
+    A non-empty draft_note opens it as a draft, with the note as the body's footer.
+    """
     # The gate leaves at most one run of each kind in flight, so the branch is this run's own to
     # overwrite: the previous one's may still be there, merged and never deleted.
     git("push", "--force", "origin", f"HEAD:refs/heads/{name}")
@@ -90,12 +104,12 @@ def open_pull_request(name: str, label: str, before: str, repository: str) -> st
     span = f"{before}..HEAD"
     log = git("log", "--reverse", "--format=%s%n%n%b", span)
     title = "; ".join(git("log", "--reverse", "--format=%s", span).splitlines())
+    footer = f"{draft_note}\n\nOpened, untested, by" if draft_note else "Tested by"
     # The blank line matters: a commit body ending in a list would swallow the line after it.
-    body = f"{log}\n\nTested by {run_url(repository)}.\n"
+    body = f"{log}\n\n{footer} {run_url(repository)}.\n"
     base = os.environ["GITHUB_REF_NAME"]
-    url = gh(
-        "pr", "create", "--head", name, "--base", base, "--label", label, "--title", title, "--body", body
-    )
+    options = ["--head", name, "--base", base, "--label", label, "--title", title, "--body", body]
+    url = gh("pr", "create", *options, *(["--draft"] if draft_note else []))
     return url.rsplit("/", 1)[-1]
 
 
@@ -113,9 +127,25 @@ def main() -> None:
     parser.add_argument("--label-description", required=True, help="what the label bot-<name> means")
     parser.add_argument("--command", required=True, metavar="COMMAND", help="how to make the change")
     parser.add_argument("--test", required=True, metavar="COMMAND", help="how to test the change")
+    parser.add_argument(
+        "--draft-exit",
+        type=int,
+        default=0,
+        metavar="CODE",
+        help="COMMAND exit code for 'committed, but needs a human to finish': open an untested "
+        "draft pull request instead of failing (default: disabled)",
+    )
+    parser.add_argument(
+        "--draft-note",
+        default="",
+        metavar="TEXT",
+        help="what a draft pull request's body says about finishing it; required with --draft-exit",
+    )
     parser.add_argument("--repo", required=True, metavar="OWNER/REPO", help="the repository to work on")
     parser.add_argument("--token", required=True, help="token to reach the repository with")
     args = parser.parse_args()
+    if bool(args.draft_exit) != bool(args.draft_note):
+        parser.error("--draft-exit and --draft-note go together")
 
     # gh reads both of these from the environment, so put them there once for every child below.
     os.environ["GH_TOKEN"] = args.token
@@ -127,12 +157,15 @@ def main() -> None:
         return
 
     try:
-        before = commit_change(args.command)
+        before, draft = commit_change(args.command, args.draft_exit)
         if before is None:
             print(f"::notice::{args.name} found nothing to change")
             return
-        shell(args.test)
-        pull_request = open_pull_request(args.name, label, before, args.repo)
+        if not draft:  # don't waste a CI run
+            shell(args.test)
+        pull_request = open_pull_request(
+            args.name, label, before, args.repo, args.draft_note if draft else ""
+        )
     except subprocess.CalledProcessError:
         # A command failing is what the issue is for. Anything else - a missing variable, a gh that
         # cannot talk to the API - is this driver or its workflow being wrong, and belongs in a
@@ -140,12 +173,12 @@ def main() -> None:
         report_failure(args.name, label, args.repo)
         raise
 
-    print(f"::notice::opened #{pull_request}")
+    print(f"::notice::opened {'draft ' if draft else ''}#{pull_request}")
     # What a caller with something left to do about the pull request reads.
     step_output = os.environ.get("GITHUB_OUTPUT")
     if step_output:
         with Path(step_output).open("a") as handle:
-            handle.write(f"pull-request={pull_request}\n")
+            handle.write(f"pull-request={pull_request}\ndraft={str(draft).lower()}\n")
 
 
 if __name__ == "__main__":
