@@ -789,7 +789,7 @@ class DownstreamPackages(PackagesTestCase):
         """A local edit that collides with an upstream change
 
         It is committed with conflict markers, with a CONFLICT: subject, and the verb
-        exits non-zero (a failing draft PR).
+        exits with EXIT_CONFLICT (the update bot opens a draft PR).
         """
         rel = "packages/fedora/rawhide/bbb"
         b1 = self.commit("bbb", "rawhide", "1.0", "1", "Update to 1.0")
@@ -802,7 +802,7 @@ class DownstreamPackages(PackagesTestCase):
         self.build_koji("bbb", "2.0", "1", b2)
         self.tool.update_upstreams()
 
-        self.assertFalse(self.tool.update("bbb"))  # conflict -> False (main() exits non-zero)
+        self.assertFalse(self.tool.update("bbb"))  # conflict -> False (main() exits EXIT_CONFLICT)
 
         # The conflict is committed on main with a CONFLICT: subject and the markers kept.
         subject = git("log", "-1", "--format=%s", "main", "--", rel, cwd=self.monorepo)
@@ -835,7 +835,7 @@ class DownstreamPackages(PackagesTestCase):
             self.assertIn(f"{pkg} = 2.0-1{NDIST}", meta["binaries"]["x86_64"][pkg]["Provides"])
 
     def test_update_all_conflict(self) -> None:
-        """update-all keeps going past a conflicting package and exits non-zero at the end."""
+        """update-all keeps going past a conflicting package and exits EXIT_CONFLICT at the end."""
         for pkg in ("aaa", "zzz"):
             c1 = self.commit(pkg, "rawhide", "1.0", "1", "Update to 1.0")
             self.build_koji(pkg, "1.0", "1", c1)
@@ -848,7 +848,7 @@ class DownstreamPackages(PackagesTestCase):
             self.build_koji(pkg, "2.0", "1", c2)
         self.tool.update_upstreams()
 
-        self.assertFalse(self.tool.update_all())  # a conflict -> False (main() exits non-zero)
+        self.assertFalse(self.tool.update_all())  # a conflict -> False (main() exits EXIT_CONFLICT)
 
         # The conflicting package didn't block the clean one: zzz still advanced to 2.0.
         zzz = json.loads((self.monorepo / "packages/fedora/rawhide/zzz.json").read_text())
