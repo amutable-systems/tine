@@ -2,7 +2,7 @@
 
     buck test tine//tools:bump-test
 
-Only the git pins: a release pin asks the GitHub API, which we can't unit-test.
+The GitHub API is stubbed for the release pins, so both kinds of pin are covered offline.
 """
 
 import contextlib
@@ -10,8 +10,9 @@ import json
 import subprocess
 import tempfile
 import unittest
+from collections.abc import Mapping
 from pathlib import Path
-from typing import override
+from typing import Any, cast, override
 from unittest import mock
 
 import bump
@@ -91,6 +92,141 @@ class GitPin(unittest.TestCase):
         with mock.patch("sys.argv", ["bump", "--data", str(data), "--all"]):
             bump.main()
         self.assertEqual(json.loads(data.read_text())["hello"]["commit"], self.head)
+
+
+class ReleasePin(unittest.TestCase):
+    """The release path with GitHub stubbed out, so only tine's own decisions are under test.
+
+    A release pin is chosen by two things: which asset in the release succeeds the pinned one, and
+    (for CPython alone) the minor that ty.toml pins the interpreter to.
+    """
+
+    @override
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        (self.root / "ty.toml").write_text('[environment]\npython-version = "3.14"\n')
+        self.data = self.root / "tools" / "tools.json"
+        self.data.parent.mkdir()
+
+    @staticmethod
+    def asset(name: str, size: int = 1) -> dict[str, object]:
+        # The digest only has to be well-formed: what it hashes is never downloaded here.
+        return {"name": name, "size": size, "digest": f"sha256:{'ab' * 32}"}
+
+    def bump(self, pins: Mapping[str, object], release: Mapping[str, object]) -> dict[str, Any]:
+        """Bump `pins` against one stubbed release; the rewritten file."""
+        self.data.write_text(json.dumps(pins, indent=2) + "\n")
+        argv = ["bump", "--data", str(self.data), "--all"]
+        with mock.patch.object(bump, "_github_json", return_value=release), mock.patch("sys.argv", argv):
+            bump.main()
+        return cast(dict[str, Any], json.loads(self.data.read_text()))
+
+    def test_reads_the_pinned_python_minor_from_ty_toml(self) -> None:
+        """The minor comes from the file ty is configured by, found beside the checkout's root.
+
+        Both halves matter: a CPython asset is matched by minor, so a bump that read the minor from
+        somewhere ty no longer looks would either fail or pin an interpreter ty does not check for.
+        """
+        self.assertEqual(bump._python_minor(self.root / "ty.toml"), "3.14")
+
+    def test_fails_on_a_ty_config_pinning_no_python(self) -> None:
+        (self.root / "ty.toml").write_text('[rules]\nall = "error"\n')
+        with self.assertRaisesRegex(ValueError, "environment table in .*ty.toml"):
+            bump._python_minor(self.root / "ty.toml")
+
+    def test_follows_a_cpython_asset_across_patch_and_date(self) -> None:
+        pins = {
+            "python3": {
+                "repository": "astral-sh/python-build-standalone",
+                "release": "20260805",
+                "platforms": {
+                    "x86_64": {
+                        "artifact": "cpython-3.14.7+20260805-x86_64-unknown-linux-gnu-install_only.tar.gz",
+                        "sha256": "0" * 64,
+                        "size": 1,
+                        "strip_prefix": "python",
+                    },
+                },
+            },
+        }
+        release = {
+            "tag_name": "20260814",
+            "assets": [
+                # A newer patch and date on the pinned platform, plus the near misses around it:
+                # another minor, another platform, and an earlier patch in the same release.
+                self.asset("cpython-3.14.8+20260814-x86_64-unknown-linux-gnu-install_only.tar.gz", 9),
+                self.asset("cpython-3.14.6+20260814-x86_64-unknown-linux-gnu-install_only.tar.gz"),
+                self.asset("cpython-3.15.0+20260814-x86_64-unknown-linux-gnu-install_only.tar.gz"),
+                self.asset("cpython-3.14.8+20260814-aarch64-unknown-linux-gnu-install_only.tar.gz"),
+                self.asset("cpython-3.14.8+20260814-x86_64-unknown-linux-gnu-debug-full.tar.gz"),
+            ],
+        }
+        entry = self.bump(pins, release)["python3"]["platforms"]["x86_64"]
+        self.assertEqual(
+            entry,
+            {
+                "artifact": "cpython-3.14.8+20260814-x86_64-unknown-linux-gnu-install_only.tar.gz",
+                "sha256": "ab" * 32,
+                "size": 9,
+                "strip_prefix": "python",
+            },
+        )
+
+    def test_follows_an_asset_named_after_the_release(self) -> None:
+        """syft embeds the tag without its leading "v", so both spellings have to wildcard."""
+        pins = {
+            "syft": {
+                "repository": "anchore/syft",
+                "release": "v1.50.0",
+                "platforms": {"x86_64": {"artifact": "syft_1.50.0_linux_amd64.tar.gz"}},
+            },
+        }
+        release = {
+            "tag_name": "v1.51.0",
+            "assets": [
+                self.asset("syft_1.51.0_linux_amd64.tar.gz"),
+                self.asset("syft_1.51.0_linux_arm64.tar.gz"),
+            ],
+        }
+        data = self.bump(pins, release)
+        self.assertEqual(data["syft"]["release"], "v1.51.0")
+        self.assertEqual(data["syft"]["platforms"]["x86_64"]["artifact"], "syft_1.51.0_linux_amd64.tar.gz")
+
+    def test_leaves_a_release_that_has_not_moved(self) -> None:
+        pins = {
+            "cargo-auditable": {
+                "repository": "rust-secure-code/cargo-auditable",
+                "release": "v0.7.5",
+                "platforms": {
+                    "x86_64": {
+                        "artifact": "cargo-auditable-x86_64-unknown-linux-musl.tgz",
+                        "sha256": "ab" * 32,
+                        "size": 1,
+                    },
+                },
+            },
+        }
+        release = {
+            "tag_name": "v0.7.5",
+            "assets": [self.asset("cargo-auditable-x86_64-unknown-linux-musl.tgz")],
+        }
+        original = json.dumps(pins, indent=2) + "\n"
+        self.assertEqual(self.bump(pins, release), json.loads(original))
+        self.assertEqual(self.data.read_text(), original)
+
+    def test_fails_on_a_release_missing_the_pinned_platform(self) -> None:
+        pins = {
+            "syft": {
+                "repository": "anchore/syft",
+                "release": "v1.50.0",
+                "platforms": {"x86_64": {"artifact": "syft_1.50.0_linux_amd64.tar.gz"}},
+            },
+        }
+        release = {"tag_name": "v1.51.0", "assets": [self.asset("syft_1.51.0_linux_arm64.tar.gz")]}
+        with self.assertRaises(SystemExit):
+            self.bump(pins, release)
 
 
 if __name__ == "__main__":
