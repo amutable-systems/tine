@@ -2,6 +2,7 @@
 """Create a systemd system-extension DDI from a logical image via systemd-repart."""
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -31,6 +32,9 @@ class Spec(finalize.ImageSpec):
     pkgdb_paths: list[str]
     signing: repart.KeySpec | None
     out: str
+    # Where to write the DDI's verity root hash: the identity a host reports
+    # for the merged extension, published so consumers can join on it.
+    root_hash_out: str
 
 
 _SEED_NAMESPACE = uuid.UUID("b388a973-3ffa-44aa-90b7-afcc4573ea9f")
@@ -123,6 +127,7 @@ def main(argv: list[str] | None = None) -> None:
             "--dry-run=no",
             "--offline=yes",
             "--no-pager",
+            "--json=pretty",
             "--seed",
             str(seed),
         ]
@@ -134,7 +139,11 @@ def main(argv: list[str] | None = None) -> None:
             cmd.append("--exclude-partitions=root-verity-sig")
         cmd.append(str(out))
         env = os.environ | {"SYSTEMD_REPART_MKFS_OPTIONS_EROFS": _MKFS_OPTIONS_EROFS}
-        subprocess.run(cmd, check=True, env=env)
+        result = subprocess.run(cmd, check=True, env=env, stdout=subprocess.PIPE, text=True)
+        # The root hash is what a host reports for the merged extension
+        # (/usr/.systemd-sysext/origin), so it is the DDI's identity to
+        # anyone joining reports against published builds.
+        repart.write_root_hash(json.loads(result.stdout), Path(spec["root_hash_out"]))
 
     print(f"sysext: wrote {out.name} and {written} manifest objects (seed={seed})", file=sys.stderr)
 
