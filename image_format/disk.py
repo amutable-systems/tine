@@ -19,7 +19,7 @@ import util
 
 import finalize
 import manifest
-import repart_signing
+import repart
 
 _SEED_NAMESPACE = uuid.UUID("5af2de99-4f9f-4e0b-a04b-bde36b068c4f")
 
@@ -53,7 +53,7 @@ class Spec(finalize.ImageSpec):
     identity: str
     output_size: str | None
     seed: str | None
-    signing: repart_signing.KeySpec | None
+    signing: repart.KeySpec | None
     # The partitions this invocation writes, and the independent ones copied into the result.
     definitions: list[WrittenPartitionSpec]
     partitions: list[ImportedPartitionSpec]
@@ -366,7 +366,7 @@ def main(argv: list[str] | None = None) -> None:
         ]
         if splits:
             cmd.append("--split=yes")
-        cmd += repart_signing.key_arguments(spec["signing"])
+        cmd += repart.key_arguments(spec["signing"])
         # repart reads one variable per filesystem it formats and splits each on whitespace.
         env = os.environ | {
             f"SYSTEMD_REPART_MKFS_OPTIONS_{filesystem.upper()}": " ".join(options)

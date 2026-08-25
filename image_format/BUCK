@@ -20,7 +20,7 @@ tine_python_binary(
     name = "disk",
     main = "disk.py",
     deps = [
-        ":repart_signing",
+        ":repart",
         "//:specs",
         "//:util",
         "//image:finalize",
@@ -30,8 +30,8 @@ tine_python_binary(
 )
 
 tine_python_library(
-    name = "repart_signing",
-    srcs = ["repart_signing.py"],
+    name = "repart",
+    srcs = ["repart.py"],
 )
 
 tine_python_binary(
@@ -45,7 +45,7 @@ tine_python_binary(
     name = "sysext",
     main = "sysext.py",
     deps = [
-        ":repart_signing",
+        ":repart",
         "//:specs",
         "//:util",
         "//image:finalize",
@@ -71,7 +71,7 @@ box_python_test(
         "disk_test.py",
     ],
     deps = [
-        ":repart_signing",
+        ":repart",
         "//:specs",
         "//:util",
         "//image:finalize",
