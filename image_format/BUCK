@@ -69,6 +69,7 @@ box_python_test(
     srcs = [
         "disk.py",
         "disk_test.py",
+        "repart_test.py",
     ],
     deps = [
         ":repart",

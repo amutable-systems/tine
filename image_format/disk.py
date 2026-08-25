@@ -239,13 +239,6 @@ def _copy_partition(row: dict[str, Any], name: str, blocks: Path, metadata: Path
     metadata.write_text(json.dumps(described, sort_keys=True, separators=(",", ":")) + "\n")
 
 
-def _write_root_hash(rows: list[dict[str, Any]], output: Path) -> None:
-    hashes = {value for row in rows if (value := row.get("roothash")) not in (None, "TBD")}
-    if len(hashes) != 1:
-        raise SystemExit(f"repart: expected one generated verity root hash, found {len(hashes)}")
-    output.write_text(hashes.pop() + "\n")
-
-
 def _grow(disk: Path, size: str) -> None:
     """Extend a composed disk to its requested size, leaving the added room a hole.
 
@@ -378,7 +371,7 @@ def main(argv: list[str] | None = None) -> None:
         for name, blocks, metadata in splits:
             _copy_partition(_partition_row(rows, files[name]), name, blocks, metadata)
         if spec["root_hash_out"]:
-            _write_root_hash(rows, Path(spec["root_hash_out"]))
+            repart.write_root_hash(rows, Path(spec["root_hash_out"]))
         if out and splits:
             shutil.copyfile(disk, out)
         if out and spec["output_size"]:

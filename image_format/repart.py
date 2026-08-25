@@ -1,6 +1,7 @@
-"""Key material for systemd-repart's verity signing, shared by the drivers that invoke it."""
+"""What the drivers invoking systemd-repart share: signing key material, and reading its report back."""
 
-from typing import TypedDict
+from pathlib import Path
+from typing import Any, TypedDict
 
 
 class KeySpec(TypedDict):
@@ -23,3 +24,15 @@ def key_arguments(signing: KeySpec | None) -> list[str]:
     if signing["certificate_source"]:
         arguments += ["--certificate-source", signing["certificate_source"]]
     return arguments
+
+
+def write_root_hash(rows: list[dict[str, Any]], output: Path) -> None:
+    """Write the verity root hash repart generated, as hex plus a newline.
+
+    The rows are repart's --json output.
+    """
+    # TBD: placeholder of a partition repart did not generate
+    hashes = {value for row in rows if (value := row.get("roothash")) not in (None, "TBD")}
+    if len(hashes) != 1:
+        raise SystemExit(f"repart: expected one generated verity root hash, found {len(hashes)}")
+    output.write_text(hashes.pop() + "\n")
