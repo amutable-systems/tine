@@ -57,7 +57,7 @@ def resolve_signing_key(dep: Dependency | None) -> SigningKeyInfo | None:
     return dep[SigningKeyInfo] if dep != None else None
 
 def signing_key_spec(key: SigningKeyInfo | None) -> dict[str, typing.Any] | None:
-    """The key as one driver-spec object (repart_signing.py's KeySpec), None when unsigned."""
+    """The key as one driver-spec object (repart.py's KeySpec), None when unsigned."""
     if key == None:
         return None
     return {

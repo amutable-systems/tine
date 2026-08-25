@@ -13,7 +13,7 @@ import util
 
 import finalize
 import manifest
-import repart_signing
+import repart
 import rootfs
 
 
@@ -29,7 +29,7 @@ class Spec(finalize.ImageSpec):
     release: dict[str, str]
     # Image paths holding the package database, stripped from the DDI.
     pkgdb_paths: list[str]
-    signing: repart_signing.KeySpec | None
+    signing: repart.KeySpec | None
     out: str
 
 
@@ -129,7 +129,7 @@ def main(argv: list[str] | None = None) -> None:
         # The built-in sysext definitions always include the signature partition, and repart
         # refuses to fill it without a key, so an unsigned DDI must drop it instead.
         if spec["signing"]:
-            cmd += repart_signing.key_arguments(spec["signing"])
+            cmd += repart.key_arguments(spec["signing"])
         else:
             cmd.append("--exclude-partitions=root-verity-sig")
         cmd.append(str(out))
