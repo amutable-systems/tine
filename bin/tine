@@ -21,6 +21,7 @@ HOME = ".buck"
 CELL = "tine"
 COMMAND = "bin/tine"
 MOUNTS = "tine_mounts"
+MOUNT_TARGET_LABEL = "tine:mount-target"
 MARKER = "TINE_MOUNTS"
 PRIVATE_CONFIG = f"{HOME}/tine-mount/root.buckconfig"
 DAEMON_BUSTER = "daemon_buster"
@@ -300,8 +301,18 @@ def reads_back(root: Path, target: str, source: str) -> bool:
     return config.get(MOUNTS) == {target: source}
 
 
-def mountable(root: Path, target: str, source: str, *, declared: bool = False) -> None:
-    """Validate a generated or hand-written mount declaration."""
+def mountable(
+    root: Path,
+    target: str,
+    source: str,
+    *,
+    declared: bool = False,
+    allow_missing_target: bool = False,
+) -> None:
+    """Validate a generated or hand-written mount declaration.
+
+    A graph-declared checkout slot is validated before `add` creates its mount-point directory.
+    """
     drop = f"; `tine mount remove {target}` drops it" if declared else ""
     path = Path(target)
     if not round_trips(source):
@@ -314,7 +325,7 @@ def mountable(root: Path, target: str, source: str, *, declared: bool = False) -
         raise fail(f"mount {target}: {HOME} is reserved for tine")
     if not Path(source).is_absolute():
         raise fail(f"mount {target}: source must be an absolute path, got {source}")
-    if not (root / target).is_dir():
+    if not (root / target).is_dir() and not (allow_missing_target and not (root / target).exists()):
         raise fail(f"mount {target}: this project has no such directory{drop}")
     if resolved(root / target) != root / target:
         raise fail(f"mount {target}: target is a symlink{drop}")
@@ -716,6 +727,56 @@ def cells_of(config: dict[str, dict[str, str]]) -> dict[str, str]:
     return config["cells"] if "cells" in config else config.get("repositories", {})
 
 
+def configured_mount_targets(root: Path) -> set[str]:
+    """Existing project directories registered as cell roots."""
+    targets: set[str] = set()
+    for value in cells_of(project_config(root)).values():
+        path = Path(value)
+        if path == Path() or path.is_absolute() or ".." in path.parts or path.is_relative_to(HOME):
+            continue
+        target = path.as_posix()
+        if (root / target).is_dir() and resolved(root / target) == root / target:
+            targets.add(target)
+    return targets
+
+
+def graph_mount_targets(root: Path) -> set[str]:
+    """Query checkout slots from the project's root cell."""
+    import subprocess
+
+    query = f"attrfilter(labels, '{MOUNT_TARGET_LABEL}', //...)"
+    # The child changes to the project root, so its entry point needs an absolute name.
+    command = [
+        str(Path(__file__).absolute()),
+        "buck",
+        "-v",
+        "0",
+        "uquery",
+        query,
+    ]
+    try:
+        proc = subprocess.run(command, cwd=root, stdout=subprocess.PIPE, text=True)
+    except OSError as error:
+        raise fail(f"cannot query mount targets: {error}") from error
+    if proc.returncode != 0:
+        raise SystemExit(proc.returncode)
+
+    targets: set[str] = set()
+    for label in proc.stdout.splitlines():
+        package, separator, name = label.rpartition(":")
+        cell, root_separator, path = package.partition("//")
+        if not separator or not root_separator or not cell or not name:
+            raise fail(f"buck returned an invalid mount target: {label!r}")
+        target = (Path(path) / name.removesuffix(".git")).as_posix()
+        targets.add(target)
+    return targets
+
+
+def mount_targets(root: Path) -> set[str]:
+    """Every target that may be overridden by a local mount."""
+    return configured_mount_targets(root) | graph_mount_targets(root)
+
+
 def entrypoint(root: Path, config: dict[str, dict[str, str]], mounts: dict[str, str]) -> Path:
     """Choose the `tine` entry point to run inside the mount namespace.
 
@@ -1102,18 +1163,31 @@ def mount(root: Path, arguments: list[str]) -> None:
     add.add_argument("source", help="external directory to mount")
     remove = verbs.add_parser("remove", help="remove a mount declaration")
     remove.add_argument("target", help="the path to stop mounting over")
-    verbs.add_parser("list", help="print the mounts in effect")
+    verbs.add_parser("list", help="print mount targets and their current sources")
     args = parser.parse_args(arguments)
 
     if args.verb == "list":
         declared = generated(root / LOCAL).get(MOUNTS, {})
-        for target, source in sorted(declared.items()):
-            print(f"{target} {source}")
-        if not declared:
-            print("tine: nothing is mounted", file=sys.stderr)
+        targets = mount_targets(root)
+        targets.update(declared)
+        names = sorted(targets)
+        width = max([len("TARGET"), *(len(target) for target in names)])
+        print(f"{'TARGET':<{width}} SOURCE")
+        for target in names:
+            print(f"{target:<{width}} {declared.get(target, 'default')}")
+        if not names:
+            print("tine: no mount targets", file=sys.stderr)
         return
 
     target = relative(root, named(Path(args.target)))
+    source = None
+    if args.verb == "add":
+        source = resolved(Path(args.source))
+        # Validate before writing so this command cannot create an unusable declaration.
+        mountable(root, target, str(source), allow_missing_target=True)
+        if target not in configured_mount_targets(root) and target not in graph_mount_targets(root):
+            raise fail(f"mount {target}: not a valid target; `tine mount list` lists valid targets")
+
     with ConfigLock(root):
         declared = generated(root / LOCAL).get(MOUNTS, {})
         if args.verb == "remove":
@@ -1121,14 +1195,18 @@ def mount(root: Path, arguments: list[str]) -> None:
                 raise fail(f"{target} is not mounted")
             message = f"{target} is no longer mounted"
         else:
-            source = resolved(Path(args.source))
-            # Validate before writing so this command cannot create an unusable declaration.
-            mountable(root, target, str(source))
+            assert source is not None
             if DAEMON_BUSTER in project_config(root).get("buck2", {}):
                 raise fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
             for other in declared:
                 if target != other and overlaps(target, other):
                     raise fail(f"mount {target}: overlaps mount {other}")
+            if not (root / target).exists():
+                try:
+                    (root / target).mkdir()
+                except OSError as error:
+                    raise fail(f"mount {target}: cannot create its directory: {error}") from error
+            mountable(root, target, str(source))
             declared[target] = str(source)
             message = f"{target} is built from {source}"
         # Preserve other entries without validation so a stale declaration can still be removed.

@@ -93,14 +93,17 @@ To develop tine against a different checkout, mount it over the checkout registe
 
 ```sh
 tine mount add tine ~/Projects/tine    # use this checkout as tine/
-tine mount list                        # list active mounts
+tine mount list                        # list targets and their active sources
 tine mount remove tine                 # use the project's checkout again
 ```
 
-The command records the mount in the gitignored `.buckconfig.local`. It runs the build in a private mount
-namespace where `tine/` is a bind mount of `~/Projects/tine`, so uncommitted edits are available
-immediately. When the tine cell is mounted, `tine/bin/tine` re-executes the mounted copy of itself. The
-rules and the command configuring them therefore come from the same checkout.
+Cell roots and local-checkout slots declared by `git_fetch()` are mount targets. The `add` command rejects
+anything else. `tine mount list` shows the active local source, or `default` when a target is not
+overridden. `add` creates a missing directory for a declared checkout slot and records the mount in the
+gitignored `.buckconfig.local`. The build runs in a private mount namespace where `tine/` is a bind mount
+of `~/Projects/tine`, so uncommitted edits are available immediately. When the tine cell is mounted,
+`tine/bin/tine` re-executes the mounted copy of itself. The rules and the command configuring them
+therefore come from the same checkout.
 
 Mounts cannot overlap or cover `.buck/`. Nested mounts would depend on application order, while `.buck/`
 holds Tine's namespace-private Buck configuration, so `tine mount add` rejects both.

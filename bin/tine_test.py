@@ -465,7 +465,9 @@ class MountTestCase(unittest.TestCase):
     def setUp(self) -> None:
         # Commands resolve the project root from the working directory.
         self.root = scratch(self, "tine-test-project.").resolve()
-        (self.root / ".buckconfig").write_text("[cells]\nroot = .\nsub = sub\n")
+        (self.root / ".buckconfig").write_text(
+            "[cells]\nroot = .\nsub = sub\nother = other\ninner = sub/inner\n"
+        )
         (self.root / "sub").mkdir()
         self.source = scratch(self, "tine-test-source.").resolve()
 
@@ -585,9 +587,23 @@ class TestMountAdd(MountTestCase):
         with self.assertRaisesRegex(SystemExit, "project root"):
             self.mount("add", str(self.root), str(self.source))
 
-    def test_target_must_be_a_directory(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "no such directory"):
+    def test_unknown_target_is_rejected(self) -> None:
+        with (
+            unittest.mock.patch.object(tine, "graph_mount_targets", return_value=set()),
+            self.assertRaisesRegex(SystemExit, "not a valid target.*tine mount list"),
+        ):
             self.mount("add", str(self.root / "missing"), str(self.source))
+        self.assertFalse((self.root / "missing").exists())
+
+    def test_declared_checkout_target_is_created(self) -> None:
+        with unittest.mock.patch.object(
+            tine,
+            "graph_mount_targets",
+            return_value={"missing"},
+        ):
+            self.mount("add", str(self.root / "missing"), str(self.source))
+        self.assertTrue((self.root / "missing").is_dir())
+        self.assertEqual(self.declared(), {"missing": str(self.source)})
 
     def test_source_must_be_a_directory(self) -> None:
         with self.assertRaisesRegex(SystemExit, "is not a directory"):
@@ -653,20 +669,35 @@ class TestMountRemove(MountTestCase):
 
 
 class TestMountList(MountTestCase):
-    def listed(self) -> tuple[str, str]:
-        stdout = io.StringIO()
-        with contextlib.redirect_stdout(stdout):
-            report = self.mount("list")
-        return stdout.getvalue(), report
-
-    def test_nothing_is_mounted(self) -> None:
-        printed, report = self.listed()
-        self.assertEqual(printed, "")
-        self.assertIn("nothing is mounted", report)
-
-    def test_list_prints_target_and_source(self) -> None:
+    def test_list_prints_mount_targets_and_sources(self) -> None:
+        (self.root / "other").mkdir()
         self.mount("add", str(self.root / "sub"), str(self.source))
-        self.assertEqual(self.listed()[0], f"sub {self.source}\n")
+        stdout = io.StringIO()
+        with (
+            unittest.mock.patch.object(
+                tine,
+                "graph_mount_targets",
+                return_value={"checkout", "sub"},
+            ),
+            contextlib.redirect_stdout(stdout),
+        ):
+            report = self.mount("list")
+        self.assertEqual(
+            stdout.getvalue(),
+            f"TARGET   SOURCE\ncheckout default\nother    default\nsub      {self.source}\n",
+        )
+        self.assertEqual(report, "")
+
+    def test_graph_targets_come_from_labeled_buck_targets(self) -> None:
+        output = "root//:top.git\nroot//packages/hello:hello.git\n"
+        proc = subprocess.CompletedProcess([], 0, stdout=output)
+        with unittest.mock.patch("subprocess.run", return_value=proc) as run:
+            targets = tine.graph_mount_targets(self.root)
+        self.assertEqual(
+            targets,
+            {"top", "packages/hello/hello"},
+        )
+        self.assertIn(tine.MOUNT_TARGET_LABEL, run.call_args.args[0][-1])
 
 
 class TestDeclaredMounts(MountTestCase):

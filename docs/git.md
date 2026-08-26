@@ -34,7 +34,8 @@ name without `.git`. Use `tine mount` to place a working checkout there without 
 project:
 
 ```sh
-tine mount add ~/Projects/hello packages/hello/hello   # use the working checkout
+tine mount list                                        # includes packages/hello/hello
+tine mount add packages/hello/hello ~/Projects/hello   # use the working checkout
 tine mount remove packages/hello/hello                 # use the pinned commit again
 ```
 
