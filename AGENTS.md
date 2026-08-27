@@ -42,7 +42,8 @@ Cell layout and architecture: [the design plan](docs/design.md).
   seconds-long half that `check` runs, `--include image` the rest, which CI runs as its own step.
 - **Catalog lock:** `buck run tine//tools:refresh-catalog`; `tools:verify-catalog` asserts the committed
   lock matches.
-- **Full CI pipeline:** `tools/ci.sh`, fail-fast.
+- **Full CI pipeline:** `tools/ci.sh`, fail-fast. Run individual groups by stating their names, e.g.
+  `tools/ci.sh check build`
 - **rpm importer:** `buck run tine//tools:importer -- <verb>`; see [importer.md](docs/importer.md).
 - **BuildRequires cycle analysis:** `buck run tine//tools:scc -- <branch label>`; background in
   [self-host-approaches.md](docs/self-host-approaches.md).

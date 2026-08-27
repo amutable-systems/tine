@@ -1,8 +1,9 @@
 #!/bin/bash
-# The full CI pipeline
+# The full CI pipeline. Arguments select groups, e.g. `tools/ci.sh check build`
 set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 buck=(bin/tine buck)
+only_groups=("$@")
 
 # GitHub folds each group into a log group; an interactive terminal gets a bold banner; anything else
 # (piped to a file, another CI) gets a bare `=== label ===` line with no escape sequences.
@@ -54,6 +55,13 @@ banner() {
 group() {
     groupname=$1
     shift 2
+    # With group names as arguments, everything else is skipped.
+    if [ "${#only_groups[@]}" -gt 0 ]; then
+        case " ${only_groups[*]} " in
+            *" $groupname "*) ;;
+            *) return 0 ;;
+        esac
+    fi
     case $mode in
         # in the label rather than the group's own output, so that we see it in the collapsed GitHub log
         github) printf '::group::%s (%s free)\n' "$groupname" "$(free_space)" ;;
