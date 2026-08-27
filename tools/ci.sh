@@ -4,7 +4,7 @@ set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 buck=(bin/tine buck)
 
-# GitHub folds each step into a log group; an interactive terminal gets a bold banner; anything else
+# GitHub folds each group into a log group; an interactive terminal gets a bold banner; anything else
 # (piped to a file, another CI) gets a bare `=== label ===` line with no escape sequences.
 if [ "${GITHUB_ACTIONS:-}" = true ]; then mode=github
 elif [ -t 1 ]; then
@@ -32,7 +32,7 @@ hrule() {
     printf '%s%s%s\n' "$accent" "${fill// /━}" "$reset"
 }
 
-# A step banner: blank line; a rule opening `━━━ label ` with the label default-fg bold and the dashes
+# A group banner: blank line; a rule opening `━━━ label ` with the label default-fg bold and the dashes
 # accented; the dim command for copy-paste; then a closing rule.
 banner() {
     local label=$1 width tail used
@@ -45,29 +45,29 @@ banner() {
     hrule
 }
 
-# group LABEL -- CMD...: run one labelled step, fail-fast.
+# group LABEL -- CMD...: run one labelled group, fail-fast.
 #
-# Never test the step's status (`"$@" || rc=$?`): bash then ignores errexit for it, and for every
-# function it calls, so a step would run on past its own first failure and report the status of
-# whatever ran last. The GitHub failure path goes through the ERR trap below instead, and `step` is
+# Never test the group's status (`"$@" || rc=$?`): bash then ignores errexit for it, and for every
+# function it calls, so a group would run on past its own first failure and report the status of
+# whatever ran last. The GitHub failure path goes through the ERR trap below instead, and `groupname` is
 # global for the trap to name.
 group() {
-    step=$1
+    groupname=$1
     shift 2
     case $mode in
-        # in the label rather than the step's own output, so that we see it in the collapsed GitHub log
-        github) printf '::group::%s (%s free)\n' "$step" "$(free_space)" ;;
-        tty) banner "$step" "$@" ;;
-        plain) printf '\n=== %s ===\n' "$step" ;;
+        # in the label rather than the group's own output, so that we see it in the collapsed GitHub log
+        github) printf '::group::%s (%s free)\n' "$groupname" "$(free_space)" ;;
+        tty) banner "$groupname" "$@" ;;
+        plain) printf '\n=== %s ===\n' "$groupname" ;;
     esac
     "$@"
     if [ "$mode" = github ]; then printf '::endgroup::\n'; fi
 }
 
 # On GitHub, close the group and surface an ::error:: after it (a failure buried inside a collapsed
-# group is invisible). errtrace (-E above) carries this into the step functions.
+# group is invisible). errtrace (-E above) carries this into the functions groups run.
 if [ "$mode" = github ]; then
-    trap 'printf "::endgroup::\n::error::ci step %s failed\n" "$step"' ERR
+    trap 'printf "::endgroup::\n::error::ci group %s failed\n" "$groupname"' ERR
 fi
 
 # Sign the Secure Boot example through PKCS#11 tokens, exercising the external-key path end to end
@@ -142,7 +142,7 @@ group graph             -- "${buck[@]}" bxl tine//tools/graph.bxl:analyze
 # First invocation fetches buck's pinned tools and builds the shared box; kept its own group so
 # bootstrap time stays visible.
 group box               -- "${buck[@]}" build tine//catalog:fedora.rawhide.box
-# The second package system's box is a root box of its own, so its bootstrap is its own step.
+# The second package system's box is a root box of its own, so its bootstrap is its own group.
 group arch-box          -- "${buck[@]}" build tine//catalog:arch.rolling.box
 group check             -- "${buck[@]}" run tine//tools:check
 # Every repository the catalog declares is pinned to a mirror serving immutable snapshots, so the whole
