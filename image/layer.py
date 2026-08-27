@@ -150,6 +150,10 @@ def _apply_filesystem(operation: list[object]) -> None:
             dest = Path(path)
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.symlink_to(target)
+        case ["write_file", str(path), str(content)]:
+            dest = Path(path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content, encoding="utf-8")
         case ["remove", str(path)]:
             _remove_glob(Path("/"), path)
         case _:
@@ -195,7 +199,7 @@ def _apply(value: object, target: Path) -> None:
             finalize.hwdb(target, usr=usr, strict=strict)
         case ["locale_gen"]:
             finalize.locale_gen(target)
-        case ["mkdir", _, _] | ["symlink", _, _] | ["remove", _]:
+        case ["mkdir", _, _] | ["symlink", _, _] | ["write_file", _, _] | ["remove", _]:
             with rootfs.chroot(target):
                 _apply_filesystem(operation)
         case _:

@@ -24,6 +24,7 @@ load(
     "run",
     "sysext_image",
     "uki_profile",
+    "write_file",
 )
 load("@tine//package:defs.bzl", "package_manager")
 load("@tine//tests:defs.bzl", "vm_smoke")
@@ -108,15 +109,8 @@ image(
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"],
     ops = [
-        mkdir("/etc/tine"),
-        run(
-            [
-                "/usr/bin/bash",
-                "-c",
-                "echo base > /etc/tine/from-base-kept; echo base > /etc/tine/from-base-gone",
-            ],
-            chroot = True,
-        ),
+        write_file("/etc/tine/from-base-kept", "base"),
+        write_file("/etc/tine/from-base-gone", "base"),
     ],
 )
 
@@ -124,7 +118,7 @@ image(
     name = "chained-child.layer",
     parent = ":chained-base",
     ops = [
-        run(["/usr/bin/bash", "-c", "echo child > /etc/tine/from-child"], chroot = True),
+        write_file("/etc/tine/from-child", "child"),
         remove("/etc/tine/from-base-gone"),
     ],
 )

@@ -63,6 +63,7 @@ load(
     _remove = "remove",
     _run = "run",
     _symlink = "symlink",
+    _write_file = "write_file",
 )
 load(":initrd.bzl", _InitrdInfo = "InitrdInfo", _initrd_image = "initrd_image")
 load(":install.bzl", _image_install = "image_install")
@@ -85,6 +86,7 @@ python = _python
 install_from = _install_from
 mkdir = _mkdir
 symlink = _symlink
+write_file = _write_file
 remove = _remove
 copy = _copy
 merge_os_release = _merge_os_release
