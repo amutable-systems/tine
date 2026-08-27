@@ -1,6 +1,6 @@
 """The conventional initrd a bootable image boots, as a target of its own."""
 
-load("//distribution:defs.bzl", "distributed")
+load("//distribution:defs.bzl", "distribution")
 load(
     "//image_format:archive.bzl",
     "COMPRESSIONS",
@@ -99,7 +99,7 @@ def initrd_image(
     name: str,
     ops: list[LayerOperationTree] = [],
     version: str | Select | None = None,
-    distribution: str | None = None,
+    distro: str | None = None,
     visibility: list[str] | None = None,
     **kwargs,
 ) -> None:
@@ -113,5 +113,5 @@ def initrd_image(
         name = name,
         ops = flatten_operations(ops),
         version = resolve_version("initrd_image {}".format(name), version),
-        **(distributed(name, distribution, visibility) | kwargs),
+        **(distribution.distributed(name, distro, visibility) | kwargs),
     )

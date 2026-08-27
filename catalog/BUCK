@@ -26,7 +26,7 @@ fedora_release(
 )
 
 # Shared RPM box plus the image assembly and VM tools. These tools stay out of images.
-box(
+box.new(
     name = "fedora.rawhide.box",
     packages = [
         "rpm",
@@ -83,7 +83,7 @@ arch_release(
 # tools every rule resolves through an image's own manager, under Arch's names for them. The VM
 # stack stays out: `image_vm` takes its box explicitly, so a second qemu/OVMF/swtpm userspace
 # would be built for nothing.
-box(
+box.new(
     name = "arch.rolling.box",
     packages = [
         "pacman",

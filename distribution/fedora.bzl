@@ -71,7 +71,7 @@ def fedora_release(
         # these has to be assembled by the matching ukify and repart, which live in the same place.
         required_repositories = [":" + name + ".repository"] + additional_repositories,
     )
-    distribution(name = name + ".distribution", visibility = visibility)
+    distribution.new(name = name + ".distribution", visibility = visibility)
     os_release(
         name = name + ".release",
         repository_universe = ":" + name + ".repositories",

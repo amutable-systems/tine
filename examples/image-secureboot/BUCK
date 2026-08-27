@@ -10,24 +10,12 @@ The signed demo-ext system extension shows verity signing for a sysext DDI, with
 enforcing the signature through its sysext.conf image policy.
 """
 
-load("@tine//box:defs.bzl", "box_sh_test")
-load(
-    "@tine//image:defs.bzl",
-    "DEFAULT_SIGNED_USR_VERITY_PARTITIONS",
-    "bootable_disk_image",
-    "copy",
-    "generate_signing_key",
-    "image_artifacts",
-    "image_vm",
-    "initrd_image",
-    "mkdir",
-    "pkcs11_signing_key",
-    "sysext_image",
-)
-load("@tine//package:defs.bzl", "package_manager")
-load("@tine//tests:defs.bzl", "vm_smoke")
+load("@tine//box:defs.bzl", "box")
+load("@tine//image:defs.bzl", "image")
+load("@tine//package:defs.bzl", "package")
+load("@tine//tests:defs.bzl", "tests")
 
-package_manager(
+package.manager(
     name = "image.package-manager",
     base = "tine//catalog:fedora.rawhide.package-manager",
 )
@@ -39,21 +27,21 @@ package_manager(
 # image signed out of buck-out.
 SIGN_WITH_TOKEN = read_config("secure-boot-signing", "token") != None
 
-pkcs11_signing_key(
+image.pkcs11_signing_key(
     name = "signing.token",
     section = "secure-boot-signing",
 )
 
 # A second key, so that a compromised expected-PCR policy key cannot also sign boot binaries. Its own
 # token, hence a section of its own.
-pkcs11_signing_key(
+image.pkcs11_signing_key(
     name = "pcr-signing.token",
     section = "pcr-signing",
 )
 
-generate_signing_key(name = "signing.generated")
+image.generate_signing_key(name = "signing.generated")
 
-generate_signing_key(name = "pcr-signing.generated")
+image.generate_signing_key(name = "pcr-signing.generated")
 
 _SIGNING = ":signing.token" if SIGN_WITH_TOKEN else ":signing.generated"
 
@@ -61,17 +49,17 @@ _PCR_SIGNING = ":pcr-signing.token" if SIGN_WITH_TOKEN else ":pcr-signing.genera
 
 # Declaring the initrd instead of letting the disk image declare one is what makes it configurable:
 # its packages, its operations, and how the cpio the UKI carries is compressed.
-initrd_image(
+image.initrd(
     name = "image.initrd",
     package_manager = ":image.package-manager",
     compression = "none",
 )
 
-bootable_disk_image(
+image.bootable_disk(
     name = "image",
     package_manager = ":image.package-manager",
     initrd = ":image.initrd",
-    definitions = DEFAULT_SIGNED_USR_VERITY_PARTITIONS,
+    definitions = image.DEFAULT_SIGNED_USR_VERITY_PARTITIONS,
     packages = [
         "kernel-core",
         "systemd",
@@ -87,17 +75,17 @@ bootable_disk_image(
         # The smoke test compares this against the public key the stub hands the booted system, to
         # tell which key sealed the expected-PCR policy. Sealed under verity, so it cannot be
         # swapped.
-        copy(_SIGNING + "[cert]", "/usr/share/tine-example/secure-boot.crt"),
-        copy(_PCR_SIGNING + "[cert]", "/usr/share/tine-example/expected-pcr.crt"),
+        image.copy(_SIGNING + "[cert]", "/usr/share/tine-example/secure-boot.crt"),
+        image.copy(_PCR_SIGNING + "[cert]", "/usr/share/tine-example/expected-pcr.crt"),
         # demo-ext's signature verifies against this certificate; the sysext.conf policy next to
         # it makes that verification a requirement rather than opportunistic.
-        copy(_SIGNING + "[cert]", "/usr/lib/verity.d/demo-ext.crt"),
-        copy("sysext.conf", "/usr/lib/systemd/sysext.conf"),
+        image.copy(_SIGNING + "[cert]", "/usr/lib/verity.d/demo-ext.crt"),
+        image.copy("sysext.conf", "/usr/lib/systemd/sysext.conf"),
         # Plain data for the boot smoke's negative proof: a DDI the policy must refuse.
-        copy(":demo-ext-unsigned", "/usr/share/tine-example/demo-ext-unsigned.raw"),
+        image.copy(":demo-ext-unsigned", "/usr/share/tine-example/demo-ext-unsigned.raw"),
     ],
     # This key signs the UKIs and systemd-boot, puts auto-enrollment files onto the ESP, and signs
-    # the verity root hash. For a key that caches across workspaces, see pem_signing_key() under
+    # the verity root hash. For a key that caches across workspaces, see image.pem_signing_key() under
     # "Secure Boot signing" in images.md.
     # `compression = "zstd"` on the partition only picks the algorithm; these are what actually make
     # the erofs small, and they are the same options image_sysext builds a DDI with. --invariant keeps
@@ -120,7 +108,7 @@ bootable_disk_image(
 
 # System-extension DDI extending :image, signed so the strict policy in sysext.conf accepts the
 # merge. The image's own key, whose certificate it carries in /usr/lib/verity.d.
-sysext_image(
+image.sysext_image(
     name = "demo-ext",
     base = ":image",
     packages = ["zsh"],
@@ -133,7 +121,7 @@ sysext_image(
 # needs, the signed extension, the /usr partitions an update transfers, and the SBOMs and
 # package database. Each name comes from the target that built the artifact, so nothing here
 # decides what anything is called.
-image_artifacts(
+image.artifacts(
     name = "release",
     targets = [
         ":demo-ext",
@@ -150,14 +138,14 @@ image_artifacts(
 # (extension-release ID=_any) rather than based on :image, which carries this DDI as smoke test
 # data and may not depend on it circularly. Refusal happens at dissection, before content
 # matters; the marker is for the smoke test's permissive counter-check.
-sysext_image(
+image.sysext_image(
     name = "demo-ext-unsigned",
     package_manager = ":image.package-manager",
-    ops = [mkdir("/usr/share/tine-unsigned")],
+    ops = [image.mkdir("/usr/share/tine-unsigned")],
     install_docs = False,
 )
 
-image_vm(
+image.vm(
     name = "vm",
     autologin = "root",
     credentials = {
@@ -174,7 +162,7 @@ image_vm(
 
 # Boot smoke test: enrolls keys on first boot, settles under Secure Boot with a vTPM, then powers
 # off. Reuses the shared tine driver; `buck test` runs it, `buck run` boots it by hand.
-vm_smoke(
+tests.vm_smoke(
     name = "vm-smoke",
     vm = ":vm",
     checks = [
@@ -222,7 +210,7 @@ vm_smoke(
 # This image strips the package database from its partitions, so only the logical image still
 # carries one for syft to read. Without it syft falls back to what it can guess from binaries,
 # which reports a fraction of the packages: the last two have no binary to guess from.
-box_sh_test(
+box.sh_test(
     name = "sbom-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
@@ -236,7 +224,7 @@ box_sh_test(
     ],
 )
 
-box_sh_test(
+box.sh_test(
     name = "release-artifacts-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
@@ -246,7 +234,7 @@ box_sh_test(
 
 # The disk's own listing is the union of its partitions': what an installation of it leaves behind,
 # whichever partition each path arrives on.
-box_sh_test(
+box.sh_test(
     name = "disk-manifest-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
@@ -260,7 +248,7 @@ box_sh_test(
 
 # The kernel install hook is bypassed, it didn't generate its own initrd.
 # Also no module symbol table copy.
-box_sh_test(
+box.sh_test(
     name = "esp-kernel-leftovers-test",
     labels = ["image"],
     args = ["$(location :image[manifests][esp])"],
@@ -273,7 +261,7 @@ fi
 """,
 )
 
-box_sh_test(
+box.sh_test(
     name = "extension-manifest-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
@@ -284,7 +272,7 @@ box_sh_test(
 # Each listing covers what its own artifact carries: a DDI holds the two merged hierarchies, and a
 # partition holds what its definition copies, which is why the image's /var is in no listing at all.
 [
-    box_sh_test(
+    box.sh_test(
         name = "manifest-scope-test." + name,
         labels = ["image"],
         box = "@tine//tools:dev.box",

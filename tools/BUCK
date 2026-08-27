@@ -1,6 +1,6 @@
 """Pinned tool binaries and development commands fetched by Buck."""
 
-load("//box:defs.bzl", "box", "box_python_test")
+load("//box:defs.bzl", "box")
 load("//python:defs.bzl", "tine_python_binary")
 load(":defs.bzl", "http_tool")
 load(":tools.json", _pins = "value")
@@ -73,7 +73,7 @@ http_tool(
 # (hermetic), `tine//tools:importer` (relaxed), and anyone entering it as a box.
 # Derived from the main box (lockless transaction, resolved during the build), so dev tooling
 # changes never invalidate the build graph that depends on the main box.
-box(
+box.new(
     name = "dev.box",
     packages = [
         "coreutils",
@@ -117,7 +117,7 @@ command_alias(
     exe = ":bump-driver",
 )
 
-box_python_test(
+box.python_test(
     name = "bump-test",
     box = ":dev.box",
     srcs = [
@@ -169,7 +169,7 @@ command_alias(
 # PKCS#11 signing tokens for testing (ci.sh's secureboot-pkcs11 step): a software TPM, the
 # production tpm2-pkcs11 module on top, and the p11-kit server exposing its tokens to build
 # sandboxes over a socket. See tools/signing-server.
-box(
+box.new(
     name = "swtpm-signing.box",
     packages = [
         "bash",
@@ -198,7 +198,7 @@ command_alias(
     exe = ":swtpm-signing.box",
 )
 
-box_python_test(
+box.python_test(
     name = "importer-test",
     box = ":dev.box",
     srcs = [

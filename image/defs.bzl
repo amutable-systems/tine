@@ -1,147 +1,144 @@
 """The public image API.
 
-Load images, operations, terminal outputs, and compositions from here; the modules behind it are
-implementation structure and may be rearranged.
+Load the `image` namespace from here; the modules behind it are implementation structure and may be
+rearranged.
 """
 
 load(
     "//image_format:archive.bzl",
-    _COMPRESSIONS = "COMPRESSIONS",
-    _ImageArchiveInfo = "ImageArchiveInfo",
-    _ImageDirectoryInfo = "ImageDirectoryInfo",
-    _image_archive = "image_archive",
-    _image_directory = "image_directory",
+    "COMPRESSIONS",
+    "ImageArchiveInfo",
+    "ImageDirectoryInfo",
+    "image_archive",
+    "image_directory",
 )
-load("//image_format:boot.bzl", _bootable = "bootable")
+load("//image_format:boot.bzl", "bootable")
 load(
     "//image_format:disk.bzl",
-    _DEFAULT_ROOT_PARTITIONS = "DEFAULT_ROOT_PARTITIONS",
-    _DEFAULT_SIGNED_USR_VERITY_PARTITIONS = "DEFAULT_SIGNED_USR_VERITY_PARTITIONS",
-    _DEFAULT_USR_VERITY_PARTITIONS = "DEFAULT_USR_VERITY_PARTITIONS",
-    _DISK_FORMATS = "DISK_FORMATS",
-    _DiskConversionInfo = "DiskConversionInfo",
-    _RepartInfo = "RepartInfo",
-    _RootHashInfo = "RootHashInfo",
-    _disk_convert = "disk_convert",
-    _format_partition_labels = "format_partition_labels",
-    _partition = "partition",
-    _repart = "repart",
+    "DEFAULT_ROOT_PARTITIONS",
+    "DEFAULT_SIGNED_USR_VERITY_PARTITIONS",
+    "DEFAULT_USR_VERITY_PARTITIONS",
+    "DISK_FORMATS",
+    "DiskConversionInfo",
+    "RepartInfo",
+    "RootHashInfo",
+    "disk_convert",
+    "format_partition_labels",
+    "partition",
+    "repart",
 )
-load("//image_format:modules.bzl", _DEFAULT_INITRD_MODULES = "DEFAULT_INITRD_MODULES")
+load("//image_format:modules.bzl", "DEFAULT_INITRD_MODULES")
 load(
     "//image_format:sysext.bzl",
-    _SysextImageInfo = "SysextImageInfo",
-    _image_sysext = "image_sysext",
+    "SysextImageInfo",
+    "image_sysext",
 )
 load(
     "//image_format:uki.bzl",
-    _UkiInfo = "UkiInfo",
-    _uki = "uki",
-    _uki_profile = "uki_profile",
+    "UkiInfo",
+    "uki",
+    "uki_profile",
 )
 load(
     ":compose.bzl",
-    _bootable_disk_image = "bootable_disk_image",
-    _rootfs_archive = "rootfs_archive",
-    _sysext_image = "sysext_image",
+    "bootable_disk_image",
+    "rootfs_archive",
+    "sysext_image",
 )
 load(
     ":image.bzl",
-    _ImageInfo = "ImageInfo",
-    _ImageInstallInfo = "ImageInstallInfo",
-    _ImageSbomInfo = "ImageSbomInfo",
-    _copy = "copy",
-    _depmod = "depmod",
-    _hwdb = "hwdb",
-    _image = "image",
-    _install_from = "install_from",
-    _install_systemd_boot = "install_systemd_boot",
-    _locale_gen = "locale_gen",
-    _merge_os_release = "merge_os_release",
-    _mkdir = "mkdir",
-    _python = "python",
-    _remove = "remove",
-    _run = "run",
-    _symlink = "symlink",
-    _write_file = "write_file",
+    "ImageInfo",
+    "ImageInstallInfo",
+    "ImageSbomInfo",
+    "copy",
+    "depmod",
+    "hwdb",
+    "install_from",
+    "install_systemd_boot",
+    "layer",
+    "locale_gen",
+    "merge_os_release",
+    "mkdir",
+    "python",
+    "remove",
+    "run",
+    "symlink",
+    "write_file",
 )
-load(":initrd.bzl", _InitrdInfo = "InitrdInfo", _initrd_image = "initrd_image")
-load(":install.bzl", _image_install = "image_install")
-load(":publish.bzl", _PublishedInfo = "PublishedInfo", _image_artifacts = "image_artifacts")
+load(":initrd.bzl", "InitrdInfo", "initrd_image")
+load(":install.bzl", "image_install")
+load(":publish.bzl", "PublishedInfo", "image_artifacts")
 load(
     ":sign.bzl",
-    _SigningKeyInfo = "SigningKeyInfo",
-    _generate_signing_key = "generate_signing_key",
-    _pem_signing_key = "pem_signing_key",
-    _pkcs11_signing_key = "pkcs11_signing_key",
+    "SigningKeyInfo",
+    "generate_signing_key",
+    "pem_signing_key",
+    "pkcs11_signing_key",
 )
-load(":substitute.bzl", _substitute = "substitute")
-load(":version.bzl", _resolve_version = "resolve_version")
-load(":vm.bzl", _image_vm = "image_vm")
+load(":substitute.bzl", "substitute")
+load(":version.bzl", "resolve_version")
+load(":vm.bzl", "image_vm")
 
-# Logical images and their operations.
-image = _image
-run = _run
-python = _python
-install_from = _install_from
-mkdir = _mkdir
-symlink = _symlink
-write_file = _write_file
-remove = _remove
-copy = _copy
-merge_os_release = _merge_os_release
-install_systemd_boot = _install_systemd_boot
-depmod = _depmod
-hwdb = _hwdb
-locale_gen = _locale_gen
-
-# Terminal outputs.
-image_archive = _image_archive
-image_directory = _image_directory
-image_sysext = _image_sysext
-uki = _uki
-uki_profile = _uki_profile
-resolve_version = _resolve_version
-bootable = _bootable
-repart = _repart
-partition = _partition
-format_partition_labels = _format_partition_labels
-disk_convert = _disk_convert
-image_vm = _image_vm
-generate_signing_key = _generate_signing_key
-image_install = _image_install
-substitute = _substitute
-pem_signing_key = _pem_signing_key
-pkcs11_signing_key = _pkcs11_signing_key
-SigningKeyInfo = _SigningKeyInfo
-
-# Compositions.
-rootfs_archive = _rootfs_archive
-sysext_image = _sysext_image
-bootable_disk_image = _bootable_disk_image
-image_artifacts = _image_artifacts
-initrd_image = _initrd_image
-
-# The core kernel modules a UKI carries unless a target says otherwise; extend it with `+`.
-DEFAULT_INITRD_MODULES = _DEFAULT_INITRD_MODULES
-
-# Conventional partition layouts.
-DEFAULT_ROOT_PARTITIONS = _DEFAULT_ROOT_PARTITIONS
-DEFAULT_USR_VERITY_PARTITIONS = _DEFAULT_USR_VERITY_PARTITIONS
-DEFAULT_SIGNED_USR_VERITY_PARTITIONS = _DEFAULT_SIGNED_USR_VERITY_PARTITIONS
-COMPRESSIONS = _COMPRESSIONS
-DISK_FORMATS = _DISK_FORMATS
-
-# Providers.
-ImageInfo = _ImageInfo
-ImageInstallInfo = _ImageInstallInfo
-ImageSbomInfo = _ImageSbomInfo
-ImageArchiveInfo = _ImageArchiveInfo
-ImageDirectoryInfo = _ImageDirectoryInfo
-SysextImageInfo = _SysextImageInfo
-UkiInfo = _UkiInfo
-RepartInfo = _RepartInfo
-RootHashInfo = _RootHashInfo
-DiskConversionInfo = _DiskConversionInfo
-InitrdInfo = _InitrdInfo
-PublishedInfo = _PublishedInfo
+image = struct(
+    # Logical images and their operations.
+    layer = layer,
+    run = run,
+    python = python,
+    install_from = install_from,
+    mkdir = mkdir,
+    symlink = symlink,
+    write_file = write_file,
+    remove = remove,
+    copy = copy,
+    merge_os_release = merge_os_release,
+    install_systemd_boot = install_systemd_boot,
+    depmod = depmod,
+    hwdb = hwdb,
+    locale_gen = locale_gen,
+    # Terminal outputs.
+    archive = image_archive,
+    directory = image_directory,
+    sysext = image_sysext,
+    uki = uki,
+    uki_profile = uki_profile,
+    resolve_version = resolve_version,
+    bootable = bootable,
+    repart = repart,
+    partition = partition,
+    format_partition_labels = format_partition_labels,
+    disk_convert = disk_convert,
+    vm = image_vm,
+    generate_signing_key = generate_signing_key,
+    install = image_install,
+    substitute = substitute,
+    pem_signing_key = pem_signing_key,
+    pkcs11_signing_key = pkcs11_signing_key,
+    SigningKeyInfo = SigningKeyInfo,
+    # Compositions.
+    rootfs_archive = rootfs_archive,
+    sysext_image = sysext_image,
+    bootable_disk = bootable_disk_image,
+    artifacts = image_artifacts,
+    initrd = initrd_image,
+    # The core kernel modules a UKI carries unless a target says otherwise; extend it with `+`.
+    DEFAULT_INITRD_MODULES = DEFAULT_INITRD_MODULES,
+    # Conventional partition layouts.
+    DEFAULT_ROOT_PARTITIONS = DEFAULT_ROOT_PARTITIONS,
+    DEFAULT_USR_VERITY_PARTITIONS = DEFAULT_USR_VERITY_PARTITIONS,
+    DEFAULT_SIGNED_USR_VERITY_PARTITIONS = DEFAULT_SIGNED_USR_VERITY_PARTITIONS,
+    COMPRESSIONS = COMPRESSIONS,
+    DISK_FORMATS = DISK_FORMATS,
+    # Providers.
+    ImageInfo = ImageInfo,
+    ImageInstallInfo = ImageInstallInfo,
+    ImageSbomInfo = ImageSbomInfo,
+    ImageArchiveInfo = ImageArchiveInfo,
+    ImageDirectoryInfo = ImageDirectoryInfo,
+    SysextImageInfo = SysextImageInfo,
+    UkiInfo = UkiInfo,
+    RepartInfo = RepartInfo,
+    RootHashInfo = RootHashInfo,
+    DiskConversionInfo = DiskConversionInfo,
+    InitrdInfo = InitrdInfo,
+    PublishedInfo = PublishedInfo,
+)

@@ -1,10 +1,12 @@
-"""The public RPM package-system API."""
+"""The public RPM package-system API, exported as the `rpm` namespace."""
 
 load(
     "//package_system/rpm:rules.bzl",
-    _rpm_package = "rpm_package",
-    _rpm_remote_repository = "rpm_remote_repository",
+    "rpm_package",
+    "rpm_remote_repository",
 )
 
-rpm_remote_repository = _rpm_remote_repository
-rpm_package = _rpm_package
+rpm = struct(
+    package = rpm_package,
+    remote_repository = rpm_remote_repository,
+)

@@ -2,7 +2,7 @@
 
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
-load("//distribution:defs.bzl", "distribution_attrs")
+load("//distribution:defs.bzl", "distribution")
 load(":local_packages.bzl", "LocalPackageUniverseInfo")
 load(":release.bzl", "OsReleaseInfo")
 load(
@@ -210,4 +210,4 @@ def package_manager(name: str, **kwargs) -> None:
 
     # An image reaches this through a dependency and configures it on the way, so it takes the
     # package's compatibility without the per-distribution aliases a named target needs.
-    _package_manager(name = name, **(distribution_attrs() | kwargs))
+    _package_manager(name = name, **(distribution.attrs() | kwargs))

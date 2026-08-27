@@ -1,7 +1,7 @@
 """Interactive virtual-machine image runners."""
 
 load("//box:runtime.bzl", "BoxInfo", "box_run")
-load("//distribution:defs.bzl", "distributed")
+load("//distribution:defs.bzl", "distribution")
 load("//image_format:disk.bzl", "RepartInfo", "SIZE_PATTERN")
 load("//image_format:sysext.bzl", "SysextImageInfo")
 
@@ -149,6 +149,6 @@ _image_vm = rule(
     },
 )
 
-def image_vm(name: str, distribution: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
+def image_vm(name: str, distro: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
     """Declare one, compatible with the distributions its package serves."""
-    _image_vm(name = name, **(distributed(name, distribution, visibility) | kwargs))
+    _image_vm(name = name, **(distribution.distributed(name, distro, visibility) | kwargs))
