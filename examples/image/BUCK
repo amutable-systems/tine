@@ -184,6 +184,9 @@ image_archive(
     format = "tar",
 )
 
+# external salt for testing reproducibility; see reproducibility() in ci.sh
+REPRO_SALT_OP = write_file("/usr/lib/repro-salt", read_root_config("tine", "repro_salt", ""))
+
 # Bootable GPT image; `buck run :boot-demo-vm` starts it with the box's vmspawn stack.
 # Supply-chain and format subtargets such as `:boot-demo[sbom]` and `:boot-demo[qcow2]` build on demand.
 # The version stamps os-release, partition labels, and the UKI and disk file names. A product names
@@ -198,6 +201,7 @@ bootable_disk_image(
     # The composition generates the databases those packages only describe, hwdb's among them.
     package_sets = ["bootable"],
     packages = ["less"],
+    ops = [REPRO_SALT_OP],
     profiles = [
         uki_profile(
             id = "debug",
@@ -264,6 +268,7 @@ sysext_image(
     base = ":boot-demo",
     packages = ["zsh"],
     install_docs = False,
+    ops = [REPRO_SALT_OP],
 )
 
 # Replacing a populated directory exercises the opaque-dir marker.

@@ -144,6 +144,29 @@ EOF
     "${buck[@]}" run "${config[@]}" tine//examples/image-secureboot:vm-smoke
 }
 
+# One demo image built with a salt. Output its SHA
+salted_image_sha() {
+    local path sha
+    path=$("${buck[@]}" build -c tine.repro_salt="$2" --show-full-simple-output "tine//examples/image:$1")
+    sha=$(sha256sum < "$path")
+    echo "${sha%% *}"
+}
+
+reproducibility() {
+    local image first second third
+    # FIXME: full boot-demo.fedora image is not yet reproducible
+    for image in demo-ext.fedora; do
+        first=$(salted_image_sha "$image" one)
+        second=$(salted_image_sha "$image" two)
+        third=$(salted_image_sha "$image" one)
+        echo "$image salted one/two/one: $first $second $third"
+        # different salt results in different image
+        test "$first" != "$second"
+        # the original salt gives the same image again
+        test "$first" = "$third"
+    done
+}
+
 # Nothing here needs a box, so a graph that does not analyze is reported in seconds rather than
 # after two bootstraps. `check` runs it again, for anyone running that on its own.
 group graph             -- "${buck[@]}" bxl tine//tools/graph.bxl:analyze
@@ -162,6 +185,7 @@ group build             -- "${buck[@]}" build tine//...
 # Everything `check` left out: the boot smokes, which take minutes each, and the assertions about
 # what the images above produced. Adding one is declaring it, not naming it here as well.
 group image-tests       -- "${buck[@]}" test tine//... --include image
+group reproducibility   -- reproducibility
 group secureboot-pkcs11 -- secureboot_pkcs11
 # The same example images over the second native package system, through the distribution aliases.
 # `:layered-install` installs over an existing package database, the path with the least in common
