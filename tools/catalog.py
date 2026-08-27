@@ -17,24 +17,19 @@ import contextlib
 import difflib
 import itertools
 import json
-import os
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from util import atomic_write_text, urlopen, with_retries
+from util import atomic_write_text, buck_output, nested_buck, urlopen, with_retries
 
 DEFAULT_CATALOG = "tine//catalog"
 BOX_LABEL = "tine:box"
 REMOTE_REPOSITORY_LABEL = "tine:remote-repository"
 RPM_REMOTE_REPOSITORY_LABEL = "tine:rpm-remote-repository"
 PACMAN_REMOTE_REPOSITORY_LABEL = "tine:pacman-remote-repository"
-
-
-def _buck_out(buck: str, *args: str) -> str:
-    return subprocess.run([buck, *args], check=True, capture_output=True, text=True).stdout.strip()
 
 
 def _catalog_pattern(catalog: str) -> str:
@@ -46,7 +41,7 @@ def _catalog_pattern(catalog: str) -> str:
 
 def _targets_with_label(buck: str, catalog: str, label: str) -> list[str]:
     """Targets carrying `label` in the selected catalog package."""
-    return sorted(_buck_out(buck, "uquery", f"attrfilter(labels, '{label}', {catalog})").split())
+    return sorted(buck_output(buck, "uquery", f"attrfilter(labels, '{label}', {catalog})").split())
 
 
 def _name_of(target: str) -> str:
@@ -60,7 +55,7 @@ def _catalog_directory(buck: str, targets: list[str]) -> Path:
     cell, separator, package = packages.pop().partition("//")
     if not separator or not cell:
         raise SystemExit("catalog: Buck returned a target without a canonical cell")
-    cell_root = Path(_buck_out(buck, "audit", "cell", cell, "--paths-only"))
+    cell_root = Path(buck_output(buck, "audit", "cell", cell, "--paths-only"))
     return cell_root / package
 
 
@@ -93,7 +88,7 @@ def _run(buck: str, target: str) -> str:
 
 def _pinned_repositories(buck: str, catalog: str, label: str, prefix: str) -> dict[str, dict[str, str]]:
     """Map repository targets carrying a `<prefix>.*` pin to that pin's metadata."""
-    out = _buck_out(
+    out = buck_output(
         buck,
         "uquery",
         "--json",
@@ -269,7 +264,7 @@ def _repositories_for_boxes(buck: str, boxes: list[str]) -> list[str]:
     """Remote repository targets reachable from the given box targets."""
     box_set = " ".join(boxes)
     query = f"attrfilter(labels, '{REMOTE_REPOSITORY_LABEL}', deps(set({box_set})))"
-    return sorted(_buck_out(buck, "uquery", query).split())
+    return sorted(buck_output(buck, "uquery", query).split())
 
 
 def _plan(
@@ -365,9 +360,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument(
         "--buck",
-        # `tine` exports the Buck2 it resolved, so a nested command runs that one and not the
-        # wrapper: refreshing configuration under a command already holding it deadlocks.
-        default=os.environ.get("BUCK2_BINARY", "buck"),
+        default=nested_buck(),
         help="buck binary to nest (default: $BUCK2_BINARY, else PATH)",
     )
     p.add_argument(
@@ -391,7 +384,7 @@ def main(argv: list[str] | None = None) -> None:
     catalog = _catalog_pattern(args.catalog)
 
     # Run nested commands from the project root so wrappers resolve consistently.
-    with contextlib.chdir(_buck_out(args.buck, "root", "--kind", "project")) as _:
+    with contextlib.chdir(buck_output(args.buck, "root", "--kind", "project")) as _:
         catalog_dir, snapshots, resolves = _plan(
             args.buck, catalog, args.box, advance_snapshots=not args.verify
         )
