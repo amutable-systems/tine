@@ -12,6 +12,7 @@ load("@tine//distribution:defs.bzl", "distribution")
 load("@tine//image:defs.bzl", "image")
 load("@tine//package:defs.bzl", "package")
 load("@tine//tests:defs.bzl", "tests")
+load(":expected.json", _expected = "value")
 
 # Everything a distribution decides is described in the PACKAGE file, which is the one place a
 # distribution is added; nothing below names one.
@@ -336,4 +337,17 @@ box.sh_test(
     box = "@tine//tools:dev.box",
     script = 'test "$(basename "$1")" = "$2"',
     args = ["$(location :demo-ext.fedora)", "demo-ext_0_x86-64.sysext.raw"],
+)
+
+# Compare the current builds to the checksums in ./expected.json to validate reproducibility: between
+# local developer machine and GitHub runner, at different times. The image does not have any external
+# input (such as a git-derived version) and hence should only change with zsh (on catalog updates) or
+# build rule updates.
+box.sh_test(
+    name = "reproducibility-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = 'printf "%s\\n" "$@" | sha256sum --check --strict --quiet',
+    # Sorted, so the command line stays put when an entry is added and Buck reuses its cached run.
+    args = ["{}  $(location :{})".format(_expected[name]["sha256"], name) for name in sorted(_expected)],
 )
