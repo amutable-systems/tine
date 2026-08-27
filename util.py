@@ -261,3 +261,17 @@ def atomic_write_text(path: Path, content: str, *, mode: int | None = None) -> N
     """Atomically replace a path with UTF-8 text."""
     with atomic_text_writer(path, mode=mode) as stream:
         stream.write(content)
+
+
+def nested_buck() -> str:
+    """The Buck a tool running under Buck has to nest.
+
+    `tine` exports the Buck2 it resolved, so a nested command runs that one and not the wrapper:
+    refreshing configuration under a command already holding it deadlocks.
+    """
+    return os.environ.get("BUCK2_BINARY", "buck")
+
+
+def buck_output(buck: str, *args: str) -> str:
+    """One nested Buck command, its stdout stripped."""
+    return subprocess.run([buck, *args], check=True, capture_output=True, text=True).stdout.strip()
