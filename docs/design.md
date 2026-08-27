@@ -305,9 +305,9 @@ that stack. The base release identifies where this userspace came from, not the 
 operate on.
 
 A lockless box uses its resolver box, by default the one its release names, to produce its build
-transaction and perform the authoritative installation. Its target root therefore contains only the requested packages and their dependencies; it
-does not need Python, package-manager libraries, or other construction tools unless they are part of its
-intended runtime.
+transaction and perform the authoritative installation. Its target root therefore contains only the
+requested packages and their dependencies; it does not need Python, package-manager libraries, or
+other construction tools unless they are part of its intended runtime.
 A locked box can use its own completed root to run the explicit `[resolve]` update command; during a
 bootstrap or tooling transition, a predecessor may run that command instead. This edge is deliberately
 one-way: it changes where resolution and installation execute, not the repositories, requested packages,
@@ -343,16 +343,16 @@ The host contract is intentionally small; its short list of requirements is docu
 
 ### Execution isolation and target roots
 
-All build actions run through `box_run()` and `box/sandbox.py`. The sandbox binds the box's
+All build actions run through `box.run()` and `box/sandbox.py`. The sandbox binds the box's
 userspace read-only over an otherwise isolated namespace, supplies API and temporary filesystems, clears the
 host environment, disables network by default, and uses mkosi-sandbox's unprivileged fakeroot behavior
 (`--suppress-chown`, `--suppress-sync`, and `--become-root`).
 
-The project is mounted at `/tine/project` and the action runs there, rather than at the path it is checked out
-under. A checkout is then free to live anywhere, including under a directory the box populates itself such
-as `/var/lib`, and an absolute path that leaks into a build output is the same for every checkout. A
-chrooted operation is a second frame and mounts the project again, under the target root's `/run`, which
-apivfs covers with a tmpfs so the mount point is not captured into the image.
+The project is mounted at `/tine/project` and the action runs there, rather than at the path it is checked
+out under. A checkout is then free to live anywhere, including under a directory the box populates
+itself such as `/var/lib`, and an absolute path that leaks into a build output is the same for every
+checkout. A chrooted operation is a second frame and mounts the project again, under the target root's
+`/run`, which apivfs covers with a tmpfs so the mount point is not captured into the image.
 
 The sandbox only creates the execution environment. Drivers own their target-root layout through
 `rootfs.rootfs()`:
@@ -366,7 +366,7 @@ This division keeps one namespace boundary while letting each driver express the
 second sandbox inside a box would duplicate isolation, complicate mounts, and make remote execution
 harder.
 
-`box_run(relaxed = True)` is reserved for interactive leaves. The box still supplies userspace, but
+`box.run(relaxed = True)` is reserved for interactive leaves. The box still supplies userspace, but
 devices, `/run`, environment, current directory, and network come from the host, and the command remains the
 invoking user. The box's `nss-systemd` reads native identities from the host's UserDB services under
 `/run`. This avoids importing host NSS modules or shadow databases, which may be incompatible with the
@@ -402,7 +402,7 @@ rule (the repository's current route wins while it carries the content, a lock's
 fallback once it does not, and a size that disagrees is skew) is stated once for both.
 
 The package manager assigns default priorities when it configures repositories: local repositories use 50
-and remote repositories use 99, with target-specific overrides applied by `package_manager()`. A planner
+and remote repositories use 99, with target-specific overrides applied by `package.manager()`. A planner
 action carries its repositories as `{id, directory, priority, baseurl}` objects in its spec.
 `encode_repositories()` projects them from `ConfiguredPackageRepositoryInfo`; the record's `dependency` is
 deliberately stripped because Buck dependencies are analysis-only and not JSON-serializable. `plan.py`
@@ -439,7 +439,7 @@ primary, filelists, and group streams libdnf5 needs, each named by its own check
 content rather than bytes and drops the streams nothing will read. Parsing it is expensive enough that the
 planner reuses it across solves: the `make-cache` verb prebuilds one cache per configured repository, which
 is why this system leaves `solver_cache` at its default. Packages end in `.rpm` and the database lives at
-the usr-merged `/usr/lib/sysimage/rpm`. A repository pinned with `rpm_remote_repository()`'s
+the usr-merged `/usr/lib/sysimage/rpm`. A repository pinned with `rpm.remote_repository()`'s
 `rpmrepo_mirror`/`rpmrepo_snapshot` carries that pin as `rpmrepo.*` metadata and advances to the newest
 snapshot its gateway enumerates.
 
@@ -560,7 +560,7 @@ file name instead, and `plan.py` decodes it.
 
 A repository database carries no checksum of its own and no content-addressed name, so its snapshot
 pins the bytes the refresh saw. That is what makes the Arch Linux Archive's dated trees the usable
-mirror and an ordinary rolling one unusable: `pacman_remote_repository()`'s
+mirror and an ordinary rolling one unusable: `pacman.remote_repository()`'s
 `archive_mirror`/`archive_snapshot` pin, carried as `archlinux.*` metadata, names a day, and since
 the archive publishes a tree per day rather than an index to enumerate, the refresh reads the marker
 recording when it last finished one.
@@ -606,7 +606,7 @@ Entry points: `package_system/pacman/{rules,catalog}.bzl` and
 ### Rust source builds
 
 A consuming repository can build a Rust project it has checked out instead of packaging it first.
-`cargo_package()` takes the project's files as ordinary sources, so a clone needs nothing added to it, and
+`cargo.package()` takes the project's files as ordinary sources, so a clone needs nothing added to it, and
 the single `Cargo.lock` among them identifies the workspace root. An action discovers that lock after the
 sources have been built, so the checkout may itself be a fetched directory artifact; a dynamic action
 then reads the resolved lock and declares what the build fetches. A project that resolves nothing carries
@@ -655,10 +655,10 @@ compares them by. A build that finds no previous directory remains the reference
 
 ### Go source builds
 
-`go_package()` gives a checked-out Go project the same treatment, sources in and declared binaries out.
+`go.package()` gives a checked-out Go project the same treatment, sources in and declared binaries out.
 The project carries no build file pointing at its own root, so a `go_workspace` action finds the `go.mod`
 among the built sources and a dynamic action declares the two steps below from what it reports; as with
-`cargo_package()`, that is what lets the sources be a fetched directory artifact rather than a checkout.
+`cargo.package()`, that is what lets the sources be a fetched directory artifact rather than a checkout.
 Only the two files those steps read are taken back out of the sources, so the fetch still reruns for a
 dependency bump alone. But the pinning is delegated rather than translated: A `go.sum` records `h1:`
 dirhashes over each module's contents, not the hash of any bytes a proxy serves, so there is nothing a
@@ -733,7 +733,7 @@ value in place. Nothing in this cell knows which distributions exist, because a 
 package managers itself:
 
 ```Starlark
-package_manager(
+package.manager(
     name = "image.package-manager",
     base = select({
         "//catalog:<family>.<release>.distribution": "//catalog:<family>.<release>.package-manager",
@@ -741,9 +741,9 @@ package_manager(
 )
 ```
 
-Every rule that declares a logical image accepts a `distribution`. A target that names none is
+Every rule that declares a logical image accepts a `distro`. A target that names none is
 buildable under any its package serves, and the rule declares one alias per distribution to say which,
-so the names are never a list kept beside the images. `distribution_alias()` does the same for a target
+so the names are never a list kept beside the images. `distribution.alias()` does the same for a target
 tine does not own. The transition sets the constraint only where nothing has set it, so the
 target being built decides and everything under it follows: an image's `parent` chain is not a
 distribution of its own, it is whatever the leaf pulling it in is. One declaration therefore serves every
@@ -768,14 +768,14 @@ not reconfigure the world when it changes.
 
 ### Image construction
 
-The `image` rule creates either an initial image from a package manager or box, or a derived image from
-`parent`. `ImageInfo` carries the package manager, its box, an ordered stack of filesystem deltas,
+The `image.layer` rule creates either an initial image from a package manager or box, or a derived image from
+`parent`. `image.ImageInfo` carries the package manager, its box, an ordered stack of filesystem deltas,
 deferred tmpfiles snippets, and the canonical lazy package-database and SBOM artifacts. A derived image
 inherits the construction configuration but declares fresh metadata for its completed stack, so one
 composition cannot silently switch package sources or tooling environments between stages. A box may
 be supplied directly for an initial image that never installs native packages.
 
-Each `image` call applies one ordered operation sequence in one action and persists exactly one overlay
+Each `image.layer` call applies one ordered operation sequence in one action and persists exactly one overlay
 upper. A layer's `packages` and `package_sets` are rule attributes rather than operations: it installs them
 as one request before any operation runs, while `run`, `copy`, `mkdir`, `symlink`, and `remove` mutate the
 same root afterwards. A package set resolves its symbolic name through the image's package manager during
@@ -790,33 +790,32 @@ result becomes available. `copy` introduces a declared Buck artifact at an absol
 its position relative to the other operations. `run` executes the image's own tools in a chroot by default;
 `chroot = False` instead executes box tooling with the image available at `/buildroot`. Its `env` argument
 overlays variables on the box or image environment for that command. Package installation and copying
-always run outside the chroot. The `image()` declaration macro recursively flattens operation lists, allowing
-reusable helpers to return ordered groups of operations. Every rule that accepts operations is wrapped in a
-declaration macro that flattens them the same way, so a helper returning an ordered group works identically
-in `image()` and in a composition; the underlying attribute stays a flat, typed list so Buck can track every
-embedded source dependency. An `image_install()` target carries `packages` beside its operations, so a
-reusable target declares what it needs and `install_from()` folds that into the installing layer's own
-request.
+always run outside the chroot. The `image.layer()` declaration macro recursively flattens operation lists,
+allowing reusable helpers to return ordered groups of operations. Every rule that accepts operations is
+wrapped in a declaration macro that flattens them the same way, so a helper returning an ordered group
+works identically in `image.layer()` and in a composition; the underlying attribute stays a flat, typed
+list so Buck can track every embedded source dependency. An `image.install()` target carries `packages`
+beside its operations, so a reusable target declares what it needs and `image.install_from()` folds that
+into the installing layer's own request.
 
 `install_langs` narrows the install to the translated files of the named languages, and `install_docs`
 drops documentation while keeping licenses. Neither ever enters the tree, so the package database records
-them as not installed rather than claiming files that are absent. They belong to one `image` operation
+them as not installed rather than claiming files that are absent. They belong to one `image.layer` operation
 sequence, not the logical image's lifetime: an initrd needs neither, while the root filesystem it boots may
 want both. Each package system implements them in its own driver. A sequence that installs nothing ignores
 both, so a composition can forward them to a layer whose operations happen to skip installation.
 
-An `image` exposes its newly persisted delta, the full stack and canonical metadata through `ImageInfo`, and
-the same metadata through lazy `[manifest]`, `[pkgdb]` and `[sbom]` subtargets. `ImageSbomInfo` gives typed
-consumers only
-the two SBOM formats. Declaring a logical image declares its metadata with it, because they are intrinsic
-metadata facets of every logical image: an `ImageInfo` therefore always carries an SBOM and a UAPI.16 file
-manifest, and a package
-database whenever the image has a package manager at all. The two describe different questions and neither
+An `image.layer` exposes its newly persisted delta, the full stack and canonical metadata through
+`image.ImageInfo`, and the same metadata through lazy `[manifest]`, `[pkgdb]` and `[sbom]` subtargets.
+`image.ImageSbomInfo` gives typed consumers only the two SBOM formats. Declaring a logical image declares
+its metadata with it, because they are intrinsic metadata facets of every logical image: an
+`image.ImageInfo` therefore always carries an SBOM and a UAPI.16 file manifest, and a package database
+whenever the image has a package manager at all. The two describe different questions and neither
 subsumes the other: an SBOM says what the image was built from, the manifest says what it ships, down to
-the digest of every regular file. An artifact referenced by a provider remains
-lazy. Selecting either SBOM format runs one shared scan; the default image build runs none of the metadata
-actions. Filesystem materialization remains an explicit terminal operation, so logical image construction
-does not depend on an archive or disk format.
+the digest of every regular file. An artifact referenced by a provider remains lazy. Selecting either
+SBOM format runs one shared scan; the default image build runs none of the metadata actions. Filesystem
+materialization remains an explicit terminal operation, so logical image construction does not depend on
+an archive or disk format.
 
 Package installation and image tooling remain separate concerns:
 
@@ -834,28 +833,29 @@ declarations are in [images.md](images.md).
 Each install operation then computes the runtime closure of its requested packages at analysis time over
 the imported Requires/Provides metadata, builds exactly the locally built packages in that closure, and
 offers them to the solver ahead of the upstream repositories. Requested capabilities without a local
-provider continue to resolve upstream, so partially imported branches simply mix. `ImageInfo` accumulates
-its layers' install specs and seeds every later closure with them, keeping lower-layer packages locally
-backed in later solves. Unlike a static `local_repository`, only the packages an install actually pulls
-in are built; the universe target itself never forces a package build.
+provider continue to resolve upstream, so partially imported branches simply mix. `image.ImageInfo`
+accumulates its layers' install specs and seeds every later closure with them, keeping lower-layer packages
+locally backed in later solves. Unlike a static `local_repository`, only the packages an install actually
+pulls in are built; the universe target itself never forces a package build.
 
 Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
-needed. The catalog of terminal rules (`image_archive`, `image_directory`, `uki`, `repart`, `bootable`,
-`image_sysext`, and `image_vm`) and the `rootfs_archive`, `sysext_image`, and `bootable_disk_image`
-composition rules are documented in [images.md](images.md). All of them, with the operation helpers and the
-conventional partition layouts, are re-exported from `tine//image:defs.bzl`; that facade is the public API,
-and the modules behind it are implementation structure. Every cell a consuming project loads from has one:
-`box`, `cargo`, `go`, `package`, `package_system/rpm`, `package_system/pacman` and `distribution` each
-re-export theirs the same way. Every rule resolves its drivers through one `ImageToolsInfo` bundle at
-`tine//image:tools` instead of a private attribute per driver.
+needed. The catalog of terminal rules (`image.archive`, `image.directory`, `image.uki`, `image.repart`,
+`image.bootable`, `image.sysext`, and `image.vm`) and the `image.rootfs_archive`, `image.sysext_image`, and
+`image.bootable_disk` composition rules are documented in [images.md](images.md). All of them, with the
+operation helpers and conventional partition layouts, are members of the `image` struct exported from
+`tine//image:defs.bzl`; that facade is the public API, and the modules behind it are implementation
+structure. Every public facade a consuming project loads from exports one namespace struct the same way:
+`box`, `cargo`, `go`, `git`, `package`, `package_system/rpm`, `package_system/deb`,
+`package_system/pacman`, `distribution`, and `tests`. Every rule resolves its drivers through one
+`ImageToolsInfo` bundle at `tine//image:tools` instead of a private attribute per driver.
 
 The package database and SBOMs are supply-chain outputs read from the assembled image, never shipped in it.
 Declaring any logical image declares both lazy facets, so compositions inherit them rather than repeating a
-metadata step. Each package
-system captures its database in its native shape. SBOM scanning of the whole tree additionally catches
+metadata step. Each package system captures its database in its native shape. SBOM scanning of the whole
+tree additionally catches
 packages no package manager knows about, such as Go modules bundled into ELF binaries.
 
-Terminal rules leave the package database and other package state intact — except `image_sysext`, which
+Terminal rules leave the package database and other package state intact — except `image.sysext`, which
 drops the database from the paths the image's package system declares: a merged extension must not shadow
 the host's. Image cleanup is an explicit, configurable layer so output formats do not silently alter image
 contents. Every terminal driver receives the same ordered layer stack and deferred tmpfiles snippets. It
@@ -876,34 +876,37 @@ multi-threaded output is byte-identical to its single-threaded output, so this s
 uses it, while the kernel-modules cpio that `uki.py` appends stays raw because the distribution already
 ships each module compressed; the kernel unpacks the concatenation as independently compressed segments.
 
-`repart` deliberately distinguishes `definitions` from `partitions`. Definitions describe new partitions
-to populate directly from `ImageInfo`: repart mounts the delta stack with a disposable overlay upper instead
-of first copying a directory artifact. Partition inputs are `RepartInfo` outputs from an earlier split call;
-their blocks are copied into the new disk with their resolved type and UUID preserved. Calls emit a disk by
-default. `split = True` additionally exposes each newly defined partition with normalized metadata alongside
-its block artifact; `disk = False` makes such a call partition-only. No partial disk is passed between
-actions. The partition artifacts are portable, so `RepartInfo` carries no box: repart uses the
-destination `ImageInfo.box`, while standalone conversion and VM rules select a box explicitly.
-`image_directory` is an independent terminal view and is never an input to repart.
+`image.repart` deliberately distinguishes `definitions` from `partitions`. Definitions describe new
+partitions to populate directly from `image.ImageInfo`: repart mounts the delta stack with a
+disposable overlay upper instead of first copying a directory artifact. Partition inputs are
+`image.RepartInfo` outputs from an earlier split call; their blocks are copied into the new disk with
+their resolved type and UUID preserved.
+Calls emit a disk by default. `split = True` additionally exposes each newly defined partition with
+normalized metadata alongside its block artifact; `disk = False` makes such a call partition-only. No
+partial disk is passed between
+actions. The partition artifacts are portable, so `image.RepartInfo` carries no box: repart uses the
+destination `image.ImageInfo.box`, while standalone conversion and VM rules select a box explicitly.
+`image.directory` is an independent terminal view and is never an input to repart.
 
-Partition layouts are always explicit inputs; neither `repart` nor `bootable_disk_image` chooses one
+Partition layouts are always explicit inputs; neither `image.repart` nor `image.bootable_disk` chooses one
 implicitly. The reusable conventional layouts are listed in [images.md](images.md).
 
-Partition labels may contain `{image_id}` and `{version}` placeholders. `format_partition_labels()`
-renders them — `bootable_disk_image()` calls it with its own image identity, raw `repart()` users call it
-themselves, and unrendered placeholders fail the build. The usr-verity layouts carry such labels to
-produce the `<id>_<version>[_verity[_sig]]` names that systemd-sysupdate A/B slot matching expects.
-Rendered labels pass through `partition()` again, so GPT's 36-character label limit is enforced on the
+Partition labels may contain `{image_id}` and `{version}` placeholders. `image.format_partition_labels()`
+renders them — `image.bootable_disk()` calls it with its own image identity, raw `image.repart()` users
+call it themselves, and unrendered placeholders fail the build. The usr-verity layouts carry such labels
+to produce the `<id>_<version>[_verity[_sig]]` names that systemd-sysupdate A/B slot matching expects.
+Rendered labels pass through `image.partition()` again, so GPT's 36-character label limit is enforced on the
 final value.
 
 Verity data, hash, and optional signature partitions are produced together in the split action. The root or
-usr hash is an artifact because its value is known only after execution. `RepartInfo.root_hash` carries an
-optional `RootHashInfo`, allowing `uki` to consume the hash without another top-level provider. One split
-call may produce at most one such hash. This artifact boundary also ensures the final disk contains exactly
-the partition bytes whose hash was embedded in the UKI. The hash is also available as the split target's
-`roothash` subtarget. Signature partitions require an explicitly declared key and certificate.
+usr hash is an artifact because its value is known only after execution. `image.RepartInfo.root_hash` carries
+an optional `image.RootHashInfo`, allowing `image.uki` to consume the hash without another top-level
+provider. One split call may produce at most one such hash. This artifact boundary also ensures the final
+disk contains exactly the partition bytes whose hash was embedded in the UKI. The hash is also available
+as the split target's `roothash` subtarget. Signature partitions require an explicitly declared key and
+certificate.
 
-`bootable_disk_image()` composes:
+`image.bootable_disk()` composes:
 
 ```text
 base initrd package image (zstd cpio)
@@ -932,23 +935,25 @@ command line embeds the root hash, so it can only exist after `/usr` is sealed, 
 the ESP. The verity partition itself stays unsigned in this scheme: the signed UKI command line pins the
 verity root hash, so its trust derives from the Secure Boot signature.
 
-`initrd_image()` declares the conventional initrd as a target of its own: a package image with `/init`
+`image.initrd()` declares the conventional initrd as a target of its own: a package image with `/init`
 pointing to systemd and `/etc/initrd-release` pointing to `/etc/os-release`, installing the release's
 `initrd` package set, so family catalog policy supplies concrete native package names. Its `packages`,
 `package_sets`, and `ops` are added to those defaults rather than replacing them, so extending an initrd
 never means restating what it already does, and `install_docs` and `install_langs` invert the defaults an OS
 image wants, since documentation and translations only cost an initrd boot memory. It generates before it
 prunes, so the hardware database it ships is compiled from the sources it then drops. The rule archives the
-image into the cpio itself, at the `compression` it declares, and returns both as `InitrdInfo` alongside the
-image's own providers. That cpio omits the package database from the paths the image's package system
-declares: nothing in an initrd resolves a dependency or verifies a package, and the kernel unpacks the whole
-cpio into tmpfs, so shipping it would only cost boot memory. The `[manifest]`, `[pkgdb]` and `[sbom]` views read the tree
-rather than the archive, so they still describe the complete installed set. `bootable_disk_image` consumes
-`InitrdInfo` rather than a bare `ImageInfo`, so the archive is the initrd target's own output and its
-compression is declared where the initrd is. A composition given no `initrd` declares `<name>.initrd` for
-itself through the same macro, inheriting its package manager, version, and distribution; the default is
-therefore an ordinary target that can be built and inspected on its own rather than an anonymous step inside
-the disk image. The composition publishes the provider it was given from `[initrd]` and returns the same
+image into the cpio itself, at the `compression` it declares, and returns both as `image.InitrdInfo`
+alongside the image's own providers. That cpio omits the package database from the paths the image's
+package system declares: nothing in an initrd resolves a dependency or verifies a package, and the kernel
+unpacks the whole cpio into tmpfs, so shipping it would only cost boot memory. The `[manifest]`, `[pkgdb]`
+and `[sbom]` views
+read the tree rather than the archive, so they still describe the complete installed set.
+`image.bootable_disk` consumes `image.InitrdInfo` rather than a bare `image.ImageInfo`, so the archive is
+the initrd target's own output and its compression is declared where the initrd is. A composition given
+no `initrd` declares `<name>.initrd` for itself through the same macro, inheriting its package manager,
+version, and distribution; the default is therefore an ordinary target that can be built and inspected on
+its own rather than an anonymous step inside the disk image. The composition publishes the provider it was
+given from `[initrd]` and returns the same
 instance directly, so both interfaces describe exactly the same initrd.
 
 `uki.py` appends the kernel-modules cpio and runs `ukify`. That cpio carries the modules `initrd_modules`
@@ -956,17 +961,17 @@ selects, closed over their dependencies and their firmware with libkmod, which r
 index and no configuration from the box; `/usr` keeps the full set for the booted system. The pattern
 syntax is mkosi's `KernelModules=`, minus the convenience of retrying a leading-slash pattern below
 `kernel/`, so a leading slash anchors instead; `re:` regexes and the `host` value have no equivalent, the
-latter because reading the build host's loaded modules is not hermetic. `DEFAULT_INITRD_MODULES` is
+latter because reading the build host's loaded modules is not hermetic. `image.DEFAULT_INITRD_MODULES` is
 mkosi-initrd's list, so an image moving onto tine from `KernelInitrdModules=default` keeps the module set it
 had. One list serves kernels that ship different sets of modules, so a pattern matching nothing is reported
 rather than fatal, in the manifest the rule publishes beside the UKI. The UKI is named
 `<image_id>_<version>_<arch>.efi` from the image identity. For now an image holds exactly one kernel — the
 name (and sysupdate's matching of it) could not distinguish more. If several kernels per image ever become
-a requirement, add naming configuration to `uki()` to disambiguate them. The ESP layer copies the UKI
-directory into `EFI/Linux` and includes the operations returned by `install_systemd_boot()`. Those create
-the ESP path, run the box's `bootctl` with its paths in the command environment, and remove the random
-seed. The final repart action creates the ESP while copying the previously split system partitions into
-the same disk. It splits nothing itself: the system partitions arrive already split, and nothing updates
+a requirement, add naming configuration to `image.uki()` to disambiguate them. The ESP layer copies the UKI
+directory into `EFI/Linux` and includes the operations returned by `image.install_systemd_boot()`. Those
+create the ESP path, run the box's `bootctl` with its paths in the command environment, and remove the
+random seed. The final repart action creates the ESP while copying the previously split system partitions
+into the same disk. It splits nothing itself: the system partitions arrive already split, and nothing updates
 the ESP as a partition. The default system partition is a compressed EROFS `/usr` protected by
 dm-verity; the generated `usrhash=` is embedded in every UKI. The same copy operation can place device
 trees, bootloader entries, and future standalone artifacts; `esp_files` exposes it, copying caller-declared
@@ -978,17 +983,18 @@ Boot profiles become small PE binaries of `.profile` and `.cmdline` sections, bu
 addon stub and joined into every UKI; a profile's arguments extend the shared base command line (including
 the verity hash), and kernel arguments are last-wins, so profiles can also override it.
 
-A composed raw disk can be re-encoded into distributable formats without rebuilding it: `disk_convert`
+A composed raw disk can be re-encoded into distributable formats without rebuilding it: `image.disk_convert`
 uses its explicit box to drive `qemu-img` for a compact qcow2 and `zstd` for a compressed raw. These are
 alternative encodings of the same disk and remain separate, reusable terminal implementations rather than
-default outputs. A converted target provides `DiskConversionInfo`, naming the format alongside its artifact,
-so one provider covers every encoding instead of one provider type per format.
+default outputs. A converted target provides `image.DiskConversionInfo`, naming the format alongside its
+artifact, so one provider covers every encoding instead of one provider type per format.
 
 #### Bootable-image result
 
 Bootability and output format remain independent terminal capabilities, but the artifacts declared by one
-`bootable_disk_image()` invocation form one concrete product. The composition publishes one target at
-the requested name. Its default output and `RepartInfo.disk` are the raw disk; its other terminal views,
+`image.bootable_disk()` invocation form one concrete product. The composition publishes one target at
+the requested name. Its default output and `image.RepartInfo.disk` are the raw disk; its other terminal
+views,
 supply-chain metadata, and constituents are lazy subtargets:
 
 ```text
@@ -1015,41 +1021,43 @@ supply-chain metadata, and constituents are lazy subtargets:
 ```
 
 Typed providers are the composition API; subtargets are the command-line interface. There is no aggregate
-bootable-image provider. The rule returns its completed `ImageInfo`, `RepartInfo`, `InitrdInfo`,
-`ImageDirectoryInfo`, and `UkiInfo` independently. `RepartInfo` holds the composed raw disk, its independent
-partitions, and optional `RootHashInfo`, rather than exposing separate top-level providers for these facets.
+bootable-image provider. The rule returns its completed `image.ImageInfo`, `image.RepartInfo`,
+`image.InitrdInfo`, `image.ImageDirectoryInfo`, and `image.UkiInfo` independently. `image.RepartInfo`
+holds the composed raw disk, its independent partitions, and optional `image.RootHashInfo`, rather than
+exposing separate top-level providers for these facets.
 Its qcow2 and compressed-raw encodings are reachable only through their subtargets, each publishing one
-`DiskConversionInfo`: a single provider type cannot appear twice in one result, and "the conversion" of a
-target that has several is ambiguous anyway. Every other constituent subtarget publishes the same provider
-instance as the main target. This lets a
-consumer request exactly the capability it needs without fields duplicating another provider's data.
+`image.DiskConversionInfo`: a single provider type cannot appear twice in one result, and "the conversion"
+of a target that has several is ambiguous anyway. Every other constituent subtarget publishes the same
+provider instance as the main target. This lets a consumer request exactly the capability it needs without
+fields duplicating another provider's data.
 Storing an artifact in a provider does not build it. Optional actions run only when a consumer uses the
 corresponding artifact or a user selects its subtarget. They must not appear in the result's
 `DefaultInfo.default_outputs` or `DefaultInfo.other_outputs`. SPDX and CycloneDX still come from one scan,
 so requesting either format runs the same SBOM action. A metadata view publishes itself the same way a
-conversion does: `[sbom]` and `[pkgdb]` carry a `PublishedInfo` naming them after the image they describe, so
-a release gathers what a scanner reads while an image's own published set stays what an update transfers.
+conversion does: `[sbom]` and `[pkgdb]` carry an `image.PublishedInfo` naming them after the image they
+describe, so a release gathers what a scanner reads while an image's own published set stays what an
+update transfers.
 
-`bootable_disk_image` is one rule that owns the complete composition action graph. Provider-oriented action
-helpers are shared with the standalone `image`, `repart`, `uki`, and terminal-format rules, so the
-composition reuses their implementations without declaring private sibling targets or forwarding through a
-result rule. This aggregation remains scoped to the concrete bootable-image product; it does not restore a
-generic `image_result` around every logical `ImageInfo`.
+`image.bootable_disk` is one rule that owns the complete composition action graph. Provider-oriented action
+helpers are shared with the standalone `image.layer`, `image.repart`, `image.uki`, and terminal-format
+rules, so the composition reuses their implementations without declaring private sibling targets or
+forwarding through a result rule. This aggregation remains scoped to the concrete bootable-image product;
+it does not restore a generic `image_result` around every logical `image.ImageInfo`.
 
-`rootfs_archive` and `sysext_image` follow the same ownership model on a smaller graph: one rule declares
-the logical image with its lazy package-database/SBOM views, and its terminal archive or DDI. Each target
-returns `ImageInfo` alongside its terminal provider, so consumers never depend on generated `.layer`,
-`.pkgdb`, or `.sbom` labels. The standalone terminal rules share the same provider-oriented declaration
-functions.
+`image.rootfs_archive` and `image.sysext_image` follow the same ownership model on a smaller graph: one
+rule declares the logical image with its lazy package-database/SBOM views, and its terminal archive or DDI.
+Each target returns `image.ImageInfo` alongside its terminal provider, so consumers never depend on
+generated `.layer`, `.pkgdb`, or `.sbom` labels. The standalone terminal rules share the same
+provider-oriented declaration functions.
 
 The disk, directory, package database, and SBOM derive from the same ESP layer. The initrd is a second
 logical image with its own package closure, declared and archived by its own target, so the composition
 republishes the package database and SBOM that image carries rather than deriving anything. The `[initrd]`
-subtarget exposes only the encompassing `InitrdInfo` as its typed contract, plus the image's metadata as
-nested subtargets. The main target returns that same `InitrdInfo` directly. Supplying a custom initrd
-therefore requires only one regular target and never a family of conventionally named siblings. VM runners
-remain separate targets because execution policy and credentials are behavior, not facets of the image
-artifact.
+subtarget exposes only the encompassing `image.InitrdInfo` as its typed contract, plus the image's metadata
+as nested subtargets. The main target returns that same `image.InitrdInfo` directly. Supplying a custom
+initrd therefore requires only one regular target and never a family of conventionally named siblings. VM
+runners remain separate targets because execution policy and credentials are behavior, not facets of the
+image artifact.
 
 The standalone `bootable` rule extracts semantic boot artifacts lazily from a completed logical image
 rather than forwarding whichever intermediate target created them; it earns its keep on images whose
@@ -1081,7 +1089,8 @@ gets the content its operations ask for and nothing else, which is the same reas
 package state alone.
 
 Each generator is a no-op for an image that carries none of what it acts on, so none of them needs
-per-distribution knowledge: `depmod()` is silent without kernels, `hwdb()` without `hwdb.d`, `locale_gen()`
+per-distribution knowledge: `image.depmod()` is silent without kernels, `image.hwdb()` without `hwdb.d`,
+`image.locale_gen()`
 without an `/etc/locale.gen` asking for something. That is what lets the compositions, which declare a whole
 product rather than one layer, end every image they build with all three at their defaults without knowing
 what went into it. A generator named in `ops` replaces the composition's copy instead of adding a second, so
@@ -1280,7 +1289,7 @@ belong to one package system are listed in its own section instead:
   path is not itself part of the source-trust chain.
 - Three build steps reach the network instead of downloading content with a recorded byte hash: Rust Git
   dependencies use commit hashes from the lock file, project fetches use the commit passed to
-  `git_fetch()`, and Go verifies module downloads against the committed `go.sum`.
+  `git.fetch()`, and Go verifies module downloads against the committed `go.sum`.
 - Crate downloads carry no recorded size, so Buck learns it from an HTTP HEAD whenever a download action
   executes. A cold daemon therefore needs the network even when every crate is already cached.
 - Upstream package signatures are not verified. SHA-256 pinning gives integrity after refresh, not

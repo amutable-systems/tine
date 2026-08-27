@@ -4,14 +4,14 @@ In a product this package lives in the OS.git that vendors tine, beside a checko
 it builds. `hello/` plays that checkout.
 """
 
-load("@tine//box:defs.bzl", "box", "box_sh_test")
-load("@tine//cargo:defs.bzl", "cargo_package")
-load("@tine//git:defs.bzl", "git_fetch")
-load("@tine//image:defs.bzl", "copy", "image_install", "install_from", "mkdir", "rootfs_archive")
-load("@tine//package:defs.bzl", "package_manager")
+load("@tine//box:defs.bzl", "box")
+load("@tine//cargo:defs.bzl", "cargo")
+load("@tine//git:defs.bzl", "git")
+load("@tine//image:defs.bzl", "image")
+load("@tine//package:defs.bzl", "package")
 
 # The build environment for our Rust projects; it never reaches an image.
-box(
+box.new(
     name = "rust.box",
     packages = [
         "cargo",
@@ -23,10 +23,10 @@ box(
     release = "tine//catalog:fedora.rawhide.release",
 )
 
-# Products use git_fetch() for projects they build but do not vendor. This example's `hello/` directory
-# overrides the fetch, avoiding network access during the test. Both paths give cargo_package() the same
+# Products use git.fetch() for projects they build but do not vendor. This example's `hello/` directory
+# overrides the fetch, avoiding network access during the test. Both paths give cargo.package() the same
 # opaque directory artifact and exercise its workspace discovery.
-git_fetch(
+git.fetch(
     name = "hello.git",
     repo = "https://github.com/example/hello",
     rev = "1c9e0f4b0f7d2a5e8b3c6d1a4f7b2e5c8d0a3f6b",
@@ -34,7 +34,7 @@ git_fetch(
 
 # A fetched project needs no build file of its own. Its Cargo.lock both pins the crates and marks the
 # workspace root, even though neither it nor Cargo.toml is visible until the checkout action runs.
-cargo_package(
+cargo.package(
     name = "hello",
     binaries = ["hello-cli"],
     box = ":rust.box",
@@ -42,7 +42,7 @@ cargo_package(
 )
 
 # A project with no dependencies at all, which therefore commits no Cargo.lock.
-cargo_package(
+cargo.package(
     name = "nodeps",
     binaries = ["nodeps"],
     box = ":rust.box",
@@ -50,34 +50,34 @@ cargo_package(
 
 # How these binaries install, declared beside the projects rather than repeated by every image that
 # installs them. Any image operation may be attached, not only copies.
-image_install(
+image.install(
     name = "demo.install",
     # The target declares what it needs, so no image installing it has to know. Rust links
     # against glibc.
     packages = ["glibc"],
     ops = [
-        copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
-        copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
-        mkdir("/usr/share/hello", mode = "0755"),
+        image.copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
+        image.copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
+        image.mkdir("/usr/share/hello", mode = "0755"),
     ],
 )
 
-package_manager(
+package.manager(
     name = "image.package-manager",
     base = "tine//catalog:fedora.rawhide.package-manager",
 )
 
 # `:demo[sbom][cyclonedx]` reports the crates the binary was built from, next to the image's packages.
-rootfs_archive(
+image.rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
-    ops = [install_from(":demo.install")],
+    ops = [image.install_from(":demo.install")],
     format = "tar",
 )
 
 # The crate graph cargo-auditable recorded in each binary must reach the image's SBOM: our own
 # packages, a crates.io dependency, and one from git.
-box_sh_test(
+box.sh_test(
     name = "sbom-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",

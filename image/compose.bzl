@@ -1,6 +1,6 @@
 """Convenience compositions for image products."""
 
-load("//distribution:defs.bzl", "distributed")
+load("//distribution:defs.bzl", "distribution")
 load(
     "//image_format:archive.bzl",
     "ARCHIVE_ATTRS",
@@ -482,7 +482,7 @@ def rootfs_archive(
     name: str,
     ops: list[LayerOperationTree] = [],
     version: str | Select | None = None,
-    distribution: str | None = None,
+    distro: str | None = None,
     visibility: list[str] | None = None,
     **kwargs,
 ) -> None:
@@ -491,14 +491,14 @@ def rootfs_archive(
         name = name,
         ops = flatten_operations(ops),
         version = resolve_version("rootfs_archive {}".format(name), version),
-        **(distributed(name, distribution, visibility) | kwargs),
+        **(distribution.distributed(name, distro, visibility) | kwargs),
     )
 
 def sysext_image(
     name: str,
     ops: list[LayerOperationTree] = [],
     version: str | Select | None = None,
-    distribution: str | None = None,
+    distro: str | None = None,
     visibility: list[str] | None = None,
     **kwargs,
 ) -> None:
@@ -507,7 +507,7 @@ def sysext_image(
         name = name,
         ops = flatten_operations(ops),
         version = resolve_version("sysext_image {}".format(name), version),
-        **(distributed(name, distribution, visibility) | kwargs),
+        **(distribution.distributed(name, distro, visibility) | kwargs),
     )
 
 def bootable_disk_image(
@@ -522,7 +522,7 @@ def bootable_disk_image(
     package_manager: str | Select | None = None,
     image_id: str | None = None,
     version: str | Select | None = None,
-    distribution: str | None = None,
+    distro: str | None = None,
     visibility: list[str] | None = None,
     **kwargs,
 ) -> None:
@@ -559,7 +559,7 @@ def bootable_disk_image(
             visibility = visibility,
             # The image naming a distribution of its own makes its initrd that distribution too;
             # otherwise the leaf pulling it in decides, exactly as a parent chain does.
-            distribution = distribution,
+            distro = distro,
         )
     _bootable_disk_image(
         name = name,
@@ -581,5 +581,5 @@ def bootable_disk_image(
         sign_expected_pcr_key = sign_expected_pcr_key,
         verity_key = verity_key,
         version = version,
-        **(distributed(name, distribution, visibility) | kwargs),
+        **(distribution.distributed(name, distro, visibility) | kwargs),
     )

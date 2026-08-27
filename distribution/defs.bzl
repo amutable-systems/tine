@@ -55,7 +55,7 @@ _distribution = rule(
     is_configuration_rule = True,
 )
 
-def distribution(name: str, visibility: list[str] | None = None) -> None:
+def new(name: str, visibility: list[str] | None = None) -> None:
     """Declare a distribution and the constraint value `select()` keys on."""
     if not name.endswith(".distribution"):
         fail("distribution name must end with '.distribution': {}".format(name))
@@ -72,13 +72,13 @@ def distribution(name: str, visibility: list[str] | None = None) -> None:
 
 _DISTRIBUTIONS = "tine.distributions"
 
-def set_distributions_for_package(distributions: dict[str, dict[str, str]]) -> None:
+def set_for_package(distributions: dict[str, dict[str, str]]) -> None:
     """Declare, for one package and everything under it, which distributions its images serve.
 
     Each entry names one distribution and describes it. Only the `distribution` key, the label of
     the distribution target, is tine's business; the rest is whatever the package needs to know per
     distribution, such as which package manager to solve with, and is read back with
-    `distributions_for_package()`. Declaring them here rather than in a BUCK file is what leaves one
+    `distribution.for_package()`. Declaring them here rather than in a BUCK file is what leaves one
     place to add a distribution.
 
     Every image rule then defaults its `target_compatible_with` to these, so a build that has chosen
@@ -92,13 +92,13 @@ def set_distributions_for_package(distributions: dict[str, dict[str, str]]) -> N
             fail("distribution {} does not name a distribution target: {}".format(name, described))
     write_package_value(_DISTRIBUTIONS, distributions, overwrite = True)
 
-def distributions_for_package() -> dict[str, dict[str, str]]:
+def for_package() -> dict[str, dict[str, str]]:
     """What this package declared, keyed by the name it calls each distribution."""
     return read_package_value(_DISTRIBUTIONS) or {}
 
 _UNCHOSEN = "tine//distribution:no-distribution-chosen"
 
-def distribution_compatibility():
+def compatibility():
     """Say a target is buildable only where one of this package's distributions was chosen.
 
     `target_compatible_with` requires every constraint in its list, so "one of these" is a select
@@ -106,51 +106,51 @@ def distribution_compatibility():
     else. A package that declared no distributions constrains nothing. Rules tine owns get this
     through their macros; a rule it does not own, such as a prelude one over an image, asks here.
     """
-    declared = distributions_for_package()
+    declared = for_package()
     if not declared:
         return []
     targets = [described["distribution"] for described in declared.values()]
     return select({target: [] for target in targets} | {"DEFAULT": [_UNCHOSEN]})
 
-def distribution_attrs(distribution: str | None = None, visibility: list[str] | None = None) -> dict:
+def attributes(distro: str | None = None, visibility: list[str] | None = None) -> dict:
     """Resolve what a package declares about distributions into the attributes rules take.
 
-    Anything a build can name takes these through `distributed()`, which declares the aliases that
+    Anything a build can name takes these through `distribution.distributed()`, which declares the aliases that
     make the compatibility satisfiable. This is on its own only for a target reached exclusively as
     a dependency, which is configured by whatever depends on it and never named directly.
     """
-    attributes = {"visibility": visibility}
-    if distribution != None:
-        attributes["incoming_transition"] = distribution
+    result = {"visibility": visibility}
+    if distro != None:
+        result["incoming_transition"] = distro
 
     # A package that declares none leaves compatibility alone, which is every package that has not
     # opted into building for a distribution at all.
-    compatibility = distribution_compatibility()
-    if compatibility:
-        attributes["target_compatible_with"] = compatibility
-    return attributes
+    compatible_with = compatibility()
+    if compatible_with:
+        result["target_compatible_with"] = compatible_with
+    return result
 
-def _distribution_aliases(name: str, distribution: str | None = None, visibility: list[str] | None = None) -> None:
+def aliases(name: str, distro: str | None = None, visibility: list[str] | None = None) -> None:
     """Name one target once per distribution its package serves.
 
     A target that names no distribution of its own is buildable under every one of them, so the
     names that say which are declared beside it rather than listed again somewhere else. A target
     that does name one is already the distribution it is, and gets no aliases.
     """
-    if distribution != None:
+    if distro != None:
         return
-    declared = distributions_for_package()
+    declared = for_package()
     for suffix in sorted(declared):
-        distribution_alias(
+        alias(
             name = "{}.{}".format(name, suffix),
             actual = ":" + name,
-            distribution = declared[suffix]["distribution"],
+            distro = declared[suffix]["distribution"],
             visibility = visibility,
         )
 
 def distributed(
     name: str,
-    distribution: str | None = None,
+    distro: str | None = None,
     visibility: list[str] | None = None,
 ) -> dict:
     """Declare a target's per-distribution aliases and return the attributes it takes.
@@ -158,10 +158,10 @@ def distributed(
     These are one decision rather than two. A target given the attributes without the aliases is
     compatible only with a choice nothing can make of it: it disappears from `//...` and fails when
     something finally names it. One that nothing names directly, because it is only ever a
-    dependency, takes `distribution_attrs()` on its own instead.
+    dependency, takes `distribution.attrs()` on its own instead.
     """
-    _distribution_aliases(name, distribution, visibility)
-    return distribution_attrs(distribution, visibility)
+    aliases(name, distro, visibility)
+    return attributes(distro, visibility)
 
 def _distribution_alias_impl(ctx: AnalysisContext) -> list[Provider]:
     return ctx.attrs.actual.providers
@@ -172,11 +172,22 @@ _distribution_alias = rule(
     supports_incoming_transition = True,
 )
 
-def distribution_alias(name: str, actual: str, distribution: str, visibility: list[str] | None = None) -> None:
+def alias(name: str, actual: str, distro: str, visibility: list[str] | None = None) -> None:
     """The same target, built for another distribution.
 
     Everything below it is reconfigured, so one declaration serves every distribution rather than
     being written out once per distribution. The alias itself stays compatible with anything: it is
     what chooses, so requiring a choice of it would be circular.
     """
-    _distribution_alias(name = name, actual = actual, incoming_transition = distribution, visibility = visibility)
+    _distribution_alias(name = name, actual = actual, incoming_transition = distro, visibility = visibility)
+
+distribution = struct(
+    alias = alias,
+    aliases = aliases,
+    attrs = attributes,
+    compatibility = compatibility,
+    distributed = distributed,
+    for_package = for_package,
+    new = new,
+    set_for_package = set_for_package,
+)

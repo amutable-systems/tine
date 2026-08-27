@@ -1,7 +1,7 @@
 # Fetching project sources
 
-Tine wraps Buck's `git_fetch()` so local development can use a checkout without changing the pinned
-source. The wrapper normally fetches the requested commit. It uses a directory in the current Buck
+Tine wraps Buck's `git_fetch()` as `git.fetch()` so local development can use a checkout without changing
+the pinned source. The wrapper normally fetches the requested commit. It uses a directory in the current Buck
 package instead when that directory is non-empty and its name matches the target after removing a
 trailing `.git`.
 
@@ -10,16 +10,16 @@ trailing `.git`.
 For example, a `packages/hello/BUCK` can declare:
 
 ```starlark
-load("@tine//cargo:defs.bzl", "cargo_package")
-load("@tine//git:defs.bzl", "git_fetch")
+load("@tine//cargo:defs.bzl", "cargo")
+load("@tine//git:defs.bzl", "git")
 
-git_fetch(
+git.fetch(
     name = "hello.git",
     repo = "https://github.com/example/hello",
     rev = "1c9e0f4b0f7d2a5e8b3c6d1a4f7b2e5c8d0a3f6b",
 )
 
-cargo_package(
+cargo.package(
     name = "hello",
     binaries = ["hello-cli"],
     box = ":rust.box",

@@ -2,7 +2,7 @@
 
 load("//:specs.bzl", "executable", "spec_args", "spec_argument")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
-load("//distribution:defs.bzl", "distributed")
+load("//distribution:defs.bzl", "distribution")
 load("//package:install.bzl", "resolve_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
@@ -835,12 +835,12 @@ def flatten_operations(ops: list[LayerOperationTree]) -> list[LayerOperation]:
             flattened.append(operation)
     return flattened
 
-def image(
+def layer(
     name: str,
     ops: list[LayerOperationTree] = [],
-    distribution: str | None = None,
+    distro: str | None = None,
     visibility: list[str] | None = None,
     **kwargs,
 ) -> None:
     """Create an initial image or apply one delta to a parent image."""
-    _image(name = name, ops = flatten_operations(ops), **(distributed(name, distribution, visibility) | kwargs))
+    _image(name = name, ops = flatten_operations(ops), **(distribution.distributed(name, distro, visibility) | kwargs))

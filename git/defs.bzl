@@ -1,6 +1,6 @@
-"""Fetch pinned Git repositories with support for local checkout overrides."""
+"""The public Git API, exported as the `git` namespace."""
 
-load("@prelude//:rules.bzl", _git_fetch = "git_fetch")
+load("@prelude//:rules.bzl", "git_fetch")
 
 def _checkout_impl(ctx: AnalysisContext) -> list[Provider]:
     # Consumers copy directory artifacts into scratch space before modifying them, so this rule can avoid
@@ -23,7 +23,7 @@ _checkout = rule(
     },
 )
 
-def git_fetch(name: str, repo: str, rev: str, sub_targets: list[str] = [], visibility: list[str] | None = None, **kwargs) -> None:
+def fetch(name: str, repo: str, rev: str, sub_targets: list[str] = [], visibility: list[str] | None = None, **kwargs) -> None:
     """Fetch `rev` unless this package contains a non-empty checkout named after the target."""
     checkout = name.removesuffix(".git")
     srcs = glob([checkout + "/**"])
@@ -36,4 +36,8 @@ def git_fetch(name: str, repo: str, rev: str, sub_targets: list[str] = [], visib
             visibility = visibility,
         )
     else:
-        _git_fetch(name = name, repo = repo, rev = rev, sub_targets = sub_targets, visibility = visibility, **kwargs)
+        git_fetch(name = name, repo = repo, rev = rev, sub_targets = sub_targets, visibility = visibility, **kwargs)
+
+git = struct(
+    fetch = fetch,
+)

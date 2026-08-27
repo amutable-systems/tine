@@ -6,9 +6,9 @@ naming no distribution is not a build, so `//...` skips these images and buildin
 name says so rather than picking one.
 """
 
-load("@tine//distribution:defs.bzl", "set_distributions_for_package")
+load("@tine//distribution:defs.bzl", "distribution")
 
-set_distributions_for_package({
+distribution.set_for_package({
     "arch": {
         "distribution": "tine//catalog:arch.rolling.distribution",
         "os_release_id": "arch",

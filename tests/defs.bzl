@@ -1,6 +1,6 @@
-"""Boot an image and assert what it settles into."""
+"""The public test API, exported as the `tests` namespace."""
 
-load("@tine//distribution:defs.bzl", "distributed")
+load("@tine//distribution:defs.bzl", "distribution")
 
 def _vm_smoke_impl(ctx: AnalysisContext) -> list[Provider]:
     command = cmd_args(
@@ -43,6 +43,10 @@ _vm_smoke = rule(
     supports_incoming_transition = True,
 )
 
-def vm_smoke(name: str, distribution: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
+def vm_smoke(name: str, distro: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
     """Declare one, compatible with the distributions its package serves."""
-    _vm_smoke(name = name, **(distributed(name, distribution, visibility) | kwargs))
+    _vm_smoke(name = name, **(distribution.distributed(name, distro, visibility) | kwargs))
+
+tests = struct(
+    vm_smoke = vm_smoke,
+)

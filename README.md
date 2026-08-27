@@ -46,15 +46,15 @@ Images are declared in ordinary `BUCK` files ([examples/image/BUCK](examples/ima
 demos):
 
 ```Starlark
-load("@tine//image:defs.bzl", "copy", "rootfs_archive", "run")
+load("@tine//image:defs.bzl", "image")
 
-rootfs_archive(
+image.rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"],
     ops = [
-        copy("marker.txt", "/etc/tine/marker"),
-        run(["/usr/bin/bash", "-c", "echo built-by-tine >> /etc/tine/marker"], chroot = True),
+        image.copy("marker.txt", "/etc/tine/marker"),
+        image.run(["/usr/bin/bash", "-c", "echo built-by-tine >> /etc/tine/marker"], chroot = True),
     ],
     format = "tar",
 )

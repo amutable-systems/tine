@@ -4,13 +4,13 @@ In a product this package lives in the OS.git that vendors tine, beside a checko
 it builds. `hello/` plays that checkout.
 """
 
-load("@tine//box:defs.bzl", "box", "box_sh_test")
-load("@tine//go:defs.bzl", "go_package")
-load("@tine//image:defs.bzl", "copy", "rootfs_archive")
-load("@tine//package:defs.bzl", "package_manager")
+load("@tine//box:defs.bzl", "box")
+load("@tine//go:defs.bzl", "go")
+load("@tine//image:defs.bzl", "image")
+load("@tine//package:defs.bzl", "package")
 
 # The build environment for our Go projects; it never reaches an image.
-box(
+box.new(
     name = "go.box",
     packages = [
         # TLS trust for the module fetch from proxy.golang.org.
@@ -24,27 +24,27 @@ box(
 
 # A checked-out project needs no build file of its own: the sources default to the directory named
 # after the target, and the go.mod in them marks the module root.
-go_package(
+go.package(
     name = "hello",
     binaries = ["hello-cli"],
     box = ":go.box",
 )
 
 # A project with no dependencies at all, which therefore commits no go.sum and fetches nothing.
-go_package(
+go.package(
     name = "nodeps",
     binaries = ["nodeps"],
     box = ":go.box",
 )
 
-package_manager(
+package.manager(
     name = "image.package-manager",
     base = "tine//catalog:fedora.rawhide.package-manager",
 )
 
 # `:demo[sbom][cyclonedx]` lists the Go modules each binary was built from, next to the image's
 # packages.
-rootfs_archive(
+image.rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
     # No runtime packages needed: neither project imports anything that pulls in cgo, so both
@@ -52,15 +52,15 @@ rootfs_archive(
     # copies below their place to land.
     packages = ["filesystem"],
     ops = [
-        copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
-        copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
+        image.copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
+        image.copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
     ],
     format = "tar",
 )
 
 # The modules go embeds in the binary must reach the image's SBOM. Our own are unversioned:
 # -buildvcs=false leaves a main module's version at (devel).
-box_sh_test(
+box.sh_test(
     name = "sbom-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",

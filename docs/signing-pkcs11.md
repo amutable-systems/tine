@@ -60,17 +60,17 @@ every box. On the host holding the key:
 
 ## What tine needs
 
-Signing coordinates are host-specific, so they are not committed. `pkcs11_signing_key()` declares a key
+Signing coordinates are host-specific, so they are not committed. `image.pkcs11_signing_key()` declares a key
 one configuration section describes. One section describes one key: give each role its own, repeating the
 socket and PIN file they share, so that a role is configured, or left unconfigured, in one place.
 
 ```Starlark
-load("@tine//image:defs.bzl", "bootable_disk_image", "pkcs11_signing_key")
+load("@tine//image:defs.bzl", "image")
 
-pkcs11_signing_key(name = "secureboot", section = "secure-boot-signing")
-pkcs11_signing_key(name = "pcr-signing", section = "pcr-signing")
+image.pkcs11_signing_key(name = "secureboot", section = "secure-boot-signing")
+image.pkcs11_signing_key(name = "pcr-signing", section = "pcr-signing")
 
-bootable_disk_image(
+image.bootable_disk(
     name = "image",
     secure_boot_key = ":secureboot",
     sign_expected_pcr_key = ":pcr-signing",
@@ -85,12 +85,12 @@ To get a developer build as well, where there is no token to hand, declare a gen
 token one and name one of them, as `examples/image-secureboot` does:
 
 ```Starlark
-pkcs11_signing_key(name = "secureboot.token", section = "secure-boot-signing")
-generate_signing_key(name = "secureboot.generated")
+image.pkcs11_signing_key(name = "secureboot.token", section = "secure-boot-signing")
+image.generate_signing_key(name = "secureboot.generated")
 
 SIGN_WITH_TOKEN = read_config("secure-boot-signing", "token") != None
 
-bootable_disk_image(
+image.bootable_disk(
     name = "image",
     secure_boot_key = ":secureboot.token" if SIGN_WITH_TOKEN else ":secureboot.generated",
     ...
@@ -138,7 +138,7 @@ tine buck build --config-file "$CREDENTIALS_DIRECTORY/signing.bcfg" //your:image
 ```
 
 **Warning: Buck silently ignores a `--config-file` that does not exist.** A build declaring only
-`pkcs11_signing_key()` then stops, naming the section it found nothing in; one that falls back to a
+`image.pkcs11_signing_key()` then stops, naming the section it found nothing in; one that falls back to a
 generated key of its own accord signs with that instead and says nothing. Either way, have the invoking
 job check for the file, or include it from `.buckconfig.local` as
 `<file:/run/credentials/build.service/signing.bcfg>`, which fails when it is missing.

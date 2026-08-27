@@ -7,7 +7,7 @@ and running the target yourself drops you into that same pinned userspace. Decla
 ```Starlark
 load("@tine//box:defs.bzl", "box")
 
-box(
+box.new(
     name = "dev.box",
     packages = [
         "bash",

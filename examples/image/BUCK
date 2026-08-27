@@ -7,35 +7,19 @@ distribution is the default, so what a build names is one of the per-distributio
 image rule declares for itself.
 """
 
-load("@tine//box:defs.bzl", "box_sh_test")
-load("@tine//distribution:defs.bzl", "distributions_for_package")
-load(
-    "@tine//image:defs.bzl",
-    "DEFAULT_USR_VERITY_PARTITIONS",
-    "bootable_disk_image",
-    "copy",
-    "image",
-    "image_archive",
-    "image_vm",
-    "mkdir",
-    "python",
-    "remove",
-    "rootfs_archive",
-    "run",
-    "sysext_image",
-    "uki_profile",
-    "write_file",
-)
-load("@tine//package:defs.bzl", "package_manager")
-load("@tine//tests:defs.bzl", "vm_smoke")
+load("@tine//box:defs.bzl", "box")
+load("@tine//distribution:defs.bzl", "distribution")
+load("@tine//image:defs.bzl", "image")
+load("@tine//package:defs.bzl", "package")
+load("@tine//tests:defs.bzl", "tests")
 
 # Everything a distribution decides is described in the PACKAGE file, which is the one place a
 # distribution is added; nothing below names one.
-DISTRIBUTIONS = distributions_for_package()
+DISTRIBUTIONS = distribution.for_package()
 
 # Consumer-owned solve context; project repositories can be added here. Which release it derives
 # from is the one thing a distribution decides for an image, so it is the only select below.
-package_manager(
+package.manager(
     name = "image.package-manager",
     base = select({d["distribution"]: d["package_manager"] for d in DISTRIBUTIONS.values()}),
 )
@@ -62,21 +46,21 @@ export_file(
 )
 
 # Minimal install + ordered-ops demo. `:demo` is both the tar result and a logical image.
-rootfs_archive(
+image.rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"],
     ops = [
-        run(["/usr/bin/mkdir", "-p", "/buildroot/etc/tine"]),
-        run(["/usr/bin/cp", "$(location :marker.txt)", "/buildroot/etc/tine/from-location"]),
-        # copy() takes a source directly, so it needs no $(location) around the label.
-        copy(":marker.txt", "/etc/tine/from-copy"),
+        image.run(["/usr/bin/mkdir", "-p", "/buildroot/etc/tine"]),
+        image.run(["/usr/bin/cp", "$(location :marker.txt)", "/buildroot/etc/tine/from-location"]),
+        # image.copy() takes a source directly, so it needs no $(location) around the label.
+        image.copy(":marker.txt", "/etc/tine/from-copy"),
         # A chrooted command runs with the image's own binaries. Buck's macro parser claims
         # `$(...)`, so the shell substitution is escaped.
-        run(["/usr/bin/bash", "-c", "echo built-by-\\$(echo tine) > /etc/tine/marker"], chroot = True),
+        image.run(["/usr/bin/bash", "-c", "echo built-by-\\$(echo tine) > /etc/tine/marker"], chroot = True),
         # A repository-owned script, run inside the image. The project is mounted there, so
         # `$(location)` names the script and its data exactly as it would outside.
-        run(
+        image.run(
             [
                 "/usr/bin/bash",
                 "$(location :configure.sh)",
@@ -86,17 +70,17 @@ rootfs_archive(
             chroot = True,
         ),
         # The same, in python, which this image does not install: the interpreter is Buck's own.
-        python(["$(location :configure.py)", "$(location :marker.txt)", "from-python-argument"], chroot = True),
+        image.python(["$(location :configure.py)", "$(location :marker.txt)", "from-python-argument"], chroot = True),
         # Unchrooted, the same interpreter sees the image at /buildroot, like any box command.
-        python(["-c", "from pathlib import Path; Path('/buildroot/etc/tine/from-python-box').write_text('x\\n')"]),
+        image.python(["-c", "from pathlib import Path; Path('/buildroot/etc/tine/from-python-box').write_text('x\\n')"]),
         # Ensure we don't leak the /tine sandbox mount into image builds
-        run(["/usr/bin/test", "!", "-d", "/tine"], chroot = True),
+        image.run(["/usr/bin/test", "!", "-d", "/tine"], chroot = True),
     ],
     format = "tar",
 )
 
 # Base-only image exercising a single-component delta stack.
-rootfs_archive(
+image.rootfs_archive(
     name = "base",
     package_manager = ":image.package-manager",
     packages = ["bash"],
@@ -104,64 +88,64 @@ rootfs_archive(
 )
 
 # Chained images: the child adds one file and whiteouts another.
-image(
+image.layer(
     name = "chained-base",
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"],
     ops = [
-        write_file("/etc/tine/from-base-kept", "base"),
-        write_file("/etc/tine/from-base-gone", "base"),
+        image.write_file("/etc/tine/from-base-kept", "base"),
+        image.write_file("/etc/tine/from-base-gone", "base"),
     ],
 )
 
-image(
+image.layer(
     name = "chained-child.layer",
     parent = ":chained-base",
     ops = [
-        write_file("/etc/tine/from-child", "child"),
-        remove("/etc/tine/from-base-gone"),
+        image.write_file("/etc/tine/from-child", "child"),
+        image.remove("/etc/tine/from-base-gone"),
     ],
 )
 
-image_archive(
+image.archive(
     name = "chained",
     image = ":chained-child.layer",
     format = "tar",
 )
 
 # Package installation and mutations sharing one physical delta.
-image(
+image.layer(
     name = "layered-install-base",
     package_manager = ":image.package-manager",
     packages = ["bash"],
     ops = [
-        run(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"], chroot = True),
+        image.run(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"], chroot = True),
     ],
 )
 
-image(
+image.layer(
     name = "layered-install.layer",
     parent = ":layered-install-base",
     packages = ["coreutils"],
     ops = [
-        run(["/usr/bin/bash", "-c", "ls /usr/bin/ls > /etc/from-child-install"], chroot = True),
+        image.run(["/usr/bin/bash", "-c", "ls /usr/bin/ls > /etc/from-child-install"], chroot = True),
     ],
 )
 
-image_archive(
+image.archive(
     name = "layered-install",
     image = ":layered-install.layer",
     format = "tar",
 )
 
 # Round-trip an escaped name and an escaped whiteout through stored deltas.
-image(
+image.layer(
     name = "escaped-base",
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"],
     ops = [
-        mkdir("/etc/tine"),
-        run(
+        image.mkdir("/etc/tine"),
+        image.run(
             [
                 "/usr/bin/bash",
                 "-c",
@@ -172,13 +156,13 @@ image(
     ],
 )
 
-image(
+image.layer(
     name = "escaped-child.layer",
     parent = ":escaped-base",
-    ops = [remove("/etc/tine/esc\\x2dgone")],
+    ops = [image.remove("/etc/tine/esc\\x2dgone")],
 )
 
-image_archive(
+image.archive(
     name = "escaped",
     image = ":escaped-child.layer",
     format = "tar",
@@ -189,17 +173,17 @@ image_archive(
 # The version stamps os-release, partition labels, and the UKI and disk file names. A product names
 # one here, or asks for a git-derived one with `version = "auto:1.4.2"`, which needs a build through
 # `bin/tine` (see "Image versioning" in images.md); this demo has nothing to version.
-bootable_disk_image(
+image.bootable_disk(
     name = "boot-demo",
     package_manager = ":image.package-manager",
-    definitions = DEFAULT_USR_VERITY_PARTITIONS,
+    definitions = image.DEFAULT_USR_VERITY_PARTITIONS,
     version = "unversioned",
     # The release names what a bootable system of its own family needs, so this stays symbolic.
     # The composition generates the databases those packages only describe, hwdb's among them.
     package_sets = ["bootable"],
     packages = ["less"],
     profiles = [
-        uki_profile(
+        image.uki_profile(
             id = "debug",
             title = "Boot with debug logs enabled",
             cmdline = ["debug", "systemd.log_level=debug", "systemd.journald.forward_to_console=1"],
@@ -215,7 +199,7 @@ bootable_disk_image(
     output_size = "2G",
 )
 
-image_vm(
+image.vm(
     name = "boot-demo-vm",
     autologin = "root",
     # A run-only kernel command line argument: the UKI carries a fixed one, so this can only arrive
@@ -234,7 +218,7 @@ image_vm(
 
 # Boot smoke test: drives :boot-demo-vm's console over a pty (via the shared tine driver),
 # asserts the system settles, then powers off. `buck test` runs it, `buck run` boots it by hand.
-vm_smoke(
+tests.vm_smoke(
     name = "boot-demo-vm-smoke",
     vm = ":boot-demo-vm",
     checks = [
@@ -259,7 +243,7 @@ vm_smoke(
 # System-extension DDI extending :boot-demo: only the delta above the base lands in the
 # image, and its extension-release pins the base's ID/VERSION_ID. `boot-demo-vm` exposes
 # it under /var/lib/extensions.
-sysext_image(
+image.sysext_image(
     name = "demo-ext",
     base = ":boot-demo",
     packages = ["zsh"],
@@ -267,25 +251,25 @@ sysext_image(
 )
 
 # Replacing a populated directory exercises the opaque-dir marker.
-image(
+image.layer(
     name = "opaque-base",
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"],
     ops = [
-        run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"], chroot = True),
+        image.run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"], chroot = True),
     ],
 )
 
-image(
+image.layer(
     name = "opaque-child.layer",
     parent = ":opaque-base",
     ops = [
-        remove("/etc/tine/sub"),
-        run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo new > /etc/tine/sub/fresh"], chroot = True),
+        image.remove("/etc/tine/sub"),
+        image.run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo new > /etc/tine/sub/fresh"], chroot = True),
     ],
 )
 
-image_archive(
+image.archive(
     name = "opaque",
     image = ":opaque-child.layer",
     format = "tar",
@@ -295,7 +279,7 @@ image_archive(
 # same thing by booting; this pins it against the real kernel without a VM, so a change to the
 # default list that drops one fails here with the module named. Only modules Fedora builds as
 # modules: it links dm-mod, ext4, virtio_blk, virtio_pci, ahci and sd_mod into the kernel.
-box_sh_test(
+box.sh_test(
     name = "uki-modules-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
@@ -307,7 +291,7 @@ box_sh_test(
 # The file manifest is what tells a consumer which paths an image ships, so its framing and its
 # view of a real tree are part of the contract rather than an implementation detail. The checker
 # is a python file of its own rather than a script the test inlines, so the linters see it.
-box_sh_test(
+box.sh_test(
     name = "manifest-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
@@ -318,7 +302,7 @@ box_sh_test(
     ],
 )
 
-box_sh_test(
+box.sh_test(
     name = "boot-artifacts-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
@@ -332,7 +316,7 @@ box_sh_test(
 )
 
 # Both distributions, because each package system captures its database in its own format.
-box_sh_test(
+box.sh_test(
     name = "pkgdb-format-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
@@ -346,7 +330,7 @@ box_sh_test(
 # A DDI's file name is what a systemd-sysupdate transfer matches, so it is part of the contract
 # rather than an implementation detail. The example sets no version, so this pins the rule's
 # default alongside the shape.
-box_sh_test(
+box.sh_test(
     name = "sysext-name-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",

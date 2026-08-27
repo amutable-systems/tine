@@ -12,9 +12,9 @@ beside it, and an image carrying the resulting binaries.
 ## Declaring a build
 
 ```Starlark
-load("@tine//cargo:defs.bzl", "cargo_package")
+load("@tine//cargo:defs.bzl", "cargo")
 
-cargo_package(
+cargo.package(
     name = "hello",
     binaries = ["hello-cli"],
     box = ":rust.box",
@@ -27,7 +27,7 @@ cargo_package(
 - `srcs` defaults to `glob(["<name>/**"], exclude = ["<name>/target/**"])`: the checkout is expected in a
   directory named after the target. Pass `srcs` explicitly when it is called something else. Nothing needs
   to be added inside the checkout, i.e. a pristine project clone works.
-- Use [`git_fetch()`](git.md) for a project that is not committed to this repository, and pass its work
+- Use [`git.fetch()`](git.md) for a project that is not committed to this repository, and pass its work
   tree as the sole `srcs` entry.
 - At most one of the sources may be a `Cargo.lock`, and its directory is the workspace cargo builds in, so
   a project vendoring another project's lock has to narrow `srcs`. A project that resolves nothing has no
@@ -40,14 +40,14 @@ cargo_package(
 - `box` is the build environment, declared by the consumer because only the consumer knows what its
   projects link against.
 
-The binaries are ordinary artifacts, so an image installs one with a `copy()` operation:
+The binaries are ordinary artifacts, so an image installs one with an `image.copy()` operation:
 
 ```Starlark
-rootfs_archive(
+image.rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
     packages = ["glibc"],
-    ops = [copy(":hello[hello-cli]", "/usr/bin/hello-cli")],
+    ops = [image.copy(":hello[hello-cli]", "/usr/bin/hello-cli")],
     format = "tar",
 )
 ```
@@ -55,7 +55,7 @@ rootfs_archive(
 ## What the builder box needs
 
 ```Starlark
-box(
+box.new(
     name = "rust.box",
     packages = ["cargo", "gcc", "python3", "rust"],
     release = "tine//catalog:fedora.rawhide.release",

@@ -85,7 +85,7 @@ def arch_release(
         },
         default_repository_groups = ["extra"],
     )
-    distribution(name = name + ".distribution", visibility = visibility)
+    distribution.new(name = name + ".distribution", visibility = visibility)
     package_sets = dict(_ARCH_PACKAGE_SETS)
     package_sets.update(package_set_overrides)
     os_release(

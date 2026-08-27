@@ -2,7 +2,7 @@
 
 load("@tine//box:defs.bzl", "box")
 
-box(
+box.new(
     name = "demo.box",
     packages = [
         "bash",

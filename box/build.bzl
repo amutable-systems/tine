@@ -195,7 +195,7 @@ _box = rule(
     },
 )
 
-def box(
+def new(
     name: str,
     packages: list[str],
     release: str,
