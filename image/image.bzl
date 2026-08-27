@@ -302,6 +302,10 @@ def symlink(target: str, path: str) -> LayerOperation:
     """Create a symlink at `path` pointing at `target`."""
     return ("symlink", target, path)
 
+def write_file(path: str, content: str = "") -> LayerOperation:
+    """Write a file at `path` in the image holding exactly `content`."""
+    return ("write_file", path, content)
+
 def remove(path: str) -> LayerOperation:
     """Remove every image path matching an absolute glob pattern."""
     return ("remove", path)
@@ -710,6 +714,11 @@ IMAGE_OPERATION_ATTR = attrs.one_of(
     ),
     attrs.tuple(
         attrs.enum(["symlink"]),
+        attrs.string(),
+        attrs.string(),
+    ),
+    attrs.tuple(
+        attrs.enum(["write_file"]),
         attrs.string(),
         attrs.string(),
     ),
