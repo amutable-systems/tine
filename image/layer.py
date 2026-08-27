@@ -137,6 +137,27 @@ def _remove_glob(tree: Path, value: str) -> None:
         util.remove_path(path)
 
 
+def _clamp_mtime(path: Path, epoch: int) -> None:
+    """Clamp one inode's access and modification times to `epoch` nanoseconds."""
+    stat = path.lstat()
+    times = (stat.st_atime_ns, stat.st_mtime_ns)
+    clamped = (min(times[0], epoch), min(times[1], epoch))
+    if times != clamped:
+        os.utime(path, ns=clamped, follow_symlinks=False)
+
+
+def _clamp_mtimes(tree: Path, epoch: int) -> None:
+    """Clamp every inode in `tree`, the tree itself included, to the source date.
+
+    Workaround until https://github.com/systemd/systemd/pull/43545 releases in systemd 262
+    and repart does that by itself.
+    """
+    nanoseconds = epoch * 1_000_000_000
+    _clamp_mtime(tree, nanoseconds)
+    for path in tree.rglob("*"):
+        _clamp_mtime(path, nanoseconds)
+
+
 def _apply_filesystem(operation: list[object]) -> None:
     match operation:
         case ["mkdir", str(path), mode]:
@@ -252,6 +273,7 @@ def main(argv: list[str] | None = None) -> None:
             _install(install, target, Path(scratch))
         for operation in operations:
             _apply(operation, target)
+    _clamp_mtimes(out, int(os.environ["SOURCE_DATE_EPOCH"]))
     print(f"image: applied {len(operations)} ops over {len(lower)} lower(s) -> {out}", file=sys.stderr)
 
 
