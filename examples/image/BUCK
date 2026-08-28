@@ -11,6 +11,7 @@ load("@tine//box:defs.bzl", "box")
 load("@tine//distribution:defs.bzl", "distribution")
 load("@tine//image:defs.bzl", "image")
 load("@tine//package:defs.bzl", "package")
+load("@tine//python:defs.bzl", "tine_python_binary")
 load("@tine//tests:defs.bzl", "tests")
 load(":expected.json", _expected = "value")
 
@@ -342,7 +343,8 @@ box.sh_test(
 # Compare the current builds to the checksums in ./expected.json to validate reproducibility: between
 # local developer machine and GitHub runner, at different times. The image does not have any external
 # input (such as a git-derived version) and hence should only change with zsh (on catalog updates) or
-# build rule updates.
+# build rule updates. When one of those moved it legitimately, record the new checksums with
+# `buck run tine//examples/image:refresh-expected` and commit them with the change that moved them.
 box.sh_test(
     name = "reproducibility-test",
     labels = ["image"],
@@ -350,4 +352,10 @@ box.sh_test(
     script = 'printf "%s\\n" "$@" | sha256sum --check --strict --quiet',
     # Sorted, so the command line stays put when an entry is added and Buck reuses its cached run.
     args = ["{}  $(location :{})".format(_expected[name]["sha256"], name) for name in sorted(_expected)],
+)
+
+tine_python_binary(
+    name = "refresh-expected",
+    main = "expected.py",
+    deps = ["@tine//:util"],
 )
