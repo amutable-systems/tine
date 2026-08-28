@@ -6,7 +6,6 @@ tine_python_library(
     name = "mkosi",
     srcs = [
         "mkosi/__init__.py",
-        "mkosi/sandbox.py",
         "mkosi/versioncomp.py",
     ],
     typecheck = False,

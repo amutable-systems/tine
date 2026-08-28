@@ -3,8 +3,7 @@
 [tool.ruff]
 target-version = "py314"
 line-length = 109
-# Exclude build outputs and the verbatim vendored sandbox.
-extend-exclude = ["buck-out", "vendor/mkosi/sandbox.py"]
+extend-exclude = ["buck-out"]
 # A command carries no suffix for the linters to recognize it by.
 extend-include = ["bin/tine"]
 # tine runs on whatever python the host has, before anything is fetched, so pyupgrade must not

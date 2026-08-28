@@ -853,16 +853,9 @@ class TestNamespaces(MountTestCase):
         # The child's mount must not propagate back into the test process.
         self.assertEqual((self.root / "sub" / "witness").read_text(), "the project's own")
 
-    def test_user_namespace_maps_only_the_caller_without_nsresourced(self) -> None:
+    def test_user_namespace_maps_only_the_caller(self) -> None:
         def mapped() -> str:
-            tine._vendored()
-            from mkosi import sandbox
-
-            # A systemd namespace service may be available on the test host, but tine must not use it.
-            with unittest.mock.patch.object(
-                sandbox, "varlink", side_effect=AssertionError("systemd-nsresourced was used")
-            ):
-                self.create({"sub": str(self.source)})
+            self.create({"sub": str(self.source)})
             return Path("/proc/self/uid_map").read_text()
 
         lines = self.answer(mapped).splitlines()
