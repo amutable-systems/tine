@@ -1,0 +1,15 @@
+{
+  "lsp": {
+    "ty": {
+      "binary": {
+        "path": "tools/ty",
+        "arguments": ["server"]
+      }
+    }
+  },
+  "languages": {
+    "Python": {
+      "language_servers": ["ty", "ruff"]
+    }
+  }
+}
