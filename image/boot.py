@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Select boot artifacts from a logical image."""
 
+import functools
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,7 +11,7 @@ import specs
 import artifacts
 import finalize
 import kmod
-from mkosi.versioncomp import GenericVersion
+import version
 
 
 class Spec(finalize.ImageSpec):
@@ -48,8 +49,16 @@ def _image_name(tree: Path, path: Path) -> str:
     return "/" + path.relative_to(tree).as_posix()
 
 
-def _candidate_key(candidate: UkiCandidate | KernelCandidate) -> tuple[GenericVersion, str]:
-    return GenericVersion(candidate.kernel_release), str(candidate.path)
+def _candidate_compare(
+    left: UkiCandidate | KernelCandidate,
+    right: UkiCandidate | KernelCandidate,
+) -> int:
+    order = version.compare(left.kernel_release, right.kernel_release)
+    if order:
+        return order
+    left_path = str(left.path)
+    right_path = str(right.path)
+    return (left_path > right_path) - (left_path < right_path)
 
 
 def _ukis(tree: Path) -> list[UkiCandidate]:
@@ -85,7 +94,7 @@ def _matching_initrd(tree: Path, kernel_release: str) -> Path | None:
 def _select(tree: Path) -> Selection:
     ukis = _ukis(tree)
     if ukis:
-        uki = max(ukis, key=_candidate_key)
+        uki = max(ukis, key=functools.cmp_to_key(_candidate_compare))
         initrd = Source(_image_name(tree, uki.path), ".initrd") if ".initrd" in uki.sections else None
         if initrd is None and (standalone := _matching_initrd(tree, uki.kernel_release)) is not None:
             initrd = Source(_image_name(tree, standalone))
@@ -102,7 +111,7 @@ def _select(tree: Path) -> Selection:
     kernels = _kernels(tree)
     if not kernels:
         raise SystemExit("boot: image contains no UKI or standalone kernel")
-    kernel = max(kernels, key=_candidate_key)
+    kernel = max(kernels, key=functools.cmp_to_key(_candidate_compare))
     initrd = _matching_initrd(tree, kernel.kernel_release)
     if initrd is None:
         raise SystemExit(f"boot: selected kernel {kernel.kernel_release} has no matching initrd")
