@@ -349,7 +349,13 @@ box.sh_test(
     name = "reproducibility-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
-    script = 'printf "%s\\n" "$@" | sha256sum --check --strict --quiet',
+    # print sums for debugging failures
+    script = """
+for entry in "$@"; do
+    sha256sum "${entry#*  }"
+done
+printf "%s\\n" "$@" | sha256sum --check --strict --quiet
+""",
     # Sorted, so the command line stays put when an entry is added and Buck reuses its cached run.
     args = ["{}  $(location :{})".format(_expected[name]["sha256"], name) for name in sorted(_expected)],
 )
