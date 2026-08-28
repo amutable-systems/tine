@@ -159,6 +159,24 @@ def capture(tree: Path) -> None:
             p.rename(p.parent / escaped)
 
 
+@contextmanager
+def capture_on_exit(tree: str | Path) -> Iterator[Path]:
+    """Capture a tree after use without hiding an error from the body."""
+    tree = Path(tree)
+    try:
+        yield tree
+    except BaseException as error:
+        try:
+            capture(tree)
+        except BaseException as capture_error:
+            error.add_note(
+                f"rootfs capture of {tree} also failed: {capture_error.__class__.__name__}: {capture_error}"
+            )
+        raise
+    else:
+        capture(tree)
+
+
 # Root setup.
 
 
@@ -209,6 +227,7 @@ def rootfs(
     target: str | Path,
     *,
     bind: str | Path | None = None,
+    capture_bind: bool = False,
     lowers: Sequence[str | Path] | None = None,
     upperdir: str | Path | None = None,
     workdir: str | Path | None = None,
@@ -216,7 +235,13 @@ def rootfs(
     binds: Sequence[tuple[str | Path, str | Path]] | None = None,
     chroot: bool = False,
 ) -> Iterator[Path]:
-    """Mount a bind or overlay root, optionally chrooting and persisting an upper delta."""
+    """Mount a bind or overlay root, optionally chrooting and persisting its output.
+
+    Persistent overlay uppers and bind sources with `capture_bind=True` are captured after all
+    mounts have been torn down.
+    """
+    if capture_bind and bind is None:
+        raise ValueError("rootfs(capture_bind=True) needs bind=")
     target = Path(target)
     with ExitStack() as stack:
         if lowers is not None:
@@ -232,16 +257,21 @@ def rootfs(
                 if workdir is None:
                     raise ValueError("rootfs(upperdir=...) needs a matching workdir=")
                 upper, work = Path(upperdir), Path(workdir)
-                stack.callback(capture, upper)  # runs after the overlay unmount below
             else:
                 # A writable ephemeral upper also permits a single-component stack.
                 upper, work = scratch / "upper", scratch / "work"
             upper.mkdir(parents=True, exist_ok=True)
             work.mkdir(parents=True, exist_ok=True)
             Overlay(tuple(components), upper, work, target).mount()
+            if upperdir is not None:
+                # Enter before registering the unmount so capture runs after it.
+                stack.enter_context(capture_on_exit(upper))
             stack.callback(umount2, target, 0)
         elif bind is not None:
             _bind(bind, target)
+            if capture_bind:
+                # Enter before registering the unmount so capture runs after it.
+                stack.enter_context(capture_on_exit(bind))
             stack.callback(umount2, target, MNT_DETACH)
         else:
             raise ValueError("rootfs needs bind= or lowers=")

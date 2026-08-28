@@ -238,20 +238,20 @@ def main(argv: list[str] | None = None) -> None:
     else:
         if spec["work"] is not None:
             raise SystemExit("image work overlay directory requires a lower stack")
-        mounted = rootfs.rootfs("/buildroot", bind=out, apivfs=True, binds=binds)
+        mounted = rootfs.rootfs(
+            "/buildroot",
+            bind=out,
+            capture_bind=True,
+            apivfs=True,
+            binds=binds,
+        )
 
-    try:
-        with mounted as target, tempfile.TemporaryDirectory(prefix="layer.") as scratch:
-            # Packages land before the operations so every one of them sees what this layer installs.
-            if install is not None:
-                _install(install, target, Path(scratch))
-            for operation in operations:
-                _apply(operation, target)
-    finally:
-        # Buck collects this directory even when the layer failed, and a name it cannot store makes
-        # that collection fail with an internal error that replaces the one which broke the build.
-        if not lower:
-            rootfs.capture(out)
+    with mounted as target, tempfile.TemporaryDirectory(prefix="layer.") as scratch:
+        # Packages land before the operations so every one of them sees what this layer installs.
+        if install is not None:
+            _install(install, target, Path(scratch))
+        for operation in operations:
+            _apply(operation, target)
     print(f"image: applied {len(operations)} ops over {len(lower)} lower(s) -> {out}", file=sys.stderr)
 
 

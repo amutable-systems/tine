@@ -1,5 +1,6 @@
 """Native package systems, repositories, releases, managers, and buildroots."""
 
+load("//box:test.bzl", "box_python_test")
 load("//python:defs.bzl", "tine_python_library")
 
 tine_python_library(
@@ -34,4 +35,11 @@ tine_python_library(
     srcs = ["transaction.py"],
     deps = ["//:util"],
     visibility = ["PUBLIC"],
+)
+
+box_python_test(
+    name = "test",
+    box = "tine//catalog:fedora.rawhide.box",
+    srcs = ["installer_test.py"],
+    deps = [":installer"],
 )
