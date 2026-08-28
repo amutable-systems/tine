@@ -84,6 +84,8 @@ image.bootable_disk(
         # Plain data for the boot smoke's negative proof: a DDI the policy must refuse.
         image.copy(":demo-ext-unsigned", "/usr/share/tine-example/demo-ext-unsigned.raw"),
     ],
+    # An ESP-only path makes deferred metadata cross root, identity, and ESP before repart applies it.
+    tmpfiles = ["d /boot/tine-tmpfiles 0700 - -"],
     # This key signs the UKIs and systemd-boot, puts auto-enrollment files onto the ESP, and signs
     # the verity root hash. For a key that caches across workspaces, see image.pem_signing_key() under
     # "Secure Boot signing" in images.md.
@@ -242,6 +244,7 @@ box.sh_test(
     args = [
         "$(location :image[disk-manifest])",
         '"name":"usr/bin/bash"',
+        '"name":"boot/tine-tmpfiles","type":"dir","mode":448',
         '"name":"boot/EFI/Linux',
     ],
 )
