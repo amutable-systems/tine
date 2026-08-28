@@ -341,10 +341,11 @@ box.sh_test(
 )
 
 # Compare the current builds to the checksums in ./expected.json to validate reproducibility: between
-# local developer machine and GitHub runner, at different times. The image does not have any external
-# input (such as a git-derived version) and hence should only change with zsh (on catalog updates) or
-# build rule updates. When one of those moved it legitimately, record the new checksums with
-# `buck run tine//examples/image:refresh-expected` and commit them with the change that moved them.
+# local developer machine and GitHub runner, at different times. Neither image has an external input
+# such as a git-derived version, so a digest only moves when the catalog pins a package the image
+# carries or a build rule changes what it writes. When one of those moved it legitimately, record the
+# new checksums with `buck run tine//examples/image:refresh-expected` and commit them with the change
+# that moved them.
 box.sh_test(
     name = "reproducibility-test",
     labels = ["image"],
