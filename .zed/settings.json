@@ -1,5 +1,11 @@
 {
   "lsp": {
+    "buck2-lsp": {
+      "binary": {
+        "path": "bin/tine",
+        "arguments": ["buck", "--isolation-dir", "lsp", "lsp"]
+      }
+    },
     "ty": {
       "binary": {
         "path": "tools/ty",
@@ -8,6 +14,9 @@
     }
   },
   "languages": {
+    "Starlark": {
+      "language_servers": ["buck2-lsp"]
+    },
     "Python": {
       "language_servers": ["ty", "ruff"]
     }
