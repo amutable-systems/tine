@@ -40,6 +40,6 @@ def run(prog: str, unpack: Callable[[Path, Path], int], argv: list[str] | None =
     packages = expand(spec["packages"])
     if not packages:
         raise SystemExit(f"{prog}: no packages to extract")
-    total = sum(unpack(package, dest) for package in packages)
-    rootfs.capture(dest)
+    with rootfs.capture_on_exit(dest):
+        total = sum(unpack(package, dest) for package in packages)
     print(f"extracted {total} entries from {len(packages)} package(s) into {dest}", file=sys.stderr)

@@ -133,12 +133,8 @@ def run(
             apivfs=True,
         )
     else:
-        root = rootfs.rootfs(BUILDROOT, bind=target, apivfs=True)
+        root = rootfs.rootfs(BUILDROOT, bind=target, capture_bind=True, apivfs=True)
 
     with root:
         install(packages_dir, Path(BUILDROOT), spec, layered)
         _normalize(Path(BUILDROOT), spec)
-
-    if not layered:
-        # Capture after teardown so the walk cannot descend into apivfs mounts.
-        rootfs.capture(target)
