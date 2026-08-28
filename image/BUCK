@@ -53,6 +53,11 @@ tine_python_library(
     srcs = ["kmod.py"],
 )
 
+tine_python_library(
+    name = "version",
+    srcs = ["version.py"],
+)
+
 # A project's own template in, the file an image installs out.
 tine_python_binary(
     name = "substitute",
@@ -75,10 +80,12 @@ box_python_test(
         "substitute_test.py",
         "uki.py",
         "uki_test.py",
+        "version_test.py",
     ],
     deps = [
         ":finalize",
         ":kmod",
+        ":version",
         "//:specs",
         "//:util",
         "//archive:cpio",
@@ -156,8 +163,8 @@ tine_python_binary(
         ":artifacts-lib",
         ":finalize",
         ":kmod",
+        ":version",
         "//:specs",
-        "//vendor:mkosi",
     ],
     visibility = ["PUBLIC"],
 )

@@ -19,7 +19,6 @@ src = [
     "package_system/pacman",
     "package_system/rpm",
     "rootfs",
-    "vendor",
 ]
 lint.select = [
     "E",    # pycodestyle
@@ -33,7 +32,3 @@ lint.select = [
     # what keeps bin/tine's quoted ones quoted.
     "FA102",
 ]
-
-[tool.ruff.lint.per-file-ignores]
-# Keep the vendored implementation byte-for-byte identical after its provenance header.
-"vendor/mkosi/versioncomp.py" = ["ANN204"]
