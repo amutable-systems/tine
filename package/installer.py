@@ -84,6 +84,8 @@ def _normalize(installroot: Path, spec: InstallSpec) -> None:
     """
     # ldconfig's auxiliary cache stores inode numbers and mtimes; ld.so.cache itself does not.
     (installroot / "var/cache/ldconfig/aux-cache").unlink(missing_ok=True)
+    # from systemd-udev's scriptlet, not meant for images (see systemd docs/BUILDING_IMAGES.md)
+    (installroot / "var/lib/systemd/random-seed").unlink(missing_ok=True)
     if spec["box_config"]:
         _configure_box(installroot)
 
