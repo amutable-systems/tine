@@ -6,7 +6,7 @@ box_python_test(
     name = "test",
     box = "//tools:dev.box",
     # Runtime path setup handles imports, but the type checker still needs the dependency.
-    deps = ["//vendor:mkosi"],
+    deps = ["//box:isolation"],
     srcs = [
         "tine",
         "tine_test.py",

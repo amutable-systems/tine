@@ -1,4 +1,4 @@
-"""Run commands with pinned userspace through the vendored mkosi sandbox.
+"""Run commands with pinned userspace through Tine's Linux sandbox.
 
 The default mode provides a clean, isolated build environment. `--relaxed` retains the
 pinned userspace but exposes host devices, services, environment, cwd, and network.
@@ -8,11 +8,12 @@ Target-root setup belongs to rootfs.py rather than this launcher.
 import argparse
 import os
 import re
-import tempfile
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
-import mkosi.sandbox
+from isolation import Bind, Devices, Filesystem, Sandbox, SandboxOSError, Symlink, Tmpfs, enter
 
 # Hermetic sandbox mount point of the project (host cwd). A path of tine's own rather than just keeping
 # the host path: a project under /var/lib or /root would otherwise have to be mounted inside one of the
@@ -32,7 +33,7 @@ _TOOLS_LINKS = ("bin", "sbin", "lib", "lib32", "lib64")
 _HOST_SKIP = frozenset({"proc", "nix", "etc", *_TOOLS_DIRS, *_TOOLS_LINKS})
 _HOST_ETC = ("machine-id",)
 
-# Deterministic environment replacing mkosi-sandbox's inherited host environment.
+# Deterministic environment replacing the sandbox's inherited host environment.
 _BASE_ENV = {
     "PATH": "/usr/bin:/usr/sbin:/bin:/sbin",
     "HOME": "/root",
@@ -44,16 +45,27 @@ _BASE_ENV = {
 }
 
 
-def _abs(p: str) -> str:
+@dataclass(frozen=True)
+class Launch:
+    """Pair one sandbox description with the process it launches."""
+
+    sandbox: Sandbox
+    command: tuple[str, ...]
+    environment: dict[str, str]
+
+
+def _abs(p: str) -> Path:
     # Bind sources are mounted after the sandbox has changed root, so they cannot stay relative.
-    return str(Path(p).absolute())
+    path = Path(p)
+    return path if path.is_absolute() else Path.cwd() / path
 
 
-def _relocate(value: str, cwd: str) -> str:
+def _relocate(value: str, cwd: Path) -> str:
     """Point an absolute path into the project at where the sandbox mounts the project."""
-    if value == cwd:
+    current = str(cwd)
+    if value == current:
         return _PROJECT
-    return value.replace(cwd + "/", _PROJECT + "/")
+    return value.replace(current + "/", _PROJECT + "/")
 
 
 def _kv(pairs: list[str], sep: str) -> list[tuple[str, str]]:
@@ -66,34 +78,34 @@ def _kv(pairs: list[str], sep: str) -> list[tuple[str, str]]:
     return out
 
 
-def _relaxed(tools: Path) -> list[str]:
+def _relaxed(tools: Path) -> list[Filesystem]:
     """Mount pinned userspace over a host-integrated root."""
-    out = []
+    out: list[Filesystem] = []
     for name in _TOOLS_DIRS:
         if (tools / name).is_dir():
-            out += ["--ro-bind", str(tools / name), "/" + name]
+            out.append(Bind(tools / name, Path("/") / name, readonly=True))
     for name in _TOOLS_LINKS:
         entry = tools / name
         if entry.is_symlink():
-            out += ["--symlink", str(entry.readlink()), "/" + name]
+            out.append(Symlink(entry.readlink(), Path("/") / name))
         elif entry.is_dir():
-            out += ["--ro-bind", str(entry), "/" + name]
+            out.append(Bind(entry, Path("/") / name, readonly=True))
     for entry in sorted(Path("/").iterdir()):
         if entry.name in _HOST_SKIP:
             continue
         if entry.is_symlink():
-            out += ["--symlink", str(entry.readlink()), str(entry)]
+            out.append(Symlink(entry.readlink(), entry))
         else:
-            out += ["--bind", str(entry), str(entry)]
+            out.append(Bind(entry, entry))
     if (tools / "etc").is_dir():
-        out += ["--ro-bind", str(tools / "etc"), "/etc"]
+        out.append(Bind(tools / "etc", Path("/etc"), readonly=True))
     for f in _HOST_ETC:
         if Path("/etc", f).exists() and (tools / "etc" / f).exists():
-            out += ["--ro-bind", f"/etc/{f}", f"/etc/{f}"]
+            out.append(Bind(Path("/etc") / f, Path("/etc") / f, readonly=True))
     return out + _identity(tools)
 
 
-def _identity(tools: Path) -> list[str]:
+def _identity(tools: Path) -> list[Filesystem]:
     """Make the invoking uid/gid resolvable inside the sandbox.
 
     Relaxed /etc comes from the tools tree, which lists only system users. On a host the caller's uid
@@ -113,27 +125,27 @@ def _identity(tools: Path) -> list[str]:
         "passwd": f"{name}:x:{uid}:{gid}::{home}:/bin/sh\n",
         "group": f"{name}:x:{gid}:\n",
     }
-    out = []
+    out: list[Filesystem] = []
     for base, entry in tables.items():
         source = tools / "etc" / base
         content = source.read_text(encoding="utf-8") if source.exists() else ""
         # Deterministic per-uid path: overwritten each run rather than accumulated, and O_NOFOLLOW so
         # a pre-planted symlink can't redirect the write.
-        path = Path(tempfile.gettempdir(), f".tine-sandbox-{base}-{uid}")
+        path = Path("/var/tmp", f".tine-sandbox-{base}-{uid}")
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(content + entry)
-        out += ["--ro-bind", str(path), f"/etc/{base}"]
+        out.append(Bind(path, Path("/etc") / base, readonly=True))
     return out
 
 
-def _box(name: str) -> list[str]:
+def _box(name: str) -> dict[str, str]:
     """Announce the box in the environment, counting depth when boxes nest."""
     previous = os.environ.get("TINE_BOX", "") if os.environ.get("TINE_IN_BOX") else ""
     if previous:
         level = _BOX_LEVEL.search(previous)
         name = f"{name}:{int(level.group('level')) + 1 if level else 2}"
-    out = ["--setenv", "TINE_BOX", name, "--setenv", "TINE_IN_BOX", "1"]
+    out = {"TINE_BOX": name, "TINE_IN_BOX": "1"}
 
     # Starship owns the prompt layout; TINE_BOX is rendered through its env_var module instead.
     if os.environ.get("STARSHIP_SHELL"):
@@ -144,7 +156,8 @@ def _box(name: str) -> list[str]:
         prefix = prefix.replace(marker, f"({name})", 1)
     else:
         prefix = f"({name}){prefix}"
-    return out + ["--setenv", "SHELL_PROMPT_PREFIX", prefix]
+    out["SHELL_PROMPT_PREFIX"] = prefix
+    return out
 
 
 def _parse(argv: list[str] | None) -> argparse.Namespace:
@@ -174,46 +187,52 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     return args
 
 
-def _argv(args: argparse.Namespace) -> list[str]:
-    """Translate the request into the vendored sandbox's own command line."""
-    out: list[str] = []
+def _tty() -> Path | None:
+    try:
+        return Path(os.ttyname(2)) if os.isatty(2) else None
+    except FileNotFoundError:
+        return None
 
-    cwd = os.getcwd() if args.bind_cwd else None
+
+def _launch(args: argparse.Namespace) -> Launch:
+    """Translate the command-line request into the Python sandbox interface."""
+    filesystems: list[Filesystem] = []
+    cwd = Path.cwd() if args.bind_cwd else None
 
     # Recreate usr-merge symlinks instead of binding through them.
     tools = Path(args.tools).resolve()
     if args.relaxed:
-        out += _relaxed(tools)
+        filesystems += _relaxed(tools)
     else:
         for entry in sorted(tools.iterdir()):
             if entry.name in _PROVIDED:
                 continue
-            dest = "/" + entry.name
+            dest = Path("/") / entry.name
             if entry.is_symlink():
-                out += ["--symlink", str(entry.readlink()), dest]
+                filesystems.append(Symlink(entry.readlink(), dest))
             elif entry.is_dir():
-                out += ["--ro-bind", str(entry), dest]
+                filesystems.append(Bind(entry, dest, readonly=True))
 
     for src, dest in _kv(args.ro_bind, ":"):
-        out += ["--ro-bind", _abs(src), dest]
+        filesystems.append(Bind(_abs(src), Path(dest), readonly=True))
 
-    chdir = None
-    command = args.cmd
+    chdir: Path | None = None
+    command = tuple(args.cmd)
     if cwd:
-        out += ["--bind", cwd, _PROJECT]
-        chdir = _PROJECT
+        filesystems.append(Bind(cwd, Path(_PROJECT)))
+        chdir = Path(_PROJECT)
 
         # A build action names its artifacts project-relative, but `buck run` calls the same command with
         # an absolute path, so translate it for our PROJECT mount. Only the command needs it: a bind
         # source is resolved on the host, and a setenv value carries a path inside the sandbox already.
-        command = [_relocate(argument, cwd) for argument in command]
+        command = tuple(_relocate(argument, cwd) for argument in command)
 
     # Package scripts require writable API and temporary filesystems.
-    out += ["--bind", "/proc", "/proc"]
+    filesystems.append(Bind(Path("/proc"), Path("/proc")))
     if not args.relaxed:
-        out += ["--dev", "/dev"]
-        out += ["--tmpfs", "/run"]
-        out += ["--tmpfs", "/tmp"]
+        filesystems.append(Devices(Path("/dev"), _tty()))
+        filesystems.append(Tmpfs(Path("/run")))
+        filesystems.append(Tmpfs(Path("/tmp")))
 
         # Everything large stages under /var/tmp, which TMPDIR points at: back it with Buck's
         # on-disk per-action scratch directory rather than a tmpfs, since staging trees run into
@@ -227,52 +246,72 @@ def _argv(args: argparse.Namespace) -> list[str]:
         if cwd and "BUCK_SCRATCH_PATH" in os.environ:
             staging = Path(cwd, os.environ["BUCK_SCRATCH_PATH"])
         if staging is None:
-            out += ["--tmpfs", "/var/tmp"]
+            filesystems.append(Tmpfs(Path("/var/tmp")))
         else:
             backing = staging / "var-tmp"
             backing.mkdir(parents=True, exist_ok=True)
-            out += ["--bind", str(backing), "/var/tmp"]
+            filesystems.append(Bind(backing, Path("/var/tmp")))
 
+    environment = dict(os.environ) if args.relaxed else dict(_BASE_ENV)
+    if not args.relaxed and args.bind_cwd and "BUCK_SCRATCH_PATH" in os.environ:
+        environment["BUCK_SCRATCH_PATH"] = os.environ["BUCK_SCRATCH_PATH"]
     if args.source_date_epoch is not None:
-        out += ["--setenv", "SOURCE_DATE_EPOCH", str(args.source_date_epoch)]
+        environment["SOURCE_DATE_EPOCH"] = str(args.source_date_epoch)
     for k, v in _kv(args.setenv, "="):
-        out += ["--setenv", k, v]
+        environment[k] = v
     if args.box:
-        out += _box(args.box)
+        environment.update(_box(args.box))
     if args.relaxed:
         # Resolve through the host /run while keeping the tools tree's /etc.
         if Path("/etc/resolv.conf").exists():
-            out += ["--ro-bind-nofollow", "/etc/resolv.conf", "/etc/resolv.conf"]
-        chdir = chdir or os.getcwd()
+            filesystems.append(
+                Bind(
+                    Path("/etc/resolv.conf"),
+                    Path("/etc/resolv.conf"),
+                    readonly=True,
+                    nofollow=True,
+                )
+            )
+        chdir = chdir or Path.cwd()
     elif args.network:
         # Preserve box CA trust but use the host resolver and its /run target.
-        out += ["--ro-bind-nofollow", "/etc/resolv.conf", "/etc/resolv.conf", "--ro-bind", "/run", "/run"]
-    else:
-        out += ["--unshare-net"]
-    if chdir:
-        out += ["--chdir", chdir]
+        filesystems.append(
+            Bind(
+                Path("/etc/resolv.conf"),
+                Path("/etc/resolv.conf"),
+                readonly=True,
+                nofollow=True,
+            )
+        )
+        filesystems.append(Bind(Path("/run"), Path("/run"), readonly=True))
 
-    # Builds need fakeroot semantics; relaxed tools must remain the invoking user.
-    if not args.relaxed:
-        out += ["--suppress-chown", "--suppress-sync", "--become-root"]
-    out += ["--", *command]
-    return out
+    return Launch(
+        sandbox=Sandbox(
+            filesystems=tuple(filesystems),
+            chdir=chdir,
+            become_root=not args.relaxed,
+            isolate_network=not args.relaxed and not args.network,
+            suppress_chown=not args.relaxed,
+            suppress_sync=not args.relaxed,
+        ),
+        command=command,
+        environment=environment,
+    )
 
 
 def main(argv: list[str] | None = None) -> NoReturn:
     args = _parse(argv)
-    # Composing reads the environment, so compose before replacing it below.
-    out = _argv(args)
-
-    # Keep only Buck's on-disk scratch path when replacing the host environment.
-    if not args.relaxed:
-        scratch = os.environ.get("BUCK_SCRATCH_PATH") if args.bind_cwd else None
-        os.environ.clear()
-        os.environ.update(_BASE_ENV)
-        if scratch:
-            os.environ["BUCK_SCRATCH_PATH"] = scratch
-    mkosi.sandbox.main(out)  # calls enter() then os.execvp; never returns
-    raise SystemExit(127)  # unreachable; for the type checker
+    launch = _launch(args)
+    try:
+        enter(launch.sandbox)
+    except SandboxOSError as error:
+        print(error.message, file=sys.stderr)
+        raise
+    try:
+        os.execvpe(launch.command[0], launch.command, launch.environment)
+    except FileNotFoundError:
+        raise SystemExit(127) from None
+    raise SystemExit(127)
 
 
 if __name__ == "__main__":

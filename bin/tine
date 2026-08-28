@@ -652,15 +652,15 @@ def marker(digest: str) -> str:
     return f"{digest} {namespace}"
 
 
-def _vendored() -> None:
-    """Make the vendored mkosi sandbox importable: `-I` puts nothing on the import path."""
-    path = str(cell_root() / "vendor")
+def _load_isolation() -> None:
+    """Make the sandbox primitives importable when isolated Python omits the project."""
+    path = str(cell_root() / "box")
     if path not in sys.path:
         sys.path.insert(0, path)
     try:
-        import mkosi.sandbox  # noqa: F401
+        __import__("isolation")
     except ImportError as error:
-        raise fail(f"cannot load the vendored sandbox from {path}: {error}") from error
+        raise fail(f"cannot load the sandbox primitives from {path}: {error}") from error
 
 
 def constrained_config(buckconfig: bytes, digest: str) -> bytes:
@@ -682,16 +682,16 @@ def create(root: Path, mounts: dict[str, str], digest: str, buckconfig: bytes) -
     except OSError as error:
         raise fail(f"cannot prepare {private.parent}: {error}") from error
 
-    _vendored()
-    from mkosi import sandbox
+    _load_isolation()
+    import isolation
 
     try:
         # Always make a namespace, even with CAP_SYS_ADMIN, so mount authority stays scoped to this
         # invocation.
-        sandbox.unprivileged_userns(foreign=False, become_root=False)
-        sandbox.fix_userns_capabilities(network=False)
-        sandbox.unshare(sandbox.CLONE_NEWNS)
-    except sandbox.SandboxOSError as error:
+        isolation.unprivileged_user_namespace(become_root=False)
+        isolation.fix_user_namespace_capabilities(network=False)
+        isolation.unshare(isolation.CLONE_NEWNS)
+    except isolation.SandboxOSError as error:
         # SandboxOSError carries the kernel or sysctl explanation in its message.
         print(error.message, file=sys.stderr)
         raise fail("cannot create the mount namespace") from error
@@ -699,14 +699,14 @@ def create(root: Path, mounts: dict[str, str], digest: str, buckconfig: bytes) -
         raise fail(f"cannot create the mount namespace: {error}") from error
 
     try:
-        sandbox.mount("tmpfs", str(private.parent), "tmpfs", 0, "mode=0755")
+        isolation.mount(Path("tmpfs"), private.parent, "tmpfs", options="mode=0755")
         private.write_bytes(constrained_config(buckconfig, digest))
     except OSError as error:
         raise fail(f"cannot prepare buck2's private root config: {error}") from error
 
     for target, source in mounts.items():
         try:
-            sandbox.mount(source, str(root / target), "", sandbox.MS_BIND | sandbox.MS_REC, "")
+            isolation.mount(Path(source), root / target, flags=isolation.MS_BIND | isolation.MS_REC)
         except OSError as error:
             raise fail(f"mount {target}: cannot build it from {source}: {error}") from error
 
@@ -717,7 +717,7 @@ def create(root: Path, mounts: dict[str, str], digest: str, buckconfig: bytes) -
         raise fail(f"{original} is a symlink, so the daemon constraint cannot be bound over it")
     try:
         # Buck reads daemon startup constraints directly from the root config without following includes.
-        sandbox.mount(str(private), str(original), "", sandbox.MS_BIND, "")
+        isolation.mount(private, original, flags=isolation.MS_BIND)
     except OSError as error:
         raise fail(f"cannot expose the mount digest to buck2: {error}") from error
 
