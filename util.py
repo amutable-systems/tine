@@ -275,3 +275,29 @@ def nested_buck() -> str:
 def buck_output(buck: str, *args: str) -> str:
     """One nested Buck command, its stdout stripped."""
     return subprocess.run([buck, *args], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def package_directory(buck: str, package: str) -> Path:
+    """Where a `cell//path` package label lives on disk, asked of Buck rather than assumed."""
+    cell, separator, path = package.partition("//")
+    if not separator or not cell or ":" in package or "..." in package:
+        raise SystemExit(f"expected a cell-relative package label, got {package!r}")
+    return Path(buck_output(buck, "audit", "cell", cell, "--paths-only")) / path
+
+
+def commit_paths(directory: Path, pathspec: str, subject: str) -> bool:
+    """Commit `pathspec` under `directory` if it changed, returning whether it did.
+
+    If there are no changes, no commits are made. These are mechanical, so they are not signed off.
+    """
+    git = ["git", "-C", str(directory)]
+    status = subprocess.run(
+        [*git, "status", "--porcelain", "--", pathspec], check=True, capture_output=True, encoding="utf-8"
+    )
+    if not status.stdout:
+        return False
+    subprocess.run([*git, "add", "--", pathspec], check=True)
+    subprocess.run(
+        [*git, "commit", "--file=-", "--", pathspec], input=f"{subject}\n", encoding="utf-8", check=True
+    )
+    return True

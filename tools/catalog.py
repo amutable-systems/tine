@@ -23,7 +23,15 @@ from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from util import atomic_write_text, buck_output, nested_buck, urlopen, with_retries
+from util import (
+    atomic_write_text,
+    buck_output,
+    commit_paths,
+    nested_buck,
+    package_directory,
+    urlopen,
+    with_retries,
+)
 
 DEFAULT_CATALOG = "tine//catalog"
 BOX_LABEL = "tine:box"
@@ -52,11 +60,7 @@ def _catalog_directory(buck: str, targets: list[str]) -> Path:
     packages = {target.rsplit(":", 1)[0] for target in targets}
     if len(packages) != 1:
         raise SystemExit(f"catalog: expected targets in one package, found {sorted(packages)}")
-    cell, separator, package = packages.pop().partition("//")
-    if not separator or not cell:
-        raise SystemExit("catalog: Buck returned a target without a canonical cell")
-    cell_root = Path(buck_output(buck, "audit", "cell", cell, "--paths-only"))
-    return cell_root / package
+    return package_directory(buck, packages.pop())
 
 
 def _snapshot_path(target: str, kind: str, suffix: str) -> Path:
@@ -316,19 +320,10 @@ def _commit(catalog_dir: Path) -> None:
     """Commit the refreshed catalog, pins and snapshots alike.
 
     Scoped to the catalog directory rather than the files just written: advancing a pin rewrites
-    the declaration too, and a repository snapshotted for the first time is not tracked yet. These
-    are mechanical, machine-generated commits, so they are not signed off.
+    the declaration too, and a repository snapshotted for the first time is not tracked yet.
     """
-    git = ["git", "-C", str(catalog_dir)]
-    status = subprocess.run(
-        [*git, "status", "--porcelain", "--", "."], check=True, capture_output=True, encoding="utf-8"
-    )
-    if not status.stdout:
+    if not commit_paths(catalog_dir, ".", "catalog: Refresh pinned snapshots and box locks"):
         print("==> the catalog is already up to date, nothing to commit", file=sys.stderr)
-        return
-    message = "catalog: Refresh pinned snapshots and box locks\n"
-    subprocess.run([*git, "add", "--", "."], check=True)
-    subprocess.run([*git, "commit", "--file=-", "--", "."], input=message, encoding="utf-8", check=True)
 
 
 def _differences(committed: Path, regenerated: str, limit: int = 24) -> str:
