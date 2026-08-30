@@ -13,7 +13,7 @@ import os
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
-from typing import NamedTuple, Self
+from typing import NamedTuple, Self, cast
 
 MODULES = PurePosixPath("usr/lib/modules")
 FIRMWARE = PurePosixPath("usr/lib/firmware")
@@ -252,7 +252,7 @@ class Kmod:
         entry = head
         while entry:
             yield entry
-            entry = self._lib.kmod_list_next(head, entry)
+            entry = cast(Handle | None, self._lib.kmod_list_next(head, entry))
 
     @contextmanager
     def _lookup(self, name: str) -> Iterator[Handle | None]:

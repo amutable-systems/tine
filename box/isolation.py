@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 AT_EMPTY_PATH = 0x1000
 AT_FDCWD = -100
@@ -197,7 +198,7 @@ def unshare(flags: int) -> None:
 
 
 def _prctl(option: int, argument: int) -> int:
-    result = _LIBC.prctl(option, argument, 0, 0, 0)
+    result = cast(int, _LIBC.prctl(option, argument, 0, 0, 0))
 
     if result < 0:
         _error("prctl")
@@ -409,13 +410,16 @@ def _open_tree(path: Path, *, recursive: bool) -> int:
     try:
         function = _LIBC.open_tree
         function.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
-        result = function(AT_FDCWD, os.fsencode(path), flags)
+        result = cast(int, function(AT_FDCWD, os.fsencode(path), flags))
     except AttributeError:
-        result = _LIBC.syscall(
-            ctypes.c_long(_NR_OPEN_TREE),
-            ctypes.c_int(AT_FDCWD),
-            ctypes.c_char_p(os.fsencode(path)),
-            ctypes.c_uint(flags),
+        result = cast(
+            int,
+            _LIBC.syscall(
+                ctypes.c_long(_NR_OPEN_TREE),
+                ctypes.c_int(AT_FDCWD),
+                ctypes.c_char_p(os.fsencode(path)),
+                ctypes.c_uint(flags),
+            ),
         )
 
     if result < 0:
