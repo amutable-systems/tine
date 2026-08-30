@@ -1054,8 +1054,9 @@ class TestEnter(MountTestCase):
     def test_project_daemon_buster_is_rejected(self) -> None:
         self.declare_one()
         config = {"buck2": {tine.DAEMON_BUSTER: "project-owned"}}
-        with self.assertRaisesRegex(SystemExit, "daemon_buster is reserved"), self.running() as execve:
-            tine.enter(self.root, config, ["buck", "build"])
+        with self.running() as execve:
+            with self.assertRaisesRegex(SystemExit, "daemon_buster is reserved"):
+                tine.enter(self.root, config, ["buck", "build"])
         self.assertEqual((self.made, execve), ([], []))
 
 
