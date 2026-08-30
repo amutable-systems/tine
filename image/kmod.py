@@ -374,7 +374,9 @@ def _chase(tree: Path, rel: PurePosixPath) -> Iterator[PurePosixPath]:
                 if (tree / current).is_symlink():
                     break
         else:
-            yield current
+            # ty bug: it infers different types for `current` between these two loops, so
+            # annotating makes errors worse
+            yield current  # ty: ignore[unsound-yield]
             return
         yield current
         target = PurePosixPath(os.readlink(tree / current))
