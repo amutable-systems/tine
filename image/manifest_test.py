@@ -26,7 +26,7 @@ def parse(data: bytes) -> list[dict[str, object]]:
     head, separator, rest = data.partition(b"\x1e")
     assert separator, "no record separator in the stream"
     assert head == b"", "the stream begins with something other than a record"
-    objects = []
+    objects: list[dict[str, object]] = []
     for record in rest.split(b"\x1e"):
         assert record.endswith(b"\n"), "a record is not terminated by a line feed"
         objects.append(json.loads(record.decode("utf-8")))

@@ -34,7 +34,7 @@ class Source:
 def pe_sections(path: Path) -> dict[str, Section]:
     try:
         with pefile.PE(str(path), fast_load=True) as image:
-            sections = {}
+            sections: dict[str, Section] = {}
             file_size = path.stat().st_size
             for pe_section in image.sections:
                 name = pe_section.Name.partition(b"\0")[0].decode("ascii", "strict")

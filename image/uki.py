@@ -157,7 +157,7 @@ def _signing_arguments(
     The Secure Boot key signs the UKI and the kernel in it, the expected-PCR key seals the policy
     the booted system unseals its secrets against. Either can be absent.
     """
-    signing = []
+    signing: list[str] = []
     if secure_boot:
         signing = [
             "--signtool", "systemd-sbsign",
