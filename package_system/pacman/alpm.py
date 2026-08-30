@@ -302,7 +302,7 @@ class Alpm:
     def _each(self, head: ctypes._Pointer[_List]) -> Iterator[ctypes.c_void_p]:
         node = head
         while node:
-            yield node.contents.data
+            yield cast(ctypes.c_void_p, node.contents.data)
             node = node.contents.next
 
     def _on_question(self, _context: ctypes.c_void_p, question: ctypes.c_void_p) -> None:
@@ -317,7 +317,7 @@ class Alpm:
         select.use_index = 0
 
     def _name(self, package: ctypes.c_void_p) -> str:
-        return self._lib.alpm_pkg_get_name(package).decode()
+        return cast(str, self._lib.alpm_pkg_get_name(package).decode())
 
     def register(self, name: str) -> None:
         """Make one staged database available to resolve against, in priority order."""
@@ -335,7 +335,8 @@ class Alpm:
         if not local:
             return True
         installed = self._lib.alpm_pkg_get_version(local)
-        return self._lib.alpm_pkg_vercmp(installed, self._lib.alpm_pkg_get_version(package)) < 0
+        older = self._lib.alpm_pkg_vercmp(installed, self._lib.alpm_pkg_get_version(package))
+        return cast(int, older) < 0
 
     def _target(self, spec: str) -> list[ctypes.c_void_p]:
         """The packages one install spec names, whether it names a package or a group."""
