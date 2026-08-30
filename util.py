@@ -51,7 +51,7 @@ def _zstd(stream: IO[bytes]) -> io.BufferedIOBase:
 # What a compressed stream starts with, and what opens it. A file's name is not authoritative
 # about how it was compressed, and a repository is free to change compressor between releases,
 # so every reader here selects one from the bytes instead.
-_COMPRESSORS = (
+_COMPRESSORS: tuple[tuple[bytes, Callable[[IO[bytes]], io.BufferedIOBase]], ...] = (
     (b"\x28\xb5\x2f\xfd", _zstd),
     (b"\x1f\x8b", lambda stream: gzip.GzipFile(fileobj=stream, mode="rb")),
     (b"\xfd7zXZ\x00", lambda stream: lzma.LZMAFile(stream, mode="rb")),

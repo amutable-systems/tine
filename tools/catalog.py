@@ -99,7 +99,7 @@ def _pinned_repositories(buck: str, catalog: str, label: str, prefix: str) -> di
         "--output-attribute=^metadata$",
         f"attrfilter(labels, '{label}', {catalog})",
     )
-    repositories = {}
+    repositories: dict[str, dict[str, str]] = {}
     for target, attributes in json.loads(out).items():
         metadata = attributes.get("metadata") or {}
         pin = {

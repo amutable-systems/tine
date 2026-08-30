@@ -278,7 +278,7 @@ class Kmod:
         if self._lib.kmod_module_get_info(mod, ctypes.byref(head)) < 0:
             return []
         try:
-            fields = []
+            fields: list[tuple[str, str]] = []
             for entry in self._each(head.value):
                 key = self._lib.kmod_module_info_get_key(entry)
                 value = self._lib.kmod_module_info_get_value(entry)
@@ -302,7 +302,7 @@ class Kmod:
         pre, post = ctypes.c_void_p(), ctypes.c_void_p()
         if self._lib.kmod_module_get_softdeps(mod, ctypes.byref(pre), ctypes.byref(post)) < 0:
             return []
-        names = []
+        names: list[str] = []
         for head in (pre, post):
             if not head.value:
                 continue
