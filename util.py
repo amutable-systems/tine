@@ -115,7 +115,8 @@ def urlopen(url: str, *, agent: str) -> http.client.HTTPResponse:
 
     CDN bot filters (e.g. Cloudflare's) reject Python's default Python-urllib agent.
     """
-    return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": agent}))
+    request = urllib.request.Request(url, headers={"User-Agent": agent})
+    return cast(http.client.HTTPResponse, urllib.request.urlopen(request))
 
 
 def with_retries[T](what: str, operation: Callable[[], T]) -> T:
@@ -250,7 +251,7 @@ def text_destination(path: Path) -> Iterator[TextIO]:
     stdout reaches the caller unmediated.
     """
     if str(path) == "-":
-        yield sys.stdout
+        yield cast(TextIO, sys.stdout)
         sys.stdout.flush()
         return
     with atomic_text_writer(path) as stream:

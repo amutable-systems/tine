@@ -62,7 +62,7 @@ Arch = Literal["x86_64", "aarch64"]
 BuildRequiresArch = Arch | Literal["_all"]
 
 # runtime constant
-BUILD_ARCHES: tuple[Arch, ...] = get_args(Arch)
+BUILD_ARCHES = cast(tuple[Arch, ...], get_args(Arch))
 # per-branch curation metadata; underscore makes it not a valid package name and ignored
 BRANCH_PROPERTIES = "_properties.json"
 
@@ -202,7 +202,7 @@ def urlopen_retry(url: str) -> bytes:
     for attempt in range(HTTP_RETRIES + 1):
         try:
             with urllib.request.urlopen(url) as response:
-                return response.read()
+                return cast(bytes, response.read())
         except urllib.error.HTTPError as e:
             if e.code not in RETRYABLE_STATUS or attempt == HTTP_RETRIES:
                 raise
@@ -440,8 +440,9 @@ def spec_defines(rpmfile: Path) -> dict[str, str]:
 
     m = re.search(r"\.(fc|el)(\d+)", release)
     assert m, f"no dist tag in srpm release {release!r}"
-    distro = {"fc": {"fedora": m.group(2)}, "el": {"rhel": m.group(2), "centos": m.group(2)}}
-    return {"dist": m.group(), **distro[m.group(1)], "autorelease": "1%{?dist}", "autochangelog": "%nil"}
+    tag, number = cast(str, m.group(1)), cast(str, m.group(2))
+    distro = {"fc": {"fedora": number}, "el": {"rhel": number, "centos": number}}
+    return {"dist": m.group(), **distro[tag], "autorelease": "1%{?dist}", "autochangelog": "%nil"}
 
 
 def spec_buildrequires(
@@ -1259,7 +1260,7 @@ def self_provide_vr(name: str, binmeta: BinaryMetadata) -> str | None:
     """
     for provide in binmeta["Provides"]:
         if m := re.match(rf"{re.escape(name)}(?:\(\S+\))? = (\S+)$", provide):
-            return m.group(1)
+            return cast(str, m.group(1))
     return None
 
 
@@ -1553,7 +1554,7 @@ def local_version_release(specfile: Path) -> tuple[str, str]:
     rm = re.search(r"^Release:\s*(\S+)", text, re.M)
     assert vm and rm, f"no Version/Release in {specfile}"
     release = "%autorelease" if "autorelease" in rm.group(1) else re.sub(r"%\{?\??dist\}?", "", rm.group(1))
-    return vm.group(1), release
+    return cast(str, vm.group(1)), release
 
 
 def srcpkg_vr(metafile: Path) -> str:
@@ -1783,7 +1784,7 @@ def release_bumped(c: str, rel: str) -> bool:
     """Whether commit `c` changed the spec's Release: line from its parent."""
     now = re.search(r"^Release:\s*(\S+)", spec_at(c, rel), re.M)
     was = re.search(r"^Release:\s*(\S+)", spec_at(f"{c}^", rel), re.M)
-    return now is not None and (was is None or now.group(1) != was.group(1))
+    return now is not None and (was is None or cast(str, now.group(1)) != cast(str, was.group(1)))
 
 
 def changelog_at(ref: str, rel: str) -> str:
