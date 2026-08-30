@@ -25,7 +25,11 @@ def _ty_check_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # A dep's sources are here to resolve imports, not to be checked: each is checked by its own
     # target, in the environment that target declares.
-    tree = ctx.actions.symlinked_dir("tree", flat_tree(ctx.attrs.srcs, ctx.attrs.deps))
+    # ty takes its settings from a `pyproject.toml` it discovers, where its --config-file wants a
+    # bare ty.toml; the check runs in a tree of its own, so the project's has to be laid out in it.
+    contents = flat_tree(ctx.attrs.srcs, ctx.attrs.deps)
+    contents["pyproject.toml"] = ctx.attrs._config
+    tree = ctx.actions.symlinked_dir("tree", contents)
 
     # ty reports through its exit status alone, so stamp the output buck tracks once it is happy.
     runner = ctx.actions.write(
@@ -55,8 +59,6 @@ def _ty_check_impl(ctx: AnalysisContext) -> list[Provider]:
             "check",
             "--project",
             tree,
-            "--config-file",
-            ctx.attrs._config,
             "--python",
             python,
         )

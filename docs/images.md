@@ -988,5 +988,5 @@ Add `--commit` to record the result as a git commit whose message itemizes each 
 Buck2 is declared like the rest, and `starlark-fmt` ships from the same fork release, so one run keeps
 the two on one tag. `bin/tine` fetches Buck2 itself, Buck2 then fetches the rest.
 
-python3 minor version stays pinned in ty.toml; updating to a new minor release stays a deliberate
+python3 minor version stays pinned in pyproject.toml; updating to a new minor release stays a deliberate
 manual change.

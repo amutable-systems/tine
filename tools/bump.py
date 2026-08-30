@@ -120,9 +120,10 @@ def _python_minor(path: Path | None) -> str:
     """
     if path is None:
         raise ValueError("a CPython pin needs --ty-config, the configuration pinning the minor")
-    data = _object(tomllib.loads(path.read_text(encoding="utf-8")), str(path))
-    environment = _object(data.get("environment"), f"environment table in {path}")
-    return _string(environment.get("python-version"), f"environment.python-version in {path}")
+    table = _object(tomllib.loads(path.read_text(encoding="utf-8")), str(path))
+    for key in ("tool", "ty", "environment"):
+        table = _object(table.get(key), f"{key} table in {path}")
+    return _string(table.get("python-version"), f"tool.ty.environment.python-version in {path}")
 
 
 def _asset_regex(artifact: str, tag: str, python_minor: Callable[[], str]) -> re.Pattern[str]:
@@ -270,7 +271,7 @@ def _parse_args() -> argparse.Namespace:
         "--ty-config",
         type=Path,
         metavar="PATH",
-        help="ty configuration whose python-version pins the CPython minor to bump within",
+        help="pyproject.toml whose tool.ty python-version pins the CPython minor to bump within",
     )
     parser.add_argument(
         "--tool",
