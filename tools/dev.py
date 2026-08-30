@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 
 def _bold(label: str) -> None:
@@ -34,8 +35,8 @@ def _cell_root(buck: str, cell: str) -> Path:
 
 def _starlark_srcs(buck: str) -> list[Path]:
     # Check every loaded in-tree Starlark file; ignore dead files, external cells, and JSON.
-    cells = json.loads(_buck_out(buck, "audit", "cell", "--json"))
-    aliases = json.loads(_buck_out(buck, "audit", "cell", "--json", "--aliases"))
+    cells = cast(dict[str, str], json.loads(_buck_out(buck, "audit", "cell", "--json")))
+    aliases = cast(dict[str, str], json.loads(_buck_out(buck, "audit", "cell", "--json", "--aliases")))
     roots = {path: name for name, path in sorted(cells.items()) if name not in ("none", "prelude")}
     universe = " + ".join(sorted(f"{name}//..." for name in roots.values()))
     project = Path(_buck_out(buck, "root", "--kind", "project"))
@@ -169,8 +170,9 @@ def _write_dot(path: Path, intra: dict[str, list[str]], rev: dict[str, list[str]
 
 def _scc(args: argparse.Namespace) -> None:
     # Graph derivation and cycle detection live in buck (rpm_branch); this only formats its output.
-    data = json.loads(_buck_out(args.buck, "build", f"{args.branch}:_buildrequires_graph", "--out", "-"))
-    edge_caps: dict[str, dict[str, list[str]]] = data["edges"]
+    graph = _buck_out(args.buck, "build", f"{args.branch}:_buildrequires_graph", "--out", "-")
+    data = cast(dict[str, Any], json.loads(graph))
+    edge_caps = cast(dict[str, dict[str, list[str]]], data["edges"])
     components: dict[int, set[str]] = {}
     for name, cid in data["sccs"].items():
         components.setdefault(cid, set()).add(name)

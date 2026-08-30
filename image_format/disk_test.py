@@ -11,6 +11,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 import disk
 
@@ -61,7 +62,7 @@ class TestCopyPartition(unittest.TestCase):
             }
             disk._copy_partition(row, "usr", blocks, metadata)
             self.assertEqual(blocks.stat().st_size, raw_size)
-            return json.loads(metadata.read_text())
+            return cast(dict[str, object], json.loads(metadata.read_text()))
 
     def test_records_the_published_name(self) -> None:
         metadata = self._copy(contents=b"x" * 512, raw_size=512)
