@@ -32,3 +32,9 @@ lint.select = [
     # what keeps bin/tine.py's quoted ones quoted.
     "FA102",
 ]
+
+[tool.ty.environment]
+python-version = "3.14"
+
+[tool.ty.rules]
+all = "error"

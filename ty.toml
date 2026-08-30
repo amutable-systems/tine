@@ -1,5 +1,0 @@
-[environment]
-python-version = "3.14"
-
-[rules]
-all = "error"
