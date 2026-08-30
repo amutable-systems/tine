@@ -22,6 +22,7 @@ import sys
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from util import (
     atomic_write_text,
@@ -192,7 +193,7 @@ def _newest_snapshot(repository: str, mirror: str, series: str) -> str:
 
     def enumerate_snapshots() -> list[object]:
         with urlopen(gateway + "/v2/enumerate", agent="tine-catalog") as response:
-            return json.load(response)
+            return cast(list[object], json.load(response))
 
     snapshots = with_retries(f"{repository}: enumerate", enumerate_snapshots)
     matches = [s for s in snapshots if isinstance(s, str) and _series(s) == series]

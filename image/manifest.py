@@ -23,6 +23,7 @@ from collections import Counter
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import specs
 
@@ -234,7 +235,7 @@ def _objects(source: Path) -> Iterator[dict[str, object]]:
     for index, record in enumerate(rest.split(_RS)):
         if not record.endswith(_LF):
             raise SystemExit(f"manifest: {source} holds a record that no line feed ends")
-        obj: dict[str, object] = json.loads(record)
+        obj = cast(dict[str, object], json.loads(record))
         if index == 0:
             if obj != {"mediaType": MEDIA_TYPE}:
                 raise SystemExit(f"manifest: {source} does not open with a {MEDIA_TYPE} object")

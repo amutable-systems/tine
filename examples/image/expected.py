@@ -9,6 +9,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from typing import cast
 
 from util import atomic_write_text, buck_output, nested_buck, package_directory
 
@@ -18,7 +19,8 @@ EXPECTATIONS = "expected.json"
 
 def _digests(buck: str, names: list[str]) -> dict[str, str]:
     targets = [f"{PACKAGE}:{name}" for name in names]
-    built: dict[str, str] = json.loads(buck_output(buck, "build", "--show-full-json-output", *targets))
+    output = buck_output(buck, "build", "--show-full-json-output", *targets)
+    built = cast(dict[str, str], json.loads(output))
     digests = {}
     for name, target in zip(names, targets, strict=True):
         path = built.get(target)
