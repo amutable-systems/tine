@@ -6,9 +6,8 @@ line-length = 109
 extend-exclude = ["buck-out"]
 # A command carries no suffix for the linters to recognize it by.
 extend-include = ["bin/tine"]
-# tine runs on whatever python the host has, before anything is fetched, so pyupgrade must not
-# rewrite it to syntax newer than the floor the README promises.
-per-file-target-version = { "bin/tine" = "py39", "bin/tine.py" = "py39" }
+# tine runs before anything is fetched, so pyupgrade must stay within the host-python floor.
+per-file-target-version = { "bin/tine" = "py312", "bin/tine.py" = "py312" }
 src = [
     "archive",
     "cargo",
@@ -28,9 +27,6 @@ lint.select = [
     "UP",   # pyupgrade
     "B",    # flake8-bugbear
     "ANN",  # flake8-annotations
-    # A union annotation that the file's own target python evaluates as a TypeError, which is
-    # what keeps bin/tine.py's quoted ones quoted.
-    "FA102",
 ]
 
 [tool.ty.environment]
