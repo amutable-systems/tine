@@ -1,8 +1,11 @@
 """Make one automatic change, test it, and open the pull request for it.
 
 Only one run of each kind is ever in flight: while a pull request or a failure issue carrying the run's
-label is open, this does nothing, and a failure opens that issue so the run stays paused until somebody
-closes it.
+label is open, this does nothing.
+
+ - If the command fails without generating a commit, open an issue and pass on the failing exit code.
+ - If the command or test fails, open a draft PR with a note, and pass on the failing exit code.
+ - Otherwise (everything succeeds), open a regular PR and exit zero.
 
 This is usually being called with the default GITHUB_TOKEN, which will not trigger further actions, in
 particular tests. Thus this script runs the tests directly.
@@ -45,11 +48,6 @@ def gh(*args: str) -> str:
     return _output(["gh", *args])
 
 
-def shell(command: str) -> None:
-    """Run a command line that came from configuration, as written."""
-    subprocess.run(command, shell=True, cwd=ROOT, check=True)
-
-
 def run_url(repository: str) -> str:
     """This workflow run, for a human following a link out of what we open."""
     server = os.environ["GITHUB_SERVER_URL"]
@@ -72,24 +70,16 @@ def blocked(label: str) -> bool:
     return bool(open_items)
 
 
-def commit_change(command: str, draft_exit: int) -> tuple[str | None, bool]:
+def commit_change(command: str) -> tuple[str | None, int]:
     """Run the command that commits the change.
 
-    Returns the commit it started from (None if it made none), and whether the command asked for a
-    draft. Any other exception, or the draft code without commits, propagates.
+    Returns the commit it started from, None if it made none, and the command's exit status.
     """
     git("config", "user.name", AUTHOR[0])
     git("config", "user.email", AUTHOR[1])
     before = git("rev-parse", "HEAD")
-    draft = False
-    try:
-        shell(command)
-    except subprocess.CalledProcessError as e:
-        # Only the agreed code, and only with commits to show for it, means "draft".
-        if e.returncode != draft_exit or git("rev-parse", "HEAD") == before:
-            raise
-        draft = True
-    return (before if git("rev-parse", "HEAD") != before else None), draft
+    status = subprocess.run(command, shell=True, cwd=ROOT).returncode
+    return (before if git("rev-parse", "HEAD") != before else None), status
 
 
 def open_pull_request(name: str, label: str, before: str, repository: str, draft_note: str) -> str:
@@ -113,12 +103,12 @@ def open_pull_request(name: str, label: str, before: str, repository: str, draft
     return url.rsplit("/", 1)[-1]
 
 
-def report_failure(name: str, label: str, repository: str) -> None:
-    """Open the issue that keeps runs of this kind paused until somebody closes it."""
+def report_failure(name: str, label: str, repository: str) -> str:
+    """Open the issue that keeps runs of this kind paused until somebody closes it; its URL."""
     # Only ever one at a time, which the gate takes care of by looking for this same label.
-    paused = f"Nothing was pushed; {name} stays paused until this issue is closed."
+    paused = f"Nothing was committed; {name} stays paused until this issue is closed."
     body = f"{paused}\n\n{run_url(repository)}\n"
-    gh("issue", "create", "--label", label, "--title", f"{name} is failing", "--body", body)
+    return gh("issue", "create", "--label", label, "--title", f"{name} is failing", "--body", body)
 
 
 def main() -> None:
@@ -128,24 +118,20 @@ def main() -> None:
     parser.add_argument("--command", required=True, metavar="COMMAND", help="how to make the change")
     parser.add_argument("--test", required=True, metavar="COMMAND", help="how to test the change")
     parser.add_argument(
-        "--draft-exit",
-        type=int,
-        default=0,
-        metavar="CODE",
-        help="COMMAND exit code for 'committed, but needs a human to finish': open an untested "
-        "draft pull request instead of failing (default: disabled)",
-    )
-    parser.add_argument(
-        "--draft-note",
+        "--command-fail-note",
         default="",
         metavar="TEXT",
-        help="what a draft pull request's body says about finishing it; required with --draft-exit",
+        help="draft PR description if --command fails after committing (default: name its exit status)",
+    )
+    parser.add_argument(
+        "--test-fail-note",
+        default="",
+        metavar="TEXT",
+        help="draft PR description if the --test command fails (default: name its exit status)",
     )
     parser.add_argument("--repo", required=True, metavar="OWNER/REPO", help="the repository to work on")
     parser.add_argument("--token", required=True, help="token to reach the repository with")
     args = parser.parse_args()
-    if bool(args.draft_exit) != bool(args.draft_note):
-        parser.error("--draft-exit and --draft-note go together")
 
     # gh reads both of these from the environment, so put them there once for every child below.
     os.environ["GH_TOKEN"] = args.token
@@ -156,29 +142,37 @@ def main() -> None:
     if blocked(label):
         return
 
-    try:
-        before, draft = commit_change(args.command, args.draft_exit)
-        if before is None:
-            print(f"::notice::{args.name} found nothing to change")
-            return
-        if not draft:  # don't waste a CI run
-            shell(args.test)
-        pull_request = open_pull_request(
-            args.name, label, before, args.repo, args.draft_note if draft else ""
-        )
-    except subprocess.CalledProcessError:
-        # A command failing is what the issue is for. Anything else - a missing variable, a gh that
-        # cannot talk to the API - is this driver or its workflow being wrong, and belongs in a
-        # traceback rather than in an issue somebody has to close before the bot runs again.
-        report_failure(args.name, label, args.repo)
-        raise
+    before, status = commit_change(args.command)
+    if before is None:
+        # Nothing committed is nothing to open, which is what the issue is for. Anything else
+        # failing - a missing variable, a gh that cannot talk to the API - is this driver or its
+        # workflow being wrong, and belongs in a traceback rather than in an issue.
+        if status:
+            print(f"::notice::opened {report_failure(args.name, label, args.repo)}")
+            raise SystemExit(status)
+        print(f"::notice::{args.name} found nothing to change")
+        return
 
-    print(f"::notice::opened {'draft ' if draft else ''}#{pull_request}")
+    # A branch already known to be broken is not worth a test run, only a note saying so.
+    if status:
+        note = args.command_fail_note or f"The command failed with exit status {status}."
+    elif status := subprocess.run(args.test, shell=True, cwd=ROOT).returncode:
+        note = args.test_fail_note or f"The tests failed with exit status {status}."
+    else:
+        note = ""
+
+    pull_request = open_pull_request(args.name, label, before, args.repo, note)
+    # A draft is a run that went wrong, so it is worth an annotation rather than a line in a log.
+    kind = "::warning::opened draft" if note else "::notice::opened"
+    print(f"{kind} #{pull_request}")
     # What a caller with something left to do about the pull request reads.
     step_output = os.environ.get("GITHUB_OUTPUT")
     if step_output:
         with Path(step_output).open("a") as handle:
-            handle.write(f"pull-request={pull_request}\ndraft={str(draft).lower()}\n")
+            handle.write(f"pull-request={pull_request}\ndraft={str(bool(note)).lower()}\n")
+    # Whatever failed fails the run as well, after the draft is open: a job that goes green is one
+    # nobody looks at. Zero when nothing did.
+    raise SystemExit(status)
 
 
 if __name__ == "__main__":
