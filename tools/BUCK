@@ -127,8 +127,9 @@ box.python_test(
     deps = ["//:util"],
 )
 
-# PUBLIC: CI's automatic changes (see .github/workflows/bot-pr.yml). A runner invokes it as a plain
-# script with the host python, before Buck has fetched anything; this target is what type checks it.
+# PUBLIC: CI's automatic changes (.github/workflows/bump.yml, used by consuming project as well). A
+# runner invokes it as a plain script with the host python, before Buck has fetched anything;
+# this target is what type checks it.
 tine_python_binary(
     name = "bot-pr",
     main = "bot_pr.py",
