@@ -76,7 +76,7 @@ def resolve_workspace(target: str, sources: dict[str, str]) -> dict[str, str | N
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("go-workspace", argv)
+    spec = specs.parse(Spec, "go-workspace", argv)
     workspace = resolve_workspace(spec["name"], spec["sources"])
     Path(spec["out"]).write_text(json.dumps(workspace, sort_keys=True) + "\n", encoding="utf-8")
 

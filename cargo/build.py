@@ -112,7 +112,7 @@ def _cargo_config(vendor: Path, git: dict[str, GitSource]) -> str:
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("cargo-build", argv)
+    spec = specs.parse(Spec, "cargo-build", argv)
 
     # Cargo needs somewhere to write, and the build inputs are read-only artifacts. The sandbox
     # backs /var/tmp with the action's scratch space, which Buck clears before each execution, so

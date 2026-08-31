@@ -73,7 +73,7 @@ def createrepo(entries: list[tuple[str, Path]], out: Path, revision: str) -> Non
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("createrepo", argv)
+    spec = specs.parse(Spec, "createrepo", argv)
     entries = [(Path(package).name, Path(package).absolute()) for package in spec["packages"]]
     for index, directory in enumerate(spec["packages_dirs"]):
         entries += [

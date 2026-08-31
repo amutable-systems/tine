@@ -105,7 +105,7 @@ def index(entries: list[tuple[str, Path]], out: Path, epoch: int) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("index", argv)
+    spec = specs.parse(Spec, "index", argv)
     entries = [(Path(package).name, Path(package).absolute()) for package in spec["packages"]]
     for position, directory in enumerate(spec["packages_dirs"]):
         entries += [

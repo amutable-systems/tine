@@ -284,7 +284,7 @@ def merge(sources: Sequence[Path], out: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("manifest", argv)
+    spec = specs.parse(Spec, "manifest", argv)
 
     out = Path(spec["out"])
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])

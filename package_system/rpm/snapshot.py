@@ -200,7 +200,9 @@ def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
 
 
 def main(argv: list[str] | None = None) -> None:
-    snapshotter.run("snapshot", lambda spec: snapshot_repodata(spec["id"], spec["baseurl"]), argv)
+    snapshotter.run(
+        "snapshot", snapshotter.Spec, lambda spec: snapshot_repodata(spec["id"], spec["baseurl"]), argv
+    )
 
 
 if __name__ == "__main__":

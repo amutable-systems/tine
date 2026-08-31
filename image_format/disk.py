@@ -260,7 +260,7 @@ def _grow(disk: Path, size: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("repart", argv)
+    spec = specs.parse(Spec, "repart", argv)
 
     if not spec["definitions"] and not spec["partitions"]:
         raise SystemExit("repart: specify at least one definition or imported partition")

@@ -146,7 +146,7 @@ def _write_selection(selection: Selection, out: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("boot", argv)
+    spec = specs.parse(Spec, "boot", argv)
 
     with finalize.image(spec, program="boot") as tree:
         _write_selection(_select(tree), Path(spec["out"]))

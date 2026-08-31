@@ -115,7 +115,7 @@ def _extract(tree: Path, source: Source, out: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("artifacts", argv)
+    spec = specs.parse(Spec, "artifacts", argv)
 
     source = _read_source(Path(spec["manifest"]), spec["artifact"])
     with finalize.image(spec, program="artifacts") as tree:

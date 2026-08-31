@@ -73,7 +73,7 @@ def _archive(tree: Path, out: Path, fmt: str, epoch: int, compression: str) -> N
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("archive", argv)
+    spec = specs.parse(Spec, "archive", argv)
 
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
     out = Path(spec["out"])

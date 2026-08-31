@@ -51,7 +51,7 @@ def _trim(db: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("pkgdb", argv)
+    spec = specs.parse(Spec, "pkgdb", argv)
 
     out = Path(spec["out"])
     with finalize.image(spec, program="pkgdb") as tree:

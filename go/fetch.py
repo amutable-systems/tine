@@ -33,7 +33,7 @@ class Spec(TypedDict):
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("go-fetch", argv)
+    spec = specs.parse(Spec, "go-fetch", argv)
 
     # `go mod download` wants a module directory, and these two files are all it reads. They are
     # staged as copies because go edits go.sum in place when entries are missing.

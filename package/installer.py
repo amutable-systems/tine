@@ -98,7 +98,7 @@ def run(
     The callback receives the closure directory, the root to install into, the spec, and whether
     it is layering over packages a lower stack already carries.
     """
-    spec: InstallSpec = specs.parse(prog, argv)
+    spec = specs.parse(InstallSpec, prog, argv)
     # We already build the kernel/initrd in the ESP. Prevent systemd's `kernel-install` (called via
     # package install scripts) from building and writing its own (dead weight and waste of time).
     os.environ["KERNEL_INSTALL_BYPASS"] = "1"

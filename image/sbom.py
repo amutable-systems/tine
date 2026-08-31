@@ -61,7 +61,7 @@ def _normalize(spdx: Path, cdx: Path, source_name: str, source_version: str, epo
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("sbom", argv)
+    spec = specs.parse(Spec, "sbom", argv)
 
     syft = Path(spec["syft"])
     source_name = spec["source_name"]

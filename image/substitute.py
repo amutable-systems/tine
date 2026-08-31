@@ -39,7 +39,7 @@ def expand(target: str, template: str, replacements: dict[str, str]) -> str:
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("substitute", argv)
+    spec = specs.parse(Spec, "substitute", argv)
     src, out = Path(spec["src"]), Path(spec["out"])
     template = src.read_text(encoding="utf-8")
     out.write_text(expand(spec["name"], template, spec["replacements"]), encoding="utf-8")

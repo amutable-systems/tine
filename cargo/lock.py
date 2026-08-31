@@ -145,7 +145,7 @@ def resolve_workspace(target: str, sources: dict[str, str]) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("cargo-lock", argv)
+    spec = specs.parse(Spec, "cargo-lock", argv)
     workspace = resolve_workspace(spec["name"], spec["sources"])
     Path(spec["out"]).write_text(json.dumps(workspace, sort_keys=True) + "\n", encoding="utf-8")
 
