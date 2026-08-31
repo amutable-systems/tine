@@ -7,7 +7,6 @@ Each test builds a real throwaway repository or checkout; the wrapper's git call
 
 import collections.abc
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -16,17 +15,18 @@ import tempfile
 import threading
 import unittest
 import unittest.mock
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from typing import override
 
+import tine
+
 TOOL_PATH = Path(__file__).parent / "tine"
 
-# A command carries no suffix, so it needs the loader naming the language it is written in.
-spec = importlib.util.spec_from_loader("tine", SourceFileLoader("tine", str(TOOL_PATH)))
-assert spec and spec.loader
-tine = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(tine)
+
+class TestCommand(unittest.TestCase):
+    def test_loads_the_module_in_isolated_mode(self) -> None:
+        proc = subprocess.run([str(TOOL_PATH), "--help"], check=True, text=True, stdout=subprocess.PIPE)
+        self.assertEqual(proc.stdout, tine.USAGE)
 
 
 def git(*args: str, cwd: Path) -> str:

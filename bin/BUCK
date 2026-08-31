@@ -9,6 +9,7 @@ box_python_test(
     deps = ["//box:isolation"],
     srcs = [
         "tine",
+        "tine.py",
         "tine_test.py",
     ],
 )

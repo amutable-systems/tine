@@ -8,7 +8,7 @@ extend-exclude = ["buck-out"]
 extend-include = ["bin/tine"]
 # tine runs on whatever python the host has, before anything is fetched, so pyupgrade must not
 # rewrite it to syntax newer than the floor the README promises.
-per-file-target-version = { "bin/tine" = "py39" }
+per-file-target-version = { "bin/tine" = "py39", "bin/tine.py" = "py39" }
 src = [
     "archive",
     "cargo",
@@ -29,6 +29,6 @@ lint.select = [
     "B",    # flake8-bugbear
     "ANN",  # flake8-annotations
     # A union annotation that the file's own target python evaluates as a TypeError, which is
-    # what keeps bin/tine's quoted ones quoted.
+    # what keeps bin/tine.py's quoted ones quoted.
     "FA102",
 ]
