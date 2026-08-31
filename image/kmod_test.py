@@ -9,11 +9,11 @@ closure libkmod resolves is covered by the real image builds in tools/ci.sh inst
 
 import json
 import tempfile
+import tomllib
 import typing
 import unittest
 from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
-from types import SimpleNamespace
 from typing import override
 
 import cpio
@@ -48,16 +48,10 @@ NOT_CARRIED = (
     "kernel/drivers/crypto/qat/intel_qat.ko.xz",
 )
 
-
-def _load_bzl(name: str) -> SimpleNamespace:
-    here = Path(__file__).parent
-    path = here / f"{name}.bzl"
-    module: dict[str, typing.Any] = {}
-    exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module)  # noqa: S102
-    return SimpleNamespace(**module)
-
-
-modules_bzl = _load_bzl("modules")
+DEFAULT_INITRD_MODULES = typing.cast(
+    list[str],
+    tomllib.loads((Path(__file__).parent / "initrd_modules.toml").read_text(encoding="utf-8"))["patterns"],
+)
 
 
 class TreeTest(unittest.TestCase):
@@ -151,14 +145,14 @@ class TestDefaultModules(TreeTest):
 
     def test_boot_critical_modules_are_selected(self) -> None:
         self.install(*BOOT_CRITICAL, *NOT_CARRIED)
-        picked = self.select(*modules_bzl.DEFAULT_INITRD_MODULES)
+        picked = self.select(*DEFAULT_INITRD_MODULES)
         for module in BOOT_CRITICAL:
             with self.subTest(module=module):
                 self.assertIn(module, picked)
 
     def test_the_rest_of_the_kernel_stays_out(self) -> None:
         self.install(*BOOT_CRITICAL, *NOT_CARRIED)
-        picked = self.select(*modules_bzl.DEFAULT_INITRD_MODULES)
+        picked = self.select(*DEFAULT_INITRD_MODULES)
         for module in NOT_CARRIED:
             with self.subTest(module=module):
                 self.assertNotIn(module, picked)

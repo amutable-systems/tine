@@ -71,6 +71,7 @@ box_python_test(
     box = "//tools:dev.box",
     srcs = [
         "finalize_test.py",
+        "initrd_modules.toml",
         "kmod_test.py",
         "layer.py",
         "layer_test.py",
@@ -89,7 +90,6 @@ box_python_test(
         "//:specs",
         "//:util",
         "//archive:cpio",
-        "//image_format:modules",
         "//package:installer",
         "//rootfs:rootfs",
     ],
