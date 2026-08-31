@@ -1,12 +1,4 @@
-"""The core kernel modules a UKI's per-kernel initrd carries by default.
-
-Only the path to `/usr` has to work from the UKI; `/usr` itself keeps every module the kernel package
-installs, so anything missing here is still loadable once the system has switched root.
-
-Data only, and it stays that way: tine//image:test reads this file to pin what the list selects.
-"""
-
-DEFAULT_INITRD_MODULES = [
+patterns = [
     "ahci",
     "amd_atl",
     "amd_ctl",
@@ -95,11 +87,11 @@ DEFAULT_INITRD_MODULES = [
     "xhci-pci-renesas",
     "fs/nls/",
     "crypto/",
-    # specialized hardware, minus the AMD accelerator every Ryzen has
+    # Skip specialized accelerators, except the AMD crypto engine present on every Ryzen system.
     "-drivers/crypto/",
     "ccp_crypto",
-    # for early/systemd-zram-setup
+    # Used by early/systemd-zram-setup.
     "zram",
-    # for firewalld.service
+    # Used by firewalld.service.
     "nfnetlink",
 ]

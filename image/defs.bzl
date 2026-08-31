@@ -27,7 +27,6 @@ load(
     "partition",
     "repart",
 )
-load("//image_format:modules.bzl", "DEFAULT_INITRD_MODULES")
 load(
     "//image_format:sysext.bzl",
     "SysextImageInfo",
@@ -66,6 +65,7 @@ load(
     "write_file",
 )
 load(":initrd.bzl", "InitrdInfo", "initrd_image")
+load(":initrd_modules.toml", _INITRD_MODULES = "value")
 load(":install.bzl", "image_install")
 load(":publish.bzl", "PublishedInfo", "image_artifacts")
 load(
@@ -121,7 +121,7 @@ image = struct(
     artifacts = image_artifacts,
     initrd = initrd_image,
     # The core kernel modules a UKI carries unless a target says otherwise; extend it with `+`.
-    DEFAULT_INITRD_MODULES = DEFAULT_INITRD_MODULES,
+    DEFAULT_INITRD_MODULES = _INITRD_MODULES["patterns"],
     # Conventional partition layouts.
     DEFAULT_ROOT_PARTITIONS = DEFAULT_ROOT_PARTITIONS,
     DEFAULT_USR_VERITY_PARTITIONS = DEFAULT_USR_VERITY_PARTITIONS,

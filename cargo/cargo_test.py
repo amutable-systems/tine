@@ -2,9 +2,8 @@
 
     buck test tine//cargo:test
 
-lock.bzl is Starlark, but deliberately written in the subset that is also plain Python, so this
-suite runs it through exec() with buck's `fail` stubbed out. The vendor driver runs for real
-against synthetic .crate tarballs; nothing here needs a network.
+The lock driver resolves every remote input before Starlark declares its dynamic actions. The vendor
+driver runs for real against synthetic .crate tarballs; nothing here needs a network.
 """
 
 import hashlib
@@ -15,34 +14,13 @@ import tomllib
 import typing
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from typing import override
 
 import util
 
 import build
-import lock as lock_driver
+import lock
 import vendor
-
-HERE = Path(__file__).parent
-
-
-class StarlarkFailure(Exception):
-    """Raised where Starlark would fail() the parse."""
-
-
-def _fail(message: str) -> typing.NoReturn:
-    raise StarlarkFailure(message)
-
-
-def _load_bzl(name: str) -> SimpleNamespace:
-    path = HERE / f"{name}.bzl"
-    module: dict[str, typing.Any] = {"fail": _fail, "typing": typing}
-    exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module)  # noqa: S102
-    return SimpleNamespace(**module)
-
-
-lock_bzl = _load_bzl("lock")
 
 ANYHOW_SHA = "a" * 64
 LIBC_SHA = "b" * 64
@@ -115,7 +93,7 @@ class TestCrateDownloads(unittest.TestCase):
     def test_downloads(self) -> None:
         """Both index spellings resolve; the workspace's own member is not a download."""
         self.assertEqual(
-            lock_bzl.crate_downloads("hello", _lock(LOCK)),
+            lock.crate_downloads("hello", _lock(LOCK)),
             [
                 {
                     "name": "anyhow",
@@ -133,13 +111,13 @@ class TestCrateDownloads(unittest.TestCase):
         )
 
     def test_git_sources_are_not_downloads(self) -> None:
-        self.assertEqual(lock_bzl.crate_downloads("hello", _lock(GIT_LOCK)), [])
+        self.assertEqual(lock.crate_downloads("hello", _lock(GIT_LOCK)), [])
 
     def test_rejects_unsupported_source(self) -> None:
         source = "sparse+https://crates.example.invalid/"
-        lock = f'[[package]]\nname = "libc"\nversion = "0.2.180"\nsource = "{source}"\n'
-        with self.assertRaises(StarlarkFailure) as caught:
-            lock_bzl.crate_downloads("hello", _lock(lock))
+        lock_text = f'[[package]]\nname = "libc"\nversion = "0.2.180"\nsource = "{source}"\n'
+        with self.assertRaises(SystemExit) as caught:
+            lock.crate_downloads("hello", _lock(lock_text))
         self.assertEqual(
             str(caught.exception),
             f"cargo_package hello: libc 0.2.180: unsupported dependency source {source}",
@@ -147,26 +125,26 @@ class TestCrateDownloads(unittest.TestCase):
 
     def test_rejects_missing_checksum(self) -> None:
         source = "registry+https://github.com/rust-lang/crates.io-index"
-        lock = f'[[package]]\nname = "libc"\nversion = "0.2.180"\nsource = "{source}"\n'
-        with self.assertRaisesRegex(StarlarkFailure, "libc 0.2.180: no checksum"):
-            lock_bzl.crate_downloads("hello", _lock(lock))
+        lock_text = f'[[package]]\nname = "libc"\nversion = "0.2.180"\nsource = "{source}"\n'
+        with self.assertRaisesRegex(SystemExit, "libc 0.2.180: no checksum"):
+            lock.crate_downloads("hello", _lock(lock_text))
 
     def test_rejects_a_value_that_is_not_a_lock(self) -> None:
-        with self.assertRaisesRegex(StarlarkFailure, r"no \[\[package\]\] list"):
-            lock_bzl.crate_downloads("hello", {"value": "something else"})
+        with self.assertRaisesRegex(SystemExit, r"no \[\[package\]\] list"):
+            lock.crate_downloads("hello", {"value": "something else"})
 
 
 class TestGitSources(unittest.TestCase):
     def test_records_each_git_source_once(self) -> None:
         """Two crates from one repository share the one entry recording it."""
         self.assertEqual(
-            lock_bzl.git_sources("hello", _lock(GIT_LOCK)),
+            lock.git_sources("hello", _lock(GIT_LOCK)),
             {SD_CONF_COMMIT: {"git": SD_CONF_URL, "rev": "f8f381fe"}},
         )
 
     def _source(self, source: str) -> dict[str, dict[str, str]]:
-        lock = f'[[package]]\nname = "x"\nversion = "0.1.0"\nsource = "{source}"\n'
-        return lock_bzl.git_sources("hello", _lock(lock))
+        lock_text = f'[[package]]\nname = "x"\nversion = "0.1.0"\nsource = "{source}"\n'
+        return lock.git_sources("hello", _lock(lock_text))
 
     def test_source_tracking_the_default_branch(self) -> None:
         commit = "d" * 40
@@ -183,22 +161,22 @@ class TestGitSources(unittest.TestCase):
         )
 
     def test_source_without_a_commit(self) -> None:
-        with self.assertRaisesRegex(StarlarkFailure, "git source without a full commit"):
+        with self.assertRaisesRegex(SystemExit, "git source without a full commit"):
             self._source("git+https://example.invalid/x")
 
     def test_source_with_a_short_commit(self) -> None:
-        with self.assertRaisesRegex(StarlarkFailure, "git source without a full commit"):
+        with self.assertRaisesRegex(SystemExit, "git source without a full commit"):
             self._source("git+https://example.invalid/x#f8f381fe")
 
     def test_rejects_two_spellings_of_one_source(self) -> None:
         """One commit under two source IDs would need a replacement stanza the build never writes."""
         commit = "f" * 40
-        lock = (
+        lock_text = (
             f'[[package]]\nname = "x"\nversion = "0.1.0"\nsource = "git+https://example.invalid/x?branch=main#{commit}"\n'
             f'[[package]]\nname = "y"\nversion = "0.1.0"\nsource = "git+https://example.invalid/x?rev={commit[:8]}#{commit}"\n'
         )
-        with self.assertRaisesRegex(StarlarkFailure, "two spellings of one git source"):
-            lock_bzl.git_sources("hello", _lock(lock))
+        with self.assertRaisesRegex(SystemExit, "two spellings of one git source"):
+            lock.git_sources("hello", _lock(lock_text))
 
 
 class TestLockDriver(unittest.TestCase):
@@ -214,16 +192,20 @@ class TestLockDriver(unittest.TestCase):
         (self.checkout / "Cargo.lock").write_text(LOCK, encoding="utf-8")
 
         self.assertEqual(
-            lock_driver.resolve_workspace("hello", {"generated": str(self.checkout)}),
-            {"lock": _lock(LOCK), "root": "generated"},
+            lock.resolve_workspace("hello", {"generated": str(self.checkout)}),
+            {
+                "crates": lock.crate_downloads("hello", _lock(LOCK)),
+                "git": {},
+                "root": "generated",
+            },
         )
 
     def test_finds_a_lockless_workspace_inside_a_directory_artifact(self) -> None:
         (self.checkout / "Cargo.toml").write_text(DEPLESS_MANIFEST, encoding="utf-8")
 
         self.assertEqual(
-            lock_driver.resolve_workspace("nodeps", {"generated": str(self.checkout)}),
-            {"lock": {"package": []}, "root": "generated"},
+            lock.resolve_workspace("nodeps", {"generated": str(self.checkout)}),
+            {"crates": [], "git": {}, "root": "generated"},
         )
 
     def test_rejects_several_locks_across_directory_artifacts(self) -> None:
@@ -233,7 +215,7 @@ class TestLockDriver(unittest.TestCase):
         (other / "Cargo.lock").write_text(LOCK, encoding="utf-8")
 
         with self.assertRaisesRegex(SystemExit, "srcs hold several Cargo.lock files"):
-            lock_driver.resolve_workspace(
+            lock.resolve_workspace(
                 "hello",
                 {"first": str(self.checkout), "second": str(other)},
             )

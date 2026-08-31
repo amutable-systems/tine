@@ -36,7 +36,6 @@ box_python_test(
     srcs = [
         "build.py",
         "cargo_test.py",
-        "lock.bzl",
         "lock.py",
         "vendor.py",
     ],

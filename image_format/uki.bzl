@@ -12,6 +12,7 @@ load(
     "declare_out",
     "terminal_image_command",
 )
+load("//image:initrd_modules.toml", _INITRD_MODULES = "value")
 load(
     "//image:sign.bzl",
     "SigningKeyInfo",
@@ -26,7 +27,6 @@ load(
     "RepartInfo",
     "RootHashInfo",  # @unused Used as a function argument type.
 )
-load(":modules.bzl", "DEFAULT_INITRD_MODULES")
 
 UkiInfo = provider(
     doc = "Unified kernel images built for one logical image.",
@@ -186,7 +186,7 @@ UKI_ATTRS = {
     ),
     "initrd_modules": attrs.list(
         attrs.string(),
-        default = DEFAULT_INITRD_MODULES,
+        default = _INITRD_MODULES["patterns"],
         doc = "glob patterns selecting the kernel modules the UKI's per-kernel initrd carries",
     ),
     "profiles": attrs.list(

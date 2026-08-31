@@ -55,14 +55,6 @@ tine_python_binary(
     visibility = ["PUBLIC"],
 )
 
-# The default module list, written in the Starlark subset that is also plain Python: the uki rule
-# loads it, and tine//image:test exec()s the same file rather than restating the list.
-tine_python_library(
-    name = "modules",
-    srcs = ["modules.bzl"],
-    visibility = ["tine//image:test", "tine//image:test-ty"],
-)
-
 box_python_test(
     name = "test",
     box = "//tools:dev.box",

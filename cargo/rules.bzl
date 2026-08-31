@@ -2,7 +2,6 @@
 
 load("//:specs.bzl", "executable", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
-load(":lock.bzl", "crate_downloads", "git_sources")
 load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
 
 _PRIVATE = "__tine"
@@ -17,16 +16,14 @@ def _cargo_build_impl(
     build: RunInfo,
     fetch: RunInfo,
     lock: ArtifactValue,
-    name: str,
     src: Artifact,
     target: OutputArtifact,
     vendor: RunInfo,
 ) -> list[Provider]:
     """Declare everything the lock names, once it has been built and can be read."""
     workspace = lock.read_json()
-    resolved = workspace["lock"]
     repositories = {}
-    for commit, fields in git_sources(name, resolved).items():
+    for commit, fields in workspace["git"].items():
         # The prelude's git_fetch tool, run directly rather than through its rule: that rule hands
         # out the work tree, and cargo resolves a replaced git source against the repository.
         git_dir = actions.declare_output(_PRIVATE + "/git", commit[:12] + ".git", dir = True)
@@ -72,7 +69,7 @@ git --git-dir="$git_dir" config --bool core.bare true""",
                     "root": workspace["root"],
                     "src": src,
                     "target": target,
-                    "vendor": assemble_vendor(actions, vendor, crate_downloads(name, resolved), _PRIVATE),
+                    "vendor": assemble_vendor(actions, vendor, workspace["crates"], _PRIVATE),
                 },
             ),
         ),
@@ -89,7 +86,6 @@ _cargo_build = dynamic_actions(
         "build": dynattrs.value(RunInfo),
         "fetch": dynattrs.value(RunInfo),
         "lock": dynattrs.artifact_value(),
-        "name": dynattrs.value(str),
         "src": dynattrs.value(Artifact),
         "target": dynattrs.output(),
         "vendor": dynattrs.value(RunInfo),
@@ -133,7 +129,6 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
             build = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
             fetch = ctx.attrs._fetch[RunInfo],
             lock = resolved,
-            name = ctx.label.name,
             src = src,
             target = target.as_output(),
             vendor = ctx.attrs._vendor[RunInfo],
