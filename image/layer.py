@@ -5,6 +5,7 @@ import glob  # noqa: F401  # Preload for Path.glob before entering the image chr
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -78,6 +79,17 @@ def _destination(tree: Path, value: str) -> Path:
     return tree.joinpath(*path.parts[1:])
 
 
+def _normalize_mode(path: Path) -> None:
+    """Normalize file permissions for path.
+
+    Use for paths copied from the host, to stay reproducible: their mode is whatever the umask
+    of whoever created them left behind. Only the executable bit changes what the image does.
+    """
+    mode = path.lstat().st_mode
+    if not stat.S_ISLNK(mode):
+        path.chmod(0o755 if mode & 0o111 else 0o644)
+
+
 def _copy(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if source.is_symlink():
@@ -97,12 +109,18 @@ def _copy(source: Path, destination: Path) -> None:
             copy_function=lambda s, d: util.clone_file(Path(s), Path(d)),
             symlinks=True,
         )
+        _normalize_mode(destination)
+        for parent, directories, files in source.walk():
+            copied = destination / parent.relative_to(source)
+            for name in directories + files:
+                _normalize_mode(copied / name)
     else:
         if destination.is_dir() and not destination.is_symlink():
             raise SystemExit(f"cannot replace directory {destination} with file {source}")
         if destination.is_symlink():
             destination.unlink()
         util.clone_file(source, destination)
+        _normalize_mode(destination)
 
 
 def _merge_os_release(tree: Path, raw_fields: object) -> None:

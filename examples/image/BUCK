@@ -250,6 +250,8 @@ image.sysext_image(
     base = ":boot-demo",
     packages = ["zsh"],
     install_docs = False,
+    # install a file from source tree; covers reproducibility check under varying umasks
+    ops = [image.copy("from-source.txt", "/usr/lib/tine/from-source")],
 )
 
 # Replacing a populated directory exercises the opaque-dir marker.
