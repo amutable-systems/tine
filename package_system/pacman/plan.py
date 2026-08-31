@@ -30,7 +30,8 @@ from href import relative_href
 class SolveSpec(transaction.Spec):
     install: list[str]
     lower: list[str]
-    # The neutral solve command also writes `cache`; alpm prebuilds no repository metadata.
+    # Written by the neutral solve command, unread here: alpm prebuilds no repository metadata.
+    cache: list[str]
 
 
 def load_repositories(spec: transaction.Spec) -> list[transaction.Repository]:
@@ -95,7 +96,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
-    spec: SolveSpec = specs.load(args.spec, prog="plan")
+    spec = specs.load(SolveSpec, args.spec, prog="plan")
     if not spec["install"]:
         raise SystemExit("plan: a solve needs at least one install spec")
     repositories = load_repositories(spec)

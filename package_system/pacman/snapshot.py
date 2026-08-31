@@ -56,7 +56,7 @@ def snapshot_repository(spec: Spec) -> Mapping[str, object]:
 
 
 def main(argv: list[str] | None = None) -> None:
-    snapshotter.run("snapshot", snapshot_repository, argv)
+    snapshotter.run("snapshot", Spec, snapshot_repository, argv)
 
 
 if __name__ == "__main__":

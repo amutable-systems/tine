@@ -72,7 +72,7 @@ def _os_release(tree: Path) -> dict[str, str]:
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("sysext", argv)
+    spec = specs.parse(Spec, "sysext", argv)
 
     release = dict(spec["release"])
     base = spec["base"]

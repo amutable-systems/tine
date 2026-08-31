@@ -113,7 +113,7 @@ def _main_packages(workspace: Path, env: dict[str, str]) -> dict[str, list[str]]
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("go-build", argv)
+    spec = specs.parse(Spec, "go-build", argv)
 
     # Built in a copy so that nothing go does can land in `src`, which is an output artifact of
     # this same target: -mod=readonly should keep go out of the tree, but a build tree is not the

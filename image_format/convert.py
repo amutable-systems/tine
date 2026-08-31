@@ -15,7 +15,7 @@ class Spec(TypedDict):
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("convert", argv)
+    spec = specs.parse(Spec, "convert", argv)
 
     source = Path(spec["input"])
     out = Path(spec["out"])

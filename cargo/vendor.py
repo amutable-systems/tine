@@ -39,7 +39,7 @@ def _write_checksums(unpacked: Path, package: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("cargo-vendor", argv)
+    spec = specs.parse(Spec, "cargo-vendor", argv)
     out = Path(spec["out"])
     out.mkdir(parents=True, exist_ok=True)
 

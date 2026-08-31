@@ -137,7 +137,12 @@ def write_snapshot(path: Path, snapshot: Mapping[str, Any]) -> None:
         output.write("}\n")
 
 
-def run(prog: str, inventory: Callable[[Any], Mapping[str, Any]], argv: list[str] | None = None) -> None:
+def run[T](
+    prog: str,
+    shape: specs.Shape[T],
+    inventory: Callable[[T], Mapping[str, Any]],
+    argv: list[str] | None = None,
+) -> None:
     """Take the repository's inventory and write it where this invocation asks.
 
     `--out` stays on the command line rather than in the spec: a repository publishes its
@@ -148,7 +153,7 @@ def run(prog: str, inventory: Callable[[Any], Mapping[str, Any]], argv: list[str
     parser.add_argument("--out", required=True, help="snapshot path to write, or `-` for stdout")
     args = parser.parse_args(argv)
 
-    snapshot = inventory(specs.load(args.spec, prog=prog))
+    snapshot = inventory(specs.load(shape, args.spec, prog=prog))
     out = Path(args.out)
     write_snapshot(out, snapshot)
     where = "stdout" if str(out) == "-" else str(out)

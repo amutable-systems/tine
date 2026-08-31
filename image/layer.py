@@ -207,7 +207,7 @@ def _apply(value: object, target: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("image", argv)
+    spec = specs.parse(Spec, "image", argv)
 
     # Mount options name the upper and work directories; the kernel does not read them relative to
     # this process.

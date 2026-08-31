@@ -29,7 +29,7 @@ class Spec(finalize.ImageSpec):
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("pkgdb", argv)
+    spec = specs.parse(Spec, "pkgdb", argv)
 
     epoch = int(os.environ["SOURCE_DATE_EPOCH"])
     out = Path(spec["out"])

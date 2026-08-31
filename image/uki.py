@@ -196,7 +196,7 @@ def _signing_arguments(
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec: Spec = specs.parse("uki", argv)
+    spec = specs.parse(Spec, "uki", argv)
 
     efi_arch = spec["efi_arch"]
     out = Path(spec["out"])

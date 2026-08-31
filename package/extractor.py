@@ -35,7 +35,7 @@ def run(prog: str, unpack: Callable[[Path, Path], int], argv: list[str] | None =
 
     The callback receives one package and the destination, and returns how many entries it wrote.
     """
-    spec: Spec = specs.parse(prog, argv)
+    spec = specs.parse(Spec, prog, argv)
     dest = Path(spec["out"])
     packages = expand(spec["packages"])
     if not packages:

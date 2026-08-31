@@ -34,7 +34,7 @@ class Spec(TypedDict):
 
 
 def main(argv: list[str] | None = None) -> int:
-    spec: Spec = specs.parse("build_rpm", argv)
+    spec = specs.parse(Spec, "build_rpm", argv)
     if not spec["lower"]:
         raise SystemExit("build_rpm: the buildroot stack cannot be empty")
 

@@ -158,7 +158,7 @@ def main(argv: list[str] | None = None) -> None:
     args = p.parse_args(argv)
 
     if args.command == "make-cache":
-        spec: transaction.Spec = specs.load(args.spec, prog="plan")
+        spec = specs.load(transaction.Spec, args.spec, prog="plan")
         repos = load_repositories(spec)
         out = Path(args.out)
         out.mkdir(parents=True, exist_ok=True)
@@ -166,7 +166,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"plan: cached {len(repos)} repo(s)", file=sys.stderr)
         return
 
-    solve_spec: SolveSpec = specs.load(args.spec, prog="plan")
+    solve_spec = specs.load(SolveSpec, args.spec, prog="plan")
     if not solve_spec["install"]:
         raise SystemExit("plan: a solve needs at least one install spec")
     repos = load_repositories(solve_spec)
