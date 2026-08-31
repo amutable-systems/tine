@@ -11,6 +11,7 @@ import sqlite3
 import sys
 import tempfile
 from pathlib import Path
+from typing import override
 
 import libdnf5
 
@@ -19,6 +20,35 @@ import installer
 DBPATH = "usr/lib/sysimage/rpm"
 
 CACHEDIR = Path("/var/tmp/install-cache")
+
+
+class TransactionCallbacks(libdnf5.rpm.TransactionCallbacks):
+    """Report RPM progress and retain errors before later callbacks replace them."""
+
+    def __init__(self, transaction: libdnf5.base.Transaction) -> None:
+        super().__init__()
+        self.transaction = transaction
+        self.errors: list[str] = []
+
+    @override
+    def install_start(self, item: libdnf5.base.TransactionPackage, total: int = 0) -> None:
+        print(f"rpm install start: {item.get_package().get_nevra()}", file=sys.stderr)
+
+    @override
+    def unpack_error(self, item: libdnf5.base.TransactionPackage) -> None:
+        error = f"rpm unpack error: {item.get_package().get_nevra()}"
+        self.errors.append(error)
+        messages = self.transaction.get_rpm_messages()
+        self.errors.extend(messages)
+        print(error, file=sys.stderr)
+        for message in messages:
+            print(f"rpm: {message}", file=sys.stderr)
+
+    @override
+    def cpio_error(self, item: libdnf5.base.TransactionPackage) -> None:
+        error = f"rpm cpio error: {item.get_package().get_nevra()}"
+        self.errors.append(error)
+        print(error, file=sys.stderr)
 
 
 def limit_langs(langs: list[str]) -> None:
@@ -85,8 +115,14 @@ def install(
     n = len(tx.get_transaction_packages())
     print(f"installing {n} rpms into {installroot}", file=sys.stderr)
     tx.set_description("buckify-rpm install")
-    if tx.run() != libdnf5.base.Transaction.TransactionRunResult_SUCCESS:
-        raise SystemExit("transaction failed:\n  " + "\n  ".join(tx.get_transaction_problems()))
+    callbacks = TransactionCallbacks(tx)
+    tx.set_callbacks(libdnf5.rpm.TransactionCallbacksUniquePtr(callbacks))
+    result = tx.run()
+    if result != libdnf5.base.Transaction.TransactionRunResult_SUCCESS:
+        details = callbacks.errors + list(tx.get_transaction_problems()) + list(tx.get_rpm_messages())
+        if not details:
+            details.append(tx.transaction_result_to_string(result))
+        raise SystemExit("transaction failed:\n  " + "\n  ".join(details))
 
 
 def parkdb(installroot: Path) -> None:
