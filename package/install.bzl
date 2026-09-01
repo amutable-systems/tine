@@ -85,7 +85,7 @@ def resolve_packages(
         lowers = stack,
         spec_name = prefix + "solve.spec.json",
     )
-    ctx.actions.run(plan, category = "plan", identifier = identifier or "install")
+    ctx.actions.run(plan, category = "plan", identifier = identifier or "install", allow_cache_upload = True)
 
     return select_package_artifacts(
         ctx,

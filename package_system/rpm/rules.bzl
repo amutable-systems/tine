@@ -95,7 +95,7 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
             },
         ),
     )
-    ctx.actions.run(build, category = "rpmbuild")
+    ctx.actions.run(build, category = "rpmbuild", allow_cache_upload = True)
 
     sub_targets = {s: [DefaultInfo(default_output = out)] for s, out in sub_outputs.items()}
     sub_targets["buildroot"] = [DefaultInfo(default_outputs = buildroot)]

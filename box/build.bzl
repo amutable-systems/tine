@@ -78,7 +78,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
             fail("box: a root box has nothing to resolve with and requires a committed lock")
         transaction = ctx.actions.declare_output("transaction.json")
         resolve.add("--out", transaction.as_output())
-        ctx.actions.run(resolve, category = "box_resolve")
+        ctx.actions.run(resolve, category = "box_resolve", allow_cache_upload = True)
 
     # A predecessor installs the transaction directly. Only a root box must first unpack that
     # same closure into an installer-capable root, without metadata or scriptlets.

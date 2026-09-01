@@ -61,6 +61,7 @@ def _go_build_impl(
                     },
                 ),
             ),
+            allow_cache_upload = not incremental,
             category = "go_fetch",
             local_only = True,
             no_outputs_cleanup = incremental,
@@ -85,6 +86,7 @@ def _go_build_impl(
                 },
             ),
         ),
+        allow_cache_upload = not incremental,
         category = "go_build",
         no_outputs_cleanup = incremental,
     )
@@ -138,6 +140,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
                 },
             ),
         ),
+        allow_cache_upload = True,
         category = "go_workspace",
     )
 

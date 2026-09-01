@@ -52,6 +52,7 @@ git --git-dir="$git_dir" config --bool core.bare true""",
                 cmd_args(fields["git"], format = "--repo={}"),
                 cmd_args(commit, format = "--rev={}"),
             ),
+            allow_cache_upload = True,
             category = "git_fetch",
             identifier = commit[:12],
             local_only = True,
@@ -75,6 +76,7 @@ git --git-dir="$git_dir" config --bool core.bare true""",
                 },
             ),
         ),
+        allow_cache_upload = not incremental,
         category = "cargo_build",
         no_outputs_cleanup = incremental,
     )
@@ -123,6 +125,7 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
                 },
             ),
         ),
+        allow_cache_upload = True,
         category = "cargo_lock",
     )
 
