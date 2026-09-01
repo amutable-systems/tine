@@ -294,9 +294,9 @@ def python(cmd: list[str | Artifact], env: dict[str, str] = {}, chroot: bool = F
 def _environment(env: dict[str, str]) -> dict[str, str]:
     return {name: env[name] for name in sorted(env)}
 
-def mkdir(path: str, mode: str | None = None) -> LayerOperation:
-    """Create a directory in the image, with `mode` when given."""
-    return ("mkdir", path, mode)
+def mkdir(path: str) -> LayerOperation:
+    """Create a directory in the image."""
+    return ("mkdir", path)
 
 def symlink(target: str, path: str) -> LayerOperation:
     """Create a symlink at `path` pointing at `target`."""
@@ -710,7 +710,6 @@ IMAGE_OPERATION_ATTR = attrs.one_of(
     attrs.tuple(
         attrs.enum(["mkdir"]),
         attrs.string(),
-        attrs.option(attrs.string(), default = None),
     ),
     attrs.tuple(
         attrs.enum(["symlink"]),

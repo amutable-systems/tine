@@ -180,13 +180,8 @@ def _clamp_mtimes(tree: Path, epoch: int) -> None:
 
 def _apply_filesystem(operation: list[object]) -> None:
     match operation:
-        case ["mkdir", str(path), mode]:
-            dest = Path(path)
-            dest.mkdir(parents=True, exist_ok=True)
-            if mode is not None:
-                if not isinstance(mode, str):
-                    raise SystemExit(f"image op 'mkdir' has invalid mode: {mode!r}")
-                dest.chmod(int(mode, 8))
+        case ["mkdir", str(path)]:
+            Path(path).mkdir(parents=True, exist_ok=True)
         case ["symlink", str(target), str(path)]:
             dest = Path(path)
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -240,7 +235,7 @@ def _apply(value: object, target: Path) -> None:
             finalize.hwdb(target, usr=usr, strict=strict)
         case ["locale_gen"]:
             finalize.locale_gen(target)
-        case ["mkdir", _, _] | ["symlink", _, _] | ["write_file", _, _] | ["remove", _]:
+        case ["mkdir", _] | ["symlink", _, _] | ["write_file", _, _] | ["remove", _]:
             with rootfs.chroot(target):
                 _apply_filesystem(operation)
         case _:

@@ -58,7 +58,7 @@ image.install(
     ops = [
         image.copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
         image.copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
-        image.mkdir("/usr/share/hello", mode = "0755"),
+        image.mkdir("/usr/share/hello"),
     ],
 )
 
