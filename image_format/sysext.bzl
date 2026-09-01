@@ -63,11 +63,20 @@ def declare_image_sysext(
     """Declare a system-extension DDI from resolved logical images."""
     # The version names the published DDI, which systemd-sysupdate matches transfers against.
     check_version("sysext_image version", version)
-    systemd_arch = ARCHES[arch].systemd
 
     # The DDI leaves the build as an update artifact, so it is named the way it is published:
     # systemd-sysupdate matches an extension transfer against <extension>_<version>_<arch>.sysext.raw.
-    basename = "{}_{}_{}".format(extension, version, systemd_arch)
+    # arch "_any" opts out of a specific architecture: the DDI is published under the "all" arch (a
+    # literal "_any" would double the name separator and break vpick's version parse), and its
+    # extension-release ARCHITECTURE is "_any". systemd-vpick treats the unknown "all" as the any
+    # bucket, and later systemd-sysext skips the arch check for "_any".
+    if arch == "_any":
+        systemd_arch = "_any"
+        architecture = "all"
+    else:
+        systemd_arch = ARCHES[arch].systemd
+        architecture = systemd_arch
+    basename = "{}_{}_{}".format(extension, version, architecture)
     stem = basename + ".sysext"
     out = ctx.actions.declare_output(stem + ".raw")
 
@@ -180,9 +189,10 @@ def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
 
 SYSEXT_ATTRS = {
     "arch": attrs.enum(
-        ARCHES.keys(),
+        ARCHES.keys() + ["_any"],
         default = "x86_64",
-        doc = "architecture the extension merges on, in its name and its extension-release",
+        doc = "architecture the extension merges on, in its name and its extension-release, "
+        + "\"_any\" publishes the DDI as '..._all' and sets ARCHITECTURE=_any",
     ),
     "release": attrs.dict(
         key = attrs.string(),

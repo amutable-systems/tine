@@ -81,13 +81,17 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit("sysext: base must leave at least one delta layer")
     if base:
         # The extension must pin the base identity it was built against, so systemd-sysext
-        # refuses to merge it onto anything else.
+        # refuses to merge it onto anything else except when it declares ID=_any which also
+        # doesn't do VERSION_ID= matching then.
         with rootfs.rootfs("/buildroot", lowers=lowers) as tree:
             fields = _os_release(tree)
         if "ID" not in fields:
             raise SystemExit("sysext: the base os-release lacks ID")
-        strict = {key: fields[key] for key in ("ID", "VERSION_ID") if key in fields and key not in release}
-        release = strict | release
+        if release.get("ID") != "_any":
+            strict = {
+                key: fields[key] for key in ("ID", "VERSION_ID") if key in fields and key not in release
+            }
+            release = strict | release
         lowers = lowers[base:]
 
     out = Path(spec["out"])
