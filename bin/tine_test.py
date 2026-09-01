@@ -1331,7 +1331,10 @@ fbsource = none
 prelude = bundled
 
 [parser]
-target_platform_detector_spec = target:tine//...->prelude//platforms:default
+target_platform_detector_spec = target:tine//...->tine//platforms:default
+
+[build]
+execution_platforms = tine//platforms:default
 
 [project]
 ignore = .git, **/buck-out, \\
@@ -1366,9 +1369,14 @@ class TestProjectBuckconfig(unittest.TestCase):
 
     def test_the_project_gets_a_platform_for_its_own_targets_too(self) -> None:
         detector = self.config()["parser"][tine.DETECTOR].split()
+        # This cell's platform, not the prelude's: that is what gives the project the shared cache.
         self.assertEqual(
-            detector, [f"target:{cell}//...->{tine.DEFAULT_PLATFORM}" for cell in ("root", "tine")]
+            detector, [f"target:{cell}//...->tine//platforms:default" for cell in ("root", "tine")]
         )
+
+    def test_the_project_runs_actions_on_the_cell_s_platform(self) -> None:
+        # Copied rather than rewritten, and it is what gives the project the shared cache.
+        self.assertEqual(self.config()["build"]["execution_platforms"], "tine//platforms:default")
 
     def test_what_the_project_has_no_say_in_is_copied_with_its_comments(self) -> None:
         written = self.written()

@@ -1,0 +1,11 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+load(":defs.bzl", "execution_platform")
+
+# `tine init` points a project that builds against this cell here too, for both its execution and
+# its target platform, so every such project caches without configuring anything.
+execution_platform(
+    name = "default",
+    cpu_configuration = host_configuration.cpu,
+    os_configuration = host_configuration.os,
+    visibility = ["PUBLIC"],
+)

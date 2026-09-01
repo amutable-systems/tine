@@ -954,7 +954,7 @@ asks with `distribution.compatibility()`.
 Building one of those targets without choosing says so by name:
 
 ```text
-tine//examples/image:boot-demo is incompatible with prelude//platforms:default
+tine//examples/image:boot-demo is incompatible with tine//platforms:default
     (tine//distribution:no-distribution-chosen unsatisfied)
 ```
 
