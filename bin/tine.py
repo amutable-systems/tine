@@ -890,6 +890,7 @@ def enter(root: Path, config: dict[str, dict[str, str]], argv: list[str]) -> Non
 
 VERBS = {
     "buck": "run the pinned Buck2, which every other command configures",
+    "box": "run the project's root box target",
     "mount": "manage external directories mounted over project paths",
     "init": "write the configuration a project needs to build against a checkout of the tine cell",
     "completion": "print the completion script for bash, fish or zsh",
@@ -1521,6 +1522,8 @@ def main(argv: list[str]) -> None:
 
     if name == "buck":
         buck(rest)
+    elif name == "box":
+        buck(["-v", "0", "run", "//:box", *rest])
     elif name == "mount":
         mount(project_root(cwd()), rest)
     elif name == "init":

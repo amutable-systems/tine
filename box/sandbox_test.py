@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import sandbox
-from isolation import Bind, Devices, Symlink, Tmpfs
+from isolation import Bind, Devices, Sandbox, Symlink, Tmpfs
 from sandbox import _PROJECT
 
 
@@ -205,6 +205,83 @@ class TestRelaxed(unittest.TestCase):
             self.assertEqual(launch.sandbox.chdir, project)
             self.assertFalse(launch.sandbox.isolate_network)
             self.assertFalse(launch.sandbox.become_root)
+
+    def test_a_development_box_may_choose_its_shell_after_entry(self) -> None:
+        with _project() as (_, tools):
+            launch = _launch("--tools", str(tools), "--relaxed", "--box", "dev")
+
+        self.assertEqual(launch.command, ())
+
+
+class TestInteractiveShell(unittest.TestCase):
+    def test_shell_from_the_environment_wins(self) -> None:
+        with unittest.mock.patch.object(
+            sandbox.shutil,
+            "which",
+            return_value="/box/bin/zsh",
+        ) as which:
+            shell = sandbox._interactive_shell({"PATH": "/box/bin", "SHELL": "zsh"})
+
+        self.assertEqual(shell, "/box/bin/zsh")
+        which.assert_called_once_with("zsh", path="/box/bin")
+
+    def test_bash_is_the_fallback(self) -> None:
+        environment = {
+            "PATH": "/box/bin",
+            "SHELL": "/bin/fish",
+            "STARSHIP_SHELL": "fish",
+            "TINE_BOX": "systemd",
+        }
+        with unittest.mock.patch.object(
+            sandbox.shutil,
+            "which",
+            side_effect=[None, "/box/bin/bash"],
+        ) as which:
+            shell = sandbox._interactive_shell(environment)
+
+        self.assertEqual(shell, "/box/bin/bash")
+        self.assertEqual(environment["SHELL"], "/box/bin/bash")
+        self.assertEqual(environment["SHELL_PROMPT_PREFIX"], "(systemd)")
+        self.assertNotIn("STARSHIP_SHELL", environment)
+        self.assertEqual(
+            which.call_args_list,
+            [
+                unittest.mock.call("/bin/fish", path="/box/bin"),
+                unittest.mock.call("bash", path="/box/bin"),
+            ],
+        )
+
+    def test_no_installed_shell_is_an_error(self) -> None:
+        with (
+            unittest.mock.patch.object(sandbox.shutil, "which", return_value=None),
+            self.assertRaisesRegex(SystemExit, "no shell installed in box"),
+        ):
+            sandbox._interactive_shell({"PATH": "/box/bin"})
+
+    def test_shell_is_chosen_after_entering_the_box(self) -> None:
+        launch = sandbox.Launch(sandbox=Sandbox(filesystems=()), command=(), environment={})
+        entered = False
+
+        def enter(_sandbox: Sandbox) -> None:
+            nonlocal entered
+            entered = True
+
+        def shell(_environment: dict[str, str]) -> str:
+            self.assertTrue(entered)
+            return "/bin/bash"
+
+        with (
+            unittest.mock.patch.object(sandbox, "_parse"),
+            unittest.mock.patch.object(sandbox, "_launch", return_value=launch),
+            unittest.mock.patch.object(sandbox, "enter", side_effect=enter),
+            unittest.mock.patch.object(sandbox, "_interactive_shell", side_effect=shell),
+            unittest.mock.patch.object(os, "execvpe") as execute,
+            self.assertRaises(SystemExit) as raised,
+        ):
+            sandbox.main([])
+
+        self.assertEqual(raised.exception.code, 127)
+        execute.assert_called_once_with("/bin/bash", ("/bin/bash",), {})
 
 
 if __name__ == "__main__":
