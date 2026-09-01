@@ -10,7 +10,6 @@
 /.buckconfig.local.*.tmp
 /.tine.local.toml
 /.tine.local.toml.*.tmp
-/.tine.local.toml.lock
 .claude/settings.local.json
 
 # Build output of a cargo build run by hand inside a checked-out Rust project
