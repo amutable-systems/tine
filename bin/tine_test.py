@@ -15,7 +15,6 @@ import runpy
 import subprocess
 import sys
 import tempfile
-import threading
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -538,57 +537,6 @@ class TestMountAdd(MountTestCase):
         before = local.read_bytes()
         self.mount("add", str(self.root / "sub"), str(self.source))
         self.assertEqual(local.read_bytes(), before)
-
-    def test_concurrent_adds_preserve_both_mounts(self) -> None:
-        (self.root / "other").mkdir()
-        first_read = threading.Event()
-        second_waiting = threading.Event()
-        release = threading.Event()
-        errors: list[BaseException] = []
-        local_mounts = tine.local_mounts
-        mount_lock = tine.MountLock
-
-        def delayed(root: Path) -> dict[str, str]:
-            declarations = local_mounts(root)
-            if threading.current_thread().name == "first mount":
-                first_read.set()
-                release.wait(5)
-            return declarations
-
-        @contextlib.contextmanager
-        def observed(root: Path) -> collections.abc.Iterator[None]:
-            if threading.current_thread().name == "second mount":
-                second_waiting.set()
-            with mount_lock(root):
-                yield
-
-        def add(target: str) -> None:
-            try:
-                tine.mount(self.root, ["add", str(self.root / target), str(self.source)])
-            except BaseException as error:
-                errors.append(error)
-
-        first = threading.Thread(target=add, args=("sub",), name="first mount", daemon=True)
-        second = threading.Thread(target=add, args=("other",), name="second mount", daemon=True)
-        with (
-            unittest.mock.patch.object(tine, "local_mounts", side_effect=delayed),
-            unittest.mock.patch.object(tine, "MountLock", side_effect=observed),
-            unittest.mock.patch("builtins.print"),
-        ):
-            first.start()
-            try:
-                self.assertTrue(first_read.wait(5))
-                second.start()
-                self.assertTrue(second_waiting.wait(5))
-            finally:
-                release.set()
-                first.join(5)
-                if second.ident is not None:
-                    second.join(5)
-
-        self.assertFalse(first.is_alive() or second.is_alive())
-        self.assertEqual(errors, [])
-        self.assertEqual(self.declared(), {"other": str(self.source), "sub": str(self.source)})
 
     def test_target_cannot_hide_tines_private_config(self) -> None:
         (self.root / tine.HOME / "nested").mkdir(parents=True)
@@ -1396,7 +1344,6 @@ class TestInit(unittest.TestCase):
         self.assertIn(f"/{tine.LOCAL}.*.tmp\n", gitignore)
         self.assertIn(f"/{tine.LOCAL_CONFIG}\n", gitignore)
         self.assertIn(f"/{tine.LOCAL_CONFIG}.*.tmp\n", gitignore)
-        self.assertIn(f"/{tine.MOUNT_LOCK}\n", gitignore)
 
     def test_the_checkout_it_is_part_of_is_the_one_it_writes(self) -> None:
         with unittest.mock.patch.object(tine, "cell_root", return_value=self.checkout):

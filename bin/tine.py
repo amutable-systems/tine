@@ -18,7 +18,6 @@ import isolation
 LOCAL = ".buckconfig.local"
 CONFIG = "tine.toml"
 LOCAL_CONFIG = ".tine.local.toml"
-MOUNT_LOCK = f"{LOCAL_CONFIG}.lock"
 
 # Buck2 refuses to start without $HOME (some CI environments don't set it). Fall back to setting HOME to
 # a gitignored directory (relative to our project root).
@@ -531,37 +530,6 @@ def write_if_changed(path: Path, text: str) -> None:
     except OSError as error:
         tmp.unlink(missing_ok=True)
         raise fail(f"cannot write {path}: {error}") from error
-
-
-class MountLock:
-    """Serialize updates to the machine-local mount table."""
-
-    def __init__(self, root: Path) -> None:
-        # Keep it outside the namespace-private tmpfs so every namespace contends on the same inode.
-        self.path = root / MOUNT_LOCK
-        self.descriptor: int | None = None
-
-    def __enter__(self) -> None:
-        import fcntl
-
-        try:
-            descriptor = os.open(self.path, os.O_WRONLY | os.O_CREAT, 0o666)
-        except OSError as error:
-            raise fail(f"cannot open {self.path}: {error}") from error
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_EX)
-        except OSError as error:
-            os.close(descriptor)
-            raise fail(f"cannot lock {self.path}: {error}") from error
-        except BaseException:
-            os.close(descriptor)
-            raise
-        self.descriptor = descriptor
-
-    def __exit__(self, *_: object) -> None:
-        assert self.descriptor is not None
-        os.close(self.descriptor)
-        self.descriptor = None
 
 
 def refresh(root: Path) -> None:
@@ -1123,7 +1091,6 @@ GITIGNORE = f"""/buck-out
 /{LOCAL}.*.tmp
 /{LOCAL_CONFIG}
 /{LOCAL_CONFIG}.*.tmp
-/{MOUNT_LOCK}
 /{HOME}
 """
 
@@ -1271,29 +1238,28 @@ def mount(root: Path, arguments: list[str]) -> None:
         if target not in configured_mount_targets(root) and target not in graph_mount_targets(root):
             raise fail(f"mount {target}: not a valid target; `tine mount list` lists valid targets")
 
-    with MountLock(root):
-        declared = local_mounts(root)
-        if args.verb == "remove":
-            if declared.pop(target, None) is None:
-                raise fail(f"{target} is not mounted")
-            message = f"{target} is no longer mounted"
-        else:
-            assert source is not None
-            if DAEMON_BUSTER in project_config(root).get("buck2", {}):
-                raise fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
-            for other in declared:
-                if target != other and overlaps(target, other):
-                    raise fail(f"mount {target}: overlaps mount {other}")
-            if not (root / target).exists():
-                try:
-                    (root / target).mkdir()
-                except OSError as error:
-                    raise fail(f"mount {target}: cannot create its directory: {error}") from error
-            mountable(root, target, str(source))
-            declared[target] = str(source)
-            message = f"{target} is built from {source}"
-        # Preserve other entries without validation so a stale declaration can still be removed.
-        write_mounts(root, declared)
+    declared = local_mounts(root)
+    if args.verb == "remove":
+        if declared.pop(target, None) is None:
+            raise fail(f"{target} is not mounted")
+        message = f"{target} is no longer mounted"
+    else:
+        assert source is not None
+        if DAEMON_BUSTER in project_config(root).get("buck2", {}):
+            raise fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
+        for other in declared:
+            if target != other and overlaps(target, other):
+                raise fail(f"mount {target}: overlaps mount {other}")
+        if not (root / target).exists():
+            try:
+                (root / target).mkdir()
+            except OSError as error:
+                raise fail(f"mount {target}: cannot create its directory: {error}") from error
+        mountable(root, target, str(source))
+        declared[target] = str(source)
+        message = f"{target} is built from {source}"
+    # Preserve other entries without validation so a stale declaration can still be removed.
+    write_mounts(root, declared)
     print(f"tine: {message}", file=sys.stderr)
 
 
