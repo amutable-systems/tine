@@ -8,6 +8,7 @@ Target-root setup belongs to rootfs.py rather than this launcher.
 import argparse
 import os
 import re
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +44,13 @@ _BASE_ENV = {
     "LC_ALL": "C.UTF-8",
     "TZ": "UTC",
 }
+
+
+def _prompt_prefix(name: str, previous: str, prefix: str) -> str:
+    marker = f"({previous})"
+    if previous and marker in prefix:
+        return prefix.replace(marker, f"({name})", 1)
+    return f"({name}){prefix}"
 
 
 @dataclass(frozen=True)
@@ -151,12 +159,7 @@ def _box(name: str) -> dict[str, str]:
     if os.environ.get("STARSHIP_SHELL"):
         return out
     prefix = os.environ.get("SHELL_PROMPT_PREFIX", "")
-    marker = f"({previous})"
-    if previous and marker in prefix:
-        prefix = prefix.replace(marker, f"({name})", 1)
-    else:
-        prefix = f"({name}){prefix}"
-    out["SHELL_PROMPT_PREFIX"] = prefix
+    out["SHELL_PROMPT_PREFIX"] = _prompt_prefix(name, previous, prefix)
     return out
 
 
@@ -178,7 +181,7 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     )
     p.add_argument("cmd", nargs="*", help="the command to run (after `--`)")
     args = p.parse_args(argv)
-    if not args.cmd:
+    if not args.cmd and not args.box:
         raise SystemExit("no command given (expected `-- cmd ...`)")
     if args.relaxed and args.bind_cwd:
         raise SystemExit("--bind-cwd is for hermetic builds; --relaxed sees the host cwd already")
@@ -192,6 +195,24 @@ def _tty() -> Path | None:
         return Path(os.ttyname(2)) if os.isatty(2) else None
     except FileNotFoundError:
         return None
+
+
+def _interactive_shell(environment: dict[str, str]) -> str:
+    """Choose an executable shell from the mounted box."""
+    path = environment.get("PATH", os.defpath)
+    preferred = environment.get("SHELL")
+    if preferred and (shell := shutil.which(preferred, path=path)) is not None:
+        return shell
+    if (shell := shutil.which("bash", path=path)) is not None:
+        environment["SHELL"] = shell
+        # Starship belongs to the unavailable host shell. Let fallback bash use the standard marker.
+        if environment.pop("STARSHIP_SHELL", None) is not None:
+            previous = os.environ.get("TINE_BOX", "") if os.environ.get("TINE_IN_BOX") else ""
+            if name := environment.get("TINE_BOX"):
+                prefix = environment.get("SHELL_PROMPT_PREFIX", "")
+                environment["SHELL_PROMPT_PREFIX"] = _prompt_prefix(name, previous, prefix)
+        return shell
+    raise SystemExit("no shell installed in box ($SHELL and bash were not found)")
 
 
 def _launch(args: argparse.Namespace) -> Launch:
@@ -307,8 +328,10 @@ def main(argv: list[str] | None = None) -> NoReturn:
     except SandboxOSError as error:
         print(error.message, file=sys.stderr)
         raise
+    # Shell paths must be tested after entering, against the userspace the box mounted over the host.
+    command = launch.command or (_interactive_shell(launch.environment),)
     try:
-        os.execvpe(launch.command[0], launch.command, launch.environment)
+        os.execvpe(command[0], command, launch.environment)
     except FileNotFoundError:
         raise SystemExit(127) from None
     raise SystemExit(127)
