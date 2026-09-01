@@ -10,6 +10,7 @@ import signal
 import sys
 import tomllib
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -25,6 +26,7 @@ HOME = ".buck"
 
 CELL = "tine"
 COMMAND = "bin/tine"
+COMMANDS = "commands"
 COMMAND_PATH = Path(__file__).with_suffix("")
 MOUNTS = "mounts"
 MOUNT_TARGET_LABEL = "tine:mount-target"
@@ -183,7 +185,7 @@ def project_settings(root: Path) -> dict[str, object]:
     """Read the settings understood by Tine rather than Buck."""
     path = root / CONFIG
     settings = read_toml(path)
-    if extra := sorted(set(settings) - {BUCK2}):
+    if extra := sorted(set(settings) - {BUCK2, COMMANDS}):
         raise fail(f"{path} has unsupported keys: {', '.join(extra)}")
     return settings
 
@@ -892,6 +894,176 @@ VERBS = {
     "init": "write the configuration a project needs to build against a checkout of the tine cell",
     "completion": "print the completion script for bash, fish or zsh",
 }
+HELP = ("-h", "--help", "help")
+PROJECT_COMMAND_DESCRIPTION = "run a configured project command"
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectCommand:
+    """A validated project command.
+
+    The body is either a shell script or a non-empty tuple of Buck argument vectors. Validation ensures
+    every vector starts with ``buck``.
+    """
+
+    description: str
+    body: str | tuple[tuple[str, ...], ...]
+    cwd: Path | None = None
+
+
+def command_name(name: str, source: str) -> None:
+    """Require one safe command and completion-script word."""
+    if (
+        not name
+        or name.startswith("-")
+        or not all(c.isascii() and (c.isalnum() or c in "._-") for c in name)
+    ):
+        raise fail(f"[commands] in {source} has invalid command name {name!r}")
+
+    if name in VERBS or name in HELP:
+        raise fail(f"[commands] in {source} uses reserved command name {name!r}")
+
+
+def validate_commands(value: object, source: str = CONFIG) -> dict[str, ProjectCommand]:
+    """Validate and normalize the structured project command table."""
+    table = object_table(value, f"[{COMMANDS}] in {source}")
+    commands: dict[str, ProjectCommand] = {}
+    for name, value in table.items():
+        command_name(name, source)
+
+        definition = object_table(value, f"[{COMMANDS}.{name}] in {source}")
+        if extra := sorted(set(definition) - {"cwd", "description", "script", "steps"}):
+            raise fail(f"[{COMMANDS}.{name}] in {source} has unsupported keys: {', '.join(extra)}")
+
+        description = definition.get("description", PROJECT_COMMAND_DESCRIPTION)
+        if not isinstance(description, str) or not description.strip() or not description.isprintable():
+            raise fail(f"[{COMMANDS}.{name}] description in {source} must be a non-empty printable string")
+
+        if ("steps" in definition) == ("script" in definition):
+            raise fail(f"[{COMMANDS}.{name}] in {source} must define exactly one of steps or script")
+
+        command_cwd = None
+        if "cwd" in definition:
+            raw_cwd = definition["cwd"]
+            if not isinstance(raw_cwd, str) or not raw_cwd or "\0" in raw_cwd or Path(raw_cwd).is_absolute():
+                raise fail(f"[{COMMANDS}.{name}] cwd in {source} must be a non-empty relative path")
+            command_cwd = Path(raw_cwd)
+
+        if "script" in definition:
+            script = definition["script"]
+            if not isinstance(script, str) or not script.strip():
+                raise fail(f"[{COMMANDS}.{name}] script in {source} must be a non-empty string")
+            if "\0" in script:
+                raise fail(f"[{COMMANDS}.{name}] script in {source} must not contain NUL")
+            commands[name] = ProjectCommand(description, script, command_cwd)
+            continue
+
+        raw_steps = definition["steps"]
+        if not isinstance(raw_steps, list) or not raw_steps:
+            raise fail(f"[{COMMANDS}.{name}] steps in {source} must be a non-empty array")
+
+        steps: list[tuple[str, ...]] = []
+        for number, raw_step in enumerate(raw_steps, start=1):
+            if not isinstance(raw_step, list) or not raw_step:
+                raise fail(f"[{COMMANDS}.{name}] step {number} in {source} must be a non-empty array")
+
+            if any(not isinstance(argument, str) for argument in raw_step):
+                raise fail(f"[{COMMANDS}.{name}] step {number} in {source} must contain only strings")
+
+            step = tuple(cast(list[str], raw_step))
+            if any("\0" in argument for argument in step):
+                raise fail(f"[{COMMANDS}.{name}] step {number} in {source} must not contain NUL")
+            if step[0] != "buck":
+                raise fail(
+                    f"[{COMMANDS}.{name}] step {number} in {source} must start with buck, not {step[0]}"
+                )
+
+            steps.append(step)
+
+        commands[name] = ProjectCommand(description, tuple(steps), command_cwd)
+
+    return commands
+
+
+def project_commands(directory: Path) -> tuple[Path, dict[str, ProjectCommand]] | None:
+    """Read the root and commands for the project containing directory, if one exists."""
+    try:
+        root = project_root(directory)
+    except SystemExit:
+        return None
+    path = root / CONFIG
+    return root, validate_commands(project_settings(root).get(COMMANDS, {}), str(path))
+
+
+def commands(configured: dict[str, ProjectCommand]) -> dict[str, str]:
+    """Built-in commands followed by validated project commands."""
+    return VERBS | {name: configured[name].description for name in sorted(configured)}
+
+
+def run_step(argv: list[str]) -> int:
+    """Run an intermediate step while keeping signals attached to its child."""
+    import subprocess
+    from contextlib import ExitStack
+
+    with subprocess.Popen(argv) as process, ExitStack() as cleanup:
+        forwarded = None
+
+        def forward(number: int, _frame: object) -> None:
+            nonlocal forwarded
+            forwarded = number
+            try:
+                process.send_signal(number)
+            except ProcessLookupError:
+                pass
+
+        for number in (signal.SIGHUP, signal.SIGTERM):
+            previous = signal.signal(number, forward)
+            cleanup.callback(signal.signal, number, previous)
+        try:
+            returncode = process.wait()
+        except KeyboardInterrupt:
+            forward(signal.SIGINT, None)
+            returncode = process.wait()
+        return -forwarded if forwarded is not None else returncode
+
+
+def run_project_command(
+    root: Path,
+    name: str,
+    command: ProjectCommand,
+    arguments: list[str],
+) -> None:
+    """Run a script or each Buck step, passing caller arguments to the final process."""
+    executable = str(COMMAND_PATH.absolute())
+    if command.cwd is not None:
+        directory = root / command.cwd
+        try:
+            os.chdir(directory)
+        except OSError as error:
+            raise fail(f"cannot run command {name} from {directory}: {error}") from error
+
+    if isinstance(command.body, str):
+        argv = ["sh", "-c", command.body, name, *arguments]
+        try:
+            os.execvp(argv[0], argv)
+        except OSError as error:
+            raise fail(f"cannot run command {name}: {error}") from error
+        return
+
+    steps = command.body
+    for number, step in enumerate(steps[:-1], start=1):
+        argv = [executable, *step]
+        try:
+            returncode = run_step(argv)
+        except OSError as error:
+            raise fail(f"cannot run command {name} step {number}: {error}") from error
+        if returncode != 0:
+            raise SystemExit(returncode if returncode > 0 else 128 - returncode)
+    argv = [executable, *steps[-1], *arguments]
+    try:
+        os.execv(executable, argv)
+    except OSError as error:
+        raise fail(f"cannot run command {name} step {len(steps)}: {error}") from error
 
 
 def _patch(script: str, old: str, new: str) -> str:
@@ -913,7 +1085,7 @@ def _buck2_completion(binary: Path, shell: str) -> str:
     return proc.stdout
 
 
-def completion(script: str, shell: str) -> str:
+def completion(script: str, shell: str, configured: dict[str, ProjectCommand] | None = None) -> str:
     """Buck2's own completion script, rewritten to complete `tine buck` instead.
 
     Its arguments arrive one word further along than the script expects, so the helper that finds
@@ -928,8 +1100,9 @@ def completion(script: str, shell: str) -> str:
         count=1,
         flags=re.M,
     )
+    available = commands(configured or {})
     if shell == "fish":
-        return _fish(script)
+        return _fish(script, available)
     # bash and zsh spell buck2 into function names, the subcommand state machine and the
     # registration alike, so rename wholesale; a few help strings now say tine where they mean Buck2.
     script = script.replace("buck2", "tine")
@@ -945,7 +1118,7 @@ def completion(script: str, shell: str) -> str:
     if shell == "bash":
         # Buck2 registers its completers for the `buck` command too, which this one is not.
         script = re.sub(r"^[ \t]*complete -F .* buck\n", "", script, flags=re.M)
-        own = _BASH
+        own = _BASH.replace(VERBS_MARKER, " ".join(available))
     else:
         # A shell reads the commands a file completes off its first line, and `buck` there would
         # bind a real buck2 installation's completion to this script.
@@ -961,8 +1134,11 @@ def completion(script: str, shell: str) -> str:
             "else\n    compdef _tine_buck2 tine\nfi\n",
             "\n",
         )
-        own = _ZSH
-    return script + own.replace(VERBS_MARKER, " ".join(VERBS))
+        described = "\n".join(
+            f"        {zsh_quoted(name, description)}" for name, description in available.items()
+        )
+        own = _ZSH.replace(VERBS_MARKER, described)
+    return script + own
 
 
 def quoted(text: str) -> str:
@@ -970,7 +1146,13 @@ def quoted(text: str) -> str:
     return text.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def _fish(script: str) -> str:
+def zsh_quoted(name: str, description: str) -> str:
+    """Quote one `_describe` entry as a zsh array word."""
+    description = description.replace("\\", "\\\\").replace(":", "\\:")
+    return "'" + f"{name}:{description}".replace("'", "'\\''") + "'"
+
+
+def _fish(script: str, available: dict[str, str]) -> str:
     script = re.sub(r"^complete -c buck2 ", "complete -c tine ", script, flags=re.M)
     script = script.replace("__fish_buck2", "__fish_tine").replace("__buck2", "__tine")
     script = re.sub(r"^complete -c buck -w buck2\n", "", script, flags=re.M)
@@ -1000,7 +1182,7 @@ def _fish(script: str) -> str:
     script = _patch(script, '    buck2 complete --target="$cur"', '    tine buck complete --target="$cur"')
     verbs = "\n".join(
         f"complete -c tine -n __fish_use_subcommand -f -a {verb} -d '{quoted(description)}'"
-        for verb, description in VERBS.items()
+        for verb, description in available.items()
     )
     return script + _FISH.replace(VERBS_MARKER, verbs)
 
@@ -1065,13 +1247,22 @@ complete -F _tine -o bashdefault -o default tine
 
 _ZSH = """
 _tine() {
-    local line
-    _arguments -C '1: :(__TINE_VERBS__)' '*:: :->rest'
-    case $line[1] in
-        buck) __tine_fix ;;
-        mount) _arguments '1: :(add remove list)' '*: :_files' ;;
-        completion) _values shell bash fish zsh ;;
-        init) _files ;;
+    local context state state_descr line
+    typeset -A opt_args
+    local -a tine_commands=(
+__TINE_VERBS__
+    )
+    _arguments -C '1:command:->command' '*:: :->rest'
+    case $state in
+        command) _describe -t commands command tine_commands ;;
+        rest)
+            case $line[1] in
+                buck) __tine_fix ;;
+                mount) _arguments '1: :(add remove list)' '*: :_files' ;;
+                completion) _values shell bash fish zsh ;;
+                init) _files ;;
+            esac
+            ;;
     esac
 }
 
@@ -1302,9 +1493,15 @@ def buck(argv: list[str]) -> None:
         raise fail(f"cannot run {binary}: {error}") from error
 
 
-USAGE = "usage: tine <command> [arguments]\n\n" + "".join(
-    f"    {verb:<12}{description}\n" for verb, description in VERBS.items()
-)
+def usage(configured: dict[str, ProjectCommand]) -> str:
+    available = commands(configured)
+    width = max(12, *(len(name) + 2 for name in available))
+    return "usage: tine <command> [arguments]\n\n" + "".join(
+        f"    {name:<{width}}{description}\n" for name, description in available.items()
+    )
+
+
+USAGE = usage({})
 
 
 def main(argv: list[str]) -> None:
@@ -1315,6 +1512,12 @@ def main(argv: list[str]) -> None:
     # Python turns a closed stdout into an exception; a command piped into `head` should not.
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     name, rest = (argv[0], argv[1:]) if argv else (None, [])
+    project: tuple[Path, dict[str, ProjectCommand]] | None = None
+    configured: dict[str, ProjectCommand] = {}
+    if name is None or name in HELP or name not in VERBS:
+        project = project_commands(cwd())
+        if project is not None:
+            _, configured = project
 
     if name == "buck":
         buck(rest)
@@ -1334,14 +1537,18 @@ def main(argv: list[str]) -> None:
         ensure_home(root)
         config = project_config(root)
         settings = project_settings(root)
+        configured = validate_commands(settings.get(COMMANDS, {}), str(root / CONFIG))
         enter(root, config, argv)
         binary = buck2(settings, cell_root())
         assert binary is not None
-        print(completion(_buck2_completion(binary, rest[0]), rest[0]), end="")
-    elif name in ("-h", "--help", "help", None):
-        print(USAGE, end="")
+        print(completion(_buck2_completion(binary, rest[0]), rest[0], configured), end="")
+    elif name in (*HELP, None):
+        print(usage(configured), end="")
+    elif project is not None and name in configured:
+        root, _ = project
+        run_project_command(root, name, configured[name], rest)
     else:
-        raise fail(f"no such command: {name}\n{USAGE}")
+        raise fail(f"no such command: {name}\n{usage(configured)}")
 
 
 if __name__ == "__main__":
