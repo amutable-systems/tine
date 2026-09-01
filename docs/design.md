@@ -1132,6 +1132,21 @@ These measures make action-cache reuse meaningful and prepare the graph for remo
 does not yet run a systematic build-twice reproducibility audit, and raw filesystem image byte-for-byte
 reproducibility still needs dedicated validation.
 
+Sharing those results between machines is a further, per-action decision. Uploading a result trades build
+time against download size: assembling an image writes gigabytes in seconds, so fetching one from the
+cache takes longer than building it locally and wastes a lot of bandwidth. Worthwhile actions are slow
+and have small output: compilers (cargo, go, RPM builds) and package dependency solvers. These enable
+`allow_cache_upload`, except where an action keeps its previous outputs: an incremental rerun drops
+buck's strong "this exact input produces this exact output" guarantee, so it must not go into the shared
+cache.
+
+**An action only hits if every action above it is cached or byte-reproducible.** Adding an expensive
+action to the list buys nothing while something upstream of it produces different bytes each run.
+
+`buck log show` reports one `ActionExecution` record per action, carrying the `wall_time_us` and
+`output_size` that decide whether it is worth caching, and the output digests that say whether it is
+reproducible across two builds.
+
 ## Decision record
 
 The following decisions remain the rationale for the current design. Detailed source-code research that led

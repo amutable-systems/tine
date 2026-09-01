@@ -37,6 +37,7 @@ def assemble_vendor(actions: AnalysisActions, tool: RunInfo, crates: list[dict[s
                 },
             ),
         ),
+        allow_cache_upload = True,
         category = "cargo_vendor",
     )
     return vendor
