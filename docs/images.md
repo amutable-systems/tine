@@ -20,6 +20,18 @@ It verifies the pinned Buck binary against the SHA-256 in `tools/tools.json`, or
 `.buckconfig.local` a developer pins their own Buck2 in, and caches it under
 `${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2/<sha256>`; cached invocations work offline.
 
+## Restrictions
+
+File permissions in built images are normalized: 0755 for directories and executables, 0644 for files.
+This deliberately breaks suid/sgid executables and the sticky bit: these need to be replaced with
+socket-activated services and other safer alternatives. `/tmp` and `/var/tmp` keep their `1777`, which is
+restored when the image is finalized. Nothing on a `/usr` partition ought to be a secret, and
+[`tmpfiles.d`](https://man7.org/linux/man-pages/man5/tmpfiles.d.5.html) handles permissions of files in
+writable directories such as `/etc` and `/var`.
+
+If you must have files with different permissions in your image, the escape hatch is the `tmpfiles`
+attribute of an image or composition.
+
 ## Concepts
 
 A **catalog** is a Buck package that declares which OS releases are available to build against. For each

@@ -103,43 +103,32 @@ class TestClampMtimes(unittest.TestCase):
             self.assertEqual(written.lstat().st_mtime, epoch)
 
 
-class TestCopyModes(unittest.TestCase):
-    def test_mode_normalization(self) -> None:
+class TestNormalization(unittest.TestCase):
+    def test_modes(self) -> None:
         with tempfile.TemporaryDirectory(prefix="layer-test.", dir="/var/tmp") as scratch:
             tree = Path(scratch)
-            source = tree / "src"
-            (source / "sub").mkdir(parents=True)
-            (source / "sub").chmod(0o775)
-            (source / "sub/file").write_text("file")
-            (source / "sub/file").chmod(0o664)
-            (source / "sub/secret").write_text("secret")
-            (source / "sub/secret").chmod(0o600)
-            (source / "sub/script").write_text("script")
-            (source / "sub/script").chmod(0o777)
-            (source / "link").symlink_to("sub/file")
-            # pre-existing tree, does not get touched
-            destination = tree / "dst"
-            destination.mkdir()
-            (destination / "installed").write_text("installed")
-            (destination / "installed").chmod(0o600)
+            tree.chmod(0o700)
+            (tree / "sub").mkdir()
+            (tree / "sub").chmod(0o1777)
+            (tree / "sub/file").write_text("file")
+            (tree / "sub/file").chmod(0o664)
+            (tree / "sub/secret").write_text("secret")
+            (tree / "sub/secret").chmod(0o600)
+            (tree / "sub/script").write_text("script")
+            (tree / "sub/script").chmod(0o777)
+            (tree / "sub/mount").write_text("mount")
+            (tree / "sub/mount").chmod(0o4755)
+            (tree / "link").symlink_to("sub/secret")
+            os.mkfifo(tree / "fifo", 0o600)
 
-            layer._copy(source, destination)
+            layer._normalize_modes(tree)
 
-            self.assertEqual((destination / "sub").stat().st_mode & 0o777, 0o755)
-            self.assertEqual((destination / "sub/file").stat().st_mode & 0o777, 0o644)
-            self.assertEqual((destination / "sub/secret").stat().st_mode & 0o777, 0o644)
-            self.assertEqual((destination / "sub/script").stat().st_mode & 0o777, 0o755)
-            self.assertTrue((destination / "link").is_symlink())
-            self.assertEqual((destination / "installed").stat().st_mode & 0o777, 0o600)
-
-
-class TestWriteFile(unittest.TestCase):
-    def test_default_mode(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="layer-test.", dir="/var/tmp") as scratch:
-            written = Path(scratch) / "etc/tine/written"
-
-            layer._apply_filesystem(["write_file", str(written), "content"])
-
-            # buckd normalizes its umask to 022, validate that assumption
-            self.assertEqual(written.stat().st_mode & 0o777, 0o644)
-            self.assertEqual(written.parent.stat().st_mode & 0o777, 0o755)
+            self.assertEqual(tree.stat().st_mode & 0o7777, 0o755)
+            self.assertEqual((tree / "sub").stat().st_mode & 0o7777, 0o755)
+            self.assertEqual((tree / "sub/file").stat().st_mode & 0o7777, 0o644)
+            self.assertEqual((tree / "sub/secret").stat().st_mode & 0o7777, 0o644)
+            self.assertEqual((tree / "sub/script").stat().st_mode & 0o7777, 0o755)
+            self.assertEqual((tree / "sub/mount").stat().st_mode & 0o7777, 0o755)
+            self.assertTrue((tree / "link").is_symlink())
+            # not content: whatever it is, it is not ours to rewrite
+            self.assertEqual((tree / "fifo").lstat().st_mode & 0o7777, 0o600)
