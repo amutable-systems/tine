@@ -1,5 +1,6 @@
 """Build a Go project from its own source tree: one online, verified module fetch, then an offline build."""
 
+load("//:incremental.bzl", "incremental_dir")
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 
@@ -30,7 +31,7 @@ def _go_build_impl(
     cgo: bool | None,
     cgo_cflags: list[str],
     fetch: RunInfo,
-    gocache: OutputArtifact,
+    gocache: str,
     linker_flags: list[str],
     sources: dict[str, Artifact],
     src: Artifact,
@@ -41,8 +42,10 @@ def _go_build_impl(
     module = workspace.read_json()
 
     # The one online step: go downloads what go.mod names and verifies it against go.sum. Its
-    # inputs are only those two files, so editing sources never refetches; and the cache is kept
-    # across reruns, so a dependency bump downloads only what is missing from it.
+    # inputs are only those two files, so editing sources never refetches. Unlike the build
+    # cache this is a declared output: go_build consumes it, so it goes into
+    # the shared buck cache. The price is a full refresh on any bump, since the
+    # cache state has to stay out of the action digest.
     module_cache = None
     if module["sum"] != None:
         module_cache = actions.declare_output(_PRIVATE + "/module-cache", dir = True)
@@ -61,7 +64,6 @@ def _go_build_impl(
             ),
             category = "go_fetch",
             local_only = True,
-            no_outputs_cleanup = True,
         )
 
     actions.run(
@@ -84,7 +86,7 @@ def _go_build_impl(
             ),
         ),
         category = "go_build",
-        no_outputs_cleanup = True,
+        local_only = True,
     )
     return []
 
@@ -96,7 +98,7 @@ _go_build = dynamic_actions(
         "cgo": dynattrs.value(bool | None),
         "cgo_cflags": dynattrs.value(list[str]),
         "fetch": dynattrs.value(RunInfo),
-        "gocache": dynattrs.output(),
+        "gocache": dynattrs.value(str),
         "linker_flags": dynattrs.value(list[str]),
         "sources": dynattrs.dict(str, dynattrs.value(Artifact)),
         "src": dynattrs.value(Artifact),
@@ -116,9 +118,8 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
         fail("go_package {}: binaries may not be named {}".format(ctx.label.name, reserved))
     outputs = {name: ctx.actions.declare_output(name) for name in ctx.attrs.binaries}
 
-    # go's own build cache. An action's outputs are the only place it may leave state behind, and
-    # buck clears them before rerunning it unless told not to.
-    gocache = ctx.actions.declare_output(_PRIVATE + "/gocache", dir = True)
+    # Persistent go build cache dir for incremental builds
+    gocache = incremental_dir(ctx.label, "gocache")
 
     workspace = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
     ctx.actions.run(
@@ -144,7 +145,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             cgo = ctx.attrs.cgo,
             cgo_cflags = ctx.attrs.cgo_cflags,
             fetch = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._fetch, network = True),
-            gocache = gocache.as_output(),
+            gocache = gocache,
             linker_flags = ctx.attrs.linker_flags,
             sources = sources,
             src = src,

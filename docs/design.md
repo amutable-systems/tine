@@ -646,12 +646,34 @@ the image SBOM the way an installed package does.
 
 The unit of caching is the project: any change to its sources reruns one action for the whole crate graph.
 Splitting that into one action per crate would require the crate dependency graph rather than just the
-lock, and is deliberately not attempted; the rerun is made cheap instead. Cargo's build directory is a
-declared output that buck is told not to clear before rerunning the action, so cargo finds the previous
-one and recompiles only what changed, exactly as it does in a working copy. Nothing else survives: the
-source tree is copied afresh from the action's inputs on every run, with the modification times cargo
-compares them by. A build that finds no previous directory remains the reference, which is what CI and any
-`buck2 clean` produce.
+lock, and is deliberately not attempted; the rerun is made cheap instead. Cargo's build directory sits in
+`.buck/incremental/`, outside every buck output tree, so cargo finds the previous one and recompiles only
+what changed, exactly as it does in a working copy. A cold build of a real crate graph is minutes rather
+than the seconds an example shows, so keeping the rerun cheap is a strong requirement.
+
+That directory is deliberately *not* a declared output. Every way of keeping it as one fails once the
+cache is shared between machines:
+
+- **Declare it everywhere.** A declared output is named in the action digest and uploaded with every build,
+  and these are enormous: `varlink-http-bridge` has a GB of build directory for 5MB of final binary.
+- **Declare it, but refuse the upload.** `allow_cache_upload` is per action and not per output, so this
+  stops the binaries being shared too, which is the point of having the cache.
+- **Declare it only where builds are incremental.** Declared output paths are part of the action digest,
+  so the two sides key the same action apart and never share a hit at all. It would also be an ugly
+  special case/configuration on the infrastructure.
+- **Buck's own `incremental_remote_outputs`.** Built for exactly this shape: the cache lookup uses a
+  digest that does not name the previous outputs, while execution seeds from them. But it uploads those
+  previous outputs as inputs, so even worse cache littering than the first option.
+
+Keeping the state outside of buck's world costs a full build on the first edit. But having a shared cache
+is much more efficient and valuable.
+
+Each configured target keys its own directory, so a platform or constraint change starts a fresh one
+beside the old. Nothing prunes either: `rm -rf .buck/incremental` is the only cleanup there is.
+
+Nothing else survives: the source tree is copied afresh from the action's inputs on every run, with the
+modification times cargo compares them by. A build that finds no previous directory remains the
+reference, which is what a fresh checkout produces.
 
 ### Go source builds
 
@@ -697,12 +719,14 @@ with `-o`.
 
 The unit of caching is the project, not the package: one action per package would mean modelling the
 package graph and the toolchain here, which is what rules_go exists for, and go's own content-keyed build
-cache gets most of that back for none of it. So reruns are made cheap the same way as for Rust: both
-caches are declared outputs that buck is told not to clear before rerunning their actions. go's build
-cache keys on file contents, so a rerun recompiles only what actually changed, and a rerun fetch
-downloads only what the kept module cache is missing. Old module versions accumulate there after
-dependency bumps, but they are inert: go takes only what `go.sum` names out of the proxy view. A run that
-finds no previous cache remains the reference, which is what CI and any `buck2 clean` produce.
+cache gets most of that back for none of it. So reruns are made cheap the same way as for Rust: go's
+build cache sits in `.buck/incremental/` rather than among the action's outputs, and keys on file
+contents, so a rerun recompiles only what actually changed. The module cache is the opposite case. It is
+a fetched input that `go_build` consumes rather than scratch, so it stays a declared output and is
+shared: a developer whose `go.mod` and `go.sum` are unchanged takes the build server's module cache
+instead of the network. That costs a full redownload on a dependency bump, since the fetch has to be a
+plain function of those two files to be cacheable at all. A run that finds no previous build cache
+remains the reference, which is what a fresh checkout produces.
 
 ### Filesystem layer representation
 

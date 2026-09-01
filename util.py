@@ -189,9 +189,6 @@ def take_binaries(built: Path, binaries: dict[str, str], *, tool: str, where: st
         )
         raise SystemExit(f"{tool}: no {', '.join(missing)} in {where}, which holds: {', '.join(found)}")
     for name, out in binaries.items():
-        # Replace, never rewrite: buck does not clear a kept action's outputs, and whatever consumed
-        # the previous binary may hold a hard link to it.
-        Path(out).unlink(missing_ok=True)
         clone_file(built / name, Path(out))
 
 

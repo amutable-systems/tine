@@ -1,5 +1,6 @@
 """Build a Rust project from its own source tree, offline and SBOM-visible."""
 
+load("//:incremental.bzl", "incremental_dir")
 load("//:specs.bzl", "executable", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
@@ -17,7 +18,7 @@ def _cargo_build_impl(
     fetch: RunInfo,
     lock: ArtifactValue,
     src: Artifact,
-    target: OutputArtifact,
+    target: str,
     vendor: RunInfo,
 ) -> list[Provider]:
     """Declare everything the lock names, once it has been built and can be read."""
@@ -74,7 +75,7 @@ git --git-dir="$git_dir" config --bool core.bare true""",
             ),
         ),
         category = "cargo_build",
-        no_outputs_cleanup = True,
+        local_only = True,
     )
     return []
 
@@ -87,7 +88,7 @@ _cargo_build = dynamic_actions(
         "fetch": dynattrs.value(RunInfo),
         "lock": dynattrs.artifact_value(),
         "src": dynattrs.value(Artifact),
-        "target": dynattrs.output(),
+        "target": dynattrs.value(str),
         "vendor": dynattrs.value(RunInfo),
     },
 )
@@ -101,9 +102,8 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
         fail("cargo_package {}: binaries may not be named {}".format(ctx.label.name, reserved))
     outputs = {name: ctx.actions.declare_output(name) for name in ctx.attrs.binaries}
 
-    # Cargo's own build directory. An action's outputs are the only place it may leave state behind,
-    # and buck clears them before rerunning it unless told not to.
-    target = ctx.actions.declare_output(_PRIVATE + "/target", dir = True)
+    # Persistent build dir for incremental builds
+    target = incremental_dir(ctx.label, "target")
 
     resolved = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
     ctx.actions.run(
@@ -130,7 +130,7 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
             fetch = ctx.attrs._fetch[RunInfo],
             lock = resolved,
             src = src,
-            target = target.as_output(),
+            target = target,
             vendor = ctx.attrs._vendor[RunInfo],
         ),
     )

@@ -120,11 +120,12 @@ def main(argv: list[str] | None = None) -> None:
     build = Path("/var/tmp/build")
     cargo_home = Path("/var/tmp/cargo")
 
-    # Cargo's build directory is the exception: buck keeps the previous one, so a rebuild redoes only
-    # what changed. Cargo decides that from the modification times of the sources, which the copy
-    # below preserves.
-    # Cargo runs with the workspace as its cwd, so every path handed to it must be absolute.
+    # Cargo's build directory is the exception: kept as persistent dir outside of buck's output
+    # tree, so a rebuild redoes only what changed. Cargo decides that from the modification times of
+    # the sources, which the copy below preserves. Cargo runs with the workspace as its cwd, so
+    # every path handed to it must be absolute.
     target = Path(spec["target"]).absolute()
+    target.mkdir(parents=True, exist_ok=True)
 
     shutil.copytree(spec["src"], build)
 

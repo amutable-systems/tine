@@ -87,7 +87,8 @@ How the crates are pinned, fetched and vendored is described under "Rust source 
 
 - **A project is one cache unit, and reruns are incremental.** Any change to its sources reruns a single
   action for the whole project, but cargo's build directory survives between runs, so that action
-  recompiles only what changed. `buck2 clean` is what forces a build from scratch.
+  recompiles only what changed. It lives in `.buck/incremental/`, outside every buck output
+  tree, so `buck2 clean` does not touch it; force a build from scratch by removing it.
 - **Only crates.io registry sources work.** Another registry is rejected with the package named, rather
   than guessed at. A `Cargo.lock` older than version 3 is rejected too: it records no per-package
   checksums.
