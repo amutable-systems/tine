@@ -49,7 +49,7 @@ def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
 _distribution = rule(
     impl = _distribution_impl,
     attrs = {
-        "base": attrs.dep(providers = [PlatformInfo], default = "prelude//platforms:default"),
+        "base": attrs.dep(providers = [PlatformInfo], default = "tine//platforms:default"),
         "constraint": attrs.dep(providers = [ConstraintValueInfo]),
     },
     is_configuration_rule = True,

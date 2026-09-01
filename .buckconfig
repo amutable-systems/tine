@@ -18,10 +18,10 @@ fbsource = none
 prelude = bundled
 
 [parser]
-target_platform_detector_spec = target:tine//...->prelude//platforms:default
+target_platform_detector_spec = target:tine//...->tine//platforms:default
 
 [build]
-execution_platforms = prelude//platforms:default
+execution_platforms = tine//platforms:default
 
 [project]
 # VCS state, dependency and build trees, and the caches tools keep must not invalidate Buck's file
