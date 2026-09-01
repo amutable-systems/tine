@@ -79,17 +79,6 @@ def _destination(tree: Path, value: str) -> Path:
     return tree.joinpath(*path.parts[1:])
 
 
-def _normalize_mode(path: Path) -> None:
-    """Normalize file permissions for path.
-
-    Use for paths copied from the host, to stay reproducible: their mode is whatever the umask
-    of whoever created them left behind. Only the executable bit changes what the image does.
-    """
-    mode = path.lstat().st_mode
-    if not stat.S_ISLNK(mode):
-        path.chmod(0o755 if mode & 0o111 else 0o644)
-
-
 def _copy(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if source.is_symlink():
@@ -109,18 +98,12 @@ def _copy(source: Path, destination: Path) -> None:
             copy_function=lambda s, d: util.clone_file(Path(s), Path(d)),
             symlinks=True,
         )
-        _normalize_mode(destination)
-        for parent, directories, files in source.walk():
-            copied = destination / parent.relative_to(source)
-            for name in directories + files:
-                _normalize_mode(copied / name)
     else:
         if destination.is_dir() and not destination.is_symlink():
             raise SystemExit(f"cannot replace directory {destination} with file {source}")
         if destination.is_symlink():
             destination.unlink()
         util.clone_file(source, destination)
-        _normalize_mode(destination)
 
 
 def _merge_os_release(tree: Path, raw_fields: object) -> None:
@@ -153,6 +136,25 @@ def _remove_glob(tree: Path, value: str) -> None:
     matches = sorted(tree.glob(relative), key=lambda path: (len(path.parts), str(path)), reverse=True)
     for path in matches:
         util.remove_path(path)
+
+
+def _normalize_mode(path: Path) -> None:
+    """Normalize file permissions for path.
+
+    See docs/images.md.
+    """
+    mode = path.lstat().st_mode
+    if stat.S_ISDIR(mode):
+        path.chmod(0o755)
+    elif stat.S_ISREG(mode):
+        path.chmod(0o755 if mode & 0o111 else 0o644)
+    # ignore symlinks (meaningless mode), whiteout nodes, and non-files
+
+
+def _normalize_modes(tree: Path) -> None:
+    _normalize_mode(tree)
+    for path in tree.rglob("*"):
+        _normalize_mode(path)
 
 
 def _clamp_mtime(path: Path, epoch: int) -> None:
@@ -291,6 +293,7 @@ def main(argv: list[str] | None = None) -> None:
             _install(install, target, Path(scratch))
         for operation in operations:
             _apply(operation, target)
+    _normalize_modes(out)
     _clamp_mtimes(out, int(os.environ["SOURCE_DATE_EPOCH"]))
     print(f"image: applied {len(operations)} ops over {len(lower)} lower(s) -> {out}", file=sys.stderr)
 
