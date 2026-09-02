@@ -891,6 +891,14 @@ class TestNamespaces(MountTestCase):
 
         self.assertEqual(self.answer(mounted), "refused")
 
+    def test_constrained_config_carries_the_mount_table(self) -> None:
+        mounts = {"sub/inner": str(self.source), "other": str(self.source)}
+        written = tine.constrained_config(b"[cells]\nroot = .\n", "0123456789abcdef", mounts).decode()
+        self.assertTrue(written.startswith("[cells]\nroot = .\n"))
+        self.assertIn(f"[buck2]\n{tine.DAEMON_BUSTER} = {tine.BUSTER_PREFIX}0123456789abcdef\n", written)
+        # Sorted, so the snapshot is stable for the same table however it was declared.
+        self.assertTrue(written.endswith(f"[{tine.SECTION}]\n{tine.MOUNTS} = other, sub/inner\n"))
+
     def test_root_config_is_constrained_only_inside_the_namespace(self) -> None:
         mounts = {"sub": str(self.source)}
         buckconfig = (self.root / ".buckconfig").read_bytes()
@@ -903,7 +911,7 @@ class TestNamespaces(MountTestCase):
 
         self.assertEqual(
             self.answer(mounted),
-            tine.constrained_config(buckconfig, digest).decode(),
+            tine.constrained_config(buckconfig, digest, mounts).decode(),
         )
         self.assertEqual((self.root / ".buckconfig").read_bytes(), buckconfig)
         self.assertFalse((self.root / tine.PRIVATE_CONFIG).exists())

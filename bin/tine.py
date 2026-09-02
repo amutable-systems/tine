@@ -720,11 +720,12 @@ def marker(digest: str) -> str:
     return f"{digest} {namespace}"
 
 
-def constrained_config(buckconfig: bytes, digest: str) -> bytes:
-    """Append the mount namespace constraint to an exact root config snapshot."""
+def constrained_config(buckconfig: bytes, digest: str, mounts: dict[str, str]) -> bytes:
+    """Append the mount namespace constraint and mount table to an exact root config snapshot."""
     gap = b"" if not buckconfig else b"\n" if buckconfig.endswith(b"\n") else b"\n\n"
-    constraint = f"[buck2]\n{DAEMON_BUSTER} = {BUSTER_PREFIX}{digest}\n".encode()
-    return buckconfig + gap + constraint
+    constraint = f"[buck2]\n{DAEMON_BUSTER} = {BUSTER_PREFIX}{digest}\n"
+    table = f"[{SECTION}]\n{MOUNTS} = {', '.join(sorted(mounts))}\n"
+    return buckconfig + gap + (constraint + table).encode()
 
 
 def create(root: Path, mounts: dict[str, str], digest: str, buckconfig: bytes) -> None:
@@ -754,7 +755,7 @@ def create(root: Path, mounts: dict[str, str], digest: str, buckconfig: bytes) -
 
     try:
         isolation.mount(Path("tmpfs"), private.parent, "tmpfs", options="mode=0755")
-        private.write_bytes(constrained_config(buckconfig, digest))
+        private.write_bytes(constrained_config(buckconfig, digest, mounts))
     except OSError as error:
         raise fail(f"cannot prepare buck2's private root config: {error}") from error
 
