@@ -1,0 +1,52 @@
+"""RPM package-build examples and their end-to-end assertions."""
+
+load("@tine//box:defs.bzl", "box")
+load("@tine//package_system/rpm:defs.bzl", "rpm")
+
+_BUILDROOT = "tine//catalog:fedora.rawhide.buildroot"
+
+# The archive path runs %prep and emits both binary and source RPMs. It exists separately from the
+# source-tree fixture to check release and dev compression through real RPM headers.
+rpm.package(
+    name = "archive",
+    package = "hello",
+    spec = "hello/hello.spec",
+    buildroot = _BUILDROOT,
+    release = "1",
+    source_date_epoch = 1754006400,
+    subpackages = ["hello"],
+)
+
+box.sh_test(
+    name = "archive-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = 'python3 "$@"',
+    args = ["$(source archive_check.py)", "$(location :archive)"],
+)
+
+# The explicit override keeps this source-tree fixture in dev mode without depending on the
+# user's root config.
+rpm.package(
+    name = "hello",
+    package = "hello",
+    spec = "hello/hello.spec",
+    buildroot = _BUILDROOT,
+    build_requires = ["gcc"],
+    dev = True,
+    in_place_spec = "rpm/hello.spec",
+    release = "1",
+    source_date_epoch = 1754006400,
+    subpackages = ["hello"],
+)
+
+box.sh_test(
+    name = "hello-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = 'python3 "$@"',
+    args = [
+        "$(source hello_check.py)",
+        "$(location :hello)",
+    ],
+)

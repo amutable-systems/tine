@@ -43,6 +43,8 @@ def _declare_rpm_package(
     buildroot: str,
     meta: SrcpkgMetadata,
     buildroot_deps: list[str],
+    in_place_rpmbuild_options: list[str] = [],
+    in_place_spec: str | None = None,
     rpmbuild_options: list[str] = [],
 ) -> None:
     spec = "{}/{}.spec".format(package, package)
@@ -71,6 +73,8 @@ def _declare_rpm_package(
         subpackages = sorted(meta.binaries[_ARCH]),
         build_requires = _build_requires(meta),
         buildroot_deps = buildroot_deps,
+        in_place_rpmbuild_options = in_place_rpmbuild_options,
+        in_place_spec = in_place_spec,
         rpmbuild_options = rpmbuild_options,
     )
 
@@ -79,6 +83,8 @@ def rpm_package_json(
     buildroot: str,
     meta: PackageMetadata,
     buildroot_deps: list[str] = [],
+    in_place_rpmbuild_options: list[str] = [],
+    in_place_spec: str | None = None,
     rpmbuild_options: list[str] = [],
 ) -> None:
     """Validate generated metadata and project it onto `rpm_package`."""
@@ -87,6 +93,8 @@ def rpm_package_json(
         buildroot = buildroot,
         meta = _parse_metadata(meta),
         buildroot_deps = buildroot_deps,
+        in_place_rpmbuild_options = in_place_rpmbuild_options,
+        in_place_spec = in_place_spec,
         rpmbuild_options = rpmbuild_options,
     )
 
@@ -289,6 +297,8 @@ def rpm_branch(
     buildroot: str,
     packages: dict[str, PackageMetadata],
     buildroot_only_packages: list[str] = [],
+    in_place_rpmbuild_options: dict[str, list[str]] = {},
+    in_place_specs: dict[str, str] = {},
     seed_only_packages: list[str] = [],
     rpmbuild_options: dict[str, list[str]] = {},
 ) -> None:
@@ -335,5 +345,7 @@ def rpm_branch(
             buildroot = buildroot,
             meta = metadata[name],
             buildroot_deps = [":" + dep for dep in locks[name]],
+            in_place_rpmbuild_options = in_place_rpmbuild_options.get(name, []),
+            in_place_spec = in_place_specs.get(name),
             rpmbuild_options = rpmbuild_options.get(name, []),
         )

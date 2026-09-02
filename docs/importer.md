@@ -160,3 +160,35 @@ The `rpmbuild_options` property maps a package to the extra rpmbuild CLI options
 subpackages and BuildRequires match what the build actually produces. An upstream import re-records the
 package as koji built it (all subpackages); the next local build + `rpm-metadata` recompute converges it
 back.
+
+### Building from a source checkout
+
+Each imported package has a `<package>.source` checkout slot beside its imported `<package>/` directory.
+When populated, this tree replaces the source archives: rpmbuild skips `%prep`, so the checkout must
+already contain any patches or generated files that step normally supplies.
+
+Two per-package maps in `_properties.json` can adapt the build to that checkout. `in_place_specs` selects
+an RPM spec by a path relative to the checkout root. The spec's directory also supplies its Source/Patch
+files and relative includes. `in_place_rpmbuild_options` adds CLI options after the common
+`rpmbuild_options` and any dev-mode defaults. The two properties can be used independently.
+
+For example, suppose an imported `hello` package has `rpm/hello.spec` in its developer checkout and
+supports `--with=upstream` for building from that tree. Its branch's `_properties.json` can contain:
+
+```json
+{
+  "in_place_specs": { "hello": "rpm/hello.spec" },
+  "in_place_rpmbuild_options": { "hello": ["--with=upstream"] }
+}
+```
+
+Mount the checkout over the package's source slot:
+
+```sh
+tine mount add packages/fedora/rawhide/hello.source ~/Projects/hello
+```
+
+Without an `in_place_specs` entry, a source-tree build keeps the imported spec and its declared sources.
+Without a source-tree override, the normal archive build ignores both properties. These overrides do
+not change the imported BuildRequires or subpackage list; `rpm-metadata` uses only the common
+`rpmbuild_options`.
