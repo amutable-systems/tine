@@ -2,7 +2,7 @@
 
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
-load("//git:defs.bzl", "git")
+load("//project:defs.bzl", "project")
 
 _PRIVATE = "__tine"
 
@@ -170,7 +170,7 @@ _go_package = rule(
         "box": attrs.exec_dep(providers = [BoxInfo], doc = "box carrying the Go toolchain"),
         "cgo": attrs.option(attrs.bool(), default = None, doc = "force cgo on or off, box toolchain default when unset"),
         "cgo_cflags": attrs.list(attrs.string(), default = [], doc = "extra C compiler flags for a cgo build"),
-        "incremental": attrs.bool(doc = "keep go's caches across rebuilds of a mounted checkout"),
+        "incremental": attrs.bool(doc = "keep go's caches across dev-mode rebuilds"),
         "linker_flags": attrs.list(attrs.string(), default = [], doc = "flags for the Go linker, passed as -ldflags"),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, go.mod and go.sum included"),
         "tags": attrs.list(attrs.string(), default = [], doc = "build tags selecting the project's optional files"),
@@ -180,7 +180,13 @@ _go_package = rule(
     },
 )
 
-def go_package(name: str, binaries: list[str], srcs: list[str] | None = None, **kwargs) -> None:
+def go_package(
+    name: str,
+    binaries: list[str],
+    srcs: list[str] | None = None,
+    dev: bool | None = None,
+    **kwargs,
+) -> None:
     """Build a checked-out Go project against the modules its go.sum pins.
 
     The sources default to the checkout named after the target. A go.mod among them marks the module
@@ -189,4 +195,10 @@ def go_package(name: str, binaries: list[str], srcs: list[str] | None = None, **
     """
     if not binaries:
         fail("go_package {}: declare the binaries to take out of the build".format(name))
-    _go_package(name = name, binaries = binaries, incremental = git.is_mount(name), srcs = srcs if srcs != None else glob([name + "/**"]), **kwargs)
+    _go_package(
+        name = name,
+        binaries = binaries,
+        incremental = project.is_dev(name, override = dev),
+        srcs = srcs if srcs != None else glob([name + "/**"]),
+        **kwargs,
+    )

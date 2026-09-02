@@ -38,7 +38,7 @@ class Spec(TypedDict):
     root: str
     # The project's source tree.
     src: str
-    # Cargo's persistent incremental build directory for a mounted project
+    # Cargo's persistent incremental build directory for a project in dev mode
     target: str | None
     # The unpacked crates the build resolves against.
     vendor: str

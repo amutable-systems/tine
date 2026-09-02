@@ -44,6 +44,7 @@ PRIVATE_CONFIG = f"{HOME}/tine-mount/root.buckconfig"
 DAEMON_BUSTER = "daemon_buster"
 BUSTER_PREFIX = "tine-mounts-"
 PROJECT_IGNORE = "ignore"
+DEV = "dev"
 
 PINS = "tools/tools.json"
 
@@ -768,10 +769,10 @@ def marker(digest: str) -> str:
 
 
 def constrained_config(buckconfig: bytes, digest: str, mounts: dict[str, str]) -> bytes:
-    """Append the mount namespace constraint and mount table to an exact root config snapshot."""
+    """Append the mount namespace constraint and dev projects to an exact root config snapshot."""
     gap = b"" if not buckconfig else b"\n" if buckconfig.endswith(b"\n") else b"\n\n"
     constraint = f"[buck2]\n{DAEMON_BUSTER} = {BUSTER_PREFIX}{digest}\n"
-    table = f"[{SECTION}]\n{MOUNTS} = {', '.join(sorted(mounts))}\n"
+    table = f"[{SECTION}]\n{DEV} = {', '.join(sorted(mounts))}\n"
     return buckconfig + gap + (constraint + table).encode()
 
 

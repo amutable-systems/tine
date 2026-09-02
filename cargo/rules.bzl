@@ -2,7 +2,7 @@
 
 load("//:specs.bzl", "executable", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
-load("//git:defs.bzl", "git")
+load("//project:defs.bzl", "project")
 load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
 
 _PRIVATE = "__tine"
@@ -150,7 +150,7 @@ _cargo_package = rule(
     attrs = {
         "binaries": attrs.list(attrs.string(), doc = "binaries to take out of the build"),
         "box": attrs.exec_dep(providers = [BoxInfo], doc = "box carrying the Rust toolchain"),
-        "incremental": attrs.bool(doc = "keep cargo's build directory across rebuilds of a mounted checkout"),
+        "incremental": attrs.bool(doc = "keep cargo's build directory across dev-mode rebuilds"),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, Cargo.lock included"),
         "_auditable": attrs.exec_dep(providers = [RunInfo], default = "tine//tools:cargo-auditable"),
         "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//cargo:build"),
@@ -160,7 +160,13 @@ _cargo_package = rule(
     | VENDOR_ATTRS,
 )
 
-def cargo_package(name: str, binaries: list[str], srcs: list[str] | None = None, **kwargs) -> None:
+def cargo_package(
+    name: str,
+    binaries: list[str],
+    srcs: list[str] | None = None,
+    dev: bool | None = None,
+    **kwargs,
+) -> None:
     """Build a checked-out Rust project against the crates its Cargo.lock pins.
 
     The sources default to the checkout named after the target, minus whatever a cargo build run
@@ -172,7 +178,7 @@ def cargo_package(name: str, binaries: list[str], srcs: list[str] | None = None,
     _cargo_package(
         name = name,
         binaries = binaries,
-        incremental = git.is_mount(name),
+        incremental = project.is_dev(name, override = dev),
         srcs = srcs if srcs != None else glob([name + "/**"], exclude = [name + "/target/**"]),
         **kwargs,
     )
