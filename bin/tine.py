@@ -382,6 +382,9 @@ def mountable(
         raise fail(f"mount {target}: target must be a project-relative path")
     if path.is_relative_to(HOME):
         raise fail(f"mount {target}: {HOME} is reserved for tine")
+    # mount table goes into a config value, ensure names don't break that
+    if any(c.isspace() or c == "," for c in target):
+        raise fail(f"mount {target}: target must not contain whitespace or commas")
     if not Path(source).is_absolute():
         raise fail(f"mount {target}: source must be an absolute path, got {source}")
     if not (root / target).is_dir() and not (allow_missing_target and not (root / target).exists()):
