@@ -1,8 +1,10 @@
 #!/usr/bin/python3
 """Build RPMs inside an assembled, pinned buildroot.
 
-Sources and the spec are staged in action scratch space, while only the produced
-RPMs persist. The box sandbox already supplies isolation around the chroot.
+Sources and the RPM spec are staged in action scratch space. Buck keeps the
+build directory between runs when the project's dev configuration requests it;
+otherwise only the produced RPMs persist. The box sandbox already supplies
+isolation around the chroot.
 """
 
 import os
@@ -18,8 +20,23 @@ import util
 
 import rootfs
 
+# A persistent build directory marks a local iteration build; skip the release-only costs of
+# optimization, debug packaging, and payload compression.
+_INCREMENTAL_RPMBUILD_OPTIONS = [
+    "--without", "lto",
+    "--undefine", "_lto_cflags",
+    "--undefine", "_annotated_build",
+    "--define", "debug_package %{nil}",
+    "--define", "_binary_payload w.ufdio",
+    "--define", "_source_payload w.ufdio",
+]  # fmt: skip
+
 
 class Spec(TypedDict):
+    """Buck's generated build invocation, distinct from the package's RPM spec."""
+
+    # A build directory that survives between runs, or None for a clean build.
+    build_dir: str | None
     # A buildroot overlay layer stack (bottom..top); the merged stack is the buildroot.
     lower: list[str]
     spec_file: str
@@ -30,37 +47,75 @@ class Spec(TypedDict):
     out: str
     # Declared binary subpackage -> its own output rpm path.
     subpackages: dict[str, str]
+    # Extra switches for a build against `source_tree`, in addition to the common ones below.
+    in_place_rpmbuild_options: list[str]
     rpmbuild_options: list[str]
+    # A prepared source tree to build in place, or None to unpack the declared sources through %prep.
+    source_tree: str | None
 
 
-def main(argv: list[str] | None = None) -> int:
-    spec = specs.parse(Spec, "build_rpm", argv)
+def build_rpm(spec: Spec, topdir: Path = Path("/var/tmp/topdir")) -> int:
+    """Build the RPMs described by `spec` in action scratch space."""
     if not spec["lower"]:
         util.fail("build_rpm: the buildroot stack cannot be empty")
 
     # Use action scratch space, which is what the sandbox backs /var/tmp with. Buck clears it
     # before each execution, so a fixed name neither collides with a preserved failed tree nor
     # accumulates across builds.
-    topdir = Path("/var/tmp/topdir")
     for d in ("SOURCES", "SPECS", "BUILD", "BUILDROOT", "RPMS", "SRPMS"):
         (topdir / d).mkdir(parents=True)
+    source_tree = spec["source_tree"]
+    if source_tree is not None:
+        # Inputs are immutable artifacts, while build-in-place projects routinely generate files in
+        # their checkout. Keep this writable copy separate from RPM's SOURCES archives and patches.
+        # Keep symlinks as symlinks: a tree may link a directory to its own parent, and following that
+        # copies it into itself until the path length runs out.
+        shutil.copytree(source_tree, topdir / "CHECKOUT", symlinks=True)
+
     spec_file = Path(spec["spec_file"])
-    # Freeze rpmautospec macros so builds need neither Git nor rpmautospec.
+    if source_tree is not None and spec_file.is_relative_to(source_tree):
+        relative_spec = spec_file.relative_to(source_tree)
+        if ".." in relative_spec.parts:
+            util.fail(f"build_rpm: RPM spec must stay within the source tree: {relative_spec}")
+        staged_spec = topdir / "CHECKOUT" / relative_spec
+        source_spec = staged_spec
+        chroot_spec = Path("/build/CHECKOUT") / relative_spec
+        sourcedir = chroot_spec.parent
+    else:
+        source_spec = spec_file
+        staged_spec = topdir / "SPECS" / spec_file.name
+        chroot_spec = Path("/build/SPECS") / spec_file.name
+        sourcedir = None
+        for src in spec["sources"]:
+            s = Path(src)
+            # A spec may modify SOURCES, so it must not share the source artifact's inode.
+            util.clone_file(s, topdir / "SOURCES" / s.name)
+
+    if not source_spec.is_file():
+        util.fail(f"build_rpm: RPM spec does not exist: {spec_file}")
+
+    # Freeze rpmautospec macros so builds need neither Git nor rpmautospec. Keep an in-place spec beside
+    # its auxiliary files in the disposable tree, preserving relative includes as well.
     frozen = (
         f"%global autorelease {spec['release']}%{{?dist}}\n%global autochangelog %{{nil}}\n"
-    ) + spec_file.read_text()
-    (topdir / "SPECS" / spec_file.name).write_text(frozen)
-    for src in spec["sources"]:
-        s = Path(src)
-        # A spec may modify SOURCES, so it must not share the source artifact's inode.
-        util.clone_file(s, topdir / "SOURCES" / s.name)
+    ) + source_spec.read_text()
+    staged_spec.write_text(frozen)
+
+    binds = [(topdir, "/build")]
+    build_dir: Path | None = None
+    if spec["build_dir"] is not None:
+        # Buck supplies a project-relative output. Anchor it in the host namespace because mount(2)
+        # resolves the bind source before rootfs enters the buildroot.
+        build_dir = Path(spec["build_dir"]).absolute()
+        build_dir.mkdir(parents=True, exist_ok=True)
+        binds.append((build_dir, "/build/BUILD"))
 
     # The ephemeral upper discards buildroot writes; use the package-specific epoch.
     env = os.environ | {"HOME": "/build", "SOURCE_DATE_EPOCH": str(spec["source_date_epoch"])}
     with rootfs.rootfs(
         "/buildroot",
         lowers=spec["lower"],
-        binds=[(topdir, "/build")],
+        binds=binds,
         apivfs=True,
         chroot=True,
     ):
@@ -71,31 +126,47 @@ def main(argv: list[str] | None = None) -> int:
             # rpm otherwise ignores SOURCE_DATE_EPOCH for the BUILDTIME header.
             "--define", "use_source_date_epoch_as_buildtime 1",
         ]  # fmt: skip
+        if sourcedir is not None:
+            defines += ["--define", f"_sourcedir {sourcedir}"]
+        if build_dir is not None:
+            defines += ["--define", "_vpath_builddir /build/BUILD"]
+        mode = ["-ba"]
+        options = spec["rpmbuild_options"] + (_INCREMENTAL_RPMBUILD_OPTIONS if build_dir is not None else [])
+        cwd = None
+        if source_tree is not None:
+            mode = ["-bb", "--noprep", "--build-in-place"]
+            options += spec["in_place_rpmbuild_options"]
+            cwd = Path("/build/CHECKOUT")
         rc = subprocess.run(
             [
                 "/usr/bin/rpmbuild",
                 *defines,
-                *spec["rpmbuild_options"],
-                "-ba",
+                *options,
+                *mode,
                 "--nocheck",
                 "--noclean",
-                f"/build/SPECS/{spec_file.name}",
+                str(chroot_spec),
             ],
+            cwd=cwd,
             env=env,
         ).returncode
     if rc != 0:
         return rc
 
-    # Collect binary packages and the source package.
+    # Collect binary packages and, for a regular archive build, the source package.
     out = Path(spec["out"])
     out.mkdir(parents=True, exist_ok=True)
+    # Buck keeps every output of an incremental action, not only its private build directory.
+    for previous in out.iterdir():
+        previous.unlink()
     produced: dict[str, Path] = {}  # basename -> path of each binary rpm
     for sub in ("RPMS", "SRPMS"):
         for f in sorted((topdir / sub).rglob("*.rpm")):
             util.clone_file(f, out / f.name, allow_link=True)
             if not f.name.endswith(".src.rpm"):
                 produced[f.name] = f
-    print(f"collected {len(produced)} binary rpms + srpm into {out}", file=sys.stderr)
+    source_output = "" if source_tree is not None else " + srpm"
+    print(f"collected {len(produced)} binary rpms{source_output} into {out}", file=sys.stderr)
 
     if spec["subpackages"]:
         _emit_subpackages(spec["subpackages"], produced)
@@ -103,6 +174,11 @@ def main(argv: list[str] | None = None) -> int:
     # Preserve failed trees for diagnosis; remove successful ones.
     shutil.rmtree(topdir)
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Parse an invocation and build its RPMs."""
+    return build_rpm(specs.parse(Spec, "build_rpm", argv))
 
 
 def _emit_subpackages(declared: dict[str, str], produced: dict[str, Path]) -> None:

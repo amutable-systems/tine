@@ -81,6 +81,8 @@ class DistroConfig(TypedDict):
 class BranchProperties(TypedDict):
     buildroot: NotRequired[str]  # override the default //buildroots/<distro>:<branch> (overlay branches)
     buildroot_only_packages: NotRequired[list[str]]
+    in_place_rpmbuild_options: NotRequired[dict[str, list[str]]]
+    in_place_specs: NotRequired[dict[str, str]]
     seed_only_packages: NotRequired[list[str]]  # source packages; see packages.md
     rpmbuild_options: NotRequired[dict[str, list[str]]]  # package -> --with/--without/--define
 
@@ -1412,6 +1414,8 @@ def regenerate_buck(branchdir: Path) -> None:
         "    packages = PACKAGES,",
         f'    buildroot = _properties.get("buildroot", "//buildroots/{distro}:{branch}"),',
         '    buildroot_only_packages = _properties.get("buildroot_only_packages", []),',
+        '    in_place_rpmbuild_options = _properties.get("in_place_rpmbuild_options", {}),',
+        '    in_place_specs = _properties.get("in_place_specs", {}),',
         '    seed_only_packages = _properties.get("seed_only_packages", []),',
         '    rpmbuild_options = _properties.get("rpmbuild_options", {}),',
         ")",

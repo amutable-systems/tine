@@ -1673,6 +1673,8 @@ class RegenerateBuck(unittest.TestCase):
     CURATION = {
         "buildroot": "//buildroots/myos:base",
         "buildroot_only_packages": ["glibc32"],
+        "in_place_rpmbuild_options": {"glibc": ["--with=upstream"]},
+        "in_place_specs": {"glibc": "packaging/fedora/glibc.spec"},
         "seed_only_packages": ["gcc"],
         "rpmbuild_options": {"gcc": ["--with=basic"]},
     }
@@ -1704,7 +1706,7 @@ class RegenerateBuck(unittest.TestCase):
         self.assertIn('load(":_properties.json", _properties = "value")', buck)
         for key in self.CURATION:
             self.assertIn(f'_properties.get("{key}"', buck)
-        for value in ("//buildroots/myos:base", "glibc32", "--with=basic"):
+        for value in ("//buildroots/myos:base", "glibc32", "--with=upstream", "--with=basic"):
             self.assertNotIn(value, buck)
 
     def test_default_buildroot(self) -> None:

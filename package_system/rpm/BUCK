@@ -37,6 +37,13 @@ tine_python_binary(
 
 tine_python_binary(name = "build", main = "build.py", deps = ["//:specs", "//:util", "//rootfs:rootfs"])
 
+box_python_test(
+    name = "build-test",
+    box = _BOX,
+    srcs = ["build.py", "build_test.py"],
+    deps = ["//:specs", "//:util", "//rootfs:rootfs"],
+)
+
 tine_python_binary(
     name = "snapshot",
     deps = ["//:util", "//package:href", "//package:snapshotter"],
