@@ -24,7 +24,8 @@ class Spec(TypedDict):
     # Extra flags for the C compiler of a cgo build, on top of the -O2 -g always passed.
     cgo_cflags: list[str]
     # go's build cache, kept from the previous build of this project.
-    gocache: str
+    # None outside an incremental build.
+    gocache: str | None
     # Flags for the Go linker, passed as -ldflags.
     linker_flags: list[str]
     # The fetched module cache directory, or None for a project without a go.sum.
@@ -123,7 +124,7 @@ def main(argv: list[str] | None = None) -> None:
     shutil.copytree(spec["src"], build)
     binaries.mkdir()
 
-    gocache = Path(spec["gocache"]).resolve()
+    gocache = Path(spec["gocache"] or "/var/tmp/gocache").resolve()
     gocache.mkdir(parents=True, exist_ok=True)
 
     if spec["module_cache_dir"] is None:

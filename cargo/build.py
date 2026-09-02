@@ -38,8 +38,8 @@ class Spec(TypedDict):
     root: str
     # The project's source tree.
     src: str
-    # Cargo's build directory, kept from the previous build of this project.
-    target: str
+    # Cargo's persistent incremental build directory for a mounted project
+    target: str | None
     # The unpacked crates the build resolves against.
     vendor: str
 
@@ -120,11 +120,11 @@ def main(argv: list[str] | None = None) -> None:
     build = Path("/var/tmp/build")
     cargo_home = Path("/var/tmp/cargo")
 
-    # Cargo's build directory is the exception: buck keeps the previous one, so a rebuild redoes only
-    # what changed. Cargo decides that from the modification times of the sources, which the copy
-    # below preserves.
+    # Cargo's build directory is the exception: for an incremental build buck keeps the previous one, so
+    # a rebuild redoes only what changed. Cargo decides that from the modification times of the sources,
+    # which the copy below preserves. Otherwise it goes in the scratch space.
     # Cargo runs with the workspace as its cwd, so every path handed to it must be absolute.
-    target = Path(spec["target"]).absolute()
+    target = Path(spec["target"]).absolute() if spec["target"] is not None else Path("/var/tmp/target")
 
     shutil.copytree(spec["src"], build)
 

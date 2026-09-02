@@ -39,6 +39,10 @@ tine mount add packages/hello/hello ~/Projects/hello   # use the working checkou
 tine mount remove packages/hello/hello                 # use the pinned commit again
 ```
 
+A mount is also what makes a `cargo.package()` or `go.package()` build incremental: then its build
+directory survives between runs, and an edit recompiles just what changed. See
+[Rust source builds](design.md#rust-source-builds).
+
 The override has a few constraints:
 
 - The directory must contain at least one file. An empty mount point or uninitialized submodule falls back

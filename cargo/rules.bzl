@@ -2,6 +2,7 @@
 
 load("//:specs.bzl", "executable", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//git:defs.bzl", "git")
 load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
 
 _PRIVATE = "__tine"
@@ -15,9 +16,10 @@ def _cargo_build_impl(
     binaries: dict[str, OutputArtifact],
     build: RunInfo,
     fetch: RunInfo,
+    incremental: bool,
     lock: ArtifactValue,
     src: Artifact,
-    target: OutputArtifact,
+    target: OutputArtifact | None,
     vendor: RunInfo,
 ) -> list[Provider]:
     """Declare everything the lock names, once it has been built and can be read."""
@@ -74,7 +76,7 @@ git --git-dir="$git_dir" config --bool core.bare true""",
             ),
         ),
         category = "cargo_build",
-        no_outputs_cleanup = True,
+        no_outputs_cleanup = incremental,
     )
     return []
 
@@ -85,9 +87,10 @@ _cargo_build = dynamic_actions(
         "binaries": dynattrs.dict(str, dynattrs.output()),
         "build": dynattrs.value(RunInfo),
         "fetch": dynattrs.value(RunInfo),
+        "incremental": dynattrs.value(bool),
         "lock": dynattrs.artifact_value(),
         "src": dynattrs.value(Artifact),
-        "target": dynattrs.output(),
+        "target": dynattrs.option(dynattrs.output()),
         "vendor": dynattrs.value(RunInfo),
     },
 )
@@ -102,8 +105,9 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
     outputs = {name: ctx.actions.declare_output(name) for name in ctx.attrs.binaries}
 
     # Cargo's own build directory. An action's outputs are the only place it may leave state behind,
-    # and buck clears them before rerunning it unless told not to.
-    target = ctx.actions.declare_output(_PRIVATE + "/target", dir = True)
+    # and buck clears them before rerunning it unless told not to. A declared output is also uploaded to
+    # the cache, only do that for incremental builds; otherwise build in scratch space.
+    target = ctx.actions.declare_output(_PRIVATE + "/target", dir = True) if ctx.attrs.incremental else None
 
     resolved = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
     ctx.actions.run(
@@ -128,9 +132,10 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
             binaries = {name: out.as_output() for name, out in outputs.items()},
             build = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
             fetch = ctx.attrs._fetch[RunInfo],
+            incremental = ctx.attrs.incremental,
             lock = resolved,
             src = src,
-            target = target.as_output(),
+            target = target.as_output() if target != None else None,
             vendor = ctx.attrs._vendor[RunInfo],
         ),
     )
@@ -142,6 +147,7 @@ _cargo_package = rule(
     attrs = {
         "binaries": attrs.list(attrs.string(), doc = "binaries to take out of the build"),
         "box": attrs.dep(providers = [BoxInfo], doc = "box carrying the Rust toolchain"),
+        "incremental": attrs.bool(doc = "keep cargo's build directory across rebuilds of a mounted checkout"),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, Cargo.lock included"),
         "_auditable": attrs.exec_dep(providers = [RunInfo], default = "tine//tools:cargo-auditable"),
         "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//cargo:build"),
@@ -163,6 +169,7 @@ def cargo_package(name: str, binaries: list[str], srcs: list[str] | None = None,
     _cargo_package(
         name = name,
         binaries = binaries,
+        incremental = git.is_mount(name),
         srcs = srcs if srcs != None else glob([name + "/**"], exclude = [name + "/target/**"]),
         **kwargs,
     )
