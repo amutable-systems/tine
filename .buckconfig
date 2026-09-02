@@ -24,14 +24,8 @@ target_platform_detector_spec = target:tine//...->tine//platforms:default
 execution_platforms = tine//platforms:default
 
 [project]
-# VCS state, dependency and build trees, and the caches tools keep must not invalidate Buck's file
-# watcher. Only names that are always generated: `build`, `dist` and `out` are ordinary package names,
-# and ignoring one would hide the targets in it rather than only its churn.
-ignore = .git, .jj, **/.git, **/.jj, **/.hg, **/.svn, .buck, **/.buck, \
-    **/buck-out, **/target, **/node_modules, **/__pycache__, **/.venv, **/venv, \
-    **/.cache, **/.direnv, **/.gradle, **/.tox, **/.nox, \
-    **/.mypy_cache, **/.pytest_cache, **/.ruff_cache, \
-    **/.next, **/.parcel-cache, **/.turbo, **/.idea, **/.vscode
+# Git's ignored-path listing does not include VCS metadata.
+ignore = .git, .jj, **/.git, **/.jj, **/.hg, **/.svn
 
 [buck2]
 materializations = deferred
