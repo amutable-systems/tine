@@ -1,10 +1,11 @@
 """An image carrying a Go program built from source.
 
 In a product this package lives in the OS.git that vendors tine, beside a checkout of each project
-it builds. `hello/` plays that checkout.
+it builds. `hello/` and `nodeps-source/` play those checkouts.
 """
 
 load("@tine//box:defs.bzl", "box")
+load("@tine//git:defs.bzl", "git")
 load("@tine//go:defs.bzl", "go")
 load("@tine//image:defs.bzl", "image")
 load("@tine//package:defs.bzl", "package")
@@ -22,19 +23,27 @@ box.new(
     release = "tine//catalog:fedora.rawhide.release",
 )
 
-# A checked-out project needs no build file of its own: the sources default to the directory named
-# after the target, and the go.mod in them marks the module root.
+# `hello/` is named after the package target, so Go's caches survive source edits. A checked-out
+# project needs no build file of its own: the go.mod among the default sources marks the module root.
 go.package(
     name = "hello",
     binaries = ["hello-cli"],
     box = ":go.box",
 )
 
-# A project with no dependencies at all, which therefore commits no go.sum and fetches nothing.
+git.fetch(
+    name = "nodeps-source.git",
+    repo = "https://github.com/example/nodeps",
+    rev = "1c9e0f4b0f7d2a5e8b3c6d1a4f7b2e5c8d0a3f6b",
+)
+
+# `nodeps-source/` is not named after this target, as with an ordinary fetched project, so Buck cleans
+# Go's caches before reruns. It has no dependencies and therefore carries no go.sum or fetch action.
 go.package(
     name = "nodeps",
     binaries = ["nodeps"],
     box = ":go.box",
+    srcs = [":nodeps-source.git"],
 )
 
 package.manager(

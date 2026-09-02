@@ -1,7 +1,7 @@
 """An image carrying a Rust program built from source.
 
 In a product this package lives in the OS.git that vendors tine, beside a checkout of each project
-it builds. `hello/` plays that checkout.
+it builds. `hello/` and `nodeps-source/` play those checkouts.
 """
 
 load("@tine//box:defs.bzl", "box")
@@ -23,17 +23,22 @@ box.new(
     release = "tine//catalog:fedora.rawhide.release",
 )
 
-# Products use git.fetch() for projects they build but do not vendor. This example's `hello/` directory
-# overrides the fetch, avoiding network access during the test. Both paths give cargo.package() the same
-# opaque directory artifact and exercise its workspace discovery.
+# Products use git.fetch() for projects they build but do not vendor. The example directories override
+# these fetches, avoiding network access while still giving cargo.package() opaque directory artifacts.
 git.fetch(
     name = "hello.git",
     repo = "https://github.com/example/hello",
     rev = "1c9e0f4b0f7d2a5e8b3c6d1a4f7b2e5c8d0a3f6b",
 )
 
-# A fetched project needs no build file of its own. Its Cargo.lock both pins the crates and marks the
-# workspace root, even though neither it nor Cargo.toml is visible until the checkout action runs.
+git.fetch(
+    name = "nodeps-source.git",
+    repo = "https://github.com/example/nodeps",
+    rev = "1c9e0f4b0f7d2a5e8b3c6d1a4f7b2e5c8d0a3f6b",
+)
+
+# `hello/` is named after the package target, so its Cargo build directory survives source edits.
+# Its lock also exercises workspace discovery after the checkout action has built the source artifact.
 cargo.package(
     name = "hello",
     binaries = ["hello-cli"],
@@ -41,11 +46,13 @@ cargo.package(
     srcs = [":hello.git"],
 )
 
-# A project with no dependencies at all, which therefore commits no Cargo.lock.
+# `nodeps-source/` is not named after this target, as with an ordinary fetched project, so Buck cleans
+# the Cargo build directory before reruns. It has no dependencies and therefore commits no Cargo.lock.
 cargo.package(
     name = "nodeps",
     binaries = ["nodeps"],
     box = ":rust.box",
+    srcs = [":nodeps-source.git"],
 )
 
 # How these binaries install, declared beside the projects rather than repeated by every image that

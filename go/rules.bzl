@@ -31,6 +31,7 @@ def _go_build_impl(
     cgo_cflags: list[str],
     fetch: RunInfo,
     gocache: OutputArtifact,
+    incremental: bool,
     linker_flags: list[str],
     sources: dict[str, Artifact],
     src: Artifact,
@@ -61,7 +62,7 @@ def _go_build_impl(
             ),
             category = "go_fetch",
             local_only = True,
-            no_outputs_cleanup = True,
+            no_outputs_cleanup = incremental,
         )
 
     actions.run(
@@ -84,7 +85,7 @@ def _go_build_impl(
             ),
         ),
         category = "go_build",
-        no_outputs_cleanup = True,
+        no_outputs_cleanup = incremental,
     )
     return []
 
@@ -97,6 +98,7 @@ _go_build = dynamic_actions(
         "cgo_cflags": dynattrs.value(list[str]),
         "fetch": dynattrs.value(RunInfo),
         "gocache": dynattrs.output(),
+        "incremental": dynattrs.value(bool),
         "linker_flags": dynattrs.value(list[str]),
         "sources": dynattrs.dict(str, dynattrs.value(Artifact)),
         "src": dynattrs.value(Artifact),
@@ -145,6 +147,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             cgo_cflags = ctx.attrs.cgo_cflags,
             fetch = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._fetch, network = True),
             gocache = gocache.as_output(),
+            incremental = ctx.attrs.incremental,
             linker_flags = ctx.attrs.linker_flags,
             sources = sources,
             src = src,
@@ -162,6 +165,7 @@ _go_package = rule(
         "box": attrs.dep(providers = [BoxInfo], doc = "box carrying the Go toolchain"),
         "cgo": attrs.option(attrs.bool(), default = None, doc = "force cgo on or off, box toolchain default when unset"),
         "cgo_cflags": attrs.list(attrs.string(), default = [], doc = "extra C compiler flags for a cgo build"),
+        "incremental": attrs.bool(doc = "keep go's caches across local checkout rebuilds"),
         "linker_flags": attrs.list(attrs.string(), default = [], doc = "flags for the Go linker, passed as -ldflags"),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, go.mod and go.sum included"),
         "tags": attrs.list(attrs.string(), default = [], doc = "build tags selecting the project's optional files"),
@@ -180,4 +184,5 @@ def go_package(name: str, binaries: list[str], srcs: list[str] | None = None, **
     """
     if not binaries:
         fail("go_package {}: declare the binaries to take out of the build".format(name))
-    _go_package(name = name, binaries = binaries, srcs = srcs if srcs != None else glob([name + "/**"]), **kwargs)
+    checkout = glob([name + "/**"])
+    _go_package(name = name, binaries = binaries, incremental = bool(checkout), srcs = srcs if srcs != None else checkout, **kwargs)

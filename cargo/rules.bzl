@@ -15,6 +15,7 @@ def _cargo_build_impl(
     binaries: dict[str, OutputArtifact],
     build: RunInfo,
     fetch: RunInfo,
+    incremental: bool,
     lock: ArtifactValue,
     src: Artifact,
     target: OutputArtifact,
@@ -74,7 +75,7 @@ git --git-dir="$git_dir" config --bool core.bare true""",
             ),
         ),
         category = "cargo_build",
-        no_outputs_cleanup = True,
+        no_outputs_cleanup = incremental,
     )
     return []
 
@@ -85,6 +86,7 @@ _cargo_build = dynamic_actions(
         "binaries": dynattrs.dict(str, dynattrs.output()),
         "build": dynattrs.value(RunInfo),
         "fetch": dynattrs.value(RunInfo),
+        "incremental": dynattrs.value(bool),
         "lock": dynattrs.artifact_value(),
         "src": dynattrs.value(Artifact),
         "target": dynattrs.output(),
@@ -128,6 +130,7 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
             binaries = {name: out.as_output() for name, out in outputs.items()},
             build = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
             fetch = ctx.attrs._fetch[RunInfo],
+            incremental = ctx.attrs.incremental,
             lock = resolved,
             src = src,
             target = target.as_output(),
@@ -142,6 +145,7 @@ _cargo_package = rule(
     attrs = {
         "binaries": attrs.list(attrs.string(), doc = "binaries to take out of the build"),
         "box": attrs.dep(providers = [BoxInfo], doc = "box carrying the Rust toolchain"),
+        "incremental": attrs.bool(doc = "keep cargo's build directory across local checkout rebuilds"),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, Cargo.lock included"),
         "_auditable": attrs.exec_dep(providers = [RunInfo], default = "tine//tools:cargo-auditable"),
         "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//cargo:build"),
@@ -160,9 +164,11 @@ def cargo_package(name: str, binaries: list[str], srcs: list[str] | None = None,
     """
     if not binaries:
         fail("cargo_package {}: declare the binaries to take out of the build".format(name))
+    checkout = glob([name + "/**"], exclude = [name + "/target/**"])
     _cargo_package(
         name = name,
         binaries = binaries,
-        srcs = srcs if srcs != None else glob([name + "/**"], exclude = [name + "/target/**"]),
+        incremental = bool(checkout),
+        srcs = srcs if srcs != None else checkout,
         **kwargs,
     )
