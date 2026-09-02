@@ -2,6 +2,7 @@
 
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//git:defs.bzl", "git")
 
 _PRIVATE = "__tine"
 
@@ -30,7 +31,8 @@ def _go_build_impl(
     cgo: bool | None,
     cgo_cflags: list[str],
     fetch: RunInfo,
-    gocache: OutputArtifact,
+    gocache: OutputArtifact | None,
+    incremental: bool,
     linker_flags: list[str],
     sources: dict[str, Artifact],
     src: Artifact,
@@ -61,7 +63,7 @@ def _go_build_impl(
             ),
             category = "go_fetch",
             local_only = True,
-            no_outputs_cleanup = True,
+            no_outputs_cleanup = incremental,
         )
 
     actions.run(
@@ -84,7 +86,7 @@ def _go_build_impl(
             ),
         ),
         category = "go_build",
-        no_outputs_cleanup = True,
+        no_outputs_cleanup = incremental,
     )
     return []
 
@@ -96,7 +98,8 @@ _go_build = dynamic_actions(
         "cgo": dynattrs.value(bool | None),
         "cgo_cflags": dynattrs.value(list[str]),
         "fetch": dynattrs.value(RunInfo),
-        "gocache": dynattrs.output(),
+        "gocache": dynattrs.option(dynattrs.output()),
+        "incremental": dynattrs.value(bool),
         "linker_flags": dynattrs.value(list[str]),
         "sources": dynattrs.dict(str, dynattrs.value(Artifact)),
         "src": dynattrs.value(Artifact),
@@ -116,9 +119,10 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
         fail("go_package {}: binaries may not be named {}".format(ctx.label.name, reserved))
     outputs = {name: ctx.actions.declare_output(name) for name in ctx.attrs.binaries}
 
-    # go's own build cache. An action's outputs are the only place it may leave state behind, and
-    # buck clears them before rerunning it unless told not to.
-    gocache = ctx.actions.declare_output(_PRIVATE + "/gocache", dir = True)
+    # go's own build cache. An action's outputs are the only place it may leave state behind, and buck
+    # clears them before rerunning it unless told not to. A declared output is also uploaded to the
+    # cache, only do that for incremental builds; otherwise build in scratch space.
+    gocache = ctx.actions.declare_output(_PRIVATE + "/gocache", dir = True) if ctx.attrs.incremental else None
 
     workspace = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
     ctx.actions.run(
@@ -144,7 +148,8 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             cgo = ctx.attrs.cgo,
             cgo_cflags = ctx.attrs.cgo_cflags,
             fetch = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._fetch, network = True),
-            gocache = gocache.as_output(),
+            gocache = gocache.as_output() if gocache != None else None,
+            incremental = ctx.attrs.incremental,
             linker_flags = ctx.attrs.linker_flags,
             sources = sources,
             src = src,
@@ -162,6 +167,7 @@ _go_package = rule(
         "box": attrs.dep(providers = [BoxInfo], doc = "box carrying the Go toolchain"),
         "cgo": attrs.option(attrs.bool(), default = None, doc = "force cgo on or off, box toolchain default when unset"),
         "cgo_cflags": attrs.list(attrs.string(), default = [], doc = "extra C compiler flags for a cgo build"),
+        "incremental": attrs.bool(doc = "keep go's caches across rebuilds of a mounted checkout"),
         "linker_flags": attrs.list(attrs.string(), default = [], doc = "flags for the Go linker, passed as -ldflags"),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, go.mod and go.sum included"),
         "tags": attrs.list(attrs.string(), default = [], doc = "build tags selecting the project's optional files"),
@@ -180,4 +186,4 @@ def go_package(name: str, binaries: list[str], srcs: list[str] | None = None, **
     """
     if not binaries:
         fail("go_package {}: declare the binaries to take out of the build".format(name))
-    _go_package(name = name, binaries = binaries, srcs = srcs if srcs != None else glob([name + "/**"]), **kwargs)
+    _go_package(name = name, binaries = binaries, incremental = git.is_mount(name), srcs = srcs if srcs != None else glob([name + "/**"]), **kwargs)

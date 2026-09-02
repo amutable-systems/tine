@@ -646,12 +646,17 @@ the image SBOM the way an installed package does.
 
 The unit of caching is the project: any change to its sources reruns one action for the whole crate graph.
 Splitting that into one action per crate would require the crate dependency graph rather than just the
-lock, and is deliberately not attempted; the rerun is made cheap instead. Cargo's build directory is a
-declared output that buck is told not to clear before rerunning the action, so cargo finds the previous
-one and recompiles only what changed, exactly as it does in a working copy. Nothing else survives: the
-source tree is copied afresh from the action's inputs on every run, with the modification times cargo
-compares them by. A build that finds no previous directory remains the reference, which is what CI and any
-`buck2 clean` produce.
+lock, and is deliberately not attempted.
+
+The rerun is made cheap instead for a `tine mount`ed checkout, for a developer working on that part:
+Cargo's build directory then is a declared output that buck is told not to clear before rerunning the
+action, so cargo finds the previous one and recompiles only what changed, exactly as it does in a working
+copy. Nothing else survives: the source tree is copied afresh from the action's inputs on every run, with
+the modification times cargo compares them by. A build that finds no previous directory remains the
+reference, which is what CI and any `buck2 clean` produce.
+
+Fetched or committed sources declare no build directory and build in scratch space: there is no edit
+cycle to speed up, and the large intermediate build artifacts are not uploaded to a shared cache.
 
 ### Go source builds
 
@@ -697,12 +702,13 @@ with `-o`.
 
 The unit of caching is the project, not the package: one action per package would mean modelling the
 package graph and the toolchain here, which is what rules_go exists for, and go's own content-keyed build
-cache gets most of that back for none of it. So reruns are made cheap the same way as for Rust: both
-caches are declared outputs that buck is told not to clear before rerunning their actions. go's build
-cache keys on file contents, so a rerun recompiles only what actually changed, and a rerun fetch
-downloads only what the kept module cache is missing. Old module versions accumulate there after
-dependency bumps, but they are inert: go takes only what `go.sum` names out of the proxy view. A run that
-finds no previous cache remains the reference, which is what CI and any `buck2 clean` produce.
+cache gets most of that back for none of it. That cache follows the same rule as cargo's build directory
+above, and keys on file contents, so a mounted project's rerun recompiles only what actually changed.
+
+The module cache is the one difference: `go_build` consumes it, so it is a declared output whatever the
+sources are. For a mount buck keeps it too, so a dependency bump downloads only what is missing; old
+module versions accumulate but are inert, since go takes only what `go.sum` names out of the proxy view.
+Otherwise buck clears it before the fetch, and what reaches the cache follows `go.mod` and `go.sum` alone.
 
 ### Filesystem layer representation
 
