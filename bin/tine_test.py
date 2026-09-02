@@ -545,6 +545,12 @@ class TestMountAdd(MountTestCase):
             with self.subTest(target=target), self.assertRaisesRegex(SystemExit, "reserved for tine"):
                 self.mount("add", str(target), str(self.source))
 
+    def test_target_cannot_contain_whitespace_or_commas(self) -> None:
+        for name in ("sub dir", "sub,dir", "sub\tdir"):
+            (self.root / name).mkdir()
+            with self.subTest(target=name), self.assertRaisesRegex(SystemExit, "whitespace or commas"):
+                self.mount("add", str(self.root / name), str(self.source))
+
     def test_add_rejects_a_project_daemon_buster(self) -> None:
         (self.root / ".buckconfig").write_text(
             f"[cells]\nroot = .\nsub = sub\n[buck2]\n{tine.DAEMON_BUSTER} = project-owned\n"
