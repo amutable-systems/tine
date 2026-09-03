@@ -112,3 +112,16 @@ box.new(
     root = True,
     visibility = ["PUBLIC"],
 )
+
+# Both root boxes, because each is the box its package system's builds run inside, so each one's
+# bytes are in those builds' cache keys. Runs in the rpm box: it carries the rpm that reads an
+# rpmdb, and alpm's database is text either way.
+box.sh_test(
+    name = "box-state-test",
+    box = ":fedora.rawhide.box",
+    test = "box-state.sh",
+    args = [
+        "$(location :fedora.rawhide.box)",
+        "$(location :arch.rolling.box)",
+    ],
+)
