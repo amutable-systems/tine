@@ -54,6 +54,8 @@ def main(argv: list[str] | None = None) -> None:
             # Only the user's env file, never $GOROOT/go.env, which is why everything this action
             # depends on is spelled out below instead of left to the box's go.
             "GOENV": "off",
+            # The cache below is a declared output, Buck has to be able to delete and write it
+            "GOFLAGS": "-modcacherw",
             "GOMODCACHE": str(module_cache_dir),
             # Where the modules come from and what vouches for the ones go.sum does not pin. Both
             # are go's upstream defaults, but a distribution is free to patch them: Fedora shipped
