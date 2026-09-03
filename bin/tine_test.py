@@ -380,11 +380,68 @@ class TestReadToml(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, rf"cannot parse {re.escape(str(path))}"):
             tine.read_toml(path)
 
-    def test_project_settings_reject_unknown_top_level_keys(self) -> None:
+    def test_project_settings_reject_unknown_sections(self) -> None:
         root = scratch(self)
         (root / tine.CONFIG).write_text("[command.check]\nsteps = []\n")
-        with self.assertRaisesRegex(SystemExit, "unsupported keys: command"):
+        with self.assertRaisesRegex(SystemExit, "unknown sections: command"):
             tine.project_settings(root)
+
+
+class TestLocalSettings(unittest.TestCase):
+    def settings(self, committed: str = "", local: str = "") -> dict[str, dict[str, object]]:
+        root = scratch(self)
+        if committed:
+            (root / tine.CONFIG).write_text(committed)
+        if local:
+            (root / tine.LOCAL_SETTINGS).write_text(local)
+        return tine.project_settings(root)
+
+    def test_empty(self) -> None:
+        self.assertEqual(self.settings(), {})
+
+    def test_local_only(self) -> None:
+        settings = self.settings(local='[buck2]\nrelease = "local"\n')
+        self.assertEqual(settings, {"buck2": {"release": "local"}})
+
+    def test_override_one_key(self) -> None:
+        settings = self.settings(
+            committed='[buck2]\nrepository = "committed/buck2"\nrelease = "committed"\n',
+            local='[buck2]\nrelease = "local"\n',
+        )
+        self.assertEqual(settings["buck2"], {"repository": "committed/buck2", "release": "local"})
+
+    def test_local_new_section(self) -> None:
+        settings = self.settings(
+            committed='[commands.check]\nsteps = [["buck", "build"]]\n',
+            local='[buck2]\nrelease = "local"\n',
+        )
+        self.assertEqual(sorted(settings), ["buck2", "commands"])
+
+    def test_unknown_section(self) -> None:
+        root = scratch(self)
+        (root / tine.LOCAL_SETTINGS).write_text("[invalid]\nkey = 1\n")
+        expected = re.escape(str(root / tine.LOCAL_SETTINGS))
+        with self.assertRaisesRegex(SystemExit, rf"{expected} has unknown sections: invalid"):
+            tine.project_settings(root)
+
+    def test_local_unknown_key(self) -> None:
+        root = scratch(self)
+        (root / tine.LOCAL_SETTINGS).write_text('[buck2]\nbogus = "local"\n')
+        with self.assertRaisesRegex(SystemExit, "unsupported keys: bogus"):
+            tine.configured_pin(tine.project_settings(root), tine._platform())
+
+    def test_section_is_not_a_table(self) -> None:
+        root = scratch(self)
+        (root / tine.LOCAL_SETTINGS).write_text("buck2 = 1\n")
+        expected = re.escape(str(root / tine.LOCAL_SETTINGS))
+        with self.assertRaisesRegex(SystemExit, rf"\[buck2\] in {expected} must be a table"):
+            tine.project_settings(root)
+
+    def test_local_command_is_validated(self) -> None:
+        root = scratch(self)
+        (root / tine.LOCAL_SETTINGS).write_text('[commands.check]\nsteps = [["make"]]\n')
+        with self.assertRaisesRegex(SystemExit, "must start with buck, not make"):
+            tine.validate_commands(tine.project_settings(root).get("commands", {}))
 
 
 class TestParseBuckconfig(unittest.TestCase):
@@ -1364,6 +1421,7 @@ class TestInit(unittest.TestCase):
         self.assertIn(f"/{tine.LOCAL}\n", gitignore)
         # The name an interrupted write leaves behind, which is nobody's to commit either.
         self.assertIn(f"/{tine.LOCAL}.*.tmp\n", gitignore)
+        self.assertIn(f"/{tine.LOCAL_SETTINGS}\n", gitignore)
         # Covers the mount file tine writes under it.
         self.assertIn(f"/{tine.HOME}\n", gitignore)
 

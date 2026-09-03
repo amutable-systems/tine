@@ -8,6 +8,7 @@
 # Local (non-committed) config overrides, one block of which bin/tine writes
 /.buckconfig.local
 /.buckconfig.local.*.tmp
+/tine.local.toml
 .claude/settings.local.json
 
 # Build output of a cargo build run by hand inside a checked-out Rust project
