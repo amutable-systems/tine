@@ -1571,7 +1571,14 @@ class Check(PackagesTestCase):
             testpkg_spec.read_text().replace("Summary: Test package", "Summary: Tweaked")
         )
         commit("testpkg: no release bump")
-        violates("neither uses %autorelease nor bumps")
+        violates("must bump Release: from 1.1%{?dist} to 1.2%{?dist}, not 1.1%{?dist}")
+
+        # C4b: Release: bumped, but into upstream's integer namespace instead of our minor `.N`.
+        testpkg_spec.write_text(
+            testpkg_spec.read_text().replace("Release: 1.1%{?dist}", "Release: 2%{?dist}")
+        )
+        commit("testpkg: upstream-style release bump")
+        violates("must bump Release: from 1.1%{?dist} to 1.2%{?dist}, not 2%{?dist}")
 
         # C5: a metadata-only change on a non-%autorelease package.
         testpkg_json.write_text(testpkg_json.read_text() + "\n")
