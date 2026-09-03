@@ -18,6 +18,11 @@ import isolation
 
 LOCAL = ".buckconfig.local"
 CONFIG = "tine.toml"
+LOCAL_SETTINGS = "tine.local.toml"
+
+# Either settings file can carry any setting, so a complaint about a value names both rather than
+# the one it came from. `project_settings` still names the file when the key itself is wrong.
+SETTINGS = f"{CONFIG} or {LOCAL_SETTINGS}"
 
 # Tine's own state, gitignored and relative to our project root. Buck2 also refuses to start without
 # $HOME (some CI environments don't set it), fallback to this.
@@ -181,13 +186,20 @@ def object_table(value: object, description: str) -> dict[str, object]:
     return cast(dict[str, object], value)
 
 
-def project_settings(root: Path) -> dict[str, object]:
-    """Read the settings understood by Tine rather than Buck."""
-    path = root / CONFIG
-    settings = read_toml(path)
-    if extra := sorted(set(settings) - {BUCK2, COMMANDS}):
-        raise fail(f"{path} has unsupported keys: {', '.join(extra)}")
-    return settings
+def project_settings(root: Path) -> dict[str, dict[str, object]]:
+    """Read the settings understood by Tine rather than Buck.
+
+    LOCAL_SETTINGS merges into CONFIG for individual keys: setting one in local still leaves the rest of
+    that section in CONFIG active.
+    """
+    merged: dict[str, dict[str, object]] = {}
+    for path in (root / CONFIG, root / LOCAL_SETTINGS):
+        settings = read_toml(path)
+        if extra := sorted(set(settings) - {BUCK2, COMMANDS}):
+            raise fail(f"{path} has unknown sections: {', '.join(extra)}")
+        for section, table in settings.items():
+            merged[section] = merged.get(section, {}) | object_table(table, f"[{section}] in {path}")
+    return merged
 
 
 def _split(path: Path) -> tuple[list[str], list[str]]:
@@ -642,26 +654,26 @@ def declared_pin(cell: Path, platform: str) -> dict[str, str]:
 
 def configured_pin(config: Mapping[str, object], platform: str) -> dict[str, str]:
     """Validate Buck2 overrides and select the fields for the current platform."""
-    table = object_table(config.get(BUCK2, {}), f"[{BUCK2}] in {CONFIG}")
+    table = object_table(config.get(BUCK2, {}), f"[{BUCK2}] in {SETTINGS}")
     if extra := sorted(set(table) - {"platforms", "release", "repository"}):
-        raise fail(f"[{BUCK2}] in {CONFIG} has unsupported keys: {', '.join(extra)}")
+        raise fail(f"[{BUCK2}] in {SETTINGS} has unsupported keys: {', '.join(extra)}")
     overrides: dict[str, str] = {}
     for key in ("repository", "release"):
         if key not in table:
             continue
         value = table[key]
         if not isinstance(value, str) or not value:
-            raise fail(f"[{BUCK2}] {key} in {CONFIG} must be a non-empty string")
+            raise fail(f"[{BUCK2}] {key} in {SETTINGS} must be a non-empty string")
         overrides[key] = value
 
-    platforms = object_table(table.get("platforms", {}), f"[{BUCK2}.platforms] in {CONFIG}")
+    platforms = object_table(table.get("platforms", {}), f"[{BUCK2}.platforms] in {SETTINGS}")
     if extra := sorted(set(platforms) - set(PLATFORMS)):
-        raise fail(f"[{BUCK2}.platforms] in {CONFIG} has unsupported platforms: {', '.join(extra)}")
+        raise fail(f"[{BUCK2}.platforms] in {SETTINGS} has unsupported platforms: {', '.join(extra)}")
     for configured_platform, value in platforms.items():
-        entry = object_table(value, f"[{BUCK2}.platforms.{configured_platform}] in {CONFIG}")
+        entry = object_table(value, f"[{BUCK2}.platforms.{configured_platform}] in {SETTINGS}")
         if extra := sorted(set(entry) - {"artifact", "sha256"}):
             raise fail(
-                f"[{BUCK2}.platforms.{configured_platform}] in {CONFIG} has unsupported keys: "
+                f"[{BUCK2}.platforms.{configured_platform}] in {SETTINGS} has unsupported keys: "
                 f"{', '.join(extra)}"
             )
         for key in ("artifact", "sha256"):
@@ -670,11 +682,12 @@ def configured_pin(config: Mapping[str, object], platform: str) -> dict[str, str
             item = entry[key]
             if not isinstance(item, str) or not item:
                 raise fail(
-                    f"[{BUCK2}.platforms.{configured_platform}] {key} in {CONFIG} must be a non-empty string"
+                    f"[{BUCK2}.platforms.{configured_platform}] {key} in {SETTINGS} "
+                    "must be a non-empty string"
                 )
             if key == "sha256" and not is_hex(item, 64):
                 raise fail(
-                    f"[{BUCK2}.platforms.{configured_platform}] sha256 in {CONFIG} "
+                    f"[{BUCK2}.platforms.{configured_platform}] sha256 in {SETTINGS} "
                     "must be 64 lowercase hexadecimal characters"
                 )
             if configured_platform == platform:
@@ -697,7 +710,7 @@ def buck2(config: Mapping[str, object], cell: Path, *, fetch: bool = True) -> Pa
     artifact = pin.get("artifact")
     sha256 = pin.get("sha256")
     if not (repository and release and artifact and sha256):
-        raise fail(f"{cell / PINS} and [{BUCK2}] in {CONFIG} pin no whole Buck2 for {platform}")
+        raise fail(f"{cell / PINS} and [{BUCK2}] in {SETTINGS} pin no whole Buck2 for {platform}")
     if not is_hex(sha256, 64):
         raise fail(f"the Buck2 pinned for {platform} has no SHA-256 to verify against: {sha256!r}")
 
@@ -933,7 +946,7 @@ def command_name(name: str, source: str) -> None:
         raise fail(f"[commands] in {source} uses reserved command name {name!r}")
 
 
-def validate_commands(value: object, source: str = CONFIG) -> dict[str, ProjectCommand]:
+def validate_commands(value: object, source: str = SETTINGS) -> dict[str, ProjectCommand]:
     """Validate and normalize the structured project command table."""
     table = object_table(value, f"[{COMMANDS}] in {source}")
     commands: dict[str, ProjectCommand] = {}
@@ -1000,8 +1013,7 @@ def project_commands(directory: Path) -> tuple[Path, dict[str, ProjectCommand]] 
         root = project_root(directory)
     except SystemExit:
         return None
-    path = root / CONFIG
-    return root, validate_commands(project_settings(root).get(COMMANDS, {}), str(path))
+    return root, validate_commands(project_settings(root).get(COMMANDS, {}))
 
 
 def commands(configured: dict[str, ProjectCommand]) -> dict[str, str]:
@@ -1289,6 +1301,7 @@ GITIGNORE = f"""/buck-out
 **/buck-out
 /{LOCAL}
 /{LOCAL}.*.tmp
+/{LOCAL_SETTINGS}
 /{HOME}
 """
 
