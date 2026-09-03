@@ -1714,9 +1714,11 @@ def check_commit(c: str) -> list[str]:
         ).strip()
     ):
         bad(f"X-Upstream-Commit {upstream[:12]} has no match on upstream-rpm at {rel}")
-    # A local source change must be an %autorelease package or bump Release: (incl. native packages).
-    if not upstream and dir_changed and not reset and not autorel and not release_bumped(c, rel):
-        bad("local commit neither uses %autorelease nor bumps Release:")
+    # A local source change must be an %autorelease package or bump Release: per the release rules
+    # (incl. native packages).
+    if not upstream and dir_changed and not reset and not autorel:
+        if err := release_bump_error(c, rel):
+            bad(err)
     # A *local* metadata-only change is only legitimate as an %autorelease rebuild. An imported
     # one is fine as-is: upstream's rpmautospec mass rebuilds are empty dist-git commits
     # ("Rebuilt for ..."), mirrored 1:1 to keep the %autorelease count, and their build's
@@ -1780,11 +1782,20 @@ def check_commit(c: str) -> list[str]:
     return errors
 
 
-def release_bumped(c: str, rel: str) -> bool:
-    """Whether commit `c` changed the spec's Release: line from its parent."""
-    now = re.search(r"^Release:\s*(\S+)", spec_at(c, rel), re.M)
-    was = re.search(r"^Release:\s*(\S+)", spec_at(f"{c}^", rel), re.M)
-    return now is not None and (was is None or cast(str, now.group(1)) != cast(str, was.group(1)))
+def release_bump_error(ref: str, rel: str) -> str | None:
+    """Verify ref's Release: bump according to docs/importer.md rules"""
+
+    now = re.search(r"^Release:\s*(\S+)", spec_at(ref, rel), re.M)
+    if now is None:
+        return "spec has no Release: line"
+    was = re.search(r"^Release:\s*(\S+)", spec_at(f"{ref}^", rel), re.M)
+    if was is None:
+        # A native package's first commit has no parent Release:
+        return None
+    want = bumped_release(was.group(1), local_bump(rel, f"{ref}^"))
+    if now.group(1) == want:
+        return None
+    return f"local commit must bump Release: from {was.group(1)} to {want}, not {now.group(1)}"
 
 
 def changelog_at(ref: str, rel: str) -> str:
