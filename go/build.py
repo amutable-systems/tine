@@ -142,7 +142,8 @@ def main(argv: list[str] | None = None) -> None:
     # -trimpath and -buildvcs=false are for reproducibility: no absolute paths in the binaries, no
     # VCS stamp from whatever the checkout happens to carry. -mod=readonly refuses to touch
     # go.mod/go.sum, making a stale pin a build failure rather than a silent re-resolution.
-    flags = ["-buildvcs=false", "-mod=readonly", "-trimpath"]
+    # -modcacherw so that buck can clean the scratch space.
+    flags = ["-buildvcs=false", "-mod=readonly", "-modcacherw", "-trimpath"]
     if spec["tags"]:
         flags.append("-tags=" + ",".join(spec["tags"]))
     env = os.environ | {
