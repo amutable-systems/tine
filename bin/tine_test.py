@@ -2012,22 +2012,33 @@ class TestMain(unittest.TestCase):
             tine.main(["completion", "tcsh"])
 
 
-class TestBuckSubcommand(unittest.TestCase):
+class TestParseBuckCommand(unittest.TestCase):
     """What Buck2 will make of the arguments `tine buck` forwards, which decides the fast path."""
 
     def test_plain(self) -> None:
-        self.assertEqual(tine.buck_subcommand(["build", "//x"]), "build")
+        self.assertEqual(tine.parse_buck_command(["build", "//x"]).subcommand, "build")
 
     def test_options_before_the_subcommand(self) -> None:
-        self.assertEqual(tine.buck_subcommand(["-v", "0", "complete", "--target=x"]), "complete")
+        self.assertEqual(
+            tine.parse_buck_command(["-v", "0", "complete", "--target=x"]).subcommand, "complete"
+        )
 
     def test_joined_option_values(self) -> None:
-        self.assertEqual(tine.buck_subcommand(["--isolation-dir=x", "build"]), "build")
+        command = tine.parse_buck_command(["--isolation-dir=x", "build", "//x"])
+        self.assertEqual(command.subcommand, "build")
+        self.assertEqual(command.isolation, "x")
 
     def test_separated_option_values(self) -> None:
-        self.assertEqual(tine.buck_subcommand(["--isolation-dir", "x", "build"]), "build")
+        command = tine.parse_buck_command(["--isolation-dir", "x", "build", "//x"])
+        self.assertEqual(command.subcommand, "build")
+        self.assertEqual(command.isolation, "x")
 
     def test_no_subcommand(self) -> None:
-        self.assertIsNone(tine.buck_subcommand(["--help"]))
-        self.assertIsNone(tine.buck_subcommand([]))
-        self.assertIsNone(tine.buck_subcommand(["--", "build"]))
+        self.assertIsNone(tine.parse_buck_command(["--help"]).subcommand)
+        self.assertIsNone(tine.parse_buck_command([]).subcommand)
+        self.assertIsNone(tine.parse_buck_command(["--", "build"]).subcommand)
+
+    def test_option_separator(self) -> None:
+        self.assertIsNone(
+            tine.parse_buck_command(["run", "//x", "--", "--isolation-dir", "other"]).isolation
+        )
