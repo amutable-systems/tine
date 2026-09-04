@@ -123,5 +123,21 @@
         "strip_prefix": "cargo-auditable-x86_64-unknown-linux-musl"
       }
     }
+  },
+  "bazel-remote": {
+    "repository": "martinpitt/bazel-remote",
+    "release": "v2.6.3-pitti1",
+    "platforms": {
+      "Linux-aarch64": {
+        "artifact": "bazel-remote-2.6.3-pitti1-linux-arm64",
+        "sha256": "2e67c12d019125ae507809441f2c48528bd7e15f927ee47fd33ad8d4f3e256ab",
+        "size": 21643776
+      },
+      "Linux-x86_64": {
+        "artifact": "bazel-remote-2.6.3-pitti1-linux-amd64",
+        "sha256": "e5c9c63660d2be7671f74805da373f9c029c0e14dd5058ec151d23d0ef52715b",
+        "size": 23548632
+      }
+    }
   }
 }

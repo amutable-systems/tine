@@ -40,6 +40,11 @@ def object_table(value: object, description: str) -> dict[str, object]:
     return cast(dict[str, object], value)
 
 
+def cache_home() -> Path:
+    """The user's cache root, wherever XDG puts it."""
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+
+
 def resolved(argument: Path) -> Path:
     """Resolve a path from configuration to an absolute one, following symlinks.
 

@@ -11,9 +11,9 @@ dm-verity protected GPT disks.
 The host needs Linux with unprivileged user namespaces, a `/usr/bin/python3` of 3.9 or newer, and
 `git`. Also `/dev/kvm` for running VMs, and `zstd` unless that
 python is 3.14 or newer, which unpacks the download itself. The first [`tine`](bin/tine) invocation
-that runs Buck fetches and verifies the pinned Buck2 binary into
-`${XDG_CACHE_HOME:-~/.cache}/tine/buck2` (one directory per pin, safe to delete); everything else is
-fetched and cached by Buck itself.
+that runs Buck fetches and verifies the pinned Buck2 binary and the cache shim (if a project
+configures one) into `${XDG_CACHE_HOME:-~/.cache}/tine/` (one directory per pin, safe to delete);
+everything else is fetched and cached by Buck itself.
 
 Buck2 refuses to start without `$HOME` (some CI environments don't set it). In that case, the `bin/tine`
 command sets `$HOME` to a gitignored `.buck/` in tine's root directory before running anything: that is
@@ -141,7 +141,7 @@ Design:
 - [Package import machinery](docs/packages.md): branch layout, metadata, consistency checks, rebuild
   strategy
 - [Self-hosting approaches](docs/self-host-approaches.md): future design for the BuildRequires cycle
-- [Shared build cache](docs/remote-cache.md): set up for a developer, a build runner, and the bucket
+- [Shared build cache](docs/remote-cache.md): configuring it, the shim tine runs, and the bucket
 
 ## Development
 
@@ -150,6 +150,7 @@ Design:
 ```sh
 tine buck <arguments>    # run the pinned Buck2, which every other command configures
 tine mount <verb>        # manage external directories mounted over project paths
+tine cache-status        # report on the shim serving the shared build cache
 tine init [<path>]       # write the configuration a project needs, for the checkout this command is in
 tine completion <shell>  # print the completion script for bash, fish or zsh
 ```

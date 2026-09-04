@@ -11,6 +11,8 @@ box_python_test(
         "//box:isolation",
     ],
     srcs = [
+        "cache_shim.py",
+        "cache_shim_test.py",
         "tine",
         "tine.py",
         "tine_test.py",

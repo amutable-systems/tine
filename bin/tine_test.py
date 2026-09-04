@@ -21,6 +21,7 @@ import unittest.mock
 from pathlib import Path
 from typing import cast, override
 
+import cache_shim
 import tine
 
 TOOL_PATH = Path(__file__).parent / "tine"
@@ -253,7 +254,7 @@ class TestNoComponents(RepositoryTestCase):
         self.assertEqual(tine.components(self.repo), "tag 'v1.2.3+dirty' is not a valid version")
 
     def test_reason_is_recorded_in_the_generated_config(self) -> None:
-        self.assertIn("# no version components: not a git checkout", tine.generate(scratch(self), []))
+        self.assertIn("# no version components: not a git checkout", tine.generate(scratch(self), [], None))
 
 
 class TestGenerate(RepositoryTestCase):
@@ -261,7 +262,7 @@ class TestGenerate(RepositoryTestCase):
         commit = self.commit()
         git("tag", "v1.2.3", cwd=self.repo)
         self.assertEqual(
-            tine.generate(self.repo, []),
+            tine.generate(self.repo, [], None),
             [
                 tine.BLOCK_BEGIN,
                 tine.BLOCK_NOTE,
@@ -277,22 +278,22 @@ class TestGenerate(RepositoryTestCase):
 
     def test_the_dirty_bit_appears_only_for_an_uncommitted_tree(self) -> None:
         self.commit()
-        self.assertNotIn("version-dirty = 1", tine.generate(self.repo, []))
+        self.assertNotIn("version-dirty = 1", tine.generate(self.repo, [], None))
         self.dirty()
-        self.assertIn("version-dirty = 1", tine.generate(self.repo, []))
+        self.assertIn("version-dirty = 1", tine.generate(self.repo, [], None))
 
     def test_every_line_it_writes_is_buckconfig(self) -> None:
         # A checkout without commits fails `rev-parse` with three lines of git advice; all but the
         # first would land in the file as configuration, and Buck would refuse to parse it.
         (self.repo / ".buckconfig").write_text("")
-        tine.refresh(self.repo, [])
+        tine.refresh(self.repo, [], None)
         for line in (self.repo / tine.LOCAL).read_text().splitlines():
             self.assertTrue(not line or line.startswith(("#", "[", "<")) or "=" in line)
         self.assertEqual(tine.project_config(self.repo), {"": {}})
 
     def test_writes_mount_ignores_after_the_version_components(self) -> None:
         self.commit()
-        lines = tine.generate(self.repo, ["**/.git", "packages/demo/BUCK", "packages/demo/**/BUCK"])
+        lines = tine.generate(self.repo, ["**/.git", "packages/demo/BUCK", "packages/demo/**/BUCK"], None)
         self.assertEqual(
             lines[-6:],
             [
@@ -307,16 +308,40 @@ class TestGenerate(RepositoryTestCase):
 
     def test_a_single_mount_ignore_needs_no_continuation(self) -> None:
         self.commit()
-        self.assertIn("ignore = packages/demo/BUCK", tine.generate(self.repo, ["packages/demo/BUCK"]))
+        self.assertIn("ignore = packages/demo/BUCK", tine.generate(self.repo, ["packages/demo/BUCK"], None))
 
     def test_mount_ignores_read_back_as_one_entry_the_project_does_not_own(self) -> None:
         (self.repo / ".buckconfig").write_text("[project]\nignore = .git\n")
-        tine.refresh(self.repo, [".git", "packages/demo/BUCK", "packages/demo/**/BUCK"])
+        tine.refresh(self.repo, [".git", "packages/demo/BUCK", "packages/demo/**/BUCK"], None)
         self.assertEqual(
             tine.generated(self.repo / tine.LOCAL)["project"][tine.PROJECT_IGNORE],
             ".git, packages/demo/BUCK, packages/demo/**/BUCK",
         )
         self.assertEqual(tine.project_config(self.repo)["project"][tine.PROJECT_IGNORE], ".git")
+
+    def test_a_configured_cache_is_where_buck_reads_its_address(self) -> None:
+        self.commit()
+        cache = cache_shim.settings({"cache": {"endpoint": "s3.example.com", "bucket": "b"}}, tine.SETTINGS)
+        assert cache is not None
+        lines = tine.generate(self.repo, [], cache)
+        self.assertIn(f"[{tine.RE_CLIENT}]", lines)
+        self.assertIn(f"address = 127.0.0.1:{cache.port}", lines)
+        # Buck defaults this to true, and the shim serves plaintext on the loopback.
+        self.assertIn("tls = false", lines)
+
+    def test_no_cache_leaves_the_block_as_it_was(self) -> None:
+        self.commit()
+        self.assertNotIn(f"[{tine.RE_CLIENT}]", tine.generate(self.repo, [], None))
+
+    def test_the_address_reads_back_out_of_the_block(self) -> None:
+        self.commit()
+        cache = cache_shim.settings({"cache": {"endpoint": "s3.example.com", "bucket": "b"}}, tine.SETTINGS)
+        tine.refresh(self.repo, [], cache)
+        generated = tine.generated(self.repo / tine.LOCAL)
+        assert cache is not None
+        self.assertEqual(generated[tine.RE_CLIENT]["address"], f"127.0.0.1:{cache.port}")
+        # The project's own view of its configuration excludes what tine wrote there.
+        self.assertNotIn(tine.RE_CLIENT, tine.project_config(self.repo))
 
 
 class TestMerge(unittest.TestCase):
@@ -1339,9 +1364,26 @@ class TestBuck(unittest.TestCase):
     @contextlib.contextmanager
     def running(self) -> collections.abc.Iterator[list[object]]:
         execve: list[object] = []
-        with unittest.mock.patch.object(tine, "buck2", return_value=self.binary):
-            with unittest.mock.patch.object(os, "execve", side_effect=lambda *a: execve.extend(a)):
-                yield execve
+        self.killed: list[object] = []
+        self.served: list[object] = []
+
+        with contextlib.ExitStack() as patches:
+            patches.enter_context(
+                unittest.mock.patch.object(tine, "kill_daemon", side_effect=lambda *a: self.killed.append(a))
+            )
+            patches.enter_context(
+                unittest.mock.patch.object(
+                    cache_shim, "ensure", side_effect=lambda *a: self.served.append(a)
+                )
+            )
+            patches.enter_context(
+                unittest.mock.patch.object(tine, "cache_shim_binary", return_value=self.binary)
+            )
+            patches.enter_context(unittest.mock.patch.object(tine, "buck2", return_value=self.binary))
+            patches.enter_context(
+                unittest.mock.patch.object(os, "execve", side_effect=lambda *a: execve.extend(a))
+            )
+            yield execve
 
     def test_it_configures_then_hands_over(self) -> None:
         with self.running() as execve:
@@ -1398,7 +1440,7 @@ class TestBuck(unittest.TestCase):
                 (self.root / ".buckconfig").write_text(f"[cells]\ntine = {cell}\n")
                 with self.running(), unittest.mock.patch.object(tine, "refresh") as refresh:
                     tine.buck(["build", "tine//..."])
-                refresh.assert_called_once_with(self.root, [])
+                refresh.assert_called_once_with(self.root, [], None)
 
     def test_a_run_without_a_home_gets_one(self) -> None:
         environment = dict(os.environ)
@@ -1419,6 +1461,52 @@ class TestBuck(unittest.TestCase):
                 tine.buck(["build", "//x"])
             self.assertEqual(os.environ["HOME"], str(home))
         self.assertFalse((self.root / tine.HOME).exists())
+
+    def test_no_cache_configured_starts_no_shim(self) -> None:
+        with self.running():
+            tine.buck(["build", "//..."])
+        self.assertEqual(self.served, [])
+
+    def test_a_subcommand_that_runs_no_action_starts_nothing(self) -> None:
+        """`tine buck kill` starting a cache that then idles for fifteen minutes reads as a fault."""
+        (self.root / tine.CONFIG).write_text('[cache]\nendpoint = "s3.example.com"\nbucket = "b"\n')
+        inert = (
+            ["complete", "--target", "//"],
+            ["kill"],
+            ["killall"],
+            ["status"],
+            ["clean"],
+            ["log", "what-ran"],
+        )
+        for argv in inert:
+            with self.subTest(argv=argv), self.running():
+                tine.buck(argv)
+                self.assertEqual(self.served, [])
+
+    def test_a_configured_cache_reaches_the_generated_block(self) -> None:
+        (self.root / tine.CONFIG).write_text('[cache]\nendpoint = "s3.example.com"\nbucket = "b"\n')
+        with self.running():
+            tine.buck(["build", "//..."])
+            self.assertEqual(len(self.served), 1, "the shim buck is about to talk to has to exist")
+            self.assertEqual(len(self.killed), 1, "a daemon predating the address has to go")
+            self.killed.clear()
+            tine.buck(["build", "//..."])
+            self.assertEqual(self.killed, [], "an unchanged address is no reason to kill anything")
+        self.assertIn(tine.RE_CLIENT, tine.generated(self.root / tine.LOCAL))
+
+    def test_a_project_may_not_name_the_cache_address_itself(self) -> None:
+        (self.root / tine.CONFIG).write_text('[cache]\nendpoint = "s3.example.com"\nbucket = "b"\n')
+        (self.root / tine.LOCAL).write_text(f"[{tine.RE_CLIENT}]\naddress = 127.0.0.1:1\n")
+        with self.running():
+            with self.assertRaisesRegex(SystemExit, f"\\[{tine.RE_CLIENT}\\] is reserved"):
+                tine.buck(["build", "//..."])
+
+    def test_a_project_naming_it_with_no_cache_configured_is_its_own_business(self) -> None:
+        (self.root / tine.LOCAL).write_text(f"[{tine.RE_CLIENT}]\naddress = 127.0.0.1:1\n")
+        with self.running() as execve:
+            tine.buck(["build", "//..."])
+        self.assertTrue(execve)
+        self.assertEqual(self.killed, [])
 
 
 CELL_BUCKCONFIG = """# Standalone root cell. Consuming projects supply their own; see README.md.
@@ -2099,7 +2187,8 @@ steps = [["buck", "test", "//..."]]
             contextlib.redirect_stdout(printed),
         ):
             tine.main(["help"])
-        self.assertIn("    check       build and test the image\n", printed.getvalue())
+        # Padded to the longest name, so match the columns rather than one of their widths.
+        self.assertRegex(printed.getvalue(), r"\n    check +build and test the image\n")
 
 
 class TestMain(unittest.TestCase):
