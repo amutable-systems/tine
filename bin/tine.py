@@ -594,12 +594,12 @@ def _unzstd(archive: Path, binary: Path) -> None:
         raise fail(f"zstd could not unpack {archive}")
 
 
-def _download(url: str, sha256: str, into: Path) -> Path:
+def _download(url: str, sha256: str, binary: Path, *, compressed: bool) -> Path:
     import hashlib
     import tempfile
     import urllib.request
 
-    binary = into / "buck2"
+    into = binary.parent
     print(f"tine: downloading {url}", file=sys.stderr)
     digest = hashlib.sha256()
     try:
@@ -607,15 +607,18 @@ def _download(url: str, sha256: str, into: Path) -> Path:
         # nothing behind and the rename below stays on one filesystem.
         into.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=into.parent, prefix=".download.") as directory:
-            archive = Path(directory) / "buck2.zst"
-            with urllib.request.urlopen(url, timeout=120) as response, archive.open("wb") as out:
+            fetched = Path(directory) / ".fetched"
+            with urllib.request.urlopen(url, timeout=120) as response, fetched.open("wb") as out:
                 while chunk := response.read(1 << 20):
                     digest.update(chunk)
                     out.write(chunk)
             if digest.hexdigest() != sha256:
                 raise fail(f"{url} has SHA-256 {digest.hexdigest()}, not the pinned {sha256}")
-            unpacked = Path(directory) / "buck2"
-            _decompress(archive, unpacked)
+            unpacked = Path(directory) / binary.name
+            if compressed:
+                _decompress(fetched, unpacked)
+            else:
+                fetched.replace(unpacked)
             unpacked.chmod(0o755)
             into.mkdir(exist_ok=True)
             unpacked.replace(binary)
@@ -632,13 +635,13 @@ def cell_root() -> Path:
     return COMMAND_PATH.resolve().parent.parent
 
 
-def declared_pin(cell: Path, platform: str) -> dict[str, str]:
-    """The Buck2 pin a cell declares for this machine."""
+def declared_pin(cell: Path, tool: str, platform: str) -> dict[str, str]:
+    """The pin a cell declares for one tool on this machine."""
     import json
 
     path = cell / PINS
     try:
-        spec = json.loads(path.read_text(encoding="utf-8"))["buck2"]
+        spec = json.loads(path.read_text(encoding="utf-8"))[tool]
         entry = spec["platforms"][platform]
         return {
             "repository": spec["repository"],
@@ -649,7 +652,7 @@ def declared_pin(cell: Path, platform: str) -> dict[str, str]:
     except OSError as error:
         raise fail(f"cannot read {path}: {error}") from error
     except (KeyError, TypeError, ValueError) as error:
-        raise fail(f"{path} declares no Buck2 for {platform}: {error}") from error
+        raise fail(f"{path} declares no {tool} for {platform}: {error}") from error
 
 
 def configured_pin(config: Mapping[str, object], platform: str) -> dict[str, str]:
@@ -695,33 +698,39 @@ def configured_pin(config: Mapping[str, object], platform: str) -> dict[str, str
     return overrides
 
 
-def buck2(config: Mapping[str, object], cell: Path, *, fetch: bool = True) -> Path | None:
-    """The pinned Buck2 binary, fetched and verified the first time it is asked for.
+def _pinned(
+    pin: Mapping[str, str], tool: str, platform: str, source: str, *, compressed: bool, fetch: bool
+) -> Path | None:
+    """A pinned binary, fetched and verified the first time it is asked for.
 
-    The pin is this cell's, overridable key by key in `[buck2]` in `tine.toml`. Cached by its own
-    hash, so a bumped pin lands beside the old one and going back finds it there. Without `fetch`,
-    None.
+    Cached by its own hash, so a bumped pin lands beside the old one and going back finds it there.
+    Without `fetch`, None.
     """
-    platform = _platform()
-    pin = declared_pin(cell, platform)
-    pin |= configured_pin(config, platform)
     repository = pin.get("repository")
     release = pin.get("release")
     artifact = pin.get("artifact")
     sha256 = pin.get("sha256")
     if not (repository and release and artifact and sha256):
-        raise fail(f"{cell / PINS} and [{BUCK2}] in {SETTINGS} pin no whole Buck2 for {platform}")
+        raise fail(f"{source} pins no whole {tool} for {platform}")
     if not is_hex(sha256, 64):
-        raise fail(f"the Buck2 pinned for {platform} has no SHA-256 to verify against: {sha256!r}")
+        raise fail(f"the {tool} pinned for {platform} has no SHA-256 to verify against: {sha256!r}")
 
     cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
-    into = cache / "tine" / "buck2" / sha256
-    binary = into / "buck2"
+    binary = cache / "tine" / tool / sha256 / tool
     if binary.is_file():
         return binary
     if not fetch:
         return None
-    return _download(f"https://github.com/{repository}/releases/download/{release}/{artifact}", sha256, into)
+    url = f"https://github.com/{repository}/releases/download/{release}/{artifact}"
+    return _download(url, sha256, binary, compressed=compressed)
+
+
+def buck2(config: Mapping[str, object], cell: Path, *, fetch: bool = True) -> Path | None:
+    """The pinned Buck2 binary. The pin is this cell's, overridable key by key in `[buck2]`."""
+    platform = _platform()
+    pin = declared_pin(cell, BUCK2, platform) | configured_pin(config, platform)
+    source = f"{cell / PINS} and [{BUCK2}] in {SETTINGS}"
+    return _pinned(pin, BUCK2, platform, source, compressed=True, fetch=fetch)
 
 
 def marker(digest: str) -> str:

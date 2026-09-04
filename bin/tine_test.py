@@ -1210,7 +1210,7 @@ sha256 = "{"b" * 64}"
             self.assertIsNone(tine.buck2(self.pin(), self.cell(), fetch=False))
 
     def test_a_cell_declaring_no_buck2(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "declares no Buck2"):
+        with self.assertRaisesRegex(SystemExit, "declares no buck2"):
             tine.buck2({}, self.cell({"ruff": {}}))
 
     def test_a_cell_with_no_tools_json(self) -> None:
@@ -1243,15 +1243,28 @@ class TestDownload(unittest.TestCase):
 
         url = self.artifact(b"binary")
         digest = hashlib.sha256(Path(url.removeprefix("file://")).read_bytes()).hexdigest()
-        into = scratch(self) / "cache"
+        binary = scratch(self) / "cache" / "buck2"
         with contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(tine._download(url, digest, into).read_bytes(), b"binary")
+            fetched = tine._download(url, digest, binary, compressed=True)
+        self.assertEqual(fetched.read_bytes(), b"binary")
+
+    def test_an_artifact_that_is_the_binary_itself(self) -> None:
+        import hashlib
+
+        path = scratch(self) / "tool"
+        path.write_bytes(b"binary")
+        binary = scratch(self) / "cache" / "tool"
+        digest = hashlib.sha256(b"binary").hexdigest()
+        with contextlib.redirect_stderr(io.StringIO()):
+            fetched = tine._download(path.as_uri(), digest, binary, compressed=False)
+        self.assertEqual(fetched.read_bytes(), b"binary")
+        self.assertTrue(os.access(fetched, os.X_OK))
 
     def test_a_download_that_does_not(self) -> None:
         into = scratch(self) / "cache" / ("a" * 64)
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaisesRegex(SystemExit, "not the pinned"):
-                tine._download(self.artifact(b"binary"), "a" * 64, into)
+                tine._download(self.artifact(b"binary"), "a" * 64, into / "buck2", compressed=True)
         # Nothing half-verified is left where the next command would take it for the binary, and
         # nothing at all under the name the pin is cached by.
         self.assertFalse(into.exists())
@@ -1266,7 +1279,12 @@ class TestDownload(unittest.TestCase):
             path.write_bytes(payload)
             with contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaisesRegex(SystemExit, "not a whole zstd stream"):
-                    tine._download(path.as_uri(), hashlib.sha256(payload).hexdigest(), scratch(self))
+                    tine._download(
+                        path.as_uri(),
+                        hashlib.sha256(payload).hexdigest(),
+                        scratch(self) / "buck2",
+                        compressed=True,
+                    )
 
 
 class TestBuck(unittest.TestCase):
