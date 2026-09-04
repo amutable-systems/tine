@@ -73,7 +73,10 @@ def _orphan_tests(buck: str, cell: Path) -> list[Path]:
     targets = json.loads(
         buck_output(buck, "uquery", "kind('box_python_test', tine//...)", "--output-attribute", "srcs")
     )
-    claimed = {cell / src.split("//", 1)[1] for target in targets.values() for src in target["srcs"]}
+    # A label in the root package renders as `cell///file`, which would resolve to an absolute path.
+    claimed = {
+        cell / src.split("//", 1)[1].lstrip("/") for target in targets.values() for src in target["srcs"]
+    }
     return sorted(p for p in cell.rglob("*_test.py") if "buck-out" not in p.parts and p not in claimed)
 
 

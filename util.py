@@ -29,6 +29,29 @@ _TRANSIENT_HTTP_STATUS = frozenset((408, 429, 500, 502, 503, 504))
 _FETCH_ATTEMPTS = 4
 
 
+def fail(message: str) -> SystemExit:
+    return SystemExit(f"tine: {message}")
+
+
+def object_table(value: object, description: str) -> dict[str, object]:
+    """Require a TOML table with string keys."""
+    if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
+        raise fail(f"{description} must be a table")
+    return cast(dict[str, object], value)
+
+
+def resolved(argument: Path) -> Path:
+    """Resolve a path from configuration to an absolute one, following symlinks.
+
+    A bind mount operates on the resolved path, and so does the lock on a cache directory, so
+    whatever records one has to record the same path.
+    """
+    try:
+        return argument.expanduser().resolve()
+    except (OSError, RuntimeError) as error:
+        raise fail(f"{argument} names no path: {error}") from error
+
+
 def _zstd(stream: IO[bytes]) -> io.BufferedIOBase:
     """Open a zstd stream, saying plainly when this interpreter is too old to.
 
@@ -262,6 +285,32 @@ def atomic_write_text(path: Path, content: str, *, mode: int | None = None) -> N
     """Atomically replace a path with UTF-8 text."""
     with atomic_text_writer(path, mode=mode) as stream:
         stream.write(content)
+
+
+def write_if_changed(path: Path, text: str) -> None:
+    """Replace a path with UTF-8 text, leaving it alone when that is already what it holds.
+
+    Not `atomic_write_text`: leaving an unchanged file untouched is what keeps Buck's file watcher
+    quiet, and a missing parent is an error here rather than something to create, because what this
+    writes sits beside a project that already exists.
+    """
+    # Renaming over a symlink would leave the file it shares stale and turn the link into a copy.
+    if path.is_symlink():
+        path = path.resolve()
+    # `newline=""`, or a file carrying a carriage return never compares equal and is rewritten by
+    # every command.
+    if path.is_file():
+        with path.open(encoding="utf-8", newline="") as handle:
+            if handle.read() == text:
+                return
+    # Rename into place so a concurrent Buck never parses a half-written config.
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(path)
+    except OSError as error:
+        tmp.unlink(missing_ok=True)
+        raise fail(f"cannot write {path}: {error}") from error
 
 
 def nested_buck() -> str:

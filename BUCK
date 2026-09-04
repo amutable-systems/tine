@@ -1,6 +1,7 @@
 """Shared tine Python support, and the toolchain Buck2 looks up as `toolchains//`."""
 
 load("@prelude//toolchains:python.bzl", "python_bootstrap_toolchain")
+load("//box:test.bzl", "box_python_test")
 load("//python:defs.bzl", "tine_python_library")
 
 # Declared here rather than in a `toolchains` cell of its own: Buck2 forbids nesting a cell inside an
@@ -21,6 +22,13 @@ tine_python_library(
     name = "util",
     srcs = ["util.py"],
     visibility = ["PUBLIC"],
+)
+
+box_python_test(
+    name = "test",
+    box = "//tools:dev.box",
+    srcs = ["util_test.py"],
+    deps = [":util"],
 )
 
 tine_python_library(
