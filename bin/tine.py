@@ -1198,9 +1198,9 @@ VERBS_MARKER = "__TINE_VERBS__"
 
 _FISH = """
 # Complete the mount verb first, followed by the path arguments accepted by `add` and `remove`.
-function __tine_mount_verb
+function __tine_verb_of
     set -l cmd (commandline -opc)
-    test (count $cmd) -eq 2; and test "$cmd[2]" = mount
+    test (count $cmd) -eq 2; and test "$cmd[2]" = $argv[1]
 end
 
 function __tine_mount_path
@@ -1210,9 +1210,9 @@ end
 
 # tine's own commands, which are what is being completed until `buck` is one of the words.
 __TINE_VERBS__
-complete -c tine -n '__fish_seen_subcommand_from completion' -f -a 'bash fish zsh'
-complete -c tine -n '__fish_seen_subcommand_from init' -F
-complete -c tine -n __tine_mount_verb -f -a 'add remove list'
+complete -c tine -n '__tine_verb_of completion' -f -a 'bash fish zsh'
+complete -c tine -n '__tine_verb_of init' -F
+complete -c tine -n '__tine_verb_of mount' -f -a 'add remove list'
 complete -c tine -n __tine_mount_path -F
 """
 
