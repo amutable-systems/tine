@@ -9,8 +9,10 @@ load(
     "PackageManagerInfo",
     "package_manager",
 )
+load("//package:repository.bzl", "local_repository")
 
 package = struct(
     ManagerInfo = PackageManagerInfo,
+    local_repository = local_repository,
     manager = package_manager,
 )
