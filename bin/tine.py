@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from util import fail, object_table, resolved, write_if_changed
+
 import isolation
 
 LOCAL = ".buckconfig.local"
@@ -80,10 +82,6 @@ GIT_LOCATION_VARS = (
     "GIT_COMMON_DIR",
     "GIT_NAMESPACE",
 )
-
-
-def fail(message: str) -> SystemExit:
-    return SystemExit(f"tine: {message}")
 
 
 def is_version(value: str) -> bool:
@@ -179,13 +177,6 @@ def read_toml(path: Path) -> dict[str, object]:
         raise fail(f"cannot parse {path}: {error}") from error
     except (OSError, UnicodeDecodeError) as error:
         raise fail(f"cannot read {path}: {error}") from error
-
-
-def object_table(value: object, description: str) -> dict[str, object]:
-    """Require a TOML table with string keys."""
-    if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
-        raise fail(f"{description} must be a table")
-    return cast(dict[str, object], value)
 
 
 def project_settings(root: Path) -> dict[str, dict[str, object]]:
@@ -308,17 +299,6 @@ def project_config(root: Path) -> dict[str, dict[str, str]]:
     for path in [*listed, root / ".buckconfig", root / LOCAL]:
         parse_buckconfig(path, config)
     return config
-
-
-def resolved(argument: Path) -> Path:
-    """Resolve a mount source to an absolute path, following symlinks.
-
-    Bind mounts operate on the resolved path, so the declaration must record the same path.
-    """
-    try:
-        return argument.expanduser().resolve()
-    except (OSError, RuntimeError) as error:
-        raise fail(f"{argument} names no path: {error}") from error
 
 
 def named(argument: Path) -> Path:
@@ -533,26 +513,6 @@ def merge(path: Path, block: list[str]) -> str:
     while kept and not kept[0].strip():
         kept.pop(0)
     return "\n".join(block + ([""] + kept if kept else [])) + "\n"
-
-
-def write_if_changed(path: Path, text: str) -> None:
-    # Renaming over a symlink would leave the file it shares stale and turn the link into a copy.
-    if path.is_symlink():
-        path = path.resolve()
-    # `newline=""`, or a file carrying a carriage return never compares equal and is rewritten by
-    # every command.
-    if path.is_file():
-        with path.open(encoding="utf-8", newline="") as handle:
-            if handle.read() == text:
-                return
-    # Rename into place so a concurrent Buck never parses a half-written config.
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-    try:
-        tmp.write_text(text, encoding="utf-8")
-        tmp.replace(path)
-    except OSError as error:
-        tmp.unlink(missing_ok=True)
-        raise fail(f"cannot write {path}: {error}") from error
 
 
 def refresh(root: Path) -> None:

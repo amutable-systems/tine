@@ -281,37 +281,6 @@ class TestGenerate(RepositoryTestCase):
         self.assertEqual(tine.project_config(self.repo), {"": {}})
 
 
-class TestWriteIfChanged(unittest.TestCase):
-    def test_leaves_an_unchanged_file_alone(self) -> None:
-        path = scratch(self) / tine.LOCAL
-        tine.write_if_changed(path, "one\n")
-        before = path.stat().st_mtime_ns
-        tine.write_if_changed(path, "one\n")
-        self.assertEqual(path.stat().st_mtime_ns, before)
-
-    def test_replaces_a_changed_file(self) -> None:
-        path = scratch(self) / tine.LOCAL
-        tine.write_if_changed(path, "one\n")
-        tine.write_if_changed(path, "two\n")
-        self.assertEqual(path.read_text(), "two\n")
-
-    def test_a_file_reached_through_a_symlink_is_written_through(self) -> None:
-        # Buck reads that layout, and renaming over the link would leave the real file stale.
-        root = scratch(self)
-        shared = root / "shared.bcfg"
-        shared.write_text("one\n")
-        link = root / tine.LOCAL
-        link.symlink_to(shared)
-        tine.write_if_changed(link, "two\n")
-        self.assertTrue(link.is_symlink())
-        self.assertEqual(shared.read_text(), "two\n")
-
-    def test_reports_a_path_it_cannot_write(self) -> None:
-        # Root, which the box runs as, writes through a read-only directory; an absent one stops it.
-        with self.assertRaisesRegex(SystemExit, "tine: cannot write"):
-            tine.write_if_changed(scratch(self) / "absent" / tine.LOCAL, "one\n")
-
-
 class TestMerge(unittest.TestCase):
     """The block is this command's; the rest of the file stays the developer's."""
 

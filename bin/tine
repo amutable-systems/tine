@@ -11,9 +11,9 @@ def main() -> None:
     if sys.version_info < (3, 12):  # noqa: UP036
         raise SystemExit("tine: Python 3.12 or newer is required")
     # Isolated mode omits source directories from sys.path; resolve the command so a symlink still
-    # loads both modules from its own checkout.
+    # loads every module from its own checkout. The cell root is on it for the shared helpers.
     directory = Path(__file__).resolve().parent
-    sys.path[:0] = [str(directory), str(directory.parent / "box")]
+    sys.path[:0] = [str(directory), str(directory.parent), str(directory.parent / "box")]
     import tine
 
     tine.main(sys.argv[1:])
