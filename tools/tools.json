@@ -74,18 +74,18 @@
   },
   "ty": {
     "repository": "astral-sh/ty",
-    "release": "0.0.75",
+    "release": "0.0.78",
     "platforms": {
       "aarch64": {
         "artifact": "ty-aarch64-unknown-linux-musl.tar.gz",
-        "sha256": "1e44393d9e3f029808a3b1af33729db1b01b9d90808bed821604d390df2f58b4",
-        "size": 11994170,
+        "sha256": "11604480eef76c0588ae4b1b6f75ba284950157a25bfc1cdf57309bb5d22c3eb",
+        "size": 12312009,
         "strip_prefix": "ty-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "ty-x86_64-unknown-linux-musl.tar.gz",
-        "sha256": "3a2e99afb590e82f424dc1d1436b25e56caf91d1c69702090d4ad596880fec47",
-        "size": 12935487,
+        "sha256": "b79ead5b710d0ee19ec9e9def572a557bc447ae13ea0a45d08b7dbf930900401",
+        "size": 13301290,
         "strip_prefix": "ty-x86_64-unknown-linux-musl"
       }
     }
