@@ -329,10 +329,12 @@ def relative(root: Path, path: Path) -> str:
 
 def string_table(value: object, description: str) -> dict[str, str]:
     """Require a TOML table whose values are strings."""
-    table = object_table(value, description)
-    if any(not isinstance(item, str) for item in table.values()):
-        raise fail(f"{description} must contain only strings")
-    return cast(dict[str, str], table)
+    table: dict[str, str] = {}
+    for key, item in object_table(value, description).items():
+        if not isinstance(item, str):
+            raise fail(f"{description} must contain only strings")
+        table[key] = item
+    return table
 
 
 def local_mounts(root: Path) -> dict[str, str]:
