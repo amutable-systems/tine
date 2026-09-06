@@ -21,7 +21,7 @@ fedora_release(
     version = "rawhide",
     box = ":fedora.rawhide.box",
     rpmrepo_mirror = "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45",
-    rpmrepo_snapshot = "f45-x86_64-rawhide-20260829",
+    rpmrepo_snapshot = "f45-x86_64-rawhide-20260904",
     visibility = ["PUBLIC"],
 )
 
@@ -73,7 +73,7 @@ box.new(
 # refresh-catalog advances every repository sharing this pin to the newest complete day.
 arch_release(
     name = "arch.rolling",
-    archive_snapshot = "2026/08/29",
+    archive_snapshot = "2026/09/05",
     box = ":arch.rolling.box",
     visibility = ["PUBLIC"],
 )
