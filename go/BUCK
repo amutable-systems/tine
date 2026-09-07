@@ -28,6 +28,7 @@ tine_python_binary(
         "//:specs",
         "//:util",
         "//box:isolation",
+        "//rootfs:rootfs",
     ],
 )
 
@@ -44,5 +45,6 @@ box_python_test(
         "//:specs",
         "//:util",
         "//box:isolation",
+        "//rootfs:rootfs",
     ],
 )

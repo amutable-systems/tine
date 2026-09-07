@@ -8,16 +8,15 @@ go takes every module and re-verifies it against the committed go.sum.
 import json
 import os
 import subprocess
-import tempfile
-from collections.abc import Iterator
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack
 from pathlib import Path
 from typing import TypedDict, cast
 
 import specs
 import util
 
-from isolation import Bind, Overlay
+import rootfs
+from isolation import Bind
 
 
 class Spec(TypedDict):
@@ -42,28 +41,6 @@ class Spec(TypedDict):
     src: str
     # The build tags gating which of the project's files compile.
     tags: list[str]
-
-
-@contextmanager
-def _build_tree(source: Path, scratch: Path) -> Iterator[Path]:
-    """Mount a writable source view without copying or changing the input tree."""
-    scratch.mkdir(parents=True)
-    tree = scratch / "src"
-    # OverlayFS creates a mode-000 subdirectory inside the supplied workdir. Remove its storage while
-    # the sandbox still has the capabilities to enter it; Buck's host-side scratch cleanup does not.
-    with tempfile.TemporaryDirectory(prefix="overlay.", dir=scratch) as directory:
-        upper, work = (Path(directory) / name for name in ("upper", "work"))
-        upper.mkdir()
-        work.mkdir()
-        # Upstream links may leave the overlay and reach another input. The child builds from `tree`,
-        # so any path back into the project crosses this read-only mount. Keep scratch outside it.
-        project = Path.cwd()
-        with (
-            Bind(project, project, readonly=True),
-            # The temporary upper/work directories must be unused before their removal.
-            Overlay((source,), upper, work, tree, lazy_unmount=False),
-        ):
-            yield tree
 
 
 def _package(selector: str, workspace: Path, env: dict[str, str]) -> str:
@@ -169,7 +146,10 @@ def main(argv: list[str] | None = None) -> None:
             cache.mkdir(parents=True, exist_ok=True)
             # Retain writable access before the project is mounted read-only for the build.
             stack.enter_context(Bind(cache, gocache))
-        workspace = stack.enter_context(_build_tree(Path(spec["src"]), build)) / spec["root"]
+        # A build outside a chroot can follow source symlinks back into other project inputs.
+        project = Path.cwd()
+        stack.enter_context(Bind(project, project, readonly=True))
+        workspace = stack.enter_context(rootfs.source_overlay(Path(spec["src"]), build)) / spec["root"]
         for name, selector in spec["packages"].items():
             package = _package(selector, workspace, env)
             subprocess.run(

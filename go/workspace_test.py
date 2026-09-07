@@ -82,6 +82,24 @@ class TestResolveWorkspace(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "go workspaces are not supported"):
             workspace.resolve_workspace("hello", self.checkout)
 
+    def test_a_live_checkout_may_hold_a_go_work(self) -> None:
+        self._write("go.mod", "go.work")
+
+        self.assertEqual(
+            workspace.resolve_workspace("hello", self.checkout, live=True),
+            {"mod": "go.mod", "root": "", "sum": None},
+        )
+
+    def test_workspace_discovery_skips_build_output_and_vcs_state(self) -> None:
+        self._write("go.mod")
+        for name in ("target", ".git", ".jj", ".hg", ".svn"):
+            self._write(f"{name}/go.mod", f"{name}/go.sum", f"{name}/go.work")
+
+        self.assertEqual(
+            workspace.resolve_workspace("nodeps", self.checkout),
+            {"mod": "go.mod", "root": "", "sum": None},
+        )
+
     def test_rejects_sources_holding_no_module(self) -> None:
         with self.assertRaises(SystemExit) as caught:
             workspace.resolve_workspace("hello", self.checkout)

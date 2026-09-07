@@ -46,7 +46,7 @@ def _go_build_impl(
                     },
                 ),
             ),
-            allow_cache_upload = not incremental,
+            allow_cache_upload = not incremental and not src.is_source,
             category = "go_fetch",
             local_only = True,
             no_outputs_cleanup = incremental,
@@ -72,7 +72,7 @@ def _go_build_impl(
                 },
             ),
         ),
-        allow_cache_upload = not incremental,
+        allow_cache_upload = not incremental and not src.is_source,
         category = "go_build",
         no_outputs_cleanup = incremental,
     )
@@ -97,7 +97,7 @@ _go_build = dynamic_actions(
 )
 
 def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
-    src = ctx.attrs.src
+    src = project.digested(ctx.actions, _PRIVATE + "/src", ctx.attrs.src) if ctx.attrs.copy else ctx.attrs.src
 
     # Most projects hold one program. Its import path is only known once the sources are built, so
     # the binary takes the target's name; the driver refuses a module with more than one candidate.
@@ -123,13 +123,16 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
                 ctx.actions,
                 _PRIVATE + "/go-workspace.spec.json",
                 {
+                    # A live tree still holds files Buck ignores, which discovery must not trip over.
+                    "live": src.is_source,
                     "name": ctx.label.name,
                     "out": workspace.as_output(),
                     "src": src,
                 },
             ),
         ),
-        allow_cache_upload = True,
+        # A live checkout may expose ignored files; fetched trees contain only declared inputs.
+        allow_cache_upload = not src.is_source,
         category = "go_workspace",
     )
 
@@ -163,6 +166,7 @@ _go_package = rule(
         "box": attrs.exec_dep(providers = [BoxInfo], doc = "box carrying the Go toolchain"),
         "cgo": attrs.option(attrs.bool(), default = None, doc = "force cgo on or off, box toolchain default when unset"),
         "cgo_cflags": attrs.list(attrs.string(), default = [], doc = "extra C compiler flags for a cgo build"),
+        "copy": attrs.bool(doc = "src is a directory of this package, built from the copy Buck digested"),
         "incremental": attrs.bool(doc = "keep go's caches across dev-mode rebuilds"),
         "linker_flags": attrs.list(attrs.string(), default = [], doc = "flags for the Go linker, passed as -ldflags"),
         "packages": attrs.dict(attrs.string(), attrs.string(), default = {}, doc = "output name to main package; unset builds the module's only one"),
@@ -188,6 +192,7 @@ def go_package(
     """
     _go_package(
         name = name,
+        copy = project.is_directory(src),
         incremental = project.is_dev(name, source = src, override = dev),
         src = src if src != None else name,
         **kwargs,

@@ -9,6 +9,9 @@ def _project_path(package: str, name: str, *, cell: str) -> str:
 
 def _source_path(source: str) -> str:
     """Map a source target label to its mounted checkout path, e.g. `cell//pkg:app.git` to `<cell root>/pkg/app`."""
+    if "//" in source and ":" not in source:
+        # `//pkg` is short for `//pkg:pkg`.
+        source += ":" + source.rpartition("/")[2]
     path, separator, target = source.rpartition(":")
     cell = get_cell_name()
     package = package_name()
@@ -38,6 +41,20 @@ def is_dev(
         return project_path in configured
     return _source_path(source) in configured
 
+def is_directory(source: str | None) -> bool:
+    """Whether a source names a directory of the current package rather than a target."""
+    return source == None or not (source.startswith(":") or "//" in source)
+
+def digested(actions: AnalysisActions, name: str, tree: Artifact) -> Artifact:
+    """Copy the files of a source directory that Buck digested."""
+
+    # The directory itself also holds whatever project ignores keep out of Buck's digest, so an action
+    # reading it could use build output Buck never hashed. `relative_symlinks` keeps an internal link
+    # pointing at its original relative target, so the copy survives being relocated.
+    return actions.copy_dir(name, tree, relative_symlinks = True)
+
 project = struct(
+    digested = digested,
     is_dev = is_dev,
+    is_directory = is_directory,
 )
