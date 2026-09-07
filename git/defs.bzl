@@ -12,7 +12,8 @@ def _checkout_impl(ctx: AnalysisContext) -> list[Provider]:
     # `src` is a single directory source rather than a glob(), because a glob() drops dotfiles. Archive
     # packages depend on the implicit checkout target, so an unpopulated checkout outputs an empty
     # directory.
-    tree = project.copy_source(ctx.actions, ctx.attrs.out, ctx.attrs.src) if ctx.attrs.src else ctx.actions.symlinked_dir(ctx.attrs.out, {})
+    name = ctx.label.name.removesuffix(".git")
+    tree = project.copy_source(ctx.actions, name, ctx.attrs.src) if ctx.attrs.src else ctx.actions.symlinked_dir(name, {})
     return [
         DefaultInfo(
             default_output = tree,
@@ -25,7 +26,6 @@ _checkout = rule(
     impl = _checkout_impl,
     attrs = {
         "labels": attrs.list(attrs.string(), default = [], doc = "labels used to query this target"),
-        "out": attrs.string(doc = "name of the fetched work tree"),
         "src": attrs.option(attrs.source(allow_directory = True), default = None, doc = "the populated checkout"),
         "sub_targets": attrs.list(attrs.string(), default = [], doc = "tree paths exposed as sub-targets"),
     },
@@ -36,14 +36,7 @@ def fetch(name: str, repo: str, rev: str, sub_targets: list[str] = [], visibilit
     directory = name.removesuffix(".git")
     labels = [_MOUNT_TARGET_LABEL] + labels
     if project.populated(directory):
-        _checkout(
-            name = name,
-            labels = labels,
-            out = directory,
-            src = directory,
-            sub_targets = sub_targets,
-            visibility = visibility,
-        )
+        _checkout(name = name, labels = labels, src = directory, sub_targets = sub_targets, visibility = visibility, **kwargs)
     else:
         git_fetch(name = name, repo = repo, rev = rev, sub_targets = sub_targets, visibility = visibility, labels = labels, **kwargs)
 
@@ -53,7 +46,7 @@ def checkout(name: str, labels: list[str] = [], **kwargs) -> bool:
     Returns whether it currently holds anything.
     """
     populated = project.populated(name)
-    _checkout(name = name, labels = [_MOUNT_TARGET_LABEL] + labels, out = name, src = name if populated else None, **kwargs)
+    _checkout(name = name, labels = [_MOUNT_TARGET_LABEL] + labels, src = name if populated else None, **kwargs)
     return populated
 
 git = struct(
