@@ -8,6 +8,7 @@
 # Local (non-committed) config overrides, one block of which bin/tine writes
 /.buckconfig.local
 /.buckconfig.local.*.tmp
+/.buckconfig.*.tmp
 /.buckconfig.d/tine-mounts
 /tine.local.toml
 .claude/settings.local.json

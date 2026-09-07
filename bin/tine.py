@@ -167,9 +167,7 @@ def read_lines(path: Path) -> list[str]:
     rewrite a line Buck cannot read.
     """
     try:
-        # `open`, not `read_text`, which only takes a newline argument from python 3.13 on.
-        with path.open(encoding="utf-8", newline="") as handle:
-            text = handle.read()
+        text = path.read_bytes().decode("utf-8")
     except (OSError, UnicodeDecodeError) as error:
         fail(f"cannot read {path}: {error}")
     lines = text.split("\n")
@@ -205,13 +203,13 @@ def project_settings(root: Path) -> dict[str, dict[str, object]]:
     return merged
 
 
-def _split_generated_block(path: Path) -> tuple[list[str], list[str]]:
+def _split_generated_block(path: Path, *, must_exist: bool = False) -> tuple[list[str], list[str]]:
     """What a file holds besides the block this writes into it, and what that block holds.
 
     Keeping the generated block separate prevents a later command from treating generated values as
     project configuration. Reject partial blocks because later buckconfig entries take precedence.
     """
-    if not path.is_file():
+    if not must_exist and not path.is_file():
         return [], []
     kept: list[str] = []
     generated: list[str] = []
@@ -303,17 +301,23 @@ def read_generated_buckconfig(path: Path) -> dict[str, dict[str, str]]:
     return config
 
 
-def read_project_buckconfig(root: Path) -> dict[str, dict[str, str]]:
+def read_project_buckconfig(
+    root: Path, overrides: dict[str, dict[str, str]] | None = None
+) -> dict[str, dict[str, str]]:
     """Read the root cell's project-owned layered configuration.
 
     Buck2 loads all of `.buckconfig.d` in name order, followed by `.buckconfig` and then
-    `.buckconfig.local`. Exclude the generated block in the last file from the values returned here.
+    `.buckconfig.local`. Apply pending TOML overrides at the root file's precedence for cell selection
+    before a refresh. Exclude generated blocks so they are not mistaken for project-owned settings.
     """
     config: dict[str, dict[str, str]] = {}
     # Buck lists entries with lstat and does not load symlinked files.
     paths = [path for path in sorted((root / ".buckconfig.d").rglob("*")) if not path.is_symlink()]
     for path in [*paths, root / ".buckconfig", root / LOCAL]:
         parse_buckconfig(path, config)
+        if path == root / ".buckconfig" and overrides is not None:
+            for section, values in overrides.items():
+                config.setdefault(section, {}).update(values)
     return config
 
 
@@ -871,7 +875,7 @@ def cells_of(config: dict[str, dict[str, str]]) -> dict[str, str]:
 def configured_mount_targets(root: Path) -> set[str]:
     """Existing project directories registered as cell roots."""
     targets: set[str] = set()
-    config = read_project_buckconfig(root)
+    config = read_project_buckconfig(root, buckconfig_overrides(project_settings(root), root / CONFIG))
     for value in cells_of(config).values():
         path = Path(value)
         if (
@@ -1359,6 +1363,7 @@ fi
 
 GITIGNORE = f"""/buck-out
 **/buck-out
+/.buckconfig.*.tmp
 /{PRIVATE_MOUNTS}
 /{LOCAL}
 /{LOCAL}.*.tmp
@@ -1393,7 +1398,12 @@ def render_project_buckconfig(source: Path, overrides: dict[str, dict[str, str]]
     """Generate consuming-project defaults with explicit project overrides."""
     # The defaults are required; parse_buckconfig intentionally tolerates absent config layers.
     config: dict[str, dict[str, str]] = {}
-    _parse_buckconfig_lines(_logical_buckconfig_lines(read_lines(source)), config, "", source.parent)
+    _parse_buckconfig_lines(
+        _logical_buckconfig_lines(_split_generated_block(source, must_exist=True)[0]),
+        config,
+        "",
+        source.parent,
+    )
     cells_of(config).pop(CELL, None)
     config.setdefault("cells", {}).setdefault("root", ".")
     config.setdefault("parser", {})[DETECTOR] = (
@@ -1410,6 +1420,21 @@ def render_project_buckconfig(source: Path, overrides: dict[str, dict[str, str]]
                 *(f"{key} = {value}" for key, value in values.items()),
             ]
     return "\n".join(lines) + "\n"
+
+
+def refresh_project_buckconfig(root: Path, overrides: dict[str, dict[str, str]]) -> None:
+    """Refresh generated defaults from the visible checkout, leaving standalone configs alone."""
+    # Local cell overrides must select the same defaults as the wrapper handover.
+    cell = cells_of(read_project_buckconfig(root, overrides)).get(CELL)
+    if cell is None or root / cell == root:
+        if overrides:
+            fail(f"{root / CONFIG}: set standalone Buck overrides in .buckconfig instead")
+        return
+    if CELL not in cells_of(overrides):
+        # Without a TOML cell declaration, the bootstrap still owns the project cell registrations.
+        cells = cells_of(parse_buckconfig(root / ".buckconfig")) | cells_of(overrides)
+        overrides = overrides | {"cells": cells}
+    write_if_changed(root / ".buckconfig", render_project_buckconfig(root / cell / ".buckconfig", overrides))
 
 
 @contextmanager
@@ -1578,7 +1603,9 @@ def mount_command(root: Path, arguments: list[str]) -> None:
                 and target not in graph_mount_targets(root)
             ):
                 fail(f"mount {target}: not a valid target; `tine mount list` lists valid targets")
-            validate_mount_config(read_project_buckconfig(root))
+            validate_mount_config(
+                read_project_buckconfig(root, buckconfig_overrides(project_settings(root), root / CONFIG))
+            )
             for other in declared:
                 if target != other and mount_targets_overlap(target, other):
                     fail(f"mount {target}: overlaps mount {other}")
@@ -1665,15 +1692,20 @@ def collect_project_ignores(
     return list(dict.fromkeys(patterns))
 
 
-def prepare_buck(root: Path, argv: list[str]) -> tuple[dict[str, dict[str, str]], list[str]]:
-    """Prepare a command without rereading mounts after wrapper handover."""
+def prepare_buck(
+    root: Path, settings: dict[str, dict[str, object]], argv: list[str], *, refresh_config: bool = True
+) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """Enter the mount namespace before refreshing defaults from its visible checkout."""
     mounts = namespace_mount_targets(root)
     nested = bool(os.environ.get("BUCK2_BINARY"))
+    overrides = buckconfig_overrides(settings, root / CONFIG)
     if mounts is None and not nested:
         declared = declared_mounts(root)
         if declared:
-            reexec_in_mount_namespace(root, read_project_buckconfig(root), declared, argv)
+            reexec_in_mount_namespace(root, read_project_buckconfig(root, overrides), declared, argv)
         mounts = []
+    if refresh_config and not nested:
+        refresh_project_buckconfig(root, overrides)
     config = read_project_buckconfig(root)
     if mounts:
         validate_mount_config(config)
@@ -1686,7 +1718,9 @@ def buck_command(argv: list[str]) -> None:
     settings = project_settings(root)
     command = parse_buck_command(argv)
     # A completing shell must neither download nor rewrite shared configuration on a keypress.
-    config, mounts = prepare_buck(root, ["buck", *argv])
+    config, mounts = prepare_buck(
+        root, settings, ["buck", *argv], refresh_config=command.subcommand != "complete"
+    )
     # Enter first so wrapper_cell_root() reads the mounted checkout's pin.
     binary = buck2_binary(settings, wrapper_cell_root(), fetch=command.subcommand != "complete")
     if binary is None:
@@ -1719,7 +1753,7 @@ def completion_command(arguments: list[str]) -> None:
         fail(f"{reason}; the script comes out of the Buck2 a project pins")
     ensure_home(root)
     settings = project_settings(root)
-    prepare_buck(root, ["completion", *arguments])
+    prepare_buck(root, settings, ["completion", *arguments], refresh_config=False)
     configured = validate_commands(settings.get(COMMANDS, {}), str(root / CONFIG))
     binary = buck2_binary(settings, wrapper_cell_root())
     assert binary is not None

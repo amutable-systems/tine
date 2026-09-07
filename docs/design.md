@@ -123,8 +123,9 @@ Keep the label and the list of mounted project paths in a small private file,
 `.buckconfig.d/tine-mounts/config`. Each command sees its own version of this file: A sees "old" and B
 sees "new", even though the filename is the same. A private in-memory mount (`tmpfs`) provides that
 separation. The Buck client reads this file before deciding whether to reuse a daemon, and passes the
-label along if it starts a new one. The ordinary `.buckconfig` and `.buckconfig.local` files stay shared,
-so their edits remain visible.
+label along if it starts a new one. The ordinary `.buckconfig` and `.buckconfig.local` files stay shared
+rather than being frozen with the mounts. They still follow the refresh rules described under
+[Shared configuration and nested commands](#shared-configuration-and-nested-commands).
 
 The root-cell config layers are read in order: `.buckconfig.d/`, `.buckconfig`, then `.buckconfig.local`.
 Tine rejects project-owned `[buck2] daemon_buster` and `[tine] dev` while mounts are declared so that a
@@ -184,8 +185,23 @@ is explained under [Use bind mounts for out-of-tree content](#use-bind-mounts-fo
 
 #### Shared configuration and nested commands
 
-Before starting an ordinary Buck command, Tine refreshes its generated block in `.buckconfig.local`
-with project ignores and Git-derived image version components. Text outside that block is preserved.
+For a consuming project, an ordinary `tine buck` command regenerates the entire project `.buckconfig`
+from the selected tine checkout's `.buckconfig`, applying `[buckconfig.*]` overrides from `tine.toml`
+and `tine.local.toml`. Mount setup and wrapper handover happen first, so a mounted checkout supplies
+both the wrapper and its defaults. Direct edits to the generated defaults are discarded; project
+settings belong in TOML instead.
+
+Cell selection uses the effective configuration, including `.buckconfig.local`. A local cell override
+can select different defaults without being copied into the generated `.buckconfig`.
+If TOML does not declare the tine cell, existing cell registrations in `.buckconfig` are retained while
+other defaults are regenerated. This also supports consuming projects that declare their cells only
+in native Buck configuration.
+
+When the tine cell is the project root itself, it is a standalone checkout. Its `.buckconfig` is source
+configuration and is not regenerated; put Buck overrides directly in that file rather than in TOML.
+
+The `.buckconfig.local` update only replaces Tine's generated block, which contains project ignores and
+Git-derived image version components. Text outside that block is preserved.
 Configured ignores are merged with VCS metadata exclusions and Git ignores; a project-owned
 `[project] ignore` in `.buckconfig.local` is rejected because it would replace the generated list.
 The version components live under `[tine]` as `version-base`, `version-count`, `version-height`,
