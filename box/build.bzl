@@ -12,11 +12,20 @@ load(
 )
 load("//package:solver.bzl", "solve_command", "solver_cache")
 load("//package:system.bzl", "PackageSystemInfo")
+load("//package:verify.bzl", "repository_packages")
 load(":runtime.bzl", "BoxInfo", "box_run")
 
 _REPOSITORY_PRIORITY = 99
 
-def _configure_repositories(repositories: list[Dependency]) -> list[ConfiguredPackageRepositoryInfo]:
+def _configure_repositories(
+    ctx: AnalysisContext,
+    repositories: list[Dependency],
+    verifier: BoxInfo | None,
+) -> list[ConfiguredPackageRepositoryInfo]:
+    """The box's repositories at the native default priority.
+
+    Their packages are verified by `verifier`; without one they stay unverified, which only a root
+    box's bootstrap, with nothing to verify with yet, may take."""
     configured = []
     for repository in repositories:
         repo = repository[PackageRepositoryInfo]
@@ -31,8 +40,7 @@ def _configure_repositories(repositories: list[Dependency]) -> list[ConfiguredPa
                 directory = repo.dir,
                 priority = _REPOSITORY_PRIORITY,
                 baseurl = repo.baseurl,
-                # Unverified: a box has nothing to verify with.
-                packages = repository[PackagePoolInfo].value,
+                packages = repository_packages(ctx, verifier, repository) if verifier != None else repository[PackagePoolInfo].value,
             )
         )
     return configured
@@ -45,7 +53,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.attrs.enable_repository_groups,
         ctx.attrs.disable_repository_groups,
     )
-    configured_repositories = _configure_repositories(repositories)
+    configured_repositories = _configure_repositories(ctx, repositories, None)
 
     resolver_box = None
     resolve = None
@@ -85,14 +93,15 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # A predecessor installs the transaction directly. Only a root box must first unpack that
     # same closure into an installer-capable root, without metadata or scriptlets.
-    packages = select_package_artifacts(
-        ctx,
-        transaction,
-        repositories = configured_repositories,
-        suffix = system.package_suffix,
-    )
     installer_box = resolver_box
     if installer_box == None:
+        unverified_packages = select_package_artifacts(
+            ctx,
+            transaction,
+            repositories = configured_repositories,
+            suffix = system.package_suffix,
+            name = "bootstrap.closure",
+        )
         stage1 = ctx.actions.declare_output("stage1", dir = True)
         ctx.actions.run(
             cmd_args(
@@ -102,7 +111,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
                     "extract.spec.json",
                     {
                         "out": stage1.as_output(),
-                        "packages": [packages],
+                        "packages": [unverified_packages],
                     },
                 ),
             ),
@@ -113,6 +122,16 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
             root = stage1,
             sandbox = ctx.attrs._sandbox,
         )
+
+    # The predecessor verifies its successor's packages. A root box has only its own stage1 for that,
+    # which catches an unsigned or tampered package and a wrong key. But its verify program came out of
+    # unverified files: a tampered `rpmkeys` could say "OK" to anything, so stage1 is no root of trust.
+    packages = select_package_artifacts(
+        ctx,
+        transaction,
+        repositories = _configure_repositories(ctx, repositories, installer_box),
+        suffix = system.package_suffix,
+    )
 
     # Use the predecessor or bootstrapped root to produce the fully installed box.
     stage2 = ctx.actions.declare_output("stage2", dir = True)

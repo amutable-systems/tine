@@ -339,6 +339,11 @@ two stages:
 2. The package-system installer runs from `stage1` and properly installs the closure into `stage2`,
    including scriptlets and the package database. `stage2` becomes the reusable `BoxInfo` root.
 
+Before that second stage, `stage1` verifies the same closure against the release's declared signing keys,
+the way a predecessor box verifies a successor's packages. That catches an unsigned or tampered package
+and a wrong key, but the verifier itself was extracted unchecked, so a root box is not a root of trust
+independent of the packages it bootstraps from.
+
 Both catalog boxes are root boxes.
 
 A first lock is the one thing a root box cannot produce for itself, since resolving needs a box to
@@ -1342,7 +1347,9 @@ belong to one package system are listed in its own section instead:
 - Repository metadata is trusted on first use: neither Fedora's GA trees nor the pinned mirrors serve a
   signed `repomd.xml`, so a substituted one at refresh time could select other validly signed packages.
   Reviewing the snapshot diff is the check for that.
-- Boxes install their packages unverified. Arch packages are not verified at all.
+- A root box verifies its packages with the `rpmkeys` of its own unverified stage1, so a tampered rpm
+  package in the seed could defeat the check for that box; every other box and every image verifies with a
+  predecessor. Arch packages are not verified at all.
 - Archive ownership is intentionally normalized to uid/gid zero. Capabilities, xattrs, and SELinux labels do
   not survive as Buck directory metadata; deferred tmpfiles can restore xattrs at terminal assembly, and tar
   preserves them in PAX headers, but newc cpio cannot represent general xattrs.
@@ -1386,10 +1393,11 @@ must be explicit; silently pretending a cyclic source graph is acyclic is not ac
 
 Upstream authenticity for rpm follows the catalog pinning and package pool sections: a repository declares
 its signing keys by fingerprint, refresh fetches the files once, and a consumer with a box verifies each
-package against them as it is selected. What remains:
+package against them as it is selected, a box using its predecessor. What remains:
 
-1. Boxes: an existing trusted box verifies the inputs of its successor rather than allowing a new box to
-   vouch for itself.
+1. A root box has no predecessor and verifies with its own stage1. Closing that needs a verifier that did
+   not come out of the served packages: a host-side check of the header signature in `rpmfile.py` would
+   do, since Fedora signs with one RSA/SHA-256 key per release.
 2. Arch's per-packager keys need a trust model for `archlinux-keyring` before its repositories can declare
    anything a build could verify against.
 3. Repository metadata stays unsigned upstream; the snapshot diff is its review.
