@@ -1,5 +1,6 @@
 """The RPM native package system and its driver bundle."""
 
+load("//box:test.bzl", "box_python_test")
 load("//package:system.bzl", "package_system")
 load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
 
@@ -19,24 +20,52 @@ tine_python_binary(name = "install", main = "install.py", boxes = [_BOX], deps =
 
 # The capture driver implements the terminal-image contract, so it takes that library.
 tine_python_binary(name = "pkgdb", main = "pkgdb.py", deps = ["//:specs", "//:util", "//image:finalize"])
+
 tine_python_binary(
     name = "createrepo",
     main = "createrepo.py",
     boxes = [_BOX],
     deps = ["//:specs", "//:util"],
 )
+
 tine_python_binary(
     name = "plan",
     main = "plan.py",
     boxes = [_BOX],
     deps = ["//:specs", "//:util", "//package:transaction", "//rootfs:rootfs"],
 )
+
 tine_python_binary(name = "build", main = "build.py", deps = ["//:specs", "//:util", "//rootfs:rootfs"])
 
 tine_python_binary(
     name = "snapshot",
     deps = ["//:util", "//package:href", "//package:snapshotter"],
     main = "snapshot.py",
+)
+
+tine_python_library(name = "rpmkeys", srcs = ["rpmkeys.py"])
+
+tine_python_binary(
+    name = "keyring",
+    main = "keyring.py",
+    boxes = [_BOX],
+    deps = [":rpmkeys", "//:specs", "//:util"],
+)
+
+tine_python_binary(
+    name = "verify",
+    main = "verify.py",
+    boxes = [_BOX],
+    deps = [":rpmkeys", "//:specs", "//:util"],
+)
+
+# The dev box rather than the shared one: the verifier's tests sign packages they build, which takes
+# rpmbuild, gpg and rpmsign.
+box_python_test(
+    name = "test",
+    box = "tine//tools:dev.box",
+    srcs = ["keyring.py", "rpmkeys.py", "verify.py", "verify_test.py"],
+    deps = ["//:specs", "//:util"],
 )
 
 package_system(
@@ -49,6 +78,8 @@ package_system(
     package_suffix = ".rpm",
     plan = ":plan",
     build = ":build",
+    keyring = ":keyring",
+    verify = ":verify",
     # rpm keeps one sqlite database, so a capture of it is that file.
     database_format = "sqlite",
     # Keep in sync with install.py's DBPATH, which Starlark cannot read.

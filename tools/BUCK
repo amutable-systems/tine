@@ -83,6 +83,9 @@ box.new(
         "git-core",
         "python3",
         "rpm-build",
+        # package_system/rpm's tests sign what they build
+        "gnupg2",
+        "rpm-sign",
         "sed",
     ],
     release = _RELEASE,
