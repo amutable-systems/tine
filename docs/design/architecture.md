@@ -776,7 +776,9 @@ Entry points: `package_system/pacman/{rules,catalog}.bzl` and
 
 A consuming repository can build a Rust project it has checked out instead of packaging it first.
 `cargo.package()` takes the project directory as input, so a clone needs nothing added to it, and
-the single `Cargo.lock` in it identifies the workspace root. An action discovers that lock after the
+the single `Cargo.lock` in it identifies the workspace root. A directory of the package is built from a
+copy of the files Buck digested; only a local override of a `git.fetch()` is built live, and keeps its
+results out of the shared cache in return. An action discovers that lock after the
 sources have been built, so the checkout may itself be a fetched directory artifact; a dynamic action
 then reads the resolved lock and declares what the build fetches. A project that resolves nothing carries
 no lock, because cargo will not create one under `--locked` and there would be nothing in it to pin; its

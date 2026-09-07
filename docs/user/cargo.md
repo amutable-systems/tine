@@ -90,7 +90,8 @@ How the crates are pinned, fetched and vendored is described under "Rust source 
   reruns a single action for the whole project, but cargo's build directory survives between runs, so that
   action recompiles only what changed. `buck2 clean` is what forces a build from scratch.
 - **A fetched or committed project keeps nothing between runs**. Its build directory never reaches the cache,
-  only the final build targets.
+  only the final build targets. The build of a local override of a [`git.fetch()`](git.md) is not shared
+  either.
 - **Only crates.io registry sources work.** Another registry is rejected with the package named, rather
   than guessed at. A `Cargo.lock` older than version 3 is rejected too: it records no per-package
   checksums.

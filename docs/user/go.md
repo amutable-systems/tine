@@ -108,7 +108,8 @@ How the modules are pinned, fetched and verified is described under "Go source b
   only what changed. Only changes to `go.mod`/`go.sum` rerun the fetch, whose module cache survives too, so a
   dependency bump downloads only what is missing. `buck2 clean` is what forces a build from scratch.
 - **A fetched or committed project keeps neither cache between runs**. Its build cache never reaches the
-  shared cache, only the binaries; the module cache does, refetched whole whenever the pins move.
+  shared cache, only the binaries; the module cache does, refetched whole whenever the pins move. The build
+  of a local override of a [`git.fetch()`](git.md) is not shared either.
 - **`go.mod` and `go.sum` must agree.** The build runs `-mod=readonly`, so a stale `go.sum` fails the
   build instead of quietly resolving something else; `go mod tidy` and commit the result.
 - **The fetch is a network action**, one of the few build steps that reach out at all. It declares its own

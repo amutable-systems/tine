@@ -1,0 +1,52 @@
+"""Assertions over local checkout artifacts."""
+
+load("//box:defs.bzl", "box")
+load(":defs.bzl", "git")
+
+git.checkout(
+    name = "fixture",
+    sub_targets = ["input"],
+)
+
+git.checkout(
+    name = "empty",
+    sub_targets = ["missing"],
+)
+
+# The checkout's directory overrides this fetch, so its revision is deliberately a placeholder.
+git.fetch(
+    name = "fixture.git",
+    repo = "https://github.com/example/fixture",
+    rev = "1111111111111111111111111111111111111111",
+)
+
+# A committed directory overrides every other fetch in this cell, so nothing else evaluates the macro's
+# git_fetch() branch. Compatible with no platform, so `tine//...` declares it without fetching anything.
+git.fetch(
+    name = "remote.git",
+    repo = "https://github.com/example/remote",
+    rev = "1111111111111111111111111111111111111111",
+    target_compatible_with = ["prelude//:none"],
+)
+
+box.sh_test(
+    name = "checkout-test",
+    box = "tine//tools:dev.box",
+    script = """
+        [[ "$(cat "$1/input")" == source ]]
+        # Buck ignores it, so the copy a checkout hands out must not carry it.
+        [[ ! -e "$1/.hg" ]]
+        [[ "$(cat "$2")" == source ]]
+        [[ -d "$3" ]]
+        [[ -z "$(ls -A "$3")" ]]
+        # A fetch override is the live directory rather than a copy of it, so it still holds it.
+        [[ -n "$4" && "$4" != *buck-out* && "$(cat "$4/input")" == source ]]
+        [[ -e "$4/.hg/poison" ]]
+    """,
+    args = [
+        "$(location :fixture)",
+        "$(location :fixture[input])",
+        "$(location :empty)",
+        "$(location :fixture.git)",
+    ],
+)
