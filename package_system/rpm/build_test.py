@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from collections.abc import Iterator
 from pathlib import Path
 from typing import cast, override
 from unittest import mock
@@ -194,6 +195,60 @@ class BuildRpm(unittest.TestCase):
         self.assertNotIn("local_option yes", command)
         self.assertIsNone(cwd)
         self.assertEqual(binds, [(topdir, "/build"), (build_dir.absolute(), "/build/BUILD")])
+
+    def test_capture_makes_build_trees_removable_after_unmount(self) -> None:
+        for persistent in (False, True):
+            for outcome in (0, 1, RuntimeError("rpmbuild interrupted")):
+                with self.subTest(persistent=persistent, outcome=outcome):
+                    case = Path(tempfile.mkdtemp(dir=self.scratch))
+                    topdir = case / "topdir"
+                    build_dir = case / "incremental" if persistent else None
+                    directories = [topdir / "BUILDROOT" / "usr"]
+                    if build_dir is not None:
+                        directories.append(build_dir / "installed")
+
+                    def run(
+                        *_args: object,
+                        trees: list[Path] = directories,
+                        result: int | RuntimeError = outcome,
+                        **_kwargs: object,
+                    ) -> subprocess.CompletedProcess[str]:
+                        for directory in trees:
+                            directory.mkdir(parents=True)
+                            (directory / "payload").write_text("keep\n")
+                            directory.chmod(0o555)
+                        if isinstance(result, RuntimeError):
+                            raise result
+                        return subprocess.CompletedProcess([], result)
+
+                    @contextlib.contextmanager
+                    def mounted(trees: list[Path] = directories) -> Iterator[None]:
+                        try:
+                            yield
+                        finally:
+                            for directory in trees:
+                                self.assertEqual(directory.stat().st_mode & 0o777, 0o555)
+
+                    with (
+                        mock.patch.object(build.rootfs, "rootfs", return_value=mounted()),
+                        mock.patch.object(build.subprocess, "run", side_effect=run),
+                        mock.patch.object(build.shutil, "rmtree") as remove,
+                    ):
+                        spec = self.specification(build_dir=build_dir)
+                        if isinstance(outcome, RuntimeError):
+                            with self.assertRaises(RuntimeError) as raised:
+                                build.build_rpm(spec, topdir)
+                            self.assertIs(raised.exception, outcome)
+                        else:
+                            self.assertEqual(build.build_rpm(spec, topdir), outcome)
+
+                    for directory in directories:
+                        self.assertEqual(directory.stat().st_mode & 0o777, 0o755)
+                        self.assertEqual((directory / "payload").read_text(), "keep\n")
+                    if outcome == 0:
+                        remove.assert_called_once_with(topdir)
+                    else:
+                        remove.assert_not_called()
 
 
 if __name__ == "__main__":

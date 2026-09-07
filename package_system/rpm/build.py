@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 from typing import TypedDict
 
@@ -56,6 +57,14 @@ class Spec(TypedDict):
 
 def build_rpm(spec: Spec, topdir: Path = Path("/var/tmp/topdir")) -> int:
     """Build the RPMs described by `spec` in action scratch space."""
+    with rootfs.capture_on_exit(topdir):
+        rc = _build_rpm(spec, topdir)
+    if rc == 0:
+        shutil.rmtree(topdir)
+    return rc
+
+
+def _build_rpm(spec: Spec, topdir: Path) -> int:
     if not spec["lower"]:
         util.fail("build_rpm: the buildroot stack cannot be empty")
 
@@ -112,12 +121,17 @@ def build_rpm(spec: Spec, topdir: Path = Path("/var/tmp/topdir")) -> int:
 
     # The ephemeral upper discards buildroot writes; use the package-specific epoch.
     env = os.environ | {"HOME": "/build", "SOURCE_DATE_EPOCH": str(spec["source_date_epoch"])}
-    with rootfs.rootfs(
-        "/buildroot",
-        lowers=spec["lower"],
-        binds=binds,
-        apivfs=True,
-        chroot=True,
+    # Both scratch and persistent outputs need to stay removable by Buck after failed builds.
+    # Capture after unmounting so package permissions remain intact while rpmbuild uses them.
+    with (
+        rootfs.capture_on_exit(build_dir) if build_dir is not None else nullcontext(),
+        rootfs.rootfs(
+            "/buildroot",
+            lowers=spec["lower"],
+            binds=binds,
+            apivfs=True,
+            chroot=True,
+        ),
     ):
         defines = [
             "--define", "_topdir /build",
@@ -171,8 +185,6 @@ def build_rpm(spec: Spec, topdir: Path = Path("/var/tmp/topdir")) -> int:
     if spec["subpackages"]:
         _emit_subpackages(spec["subpackages"], produced)
 
-    # Preserve failed trees for diagnosis; remove successful ones.
-    shutil.rmtree(topdir)
     return 0
 
 
