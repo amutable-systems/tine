@@ -113,6 +113,8 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
 
     sub_targets = {s: [DefaultInfo(default_output = out)] for s, out in sub_outputs.items()}
     sub_targets["buildroot"] = [DefaultInfo(default_outputs = buildroot)]
+    if build_dir != None:
+        sub_targets["build"] = [DefaultInfo(default_output = build_dir)]
     return [
         DefaultInfo(default_output = rpms, sub_targets = sub_targets),
         LocalPackageInfo(
