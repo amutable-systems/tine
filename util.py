@@ -275,7 +275,11 @@ def nested_buck() -> str:
 
 def buck_output(buck: str, *args: str) -> str:
     """One nested Buck command, its stdout stripped."""
-    return subprocess.run([buck, *args], check=True, capture_output=True, text=True).stdout.strip()
+
+    # `-v 0` mutes Buck's own chatter on success
+    return subprocess.run(
+        [buck, "-v", "0", *args], check=True, stdout=subprocess.PIPE, text=True
+    ).stdout.strip()
 
 
 def package_directory(buck: str, package: str) -> Path:
