@@ -178,6 +178,30 @@ def capture_on_exit(tree: str | Path) -> Iterator[Path]:
 # Root setup.
 
 
+@contextmanager
+def source_overlay(source: Path, target: Path) -> Iterator[Path]:
+    """Expose a source directory with disposable writes and its original timestamps.
+
+    Unlike stored image layers, checkout files must not be decoded as OCI markers.
+    Relative internal symlinks retain their meaning; escaping links resolve in the
+    build's namespace and may be dangling or refer to a different file there.
+    An unprivileged overlay cannot record a directory rename, so rename(2) on a
+    directory of the source fails with EXDEV, as in a container; mv(1) copies instead.
+    """
+    with ExitStack() as stack:
+        # A leaked child can keep writing to the upper through a descriptor it still holds, so
+        # removal is best effort: the action's scratch directory is cleared before its next run.
+        scratch = Path(
+            stack.enter_context(tempfile.TemporaryDirectory(prefix="source.", ignore_cleanup_errors=True))
+        )
+        upper, work = scratch / "upper", scratch / "work"
+        upper.mkdir()
+        work.mkdir()
+        # A child may retain a file descriptor, which would make a strict unmount fail with EBUSY.
+        stack.enter_context(Overlay((source,), upper, work, target, lazy_unmount=True))
+        yield target
+
+
 def _apivfs(stack: ExitStack, target: Path) -> None:
     """Mount the API and temporary filesystems expected by package scripts."""
     tty = Path(os.ttyname(2)) if os.isatty(2) else None

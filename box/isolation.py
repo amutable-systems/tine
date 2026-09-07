@@ -763,11 +763,15 @@ class Overlay(_Mount):
         os.makedirs(os.path.dirname(target), mode=0o755, exist_ok=True)
         os.makedirs(target, mode=0o755, exist_ok=True)
 
+        # Overlay's option parser treats unescaped commas and colons as separators.
+        def escape(path: str) -> str:
+            return path.replace("\\", "\\\\").replace(",", "\\,").replace(":", "\\:")
+
         options = ",".join(
             (
-                f"lowerdir={':'.join(lowers)}",
-                f"upperdir={upper}",
-                f"workdir={work}",
+                f"lowerdir={':'.join(escape(path) for path in lowers)}",
+                f"upperdir={escape(upper)}",
+                f"workdir={escape(work)}",
                 "userxattr",
                 "index=off",
                 "metacopy=off",
