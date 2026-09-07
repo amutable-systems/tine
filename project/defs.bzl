@@ -10,18 +10,22 @@ def _project_path(package: str, name: str, *, cell: str) -> str:
     root = read_root_config("cells", cell, "")
     return "/".join([part.strip("/") for part in (root, package, name) if part and part != "."])
 
+def _is_label(source: str) -> bool:
+    """Whether `source` is a target label rather than a directory of this package."""
+    return ":" in source
+
 def _source_path(source: str) -> str:
     """Map a source target label to its mounted checkout path, e.g. `cell//pkg:app.git` to `<cell root>/pkg/app`."""
-    path, separator, target = source.rpartition(":")
     cell = get_cell_name()
     package = package_name()
-    if separator and "//" in path:
-        cell, package = path.split("//", 1)
-        cell = cell.removeprefix("@") or get_cell_name()
-    elif separator and path:
-        package = path
-    elif not separator:
-        target = source
+    target = source
+    if _is_label(source):
+        path, _, target = source.rpartition(":")
+        if "//" in path:
+            cell, package = path.split("//", 1)
+            cell = cell.removeprefix("@") or get_cell_name()
+        elif path:
+            package = path
     target = target.split("[", 1)[0].removesuffix(".git")
     return _project_path(package, target, cell = cell)
 
@@ -59,8 +63,60 @@ def kept_dir(actions: AnalysisActions, name: str) -> Artifact:
     # output.
     return actions.declare_output(name, dir = True, has_content_based_path = False)
 
+def copy_source(actions: AnalysisActions, name: str, src: Artifact) -> Artifact:
+    """Copy the files of a source directory that are in Buck's digest of the directory."""
+
+    # The source directory also holds files that the ignore rules of the project keep out of Buck's
+    # digest, such as build output. An action that reads the source directory could use files that Buck
+    # never hashed.
+    # `relative_symlinks` keeps a symlink inside the tree pointing at its relative target. The copy then
+    # still works after a consumer moves it.
+    # `preserve_mtimes` keeps the timestamps of the source files. An incremental build compares
+    # timestamps to find changed files. A fresh copy would give every file a new timestamp. Only a local
+    # copy keeps the timestamps. An incremental build only sees local copies, because Buck never shares
+    # the results of an incremental build.
+    # `has_content_based_path = False` gives the copy a fixed path. With a content-based path, reverting
+    # an edit would bring back the earlier copy with its earlier timestamps. An incremental build would
+    # then treat the reverted file as unchanged.
+    # The key of the copy action does not include `relative_symlinks`, `preserve_mtimes` or
+    # `has_content_based_path`. A change to a flag takes effect only after `buck2 clean`.
+    return actions.copy_dir(name, src, has_content_based_path = False, preserve_mtimes = True, relative_symlinks = True)
+
+def _source_impl(ctx: AnalysisContext) -> list[Provider]:
+    name = ctx.label.name.removesuffix(".src")
+
+    # A directory that contains no file becomes an empty directory. The consumer then fails with its
+    # own error about the missing sources, rather than Buck failing on a missing source path.
+    tree = copy_source(ctx.actions, name, ctx.attrs.src) if ctx.attrs.src else ctx.actions.symlinked_dir(name, {})
+    return [DefaultInfo(default_output = tree)]
+
+_source = rule(
+    doc = "Copy a directory of this package for the rules that build from it.",
+    impl = _source_impl,
+    attrs = {
+        "src": attrs.option(attrs.source(allow_directory = True), default = None, doc = "the directory, unset when it contains no file"),
+    },
+)
+
+def source(src: str) -> str:
+    """Return the label of a source tree for a build rule.
+
+    A label is returned unchanged. A directory of this package is replaced by a target that copies the
+    files Buck digested.
+    """
+    if _is_label(src):
+        return src
+    name = src + ".src"
+
+    # Several targets can build from one directory. They share one copy of it.
+    if not rule_exists(name):
+        _source(name = name, src = src if populated(src) else None)
+    return ":" + name
+
 project = struct(
+    copy_source = copy_source,
     is_dev = is_dev,
     kept_dir = kept_dir,
     populated = populated,
+    source = source,
 )
