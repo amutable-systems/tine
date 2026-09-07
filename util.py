@@ -286,11 +286,7 @@ def package_directory(buck: str, package: str) -> Path:
     return Path(buck_output(buck, "audit", "cell", cell, "--paths-only")) / path
 
 
-def commit_paths(directory: Path, pathspec: str, subject: str) -> bool:
-    """Commit `pathspec` under `directory` if it changed, returning whether it did.
-
-    If there are no changes, no commits are made. These are mechanical, so they are not signed off.
-    """
+def _record_paths(directory: Path, pathspec: str, how: list[str], message: str | None) -> bool:
     git = ["git", "-C", str(directory)]
     status = subprocess.run(
         [*git, "status", "--porcelain", "--", pathspec], check=True, capture_output=True, encoding="utf-8"
@@ -298,7 +294,22 @@ def commit_paths(directory: Path, pathspec: str, subject: str) -> bool:
     if not status.stdout:
         return False
     subprocess.run([*git, "add", "--", pathspec], check=True)
-    subprocess.run(
-        [*git, "commit", "--file=-", "--", pathspec], input=f"{subject}\n", encoding="utf-8", check=True
-    )
+    subprocess.run([*git, "commit", *how, "--", pathspec], input=message, encoding="utf-8", check=True)
     return True
+
+
+def commit_paths(directory: Path, pathspec: str, subject: str) -> bool:
+    """Commit `pathspec` under `directory` if it changed, returning whether it did.
+
+    If there are no changes, no commits are made. These are mechanical, so they are not signed off.
+    """
+    return _record_paths(directory, pathspec, ["--file=-"], f"{subject}\n")
+
+
+def amend_paths(directory: Path, pathspec: str) -> bool:
+    """Fold `pathspec` under `directory` into HEAD if it changed, returning whether it did.
+
+    For a change that is only meaningful as part of the commit that caused it. That commit keeps
+    its message and everything else it already holds.
+    """
+    return _record_paths(directory, pathspec, ["--amend", "--no-edit"], None)

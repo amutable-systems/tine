@@ -1,17 +1,18 @@
 #!/usr/bin/python3
 """Record what the tracked targets currently build, in ./expected.json.
 
-For updating legitimate changes to to the build result. Does not currently commit the change,
-amend it to the causing commit.
+For updating legitimate changes to the build result. `--amend` folds the new digests into the
+commit that moved them, which is where they belong; without it, amend them by hand.
 """
 
+import argparse
 import hashlib
 import json
 import sys
 from pathlib import Path
 from typing import cast
 
-from util import atomic_write_text, buck_output, nested_buck, package_directory
+from util import amend_paths, atomic_write_text, buck_output, nested_buck, package_directory
 
 PACKAGE = "tine//examples/image"
 EXPECTATIONS = "expected.json"
@@ -31,7 +32,13 @@ def _digests(buck: str, names: list[str]) -> dict[str, str]:
     return digests
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="expected", description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--amend", action="store_true", help="fold the refreshed digests into the commit at HEAD"
+    )
+    args = parser.parse_args(argv)
+
     buck = nested_buck()
     path = package_directory(buck, PACKAGE) / EXPECTATIONS
     expectations = json.loads(path.read_text(encoding="utf-8"))
@@ -45,6 +52,9 @@ def main() -> None:
         print(f"    {name}: {'unchanged' if digest == was else f'{was} -> {digest}'}", file=sys.stderr)
         expectations[name]["sha256"] = digest
     atomic_write_text(path, json.dumps(expectations, indent=2, sort_keys=True) + "\n")
+
+    if args.amend and not amend_paths(path.parent, EXPECTATIONS):
+        print("==> every digest is already recorded, nothing to amend", file=sys.stderr)
 
 
 if __name__ == "__main__":
