@@ -119,6 +119,18 @@ _materialize_package_pool = dynamic_actions(
     },
 )
 
+def _signing_keys(ctx: AnalysisContext) -> dict[str, Artifact | None]:
+    """Map each declared signing key fingerprint to its committed file, or None until refresh fetches it."""
+    rid = ctx.label.name
+    if ctx.attrs.package_system[PackageSystemInfo].verify != None and not ctx.attrs.signing_keys:
+        fail("repository '{}' declares no signing_keys, and its package system verifies signatures".format(rid))
+    for fingerprint in ctx.attrs.signing_keys:
+        if len(fingerprint) != 40 or not _contains_only(fingerprint, "0123456789ABCDEF"):
+            fail("repository '{}': signing key {!r} is not an upper-case 40 hex digit fingerprint".format(rid, fingerprint))
+    # The files are globbed by declared fingerprint, so each one's name is a declared key.
+    files = {file.basename.removesuffix(SIGNING_KEY_SUFFIX): file for file in ctx.attrs.signing_key_files}
+    return {fingerprint: files.get(fingerprint) for fingerprint in ctx.attrs.signing_keys}
+
 def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     repo = ctx.actions.declare_output("repo", dir = True)
     snapshot = ctx.attrs.snapshot
@@ -136,6 +148,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
         baseurl = ctx.attrs.baseurl,
         package_system = ctx.attrs.package_system,
         repo_dir = repo,
+        signing_keys = _signing_keys(ctx),
         snapshot_spec = ctx.attrs.snapshot_spec,
     ) + [
         PackagePoolInfo(
@@ -180,8 +193,16 @@ PackageRepositoryInfo = provider(
         # Local declarations are materialized by a consuming package manager.
         "dir": provider_field(Artifact | None, default = None),
         "package_system": provider_field(Dependency),
+        # The fingerprints of the keys one of which must have signed each package, each with its
+        # committed key file, or None until refresh-catalog has fetched it. Empty for a local
+        # repository: what is built here is unsigned and vouched for by Buck.
+        "signing_keys": provider_field(dict[str, Artifact | None], default = {}),
     },
 )
+
+# Where a catalog keeps a fetched signing key, named by its fingerprint like rpm names an imported one.
+SIGNING_KEY_DIRECTORY = "snapshot/key"
+SIGNING_KEY_SUFFIX = ".key"
 
 ConfiguredPackageRepositoryInfo = record(
     id = str,
@@ -201,6 +222,17 @@ _REMOTE_REPOSITORY_ATTRS = {
     ),
     "labels": attrs.list(attrs.string(), default = []),
     "package_system": attrs.dep(providers = [PackageSystemInfo]),
+    "signing_key_files": attrs.list(
+        attrs.source(),
+        default = [],
+        doc = "the declared signing keys refresh-catalog has fetched so far, one file per fingerprint",
+    ),
+    "signing_keys": attrs.dict(
+        attrs.string(),
+        attrs.string(),
+        default = {},
+        doc = "fingerprint of each key that may sign this repository's packages, and where refresh-catalog fetches it",
+    ),
     "snapshot": attrs.option(attrs.source(), default = None),
     "snapshot_spec": attrs.dict(
         attrs.string(),
@@ -401,6 +433,7 @@ def remote_repository_base(
     baseurl: str,
     package_system: Dependency,
     repo_dir: Artifact,
+    signing_keys: dict[str, Artifact | None],
     snapshot_spec: dict[str, typing.Any] = {},
 ) -> list[Provider]:
     """Register the package-system-neutral interface to a remote repository.
@@ -428,6 +461,7 @@ def remote_repository_base(
             baseurl = baseurl,
             dir = repo_dir,
             package_system = package_system,
+            signing_keys = signing_keys,
         ),
     ]
 
@@ -447,6 +481,7 @@ def declare_remote_repository(
     baseurl: str | None,
     pin: RepositoryPin | None,
     labels: list[str] = [],
+    signing_keys: dict[str, str] = {},
     **kwargs,
 ) -> None:
     """Declare a remote repository backed by its optional package-relative snapshot.
@@ -455,6 +490,8 @@ def declare_remote_repository(
     from a mirror publishing immutable snapshots and records what refresh-catalog advances. Only
     a mirror whose metadata never changes keeps a committed snapshot buildable, so the pin belongs
     on the declaration a catalog writes and releases forward their own pin arguments to it.
+
+    `signing_keys` maps the approved key fingerprints to the corresponding key download URL.
 
     How a pin composes its URL is the package system's business; everything around that is not.
     """
@@ -472,6 +509,8 @@ def declare_remote_repository(
         labels = ["tine:remote-repository", label] + labels,
         metadata = pin.metadata if pin != None else {},
         package_system = package_system,
+        signing_key_files = glob([SIGNING_KEY_DIRECTORY + "/" + fingerprint + SIGNING_KEY_SUFFIX for fingerprint in signing_keys]),
+        signing_keys = signing_keys,
         snapshot = snapshots[0] if snapshots else None,
         **kwargs,
     )

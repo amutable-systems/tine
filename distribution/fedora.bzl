@@ -7,6 +7,25 @@ load("//package:release.bzl", "os_release")
 load("//package:repository.bzl", "repository_universe")
 load("//package_system/rpm:rules.bzl", "PACKAGE_SYSTEM", "rpm_remote_repository")
 
+_FEDORA_KEY_URL = "https://src.fedoraproject.org/rpms/fedora-repos/raw/rawhide/f/RPM-GPG-KEY-fedora-{}-primary"
+
+# Fedora's per-release signing key fingerprints, as fedora-repos ships them, e.g.:
+#   gpg --show-keys --with-fingerprint /etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-46-primary
+# cross-check them against https://fedoraproject.org/security/ when adding them
+_FEDORA_SIGNING_KEYS = {
+    "44": "36F612DCF27F7D1A48A835E4DBFCF71C6D9F90A6",
+    "45": "4F50A6114CD5C6976A7F1179655A4B02F577861E",
+    "46": "D924B10D3E810DABDD8B56B596E7E91491211FCE",
+    "47": "B2E766FA50CA6FA2D5ED06FC09D879E09488FB64",
+}
+
+def fedora_signing_keys(*versions) -> dict[str, str]:
+    """The `signing_keys` for a repository signed with the named Fedora releases' keys."""
+    for version in versions:
+        if version not in _FEDORA_SIGNING_KEYS:
+            fail("no Fedora {} signing key is known; add its fingerprint to distribution/fedora.bzl".format(version))
+    return {_FEDORA_SIGNING_KEYS[version]: _FEDORA_KEY_URL.format(version) for version in versions}
+
 _FEDORA_PACKAGE_SETS = {
     "bootable": [
         "bash",
@@ -40,6 +59,7 @@ def fedora_release(
     name: str,
     version: str,
     box: str,
+    signing_keys: dict[str, str],
     baseurl: str | None = None,
     rpmrepo_mirror: str | None = None,
     rpmrepo_snapshot: str | None = None,
@@ -48,7 +68,11 @@ def fedora_release(
     repository_priorities: dict[str, int] = {},
     visibility: list[str] | None = None,
 ) -> None:
-    """Declare the conventional Fedora release target bundle."""
+    """Declare the conventional Fedora release target bundle.
+
+    `signing_keys` is stated rather than derived from `version`, as some releases (in particular rawhide)
+    have multiple active trusted keys.
+    """
     _check_name(name, "fedora", version)
     if rpmrepo_mirror == None and baseurl == None:
         if version == "rawhide":
@@ -61,6 +85,7 @@ def fedora_release(
         baseurl = baseurl,
         rpmrepo_mirror = rpmrepo_mirror,
         rpmrepo_snapshot = rpmrepo_snapshot,
+        signing_keys = signing_keys,
     )
     repository_universe(
         name = name + ".repositories",

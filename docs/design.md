@@ -182,8 +182,8 @@ root, not OS identity alone, is its relevant input.
 
 ### Catalog pinning and refresh
 
-Normal builds do not resolve against live network repositories. The catalog contains one required and one
-optional generated form:
+Normal builds do not resolve against live network repositories. The catalog contains one required and two
+optional generated forms:
 
 - `snapshot/repo/<name>.json` pins one repository's build metadata and its complete package inventory,
   keyed by SHA-256 checksum. The metadata is files named by where each lands in the materialized
@@ -196,7 +196,10 @@ optional generated form:
 - `snapshot/box/<name>.json` optionally freezes a box transaction. Remote records contain
   `{source, repo, pkg_checksum, package_id, url, size}`: the checksum verifies the bytes, while `url` and
   `size` record the last known transport after rolling repository metadata stops advertising that package.
-  The target's `.repository` or `.box` suffix is not repeated in the snapshot filename.
+  The target's `.repository` or `.box` suffix is not repeated in the snapshot filename;
+- `snapshot/key/<FINGERPRINT>.key` holds one signing key a repository declares. The declaration in the
+  catalog's BUCK names the key by fingerprint, which is what a reviewer checks against the distribution's
+  published one, together with the URL to fetch it from.
 
 A box with a resolver box and no committed transaction resolves through that predecessor as a normal
 cacheable build action. The generated transaction is an input to the existing dynamic package selectors,
@@ -262,8 +265,8 @@ environment for the planner, while the new box's release, repositories, packages
 the generated transaction. Refreshing the
 catalog is optional for that box and freezes the generated result at the conventional lock path.
 
-The refresh convention keeps repository and box declarations plus their generated JSON in the active
-catalog's root Buck package, with generated data grouped under `snapshot/{repo,box}/`. This makes
+The refresh convention keeps repository and box declarations plus their generated data in the active
+catalog's root Buck package, with generated data grouped under `snapshot/{repo,box,key}/`. This makes
 target-name-derived paths and the package-local optional `snapshot/box/*.json` retention inputs agree.
 
 ### Authoritative repository package pools
