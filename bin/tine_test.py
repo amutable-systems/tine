@@ -67,6 +67,10 @@ def configure_cells(root: Path, cell: str) -> Path:
     return path
 
 
+def refresh_project(root: Path) -> None:
+    tine.refresh_project_buckconfig(root, overrides(root))
+
+
 def overrides(root: Path) -> dict[str, dict[str, str]]:
     return tine.buckconfig_overrides(tine.project_settings(root), root / tine.CONFIG)
 
@@ -380,6 +384,11 @@ class TestMergeGeneratedConfigBlock(unittest.TestCase):
 
 
 class TestReadLines(unittest.TestCase):
+    def test_only_newlines_split_config_lines(self) -> None:
+        path = scratch(self) / ".buckconfig"
+        path.write_bytes(b"[custom]\r\nvalue = a\rb\fc\n")
+        self.assertEqual(tine.read_lines(path), ["[custom]\r", "value = a\rb\fc"])
+
     def test_a_file_that_is_not_text(self) -> None:
         # Buck2 answers the same file with a parse error naming it; a traceback would not.
         path = scratch(self) / ".buckconfig"
@@ -596,6 +605,17 @@ class TestParseBuckconfig(unittest.TestCase):
             }
         )
         self.assertEqual(config["cells"]["sub"], "elsewhere")
+
+    def test_pending_toml_cells_do_not_override_local_cells(self) -> None:
+        root = scratch(self)
+        (root / ".buckconfig").write_text("[cells]\ntine = old\n")
+        self.assertEqual(
+            tine.read_project_buckconfig(root, {"cells": {"tine": "new"}})["cells"]["tine"], "new"
+        )
+        (root / tine.LOCAL).write_text("[cells]\ntine = local\n")
+        self.assertEqual(
+            tine.read_project_buckconfig(root, {"cells": {"tine": "new"}})["cells"]["tine"], "local"
+        )
 
 
 class MountTestCase(unittest.TestCase):
@@ -988,6 +1008,15 @@ class TestMountDigest(MountTestCase):
     def digest(self, mounts: dict[str, str]) -> str:
         return tine.mount_digest(self.root, mounts)
 
+    def test_refresh_does_not_publish_mount_state(self) -> None:
+        path = self.root / ".buckconfig"
+        original = path.read_bytes()
+        declare(self.root, {"sub": str(self.source)})
+        refresh_project(self.root)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(tine.read_generated_buckconfig(path), {})
+        self.assertFalse((self.root / tine.PRIVATE_CONFIG).exists())
+
     def test_replaced_target_changes_the_digest(self) -> None:
         before = self.digest({"sub": str(self.source)})
         (self.root / "sub").rename(self.root / "retired")
@@ -1160,7 +1189,7 @@ class TestNamespaces(MountTestCase):
                 with unittest.mock.patch.dict(
                     os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}
                 ):
-                    _, prepared = tine.prepare_buck(self.root, ["buck", "build"])
+                    _, prepared = tine.prepare_buck(self.root, {}, ["buck", "build"])
                 self.assertEqual(prepared, sorted(second_mounts))
                 self.assertEqual((self.root / "sub" / "witness").read_text(), "replacement")
                 return digest
@@ -1172,7 +1201,7 @@ class TestNamespaces(MountTestCase):
             with unittest.mock.patch.dict(
                 os.environ, {tine.MARKER: tine.mount_namespace_marker(first_digest)}
             ):
-                _, prepared = tine.prepare_buck(self.root, ["buck", "build"])
+                _, prepared = tine.prepare_buck(self.root, {}, ["buck", "build"])
             self.assertEqual(prepared, sorted(mounts))
             self.assertEqual((self.root / tine.PRIVATE_CONFIG).read_bytes(), first_config)
             self.assertEqual((self.root / "sub" / "witness").read_text(), "the mounted directory's")
@@ -1215,6 +1244,53 @@ class TestNamespaces(MountTestCase):
 
         self.assertEqual(self.answer(mounted), expected)
 
+    def test_defaults_come_from_the_mounted_cell(self) -> None:
+        def mounted() -> str:
+            digest = tine.create_mount_namespace(self.root, {"sub": str(self.source)})
+            with unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}):
+                config, targets = tine.prepare_buck(
+                    self.root, tine.project_settings(self.root), ["buck", "build"]
+                )
+            self.assertEqual(targets, ["sub"])
+            self.assertEqual(config["buck2"]["defer_write_actions"], "true")
+            return config["cells"]["tine"]
+
+        for cell in ("sub", "sub/inner"):
+            with self.subTest(cell=cell):
+                source = self.source / Path(cell).relative_to("sub")
+                source.mkdir(exist_ok=True)
+                (source / ".buckconfig").write_text(CELL_BUCKCONFIG)
+                configure_cells(self.root, cell)
+                self.assertEqual(self.answer(mounted), cell)
+
+    def test_handover_and_defaults_use_the_locally_selected_mounted_cell(self) -> None:
+        configure_cells(self.root, "missing")
+        (self.root / tine.LOCAL).write_text("[cells]\ntine = sub\n")
+        (self.source / ".buckconfig").write_text(CELL_BUCKCONFIG)
+        command = self.source / tine.COMMAND
+        command.parent.mkdir()
+        command.touch()
+        declare(self.root, {"sub": str(self.source)})
+
+        def mounted() -> str:
+            with (
+                unittest.mock.patch.object(os, "execve", side_effect=SystemExit("handover")) as handover,
+                self.assertRaisesRegex(SystemExit, "handover"),
+            ):
+                tine.prepare_buck(self.root, tine.project_settings(self.root), ["buck", "build"])
+            selected, _, environment = handover.call_args.args
+            self.assertEqual(selected, self.root / "sub" / tine.COMMAND)
+            with unittest.mock.patch.dict(os.environ, environment):
+                config, targets = tine.prepare_buck(
+                    self.root, tine.project_settings(self.root), ["buck", "build"]
+                )
+            self.assertEqual(targets, ["sub"])
+            self.assertEqual(config["cells"]["tine"], "sub")
+            self.assertEqual(config["buck2"]["defer_write_actions"], "true")
+            return "mounted defaults"
+
+        self.assertEqual(self.answer(mounted), "mounted defaults")
+
     def test_ignores_follow_the_mounted_checkout_after_source_replacement(self) -> None:
         isolate_git(self)
         (self.root / ".buckconfig").write_text("[cells]\nroot = .\n")
@@ -1230,7 +1306,7 @@ class TestNamespaces(MountTestCase):
             self.source.rename(retired)
             replacement.rename(self.source)
             with unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}):
-                config, targets = tine.prepare_buck(self.root, ["buck", "build"])
+                config, targets = tine.prepare_buck(self.root, {}, ["buck", "build"])
             ignores = tine.collect_project_ignores(
                 self.root, config, targets, tine.namespace_gitdirs(self.root)
             )
@@ -1264,7 +1340,7 @@ class TestNamespaces(MountTestCase):
             replacement.rename(self.source)
             declare(self.root, {})
             with unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}):
-                _, targets = tine.prepare_buck(self.root, ["buck", "build"])
+                _, targets = tine.prepare_buck(self.root, {}, ["buck", "build"])
             ignores = tine.collect_project_ignores(
                 self.root, {"cells": {"root": "."}}, targets, tine.namespace_gitdirs(self.root)
             )
@@ -1314,7 +1390,7 @@ class TestNamespaces(MountTestCase):
         private = source / tine.PRIVATE_CONFIG
         private.parent.mkdir(parents=True)
         private.write_text(f"{tine.BLOCK_BEGIN}\n[tine]\ngitdirs = invalid\n{tine.BLOCK_END}\n")
-        (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = sub\n")
+        configure_cells(self.root, "sub")
 
         def mounted() -> str:
             digest = tine.create_mount_namespace(self.root, {"sub": str(source)})
@@ -1455,11 +1531,11 @@ class TestReexecInMountNamespace(MountTestCase):
         return digest
 
     def prepare(self) -> None:
-        tine.prepare_buck(self.root, ["buck", "build"])
+        tine.prepare_buck(self.root, {}, ["buck", "build"])
 
     def test_no_mounts_need_no_namespace(self) -> None:
         with self.running() as execve:
-            _, mounts = tine.prepare_buck(self.root, ["buck", "build"])
+            _, mounts = tine.prepare_buck(self.root, {}, ["buck", "build"])
         self.assertEqual(mounts, [])
         self.assertEqual((self.made, execve), ([], []))
 
@@ -1896,6 +1972,294 @@ class TestRenderProjectBuckconfig(unittest.TestCase):
         self.assertNotIn("Standalone root cell", written)
         self.assertNotIn("Named `tine`, not `root`", written)
         self.assertIn("@generated by `tine`", written.splitlines()[0])
+
+
+class TestRefreshProjectBuckconfig(unittest.TestCase):
+    """Generated defaults follow the checkout while project cells survive updates."""
+
+    @override
+    def setUp(self) -> None:
+        self.root = scratch(self)
+        self.cell = self.root / "vendor" / "tine"
+        self.cell.mkdir(parents=True)
+        self.source = self.cell / ".buckconfig"
+        self.source.write_text(CELL_BUCKCONFIG)
+        self.path = self.root / ".buckconfig"
+        self.cells = configure_cells(self.root, "vendor/tine")
+        self.path.write_text(tine.render_project_buckconfig(self.source, overrides(self.root)))
+        self.updated = CELL_BUCKCONFIG.replace("defer_write_actions = true", "materializations = deferred")
+
+    def refresh(self) -> None:
+        refresh_project(self.root)
+
+    def config(self) -> dict[str, dict[str, str]]:
+        return tine.read_project_buckconfig(self.root)
+
+    def test_updates_defaults_and_preserves_project_cells(self) -> None:
+        self.cells.write_text(
+            self.cells.read_text().replace('root = "."', '# Project cells\nroot = "."\napp = "app"')
+        )
+        self.source.write_text(self.updated)
+        self.refresh()
+        config = self.config()
+        self.assertEqual(config["buck2"], {"materializations": "deferred"})
+        self.assertEqual(config["cells"]["app"], "app")
+        self.assertEqual(config["cells"]["tine"], "vendor/tine")
+        self.assertIn('# Project cells\nroot = "."\napp = "app"', self.cells.read_text())
+        self.assertIn("target:root//...->", config["parser"][tine.DETECTOR])
+
+    def test_native_cell_declarations_select_and_survive_refresh(self) -> None:
+        self.source.write_text(self.updated)
+        for materializations in (None, "all"):
+            with self.subTest(materializations=materializations):
+                self.path.write_text("[cells]\nroot = .\ntine = vendor/tine\napp = app\n")
+                self.cells.write_text(
+                    f'[buckconfig.buck2]\nmaterializations = "{materializations}"\n'
+                    if materializations is not None
+                    else ""
+                )
+                self.refresh()
+                self.refresh()
+                config = self.config()
+                self.assertEqual(config["cells"]["tine"], "vendor/tine")
+                self.assertEqual(config["cells"]["app"], "app")
+                self.assertEqual(config["buck2"], {"materializations": materializations or "deferred"})
+
+    def test_unchanged_defaults_do_not_rewrite_the_file(self) -> None:
+        before = self.path.stat()
+        self.refresh()
+        self.refresh()
+        self.assertEqual(self.path.stat().st_ino, before.st_ino)
+        self.assertEqual(self.path.stat().st_mtime_ns, before.st_mtime_ns)
+
+    def test_checkout_mount_metadata_is_not_copied_into_project_defaults(self) -> None:
+        self.source.write_text(
+            CELL_BUCKCONFIG
+            + f"{tine.BLOCK_BEGIN}\n[buck2]\n{tine.DAEMON_BUSTER} = checkout-mounts\n"
+            + f"[tine]\n{tine.DEV} = checkout-source\n{tine.BLOCK_END}\n"
+        )
+        self.refresh()
+        self.assertNotIn(tine.DAEMON_BUSTER, self.config().get("buck2", {}))
+        self.assertNotIn(tine.DEV, self.config().get("tine", {}))
+
+    def test_mount_add_rejects_a_new_daemon_buster_override(self) -> None:
+        self.cells.write_text(
+            self.cells.read_text() + f'\n[buckconfig.buck2]\n{tine.DAEMON_BUSTER} = "custom"\n'
+        )
+        checkout = scratch(self)
+        with self.assertRaisesRegex(SystemExit, "daemon_buster is reserved"):
+            tine.mount_command(self.root, ["add", str(self.cell), str(checkout)])
+        self.assertEqual(tine.local_mounts(self.root), {})
+
+    def test_mount_add_does_not_require_checkout_defaults(self) -> None:
+        self.source.unlink()
+        checkout = scratch(self)
+        tine.mount_command(self.root, ["add", str(self.cell), str(checkout)])
+        self.assertEqual(tine.local_mounts(self.root), {"vendor/tine": str(checkout)})
+
+    def test_missing_defaults_do_not_replace_the_project_config(self) -> None:
+        before = self.path.read_bytes()
+        self.source.unlink()
+        with self.assertRaisesRegex(SystemExit, "cannot read.*buckconfig"):
+            self.refresh()
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_unreadable_defaults_do_not_replace_the_project_config(self) -> None:
+        before = self.path.read_bytes()
+        self.source.unlink()
+        self.source.mkdir()
+        with self.assertRaisesRegex(SystemExit, "cannot read.*buckconfig"):
+            self.refresh()
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_retired_defaults_are_removed(self) -> None:
+        self.source.write_text(self.updated)
+        self.refresh()
+        self.assertNotIn("defer_write_actions", self.config()["buck2"])
+
+    def test_toml_overrides_defaults_and_removed_overrides_disappear(self) -> None:
+        original = self.cells.read_text()
+        self.cells.write_text(original + '\n[buckconfig.buck2]\nmaterializations = "all"\n')
+        self.source.write_text(self.updated)
+        self.refresh()
+        self.assertEqual(self.config()["buck2"]["materializations"], "all")
+        self.cells.write_text(original)
+        self.refresh()
+        self.assertEqual(self.config()["buck2"]["materializations"], "deferred")
+        self.assertEqual(self.cells.read_text(), original)
+
+    def test_reexecuted_wrapper_refreshes_shared_defaults(self) -> None:
+        self.source.write_text(self.updated)
+        with (
+            unittest.mock.patch.object(tine, "namespace_mount_targets", return_value=["vendor/tine"]),
+            unittest.mock.patch.object(tine, "reexec_in_mount_namespace") as enter,
+        ):
+            tine.prepare_buck(self.root, tine.project_settings(self.root), ["buck", "build"])
+        enter.assert_not_called()
+        self.assertEqual(self.config()["buck2"], {"materializations": "deferred"})
+
+    def test_handover_precedes_reading_defaults(self) -> None:
+        self.source.unlink()
+        declare(self.root, {"vendor/tine": str(scratch(self))})
+        before = self.path.read_bytes()
+        with (
+            unittest.mock.patch.object(
+                tine, "reexec_in_mount_namespace", side_effect=SystemExit("handed over")
+            ),
+            self.assertRaisesRegex(SystemExit, "handed over"),
+        ):
+            tine.prepare_buck(self.root, tine.project_settings(self.root), ["buck", "build"])
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_standalone_config_is_not_rewritten(self) -> None:
+        self.cells.unlink()
+        for cell in (".", "./", str(self.root)):
+            with self.subTest(cell=cell):
+                content = f"[cells]\ntine = {cell}"
+                self.path.write_text(content)
+                before = self.path.stat()
+                self.refresh()
+                self.assertEqual(self.path.read_text(), content)
+                self.assertEqual(self.path.stat().st_ino, before.st_ino)
+                self.assertEqual(self.path.stat().st_mtime_ns, before.st_mtime_ns)
+
+    def test_standalone_check_uses_local_cell_override(self) -> None:
+        (self.root / tine.LOCAL).write_text("[cells]\ntine = .\n")
+        before = self.path.read_bytes()
+        with self.assertRaisesRegex(SystemExit, "set standalone Buck overrides in .buckconfig"):
+            self.refresh()
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_edits_to_bootstrap_do_not_override_rendered_defaults(self) -> None:
+        content = "[cells]\nroot = .\ntine = vendor/tine\n[buck2]\ndefer_write_actions = false\n"
+        self.path.write_text(content)
+        self.source.write_text(self.updated)
+        self.refresh()
+        self.assertEqual(
+            self.path.read_text(), tine.render_project_buckconfig(self.source, overrides(self.root))
+        )
+        self.assertEqual(self.config()["buck2"], {"materializations": "deferred"})
+
+    def test_local_overrides_survive(self) -> None:
+        local = self.root / tine.LOCAL
+        content = "[buck2]\nmaterializations = immediate\n"
+        local.write_text(content)
+        self.source.write_text(self.updated)
+        self.refresh()
+        self.assertEqual(self.config()["buck2"]["materializations"], "immediate")
+        self.assertEqual(local.read_text(), content)
+
+    def test_local_cell_selects_the_defaults_without_reading_the_toml_cell(self) -> None:
+        selected = self.root / "other"
+        selected.mkdir()
+        (selected / ".buckconfig").write_text(self.updated)
+        local = self.root / tine.LOCAL
+        local.write_text("[cells]\ntine = other\n")
+        self.source.unlink()
+        bootstrap = self.path.read_text()
+        for content in (self.cells.read_text(), ""):
+            with self.subTest(toml=content):
+                self.path.write_text(bootstrap)
+                self.cells.write_text(content)
+                self.refresh()
+                self.assertEqual(self.config()["cells"]["tine"], "other")
+                self.assertEqual(self.config()["buck2"], {"materializations": "deferred"})
+                self.assertEqual(tine.parse_buckconfig(self.path)["cells"]["tine"], "vendor/tine")
+                self.assertEqual(self.cells.read_text(), content)
+                self.assertEqual(local.read_text(), "[cells]\ntine = other\n")
+
+    def test_toml_overrides_still_apply_to_the_locally_selected_defaults(self) -> None:
+        selected = self.root / "other"
+        selected.mkdir()
+        (selected / ".buckconfig").write_text(self.updated)
+        (self.root / tine.LOCAL).write_text("[cells]\ntine = other\n")
+        self.cells.write_text(self.cells.read_text() + '\n[buckconfig.buck2]\nmaterializations = "all"\n')
+
+        self.refresh()
+
+        self.assertEqual(self.config()["buck2"], {"materializations": "all"})
+
+    def test_cell_path_changes_in_toml_override_the_previous_output(self) -> None:
+        new = self.root / "new"
+        new.mkdir()
+        (new / ".buckconfig").write_text(self.updated)
+        configure_cells(self.root, "new")
+        self.assertIn("new", tine.configured_mount_targets(self.root))
+        self.assertNotIn("vendor/tine", tine.configured_mount_targets(self.root))
+        self.refresh()
+        config = self.config()
+        self.assertEqual(config["cells"]["tine"], "new")
+        self.assertEqual(config["buck2"], {"materializations": "deferred"})
+        self.assertIn("new", tine.configured_mount_targets(self.root))
+        self.assertNotIn("vendor/tine", tine.configured_mount_targets(self.root))
+
+    def test_toml_project_ignores_are_merged_with_generated_ignores(self) -> None:
+        self.cells.write_text(self.cells.read_text() + '\n[buckconfig.project]\nignore = "custom"\n')
+        self.refresh()
+        self.assertEqual(
+            tine.collect_project_ignores(self.root, self.config(), [], {}), ["custom", *tine.VCS_IGNORES]
+        )
+
+    def test_completion_and_nested_builds_do_not_refresh_defaults(self) -> None:
+        before = self.path.read_bytes()
+        self.source.write_text(self.updated)
+        with (
+            contextlib.chdir(self.root),
+            unittest.mock.patch.object(tine, "buck2_binary", return_value=self.root / "buck2"),
+            unittest.mock.patch.object(os, "execve"),
+        ):
+            tine.buck_command(["complete"])
+            self.assertEqual(self.path.read_bytes(), before)
+            with unittest.mock.patch.dict(os.environ, {"BUCK2_BINARY": "active"}):
+                tine.buck_command(["build", "tine//..."])
+            self.assertEqual(self.path.read_bytes(), before)
+            self.assertFalse((self.root / tine.LOCAL).exists())
+
+    def test_completion_script_does_not_refresh_defaults(self) -> None:
+        before = self.path.read_bytes()
+        self.source.write_text(self.updated)
+        with (
+            contextlib.chdir(self.root),
+            unittest.mock.patch.object(tine, "buck2_binary", return_value=self.root / "buck2"),
+            unittest.mock.patch.object(tine, "_buck2_completion_script", return_value="script"),
+            unittest.mock.patch.object(tine, "rewrite_completion_script", return_value="rendered"),
+            contextlib.redirect_stdout(io.StringIO()) as output,
+        ):
+            tine.completion_command(["bash"])
+        self.assertEqual(output.getvalue(), "rendered")
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertFalse((self.root / tine.LOCAL).exists())
+
+    def test_prepare_rejects_project_daemon_constraints(self) -> None:
+        declare(self.root, {"vendor/tine": str(scratch(self))})
+        local = self.root / tine.LOCAL
+        for section, key in (("buck2", tine.DAEMON_BUSTER), ("tine", tine.DEV)):
+            with self.subTest(key=key):
+                local.write_text(f"[{section}]\n{key} = custom\n")
+                with (
+                    unittest.mock.patch.object(
+                        tine, "namespace_mount_targets", return_value=["vendor/tine"]
+                    ),
+                    self.assertRaisesRegex(SystemExit, "reserved while mounts are declared"),
+                ):
+                    tine.prepare_buck(
+                        self.root,
+                        tine.project_settings(self.root),
+                        ["buck", "complete"],
+                        refresh_config=False,
+                    )
+
+    def test_standalone_overrides_are_not_silently_discarded(self) -> None:
+        self.path.write_text("[cells]\nroot = .\n")
+        for cell in (None, ".", str(self.root)):
+            with self.subTest(cell=cell):
+                configured = {"buck2": {"materializations": "eager"}, "custom": {"key": "value"}}
+                if cell is not None:
+                    configured["cells"] = {"tine": cell}
+                before = self.path.read_bytes()
+                with self.assertRaisesRegex(SystemExit, "set standalone Buck overrides in .buckconfig"):
+                    tine.refresh_project_buckconfig(self.root, configured)
+                self.assertEqual(self.path.read_bytes(), before)
 
 
 class TestInit(unittest.TestCase):

@@ -67,15 +67,26 @@ that directory as the `tine` cell with `init`, then build:
 
 ```sh
 git submodule add https://github.com/amutable-systems/tine tine
-tine/bin/tine init          # write the project's .buckconfig and .gitignore
+tine/bin/tine init          # write tine.toml, .buckconfig, and .gitignore
 tine/bin/tine buck build //packages/...
 ```
 
-The configuration `init` writes is this repository's own [`.buckconfig`](.buckconfig) with `root = .` added,
-the `tine` cell pointing at the checkout, and `root//` in the platform detector. Everything else is copied
-verbatim, so what a project has no say in cannot fall out of step with the cell. The entry point is that
-checkout's [`bin/tine`](bin/tine). Move to a newer tine with `git submodule update` or the equivalent
-change in your pinned `git clone`.
+`init` records the cell in `tine.toml` and generates the project's `.buckconfig` from the checkout's
+defaults. Each ordinary `tine buck` command regenerates that file from the selected checkout, including
+a mounted override. Put persistent project settings in `[buckconfig.*]` tables in `tine.toml`; direct
+edits to the generated `.buckconfig` are overwritten.
+
+Keep `tine.toml` and the generated `.buckconfig` committed in the consuming project. The latter is a
+bootstrap file: Tine needs it to locate the project before it can refresh the defaults. Ignoring it
+would leave a fresh clone unable to run `tine buck` without recreating that file first.
+
+Use `tine.local.toml` or `.buckconfig.local` for machine-local overrides, and keep both untracked. Tine
+updates only its generated block in `.buckconfig.local`, preserving text outside that block. The
+[configuration design](docs/design.md#shared-configuration-and-nested-commands) explains the refresh order
+and standalone behavior.
+
+The entry point is that checkout's [`bin/tine`](bin/tine). Move to a newer tine with `git submodule update`
+or the equivalent change in your pinned `git clone`.
 
 The `toolchains` cell Buck2 looks a toolchain up in is an alias to the tine cell, whose root package
 declares the bootstrap interpreter one: Buck2 forbids a nested cell inside an external cell, so a
