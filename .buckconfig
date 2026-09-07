@@ -24,14 +24,16 @@ target_platform_detector_spec = target:tine//...->prelude//platforms:default
 execution_platforms = prelude//platforms:default
 
 [project]
-# VCS state, dependency and build trees, and the caches tools keep must not invalidate Buck's file
-# watcher. Only names that are always generated: `build`, `dist` and `out` are ordinary package names,
-# and ignoring one would hide the targets in it rather than only its churn.
+# VCS state, dependency and build trees, image outputs, and caches tools keep must not invalidate
+# Buck's file watcher. Only names reserved for generated state are safe to ignore: `build`, `dist`,
+# and `out` are ordinary package names, and ignoring one would hide its targets rather than only its churn.
 ignore = .git, .jj, **/.git, **/.jj, **/.hg, **/.svn, .buck, **/.buck, \
     **/buck-out, **/target, **/node_modules, **/__pycache__, **/.venv, **/venv, \
     **/.cache, **/.direnv, **/.gradle, **/.tox, **/.nox, \
     **/.mypy_cache, **/.pytest_cache, **/.ruff_cache, \
-    **/.next, **/.parcel-cache, **/.turbo, **/.idea, **/.vscode
+    **/.next, **/.parcel-cache, **/.turbo, **/.idea, **/.vscode, \
+    **/mkosi.cache, **/mkosi.pkgcache, **/mkosi.builddir, **/mkosi.output, \
+    **/mkosi.tools, **/mkosi.tools.build.cache, **/mkosi.tools.manifest, **/.mkosi-private
 
 [buck2]
 materializations = deferred
