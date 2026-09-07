@@ -69,3 +69,16 @@ class TestWriteIfChanged(unittest.TestCase):
         # Root, which the box runs as, writes through a read-only directory; an absent one stops it.
         with self.assertRaisesRegex(SystemExit, "tine: cannot write"):
             util.write_if_changed(scratch(self) / "absent" / "generated", "one\n")
+
+
+class TestNamedFiles(unittest.TestCase):
+    def test_finds_nested_files_without_following_links(self) -> None:
+        source = scratch(self) / "source"
+        for directory in ("", "nested"):
+            (source / directory).mkdir(parents=True, exist_ok=True)
+            (source / directory / "wanted").touch()
+            (source / directory / "other").touch()
+        (source / "cycle").symlink_to(".")
+        (source / "dangling").symlink_to("missing")
+
+        self.assertEqual(util.named_files(source, "wanted"), [Path("nested/wanted"), Path("wanted")])

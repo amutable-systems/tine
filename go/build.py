@@ -132,8 +132,7 @@ def build_go(spec: Spec) -> None:
         "GOSUMDB": "off",
         "GOTOOLCHAIN": "local",
         # A go.work above the module root switches go into workspace mode, where a go.work.sum
-        # replaces the go.sum this build is pinned by. The rule refuses one among the sources, but
-        # only this covers one outside the checkout entirely.
+        # replaces the go.sum this build is pinned by.
         "GOWORK": "off",
     }
     if spec["cgo"] is not None:

@@ -1009,9 +1009,9 @@ links. syft catalogs these as `pkg:golang` components in the image SBOM. The dec
 [go.md](../user/go.md).
 
 A local `go build` inside the checkout leaves no build tree behind: go's cache lives outside it, so there
-is no `target/` equivalent for the glob and the daemon's watcher to exclude. It does drop the binary it
-built into the current directory, which the glob then picks up as a source, so a project is better built
-with `-o`.
+is no `target/` equivalent for Buck's ignores and the daemon's watcher to exclude. It does drop the
+binary it built into the current directory, which then is a source like any other file there, so a
+project is better built with `-o`.
 
 The unit of caching is the project, not the package: one action per package would mean modelling the
 package graph and the toolchain here, which is what rules_go exists for, and go's own content-keyed build

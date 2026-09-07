@@ -8,14 +8,30 @@ load("//project:defs.bzl", "project")
 
 _MOUNT_TARGET_LABEL = "tine:mount-target"
 
+def _digested(actions: AnalysisActions, name: str, tree: Artifact) -> Artifact:
+    """Copy the files of a source directory that are in Buck's digest of the directory."""
+
+    # The source directory also holds files that the ignore rules of the project keep out of Buck's
+    # digest, such as build output. An action that reads the source directory could use files that Buck
+    # never hashed.
+    # `relative_symlinks` keeps a symlink inside the tree pointing at its relative target. The copy then
+    # still works after a consumer moves it.
+    # `preserve_mtimes` keeps the timestamps of the source files. An incremental build compares
+    # timestamps to find changed files. A fresh copy would give every file a new timestamp. Only a local
+    # copy keeps the timestamps. An incremental build only sees local copies, because Buck never shares
+    # the results of an incremental build.
+    # `has_content_based_path = False` gives the copy a fixed path. With a content-based path, reverting
+    # an edit would bring back the earlier copy with its earlier timestamps. An incremental build would
+    # then treat the reverted file as unchanged.
+    # The key of the copy action does not include `relative_symlinks`, `preserve_mtimes` or
+    # `has_content_based_path`. A change to a flag takes effect only after `buck2 clean`.
+    return actions.copy_dir(name, tree, has_content_based_path = False, preserve_mtimes = True, relative_symlinks = True)
+
 def _checkout_impl(ctx: AnalysisContext) -> list[Provider]:
-    # Keep a populated checkout as one directory source so files omitted by glob(), including dotfiles,
-    # remain live inputs, but hand consumers a copy of it: the source path is the checkout itself, which
-    # for a mount physically holds every tree the project ignores keep out of Buck's digest, so a consumer
-    # reading it would copy build output Buck never saw. `relative_symlinks` keeps an internal symlink
-    # pointing at its original relative target rather than back at the mount, so the copy survives a
-    # consumer relocating it. The empty artifact preserves the implicit-checkout target for archive packages.
-    tree = ctx.actions.copy_dir(ctx.attrs.out, ctx.attrs.src, relative_symlinks = True) if ctx.attrs.src else ctx.actions.symlinked_dir(ctx.attrs.out, {})
+    # `src` is a single directory source rather than a glob(), because a glob() drops dotfiles. Archive
+    # packages depend on the implicit checkout target, so an unpopulated checkout outputs an empty
+    # directory.
+    tree = _digested(ctx.actions, ctx.attrs.out, ctx.attrs.src) if ctx.attrs.src else ctx.actions.symlinked_dir(ctx.attrs.out, {})
     return [
         DefaultInfo(
             default_output = tree,
@@ -61,7 +77,18 @@ def checkout(name: str, labels: list[str] = [], **kwargs) -> bool:
     _checkout(name = name, labels = [_MOUNT_TARGET_LABEL] + labels, out = name, src = name if populated else None, **kwargs)
     return populated
 
+def source(name: str, directory: str) -> str:
+    """Declare a copy of `directory` in this package for a build rule, and return its label.
+
+    Unlike `checkout()`, `source()` does not label the target as a mount target. A mount of
+    `directory` goes to the path of `directory` itself.
+    """
+    populated = bool(glob([directory + "/**"])) or project.is_dev(directory)
+    _checkout(name = name, out = name, src = directory if populated else None)
+    return ":" + name
+
 git = struct(
     checkout = checkout,
     fetch = fetch,
+    source = source,
 )

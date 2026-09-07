@@ -16,11 +16,10 @@ from pathlib import Path
 from typing import TypedDict
 
 import specs
-from util import fail
+from util import fail, named_files
 
 _MODULE = "go.mod"
 _SUM = "go.sum"
-_WORK = "go.work"
 
 
 class Spec(TypedDict):
@@ -32,23 +31,12 @@ class Spec(TypedDict):
     src: str
 
 
-def _named(source: Path, name: str) -> list[Path]:
-    """Find files called `name`, relative to the source directory."""
-    found: list[Path] = []
-    for directory, _, files in source.walk():
-        if name in files:
-            found.append((directory / name).relative_to(source))
-    return sorted(found)
-
-
 def resolve_workspace(target: str, source: Path) -> dict[str, str | None]:
     """Find the module root and pins relative to the source directory."""
     if not source.is_dir():
         fail(f"go_package {target}: src must be a directory")
-    if _named(source, _WORK):
-        fail(f"go_package {target}: go workspaces are not supported; keep {_WORK} out of src")
 
-    modules = _named(source, _MODULE)
+    modules = named_files(source, _MODULE)
     if not modules:
         fail(
             f"go_package {target}: src holds no {_MODULE}; by default the checkout is expected in "
@@ -72,7 +60,7 @@ def resolve_workspace(target: str, source: Path) -> dict[str, str | None]:
     return {
         "mod": str(module),
         "root": "" if root == Path() else str(root),
-        "sum": str(pinned) if pinned in _named(source, _SUM) else None,
+        "sum": str(pinned) if pinned in named_files(source, _SUM) else None,
     }
 
 

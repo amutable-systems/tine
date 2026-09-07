@@ -79,12 +79,6 @@ class TestResolveWorkspace(unittest.TestCase):
             "single project; narrow `src` to one module",
         )
 
-    def test_rejects_a_workspace(self) -> None:
-        self._write("go.mod", "go.work")
-
-        with self.assertRaisesRegex(SystemExit, "go workspaces are not supported"):
-            workspace.resolve_workspace("hello", self.checkout)
-
     def test_rejects_sources_holding_no_module(self) -> None:
         with self.assertRaises(SystemExit) as caught:
             workspace.resolve_workspace("hello", self.checkout)
