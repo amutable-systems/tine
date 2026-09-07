@@ -13,8 +13,8 @@ fedora_release(
     name = "fedora.rawhide",
     version = "rawhide",
     box = ":fedora.rawhide.box",
-    rpmrepo_mirror = "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f45",
-    rpmrepo_snapshot = "f45-x86_64-rawhide-20260904",
+    rpmrepo_mirror = "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46",
+    rpmrepo_snapshot = "f46-x86_64-rawhide-20260907",
     visibility = ["PUBLIC"],
 )
 
