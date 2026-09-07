@@ -20,6 +20,7 @@ box_python_test(
     name = "test",
     box = "//tools:dev.box",
     srcs = [
+        "isolation_test.py",
         "sandbox.py",
         "sandbox_test.py",
     ],
