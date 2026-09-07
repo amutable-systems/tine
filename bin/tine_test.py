@@ -7,6 +7,7 @@ Each test builds a real throwaway repository or checkout; the wrapper's git call
 
 import collections.abc
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -678,13 +679,15 @@ class TestMountAdd(MountTestCase):
             with self.subTest(target=name), self.assertRaisesRegex(SystemExit, "whitespace or commas"):
                 self.mount("add", str(self.root / name), str(self.source))
 
-    def test_add_rejects_a_project_daemon_buster(self) -> None:
-        (self.root / ".buckconfig").write_text(
-            f"[cells]\nroot = .\nsub = sub\n[buck2]\n{tine.DAEMON_BUSTER} = project-owned\n"
-        )
-        with self.assertRaisesRegex(SystemExit, "daemon_buster is reserved"):
-            self.mount("add", str(self.root / "sub"), str(self.source))
-        self.assertEqual(self.declared(), {})
+    def test_add_rejects_project_mount_settings(self) -> None:
+        for section, key in (("buck2", tine.DAEMON_BUSTER), (tine.SECTION, tine.DEV)):
+            with self.subTest(section=section, key=key):
+                (self.root / ".buckconfig").write_text(
+                    f"[cells]\nroot = .\nsub = sub\n[{section}]\n{key} = project-owned\n"
+                )
+                with self.assertRaisesRegex(SystemExit, f"{key} is reserved"):
+                    self.mount("add", str(self.root / "sub"), str(self.source))
+                self.assertEqual(self.declared(), {})
 
     def test_add_rejects_overlapping_mounts(self) -> None:
         (self.root / "sub" / "inner").mkdir()
@@ -982,36 +985,26 @@ class TestMountUpdates(MountTestCase):
 class TestMountDigest(MountTestCase):
     """Mount digests identify equivalent namespaces to Buck's daemon constraint."""
 
-    def digest(self, mounts: dict[str, str]) -> str | None:
-        return tine.mount_digest(mounts, (self.root / ".buckconfig").read_bytes())
+    def digest(self, mounts: dict[str, str]) -> str:
+        return tine.mount_digest(self.root, mounts)
 
-    def test_no_mounts_need_no_digest(self) -> None:
-        self.assertIsNone(self.digest({}))
-
-    def test_replaced_source_changes_the_digest(self) -> None:
-        # A stale namespace retains the old directory even when its path is reused.
-        first, second = self.source / "a", self.source / "b"
-        first.mkdir()
-        second.mkdir()
-        before = self.digest({"sub": str(first)})
-        first.rmdir()
-        second.rename(first)
-        self.assertNotEqual(self.digest({"sub": str(first)}), before)
+    def test_replaced_target_changes_the_digest(self) -> None:
+        before = self.digest({"sub": str(self.source)})
+        (self.root / "sub").rename(self.root / "retired")
+        (self.root / "sub").mkdir()
+        self.assertNotEqual(self.digest({"sub": str(self.source)}), before)
 
     def test_target_changes_the_digest(self) -> None:
+        (self.root / "other").mkdir()
         self.assertNotEqual(
             self.digest({"sub": str(self.source)}),
             self.digest({"other": str(self.source)}),
         )
 
-    def test_root_config_changes_the_digest(self) -> None:
-        before = self.digest({"sub": str(self.source)})
-        (self.root / ".buckconfig").write_text("[cells]\nroot = .\nsub = elsewhere\n")
-        self.assertNotEqual(self.digest({"sub": str(self.source)}), before)
-
-    def test_unreadable_source_is_rejected(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "cannot read"):
-            tine.mount_digest({"sub": "/nonexistent/source"}, b"")
+    def test_unreadable_target_is_rejected(self) -> None:
+        message = re.escape(f"mount nonexistent: cannot read {self.root / 'nonexistent'}")
+        with self.assertRaisesRegex(SystemExit, message):
+            self.digest({"nonexistent": str(self.source)})
 
 
 class TestNamespaces(MountTestCase):
@@ -1029,19 +1022,19 @@ class TestNamespaces(MountTestCase):
                     answer = work()
                 os.write(write, answer.encode())
             except BaseException:
+                import traceback
+
+                os.write(write, traceback.format_exc().encode())
                 code = 1
             os._exit(code)
         os.close(write)
         with os.fdopen(read, "rb") as pipe:
             answer = pipe.read().decode()
-        self.assertEqual(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]), 0)
+        self.assertEqual(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]), 0, answer)
         return answer
 
     def create(self, mounts: dict[str, str]) -> None:
-        buckconfig = (self.root / ".buckconfig").read_bytes()
-        digest = tine.mount_digest(mounts, buckconfig)
-        assert digest is not None
-        tine.create_mount_namespace(self.root, mounts, digest, buckconfig)
+        tine.create_mount_namespace(self.root, mounts)
 
     @override
     def setUp(self) -> None:
@@ -1085,14 +1078,12 @@ class TestNamespaces(MountTestCase):
                 tine.create_mount_namespace(
                     self.root,
                     {"sub": "/nonexistent/source"},
-                    "digest",
-                    (self.root / ".buckconfig").read_bytes(),
                 )
             return "refused"
 
         self.assertEqual(self.answer(mounted), "refused")
 
-    def test_symlinked_root_config_is_rejected(self) -> None:
+    def test_symlinked_root_config_stays_shared(self) -> None:
         original = self.root / ".buckconfig"
         shared = scratch(self).resolve() / ".buckconfig"
         shared.write_bytes(original.read_bytes())
@@ -1100,38 +1091,178 @@ class TestNamespaces(MountTestCase):
         original.symlink_to(shared)
 
         def mounted() -> str:
-            with self.assertRaisesRegex(
-                SystemExit, "is a symlink, so the daemon constraint cannot be bound over it"
-            ):
-                self.create({"sub": str(self.source)})
-            return "refused"
+            self.create({"sub": str(self.source)})
+            tine.write_if_changed(original, "[cells]\nroot = .\n")
+            return original.read_text()
 
-        self.assertEqual(self.answer(mounted), "refused")
+        self.assertEqual(self.answer(mounted), shared.read_text())
+        self.assertTrue(original.is_symlink())
 
-    def test_constrained_config_marks_mounts_as_dev(self) -> None:
-        mounts = {"sub/inner": str(self.source), "other": str(self.source)}
-        written = tine.constrained_config(b"[cells]\nroot = .\n", "0123456789abcdef", mounts).decode()
-        self.assertTrue(written.startswith("[cells]\nroot = .\n"))
-        self.assertIn(f"[buck2]\n{tine.DAEMON_BUSTER} = {tine.BUSTER_PREFIX}0123456789abcdef\n", written)
-        # Sorted, so the snapshot is stable for the same table however it was declared.
-        self.assertTrue(written.endswith(f"[{tine.SECTION}]\n{tine.DEV} = other, sub/inner\n"))
-
-    def test_root_config_is_constrained_only_inside_the_namespace(self) -> None:
-        mounts = {"sub": str(self.source)}
-        buckconfig = (self.root / ".buckconfig").read_bytes()
-        digest = tine.mount_digest(mounts, buckconfig)
-        assert digest is not None
+    def test_root_config_stays_shared_inside_the_namespace(self) -> None:
+        original = self.root / ".buckconfig"
 
         def mounted() -> str:
-            tine.create_mount_namespace(self.root, mounts, digest, buckconfig)
-            return (self.root / ".buckconfig").read_text()
+            self.create({"sub": str(self.source)})
+            util_content = "[cells]\nroot = .\n[buck2]\nmaterializations = deferred\n"
+            tine.write_if_changed(original, util_content)
+            return original.read_text()
 
-        self.assertEqual(
-            self.answer(mounted),
-            tine.constrained_config(buckconfig, digest, mounts).decode(),
-        )
-        self.assertEqual((self.root / ".buckconfig").read_bytes(), buckconfig)
+        content = self.answer(mounted)
+        self.assertEqual(original.read_text(), content)
+        self.assertIn("materializations = deferred", content)
+
+    def test_mount_config_is_private_and_does_not_change_shared_layers(self) -> None:
+        local = self.root / tine.LOCAL
+        local.write_text("[build]\nthreads = 4\n")
+        layer = self.root / ".buckconfig.d" / "settings"
+        layer.parent.mkdir()
+        layer.write_text("[custom]\nkey = original\n")
+        before = {path: path.read_bytes() for path in (self.root / ".buckconfig", local, layer)}
+        mounts = {"sub": str(self.source)}
+
+        def mounted() -> str:
+            digest = tine.create_mount_namespace(self.root, mounts)
+            config = tine.read_generated_buckconfig(self.root / tine.PRIVATE_CONFIG)
+            self.assertEqual(config["buck2"][tine.DAEMON_BUSTER], tine.BUSTER_PREFIX + digest)
+            self.assertEqual(config["tine"][tine.DEV], "sub")
+            self.assertNotIn(tine.DAEMON_BUSTER, tine.read_project_buckconfig(self.root).get("buck2", {}))
+            with unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}):
+                self.assertEqual(tine.namespace_mount_targets(self.root), ["sub"])
+            self.assertNotIn(tine.MOUNTS, config["tine"])
+            for path, content in before.items():
+                self.assertEqual(path.read_bytes(), content)
+            return "private"
+
+        self.assertEqual(self.answer(mounted), "private")
         self.assertFalse((self.root / tine.PRIVATE_CONFIG).exists())
+        for path, content in before.items():
+            self.assertEqual(path.read_bytes(), content)
+
+    def check_mount_change(self, *, replace_source: bool) -> None:
+        mounts = {"sub": str(self.source)}
+        declare(self.root, mounts)
+        replacement = scratch(self)
+        (replacement / "witness").write_text("replacement")
+        retired = scratch(self) / "retired"
+
+        def first() -> str:
+            first_digest = tine.create_mount_namespace(self.root, mounts)
+            first_config = (self.root / tine.PRIVATE_CONFIG).read_bytes()
+            if replace_source:
+                self.source.rename(retired)
+                replacement.rename(self.source)
+            else:
+                declare(self.root, {"sub": str(replacement)})
+
+            def second() -> str:
+                second_mounts = tine.declared_mounts(self.root)
+                digest = tine.create_mount_namespace(self.root, second_mounts)
+                with unittest.mock.patch.dict(
+                    os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}
+                ):
+                    _, prepared = tine.prepare_buck(self.root, ["buck", "build"])
+                self.assertEqual(prepared, sorted(second_mounts))
+                self.assertEqual((self.root / "sub" / "witness").read_text(), "replacement")
+                return digest
+
+            second_digest = self.answer(second)
+            self.assertNotEqual(first_digest, second_digest)
+            # Resume A only after B has prepared its replacement, at the point where a shared
+            # buster used to make A advertise B's digest while retaining A's checkout.
+            with unittest.mock.patch.dict(
+                os.environ, {tine.MARKER: tine.mount_namespace_marker(first_digest)}
+            ):
+                _, prepared = tine.prepare_buck(self.root, ["buck", "build"])
+            self.assertEqual(prepared, sorted(mounts))
+            self.assertEqual((self.root / tine.PRIVATE_CONFIG).read_bytes(), first_config)
+            self.assertEqual((self.root / "sub" / "witness").read_text(), "the mounted directory's")
+            return "separate"
+
+        self.assertEqual(self.answer(first), "separate")
+
+    def test_source_replacement_cannot_relabel_an_existing_namespace(self) -> None:
+        self.check_mount_change(replace_source=True)
+
+    def test_mount_update_cannot_relabel_an_existing_namespace(self) -> None:
+        self.check_mount_change(replace_source=False)
+
+    def test_digest_uses_the_directory_that_was_actually_mounted(self) -> None:
+        mounts = {"sub": str(self.source)}
+        expected = hashlib.sha256(f"sub\0{self.source}\0{self.source.stat().st_ino}\0".encode()).hexdigest()[
+            :16
+        ]
+        retired = scratch(self) / "retired"
+
+        def mounted() -> str:
+            mount = tine.isolation.mount
+
+            def replace_after_mount(
+                source: Path | None,
+                target: Path,
+                filesystem: str | None = None,
+                flags: int = 0,
+                options: str | None = None,
+            ) -> None:
+                mount(source, target, filesystem, flags, options)
+                if target == self.root / "sub":
+                    self.source.rename(retired)
+                    self.source.mkdir()
+
+            with unittest.mock.patch.object(tine.isolation, "mount", side_effect=replace_after_mount):
+                digest = tine.create_mount_namespace(self.root, mounts)
+            self.assertEqual(digest, tine.mount_digest(self.root, mounts))
+            return digest
+
+        self.assertEqual(self.answer(mounted), expected)
+
+    def test_ignores_follow_the_mounted_checkout_after_source_replacement(self) -> None:
+        isolate_git(self)
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\n")
+        replacement = scratch(self)
+        for checkout, ignored in ((self.source, "original-output"), (replacement, "replacement-output")):
+            git("init", "--quiet", "--initial-branch=main", cwd=checkout)
+            (checkout / ".gitignore").write_text(f"/{ignored}\n")
+            (checkout / ignored).mkdir()
+        retired = scratch(self) / "retired"
+
+        def mounted() -> str:
+            digest = tine.create_mount_namespace(self.root, {"sub": str(self.source)})
+            self.source.rename(retired)
+            replacement.rename(self.source)
+            with unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}):
+                config, targets = tine.prepare_buck(self.root, ["buck", "build"])
+            ignores = tine.collect_project_ignores(self.root, config, targets)
+            self.assertIn("sub/original-output", ignores)
+            self.assertNotIn("sub/replacement-output", ignores)
+            return "mounted ignores"
+
+        self.assertEqual(self.answer(mounted), "mounted ignores")
+
+    def test_private_config_directory_cannot_be_a_symlink(self) -> None:
+        private = self.root / tine.PRIVATE_MOUNTS
+        private.parent.mkdir()
+        private.symlink_to(scratch(self), target_is_directory=True)
+        with self.assertRaisesRegex(SystemExit, "must not be a symlink"):
+            tine.create_mount_namespace(self.root, {"sub": str(self.source)})
+
+    def test_private_mount_metadata_does_not_make_version_dirty(self) -> None:
+        isolate_git(self)
+        (self.root / "sub" / "witness").write_text((self.source / "witness").read_text())
+        git("init", "--quiet", "--initial-branch=main", cwd=self.root)
+        git("config", "user.name", "Test", cwd=self.root)
+        git("config", "user.email", "test@example.com", cwd=self.root)
+        git("add", ".", cwd=self.root)
+        git("commit", "--quiet", "--message", "initial", cwd=self.root)
+        self.mount("add", str(self.root / "sub"), str(self.source))
+
+        def mounted() -> str:
+            self.create({"sub": str(self.source)})
+            derived = tine.version_components(self.root)
+            assert isinstance(derived, dict), derived
+            self.assertNotIn("dirty", derived)
+            return "clean"
+
+        self.assertEqual(self.answer(mounted), "clean")
 
 
 class TestMountedWrapperEntrypoint(MountTestCase):
@@ -1198,7 +1329,11 @@ class TestReexecInMountNamespace(MountTestCase):
         super().setUp()
         self.made: list[object] = []
         created = unittest.mock.patch.object(
-            tine, "create_mount_namespace", side_effect=lambda *args: self.made.append(args)
+            tine,
+            "create_mount_namespace",
+            side_effect=lambda root, mounts: (
+                self.made.append((root, mounts)) or tine.mount_digest(root, mounts)
+            ),
         )
         created.start()
         self.addCleanup(created.stop)
@@ -1216,33 +1351,48 @@ class TestReexecInMountNamespace(MountTestCase):
 
     def declare_one(self) -> str:
         self.mount("add", str(self.root / "sub"), str(self.source))
-        digest = tine.mount_digest(self.declared(), (self.root / ".buckconfig").read_bytes())
-        assert digest is not None
+        digest = tine.mount_digest(self.root, self.declared())
         return digest
+
+    def prepare(self) -> None:
+        tine.prepare_buck(self.root, ["buck", "build"])
 
     def test_no_mounts_need_no_namespace(self) -> None:
         with self.running() as execve:
-            tine.reexec_in_mount_namespace(self.root, {}, ["buck", "build"])
+            _, mounts = tine.prepare_buck(self.root, ["buck", "build"])
+        self.assertEqual(mounts, [])
         self.assertEqual((self.made, execve), ([], []))
 
     def test_buck_child_process_is_already_inside(self) -> None:
         self.declare_one()
         with (
             unittest.mock.patch.dict(os.environ, {"BUCK2_BINARY": "/somewhere/buck2"}),
+            unittest.mock.patch.object(tine, "declared_mounts", side_effect=AssertionError("reread mounts")),
             self.running() as execve,
         ):
-            tine.reexec_in_mount_namespace(self.root, {}, ["buck", "build"])
+            self.prepare()
         self.assertEqual((self.made, execve), ([], []))
 
     def test_matching_current_namespace_needs_no_handover(self) -> None:
         digest = self.declare_one()
-        config = {"buck2": {tine.DAEMON_BUSTER: f"{tine.BUSTER_PREFIX}{digest}"}}
         with (
             unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}),
+            unittest.mock.patch.object(tine, "namespace_mount_targets", return_value=["sub"]),
             self.running() as execve,
         ):
-            tine.reexec_in_mount_namespace(self.root, config, ["buck", "build"])
+            self.prepare()
         self.assertEqual((self.made, execve), ([], []))
+
+    def test_prepare_rejects_project_mount_settings(self) -> None:
+        self.declare_one()
+        for section, key in (("buck2", tine.DAEMON_BUSTER), (tine.SECTION, tine.DEV)):
+            with self.subTest(section=section, key=key):
+                (self.root / tine.LOCAL).write_text(f"[{section}]\n{key} = project-owned\n")
+                with (
+                    unittest.mock.patch.object(tine, "namespace_mount_targets", return_value=["sub"]),
+                    self.assertRaisesRegex(SystemExit, f"{key} is reserved"),
+                ):
+                    self.prepare()
 
     def test_stale_marker_does_not_skip_namespace_creation(self) -> None:
         # A manually exported or inherited marker does not prove that this process is in its namespace.
@@ -1251,28 +1401,19 @@ class TestReexecInMountNamespace(MountTestCase):
             unittest.mock.patch.dict(os.environ, {tine.MARKER: f"{digest} wrong-namespace"}),
             self.running() as execve,
         ):
-            tine.reexec_in_mount_namespace(self.root, {}, ["buck", "build"])
+            self.prepare()
         self.assertEqual(len(self.made), 1)
         self.assertTrue(execve)
 
     def test_mounts_create_an_equivalent_namespace_and_handover(self) -> None:
         digest = self.declare_one()
-        buckconfig = (self.root / ".buckconfig").read_bytes()
         with self.running() as execve:
-            tine.reexec_in_mount_namespace(self.root, {}, ["buck", "build"])
-        self.assertEqual(self.made, [(self.root, {"sub": str(self.source)}, digest, buckconfig)])
+            self.prepare()
+        self.assertEqual(self.made, [(self.root, {"sub": str(self.source)})])
         _, argv, environment = execve
         self.assertEqual(argv, [str(TOOL_PATH.absolute()), "buck", "build"])
         assert isinstance(environment, dict)
         self.assertEqual(environment[tine.MARKER], tine.mount_namespace_marker(digest))
-
-    def test_project_daemon_buster_is_rejected(self) -> None:
-        self.declare_one()
-        config = {"buck2": {tine.DAEMON_BUSTER: "project-owned"}}
-        with self.running() as execve:
-            with self.assertRaisesRegex(SystemExit, "daemon_buster is reserved"):
-                tine.reexec_in_mount_namespace(self.root, config, ["buck", "build"])
-        self.assertEqual((self.made, execve), ([], []))
 
 
 class TestBuck2Binary(unittest.TestCase):
@@ -2327,9 +2468,7 @@ class TestProjectIgnores(unittest.TestCase):
         return checkout
 
     def ignores(self, config: dict[str, dict[str, str]], mounts: list[str]) -> list[str]:
-        return tine.collect_project_ignores(
-            self.root, config, {target: str(self.root / target) for target in mounts}
-        )
+        return tine.collect_project_ignores(self.root, config, mounts)
 
     def test_mount_build_files_are_added_to_project_ignores(self) -> None:
         self.assertEqual(
@@ -2384,7 +2523,7 @@ class TestProjectIgnores(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("[project]\nignore = custom\n")
                 self.assertEqual(
-                    tine.collect_project_ignores(root, tine.read_project_buckconfig(root), {}),
+                    tine.collect_project_ignores(root, tine.read_project_buckconfig(root), []),
                     ["custom", *tine.VCS_IGNORES],
                 )
 

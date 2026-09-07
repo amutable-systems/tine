@@ -99,20 +99,14 @@ tine mount remove tine                 # use the project's checkout again
 
 Cell roots and local-checkout slots declared by `git_fetch()` are mount targets. The `add` command rejects
 anything else. `tine mount list` shows the active local source, or `default` when a target is not
-overridden. `add` creates a missing directory for a declared checkout slot and records it internally.
-The build runs in a private mount namespace where `tine/` is a bind mount of `~/Projects/tine`, so
-uncommitted edits are available immediately. When the tine cell is mounted, `tine/bin/tine` re-executes
-the mounted copy of itself. The rules and the command configuring them therefore come from the same
-checkout.
+overridden. `add` creates a missing directory for a declared checkout slot. Builds use the selected
+checkout, including uncommitted edits; selecting a different tine checkout also selects its command,
+rules, and pinned Buck2.
 
-Mounts cannot overlap or cover `.buck/`. Nested mounts would depend on application order, while `.buck/`
-holds the mount table itself and the namespace-private Buck configuration derived from it, so
-`tine mount add` rejects both.
-
-`tine mount` does not restart Buck2 immediately. On the next `tine buck`, Buck itself reuses a daemon
-started for the same mounts or replaces one started for different mounts, under its own lifecycle lock.
-Replacing the daemon does not remove `buck-out`.
-Mounting requires unprivileged user namespaces, which some distributions disable.
+Mount changes take effect on the next `tine buck`. Switching mounts can interrupt builds already using a
+different checkout. Mounting requires unprivileged user namespaces, which some distributions disable. The
+[architecture document](docs/design.md#building-with-out-of-tree-checkouts) explains how mounts and daemon
+reuse work.
 
 A consuming OS monorepo ("OS.git" in these docs) additionally holds package sources under
 `packages/<distro>/<branch>/<package>`, imported and updated from upstream dist-gits (Fedora, or CentOS
@@ -154,34 +148,11 @@ tine init [<path>]       # write the configuration a project needs, for the chec
 tine completion <shell>  # print the completion script for bash, fish or zsh
 ```
 
-`tine buck` fetches the Buck2 this cell pins, verifies it against the pinned SHA-256, caches it
-under `${XDG_CACHE_HOME:-~/.cache}/tine/buck2/<sha256>`, and execs it, forwarding everything after
-`buck` untouched. Before handing over, it rewrites its own block in `.buckconfig.local`, the
-highest-precedence configuration Buck reads without being told to. The exception is `tine buck
-complete`, which a completing shell runs on every keypress: it neither downloads nor rewrites the shared
-configuration, and completes nothing until another command has fetched the binary. Everything else in
-that file is yours and is left alone, and because the block comes first, a key you set for yourself still
-wins over one it writes. While mounts are active, Tine bind-mounts a private copy of the root
-`.buckconfig` with a `[buck2] daemon_buster` appended. A project cannot set that key while mounts are
-active. The generated local configuration remains live:
+`tine buck` runs the pinned Buck2 and forwards everything after `buck` unchanged. Use it instead of
+running Buck2 directly so that builds use your selected checkouts. Image versions can be derived from
+the project's Git history; see "Image versioning" in [images.md](docs/images.md).
 
-- `[tine_mounts] <project path> = <external directory>` for each `tine mount add`. Buck parses the
-  section, but no rule consumes it; `tine buck` uses it to set up the mount namespace before Buck starts.
-  An invalid declaration stops the command instead of silently using the checked-in directory.
-- `[tine] version-base`, `version-count`, `version-height`, `version-commit` and, for a tree carrying
-  uncommitted work, `version-dirty`: what an image version is derived from, queried from git. The
-  components rather than a version, because how much of the commit hash fits is a question each image's
-  own partition labels answer: an image declaring `version = "auto"` (or `"auto:1.4.2"`, to name its own
-  base) renders them against its own label budget. A checkout git cannot answer for gets a recorded reason
-  instead of components, and no command fails until something asks for a version. See "Image versioning"
-  in [images.md](docs/images.md).
-
-That configuration goes into a file rather than onto the command line because `buck2 complete`, which
-serves shell completion, accepts no configuration flags at all: a wrapper injecting `-c` would complete
-against different configuration than it builds with. Completion comes from the wrapper too, which rewrites
-Buck2's own script so that its completions hang off `tine buck` and the target completions route back
-through it. It reads that script out of the pinned Buck2, so run it from inside a project, as every
-verb but `init` is:
+Install shell completion from inside a project:
 
 ```sh
 tine completion fish > ~/.config/fish/completions/tine.fish
@@ -189,16 +160,12 @@ tine completion bash > ~/.local/share/bash-completion/completions/tine
 tine completion zsh > ~/.local/share/zsh/site-functions/_tine   # any directory on $fpath
 ```
 
+Target completion neither downloads Buck2 nor refreshes shared configuration. Run an ordinary
+`tine buck` command first to fetch the binary if target completion has no results.
+
 [`tools/tools.json`](tools/tools.json) is where this cell declares the Buck2 its rules are tested
-against, alongside every other pinned tool. `bin/tine` reads it and bootstraps Buck2 itself.
-A `[tine] buck2-*` key in the consuming project can override that pin. Be careful though: tine depends
-on fixes that exist only in that fork, so running another Buck2 is unsupported.
-
-`tine//tools:bump` moves that pin with every other one, so nothing in this command asks GitHub anything.
-
-The binary it caches is a plain Buck2, but running it directly does not enter a declared mount namespace.
-`tine` exports its path as `BUCK2_BINARY` so that a tool Buck runs can nest a command without refreshing
-configuration underneath the one that started it.
+against, alongside every other pinned tool. `tine//tools:bump` updates those pins. Tine depends on fixes
+in its Buck2 fork, so running another Buck2 is unsupported.
 
 ```sh
 tine buck build tine//...                 # the examples, the catalog, and the tooling
