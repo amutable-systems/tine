@@ -18,6 +18,13 @@ export_file(
     visibility = ["PUBLIC"],
 )
 
+export_file(
+    name = "buckconfig",
+    src = ".buckconfig",
+    out = "tine.buckconfig",
+    visibility = ["//bin/..."],
+)
+
 tine_python_library(
     name = "util",
     srcs = ["util.py"],

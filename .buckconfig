@@ -24,8 +24,8 @@ target_platform_detector_spec = target:tine//...->tine//platforms:default
 execution_platforms = tine//platforms:default
 
 [project]
-# Git's ignored-path listing does not include VCS metadata.
-ignore = .git, .jj, **/.git, **/.jj, **/.hg, **/.svn
+# Completion can start Buck before the generated .buckconfig.local exists.
+ignore = **/.git, **/.jj, **/.hg, **/.svn
 
 [buck2]
 materializations = deferred

@@ -47,6 +47,7 @@ PRIVATE_CONFIG = f"{HOME}/tine-mount/root.buckconfig"
 DAEMON_BUSTER = "daemon_buster"
 BUSTER_PREFIX = "tine-mounts-"
 PROJECT_IGNORE = "ignore"
+VCS_IGNORES = ("**/.git", "**/.jj", "**/.hg", "**/.svn")
 DEV = "dev"
 
 PINS = "tools/tools.json"
@@ -1610,22 +1611,18 @@ def collect_project_ignores(
     glob() stops at an upstream BUCK file before applying its exclusions. Buck applies project
     ignores earlier, so ignoring those build files lets the owning package's glob traverse the
     checkout. Resolve checkout-local ignores through Git so generated trees are hidden before Buck tries
-    to read names it cannot represent. Empty when nothing adds an ignore, leaving the key to the
-    project's own configuration.
+    to read names it cannot represent.
     """
-    patterns = [glob_literal(path) for path in git_ignored_paths(root)]
-    if not mounts and not patterns:
-        return []
-    # What follows the generated block replaces its values, so a project ignore kept there would
-    # drop everything added here.
     if PROJECT_IGNORE in parse_buckconfig(root / LOCAL).get("project", {}):
         fail(
             f"{LOCAL}: [project] {PROJECT_IGNORE} would replace the generated ignores; "
-            f"set it in [{BUCKCONFIG}.project] in {CONFIG}"
+            f"set it in .buckconfig or [{BUCKCONFIG}.project] in {CONFIG}"
         )
+    patterns = [entry.strip() for entry in config.get("project", {}).get(PROJECT_IGNORE, "").split(",")]
+    # Git's ignored-path listing does not include VCS metadata.
+    patterns = [entry for entry in patterns if entry] + list(VCS_IGNORES)
+    patterns += [glob_literal(path) for path in git_ignored_paths(root)]
 
-    configured = config.get("project", {}).get(PROJECT_IGNORE, "")
-    ignores = [entry.strip() for entry in configured.split(",") if entry.strip()]
     cell_roots = [Path(value) for value in cells_of(config).values()]
     for target, source in sorted(mounts.items()):
         target_path = Path(target)
@@ -1636,12 +1633,7 @@ def collect_project_ignores(
         literal = glob_literal(target)
         patterns += [f"{literal}/{name}" for name in ("BUCK", "**/BUCK")]
         patterns += [f"{literal}/{glob_literal(path)}" for path in git_ignored_paths(Path(source))]
-    added = False
-    for pattern in patterns:
-        if pattern not in ignores:
-            ignores.append(pattern)
-            added = True
-    return ignores if added else []
+    return list(dict.fromkeys(patterns))
 
 
 def buck_command(argv: list[str]) -> None:
