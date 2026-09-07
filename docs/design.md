@@ -143,6 +143,30 @@ When Tine restarts itself to use the mounted checkout's wrapper, it keeps using 
 paths. It does not reread declarations that another command may already have changed. Git ignores are
 read through the mounted paths too, so they describe the checkout the build will use.
 
+#### Git metadata in mounted checkouts
+
+Submodules and linked worktrees can use a `.git` file that points to metadata outside the checkout. For
+example, `/work/main/lib/.git` might contain `gitdir: ../.git/modules/lib`, referring to
+`/work/main/.git/modules/lib`. After mounting that checkout at `vendor/lib`, the same pointer would look
+under `vendor/.git/modules/lib` instead.
+
+Before mounting, Tine resolves each gitfile with `git rev-parse --absolute-git-dir` and saves the result
+under `[tine] gitdirs` in `.buckconfig.d/tine-mounts/config`, as a JSON map from mount targets to absolute
+metadata paths. Both relative and absolute gitfile pointers are recorded. Ordinary `.git` directories
+remain accessible through the bind mount and need no saved path. Neither directories nor gitfiles are
+rewritten.
+
+Ignore queries run from the mounted checkout with `--git-dir=<saved path>` and `--work-tree=.`. The
+explicit worktree matters because a submodule's `core.worktree` can still name its original source path.
+If that path now holds a replacement checkout, following it would read the wrong `.gitignore`. Giving
+Git both paths keeps the query on the mounted tree while retaining the saved metadata's `info/exclude`
+rules and tracked-file index, so tracked files are not mistaken for ignored build output.
+
+During configuration refresh, Tine reads the map once from the project's private config and passes it
+to both the project and tine-cell ignore queries, keyed by mounted checkout paths. With no mounts, it
+skips this read. A mounted tine checkout's own private config is unrelated to this invocation and must
+not supply this map; malformed Git-directory data there must not break the build.
+
 #### Lock scope
 
 A `flock()` on `.buck/tine-mount.lock` protects edits to the mount table, covering the read, validation,
