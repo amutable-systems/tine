@@ -93,6 +93,7 @@ box.new(
 tine_python_binary(
     name = "dev",
     main = "dev.py",
+    deps = ["//:util"],
 )
 
 tine_python_binary(

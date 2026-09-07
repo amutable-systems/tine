@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any, cast
 
+from util import buck_output, nested_buck
+
 
 def _bold(label: str) -> None:
     print(f"\033[1m{label}\033[0m", flush=True)
@@ -20,28 +22,19 @@ def _run(cmd: list[str | Path], *, stderr: int | None = None) -> None:
         raise SystemExit(proc.returncode)
 
 
-def _buck_out(buck: str, *args: str) -> str:
-    proc = subprocess.run([buck, *args], capture_output=True, text=True)
-    if proc.returncode != 0:
-        # Relay Buck's diagnostic before exiting.
-        print(proc.stderr, end="", file=sys.stderr, flush=True)
-        raise SystemExit(proc.returncode)
-    return proc.stdout.strip()
-
-
 def _cell_root(buck: str, cell: str) -> Path:
-    return Path(_buck_out(buck, "audit", "cell", cell, "--paths-only"))
+    return Path(buck_output(buck, "audit", "cell", cell, "--paths-only"))
 
 
 def _starlark_srcs(buck: str) -> list[Path]:
     # Check every loaded in-tree Starlark file; ignore dead files, external cells, and JSON.
-    cells = cast(dict[str, str], json.loads(_buck_out(buck, "audit", "cell", "--json")))
-    aliases = cast(dict[str, str], json.loads(_buck_out(buck, "audit", "cell", "--json", "--aliases")))
+    cells = cast(dict[str, str], json.loads(buck_output(buck, "audit", "cell", "--json")))
+    aliases = cast(dict[str, str], json.loads(buck_output(buck, "audit", "cell", "--json", "--aliases")))
     roots = {path: name for name, path in sorted(cells.items()) if name not in ("none", "prelude")}
     universe = " + ".join(sorted(f"{name}//..." for name in roots.values()))
-    project = Path(_buck_out(buck, "root", "--kind", "project"))
+    project = Path(buck_output(buck, "root", "--kind", "project"))
     files = sorted(
-        project / f for f in _buck_out(buck, "uquery", f"allbuildfiles({universe})").splitlines() if f
+        project / f for f in buck_output(buck, "uquery", f"allbuildfiles({universe})").splitlines() if f
     )
     # Keep the tine cell's own files, plus those of any cell nested inside it. Reject by owning cell
     # rather than by path prefix, because nested `none`/`prelude` are not on disk, so a prefix test
@@ -78,9 +71,7 @@ def _orphan_tests(buck: str, cell: Path) -> list[Path]:
     added to one; nothing else would report that.
     """
     targets = json.loads(
-        _buck_out(
-            buck, "-v", "0", "uquery", "kind('box_python_test', tine//...)", "--output-attribute", "srcs"
-        )
+        buck_output(buck, "uquery", "kind('box_python_test', tine//...)", "--output-attribute", "srcs")
     )
     claimed = {cell / src.split("//", 1)[1] for target in targets.values() for src in target["srcs"]}
     return sorted(p for p in cell.rglob("*_test.py") if "buck-out" not in p.parts and p not in claimed)
@@ -110,7 +101,7 @@ def _lint(args: argparse.Namespace) -> None:
     _run([args.ruff, "format", "--check", "--no-cache", cell])
     _run([args.ruff, "check", "--no-cache", cell])
     _bold("ty")
-    targets = _buck_out(args.buck, "uquery", "attrfilter(labels, 'python-typecheck', tine//...)").split()
+    targets = buck_output(args.buck, "uquery", "attrfilter(labels, 'python-typecheck', tine//...)").split()
     if not targets:
         raise SystemExit("ty: no generated type-check targets found")
     _run([args.buck, "build", *targets])
@@ -170,7 +161,7 @@ def _write_dot(path: Path, intra: dict[str, list[str]], rev: dict[str, list[str]
 
 def _scc(args: argparse.Namespace) -> None:
     # Graph derivation and cycle detection live in buck (rpm_branch); this only formats its output.
-    graph = _buck_out(args.buck, "build", f"{args.branch}:_buildrequires_graph", "--out", "-")
+    graph = buck_output(args.buck, "build", f"{args.branch}:_buildrequires_graph", "--out", "-")
     data = cast(dict[str, Any], json.loads(graph))
     edge_caps = cast(dict[str, dict[str, list[str]]], data["edges"])
     components: dict[int, set[str]] = {}
@@ -230,9 +221,7 @@ def main(argv: list[str] | None = None) -> None:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
         "--buck",
-        # `tine` exports the Buck2 it resolved, so a nested command runs that one and not the
-        # wrapper: refreshing configuration under a command already holding it deadlocks.
-        default=os.environ.get("BUCK2_BINARY", "buck"),
+        default=nested_buck(),
         help="buck binary to nest (default: $BUCK2_BINARY, else PATH)",
     )
     starlark = argparse.ArgumentParser(add_help=False)
