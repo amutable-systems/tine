@@ -7,6 +7,10 @@ per day. Repositories sharing one pin advance together, and rolling back means e
 Remote box-lock entries retain their package transports, so a repository's package pool keeps
 the committed box available after its repodata advances.
 
+A repository's declared signing keys are fetched once, by fingerprint, and the file is never
+rewritten afterwards. Whether a file is the declared key is the build's check, with the package
+system's own tools.
+
 The host orchestrator discovers refresh subtargets and takes each result from the driver's stdout,
 so refreshing and verifying run one command and only the host decides where an output belongs.
 Nested Buck reuses the invoking daemon through the inherited isolation directory.
@@ -40,6 +44,11 @@ BOX_LABEL = "tine:box"
 REMOTE_REPOSITORY_LABEL = "tine:remote-repository"
 RPM_REMOTE_REPOSITORY_LABEL = "tine:rpm-remote-repository"
 PACMAN_REMOTE_REPOSITORY_LABEL = "tine:pacman-remote-repository"
+
+# Keep in sync with SIGNING_KEY_DIRECTORY/SIGNING_KEY_SUFFIX in package/repository.bzl.
+SIGNING_KEY_DIRECTORY = Path("snapshot/key")
+SIGNING_KEY_SUFFIX = ".key"
+ARMOR_HEADER = b"-----BEGIN PGP PUBLIC KEY BLOCK-----"
 
 
 def _catalog_pattern(catalog: str) -> str:
@@ -241,6 +250,53 @@ def _advance_snapshots(buck: str, catalog: str, catalog_dir: Path, selected: lis
         _advance(pinned, wanted, newest, declaration, attribute)
 
 
+def _declared_signing_keys(buck: str, repositories: list[str]) -> dict[str, str]:
+    """Where each signing key the given repositories declare is fetched from, by fingerprint."""
+    out = buck_output(
+        buck,
+        "uquery",
+        "--json",
+        "--output-attribute=^signing_keys$",
+        f"set({' '.join(repositories)})",
+    )
+    keys: dict[str, str] = {}
+    for target, attributes in json.loads(out).items():
+        for fingerprint, url in (attributes.get("signing_keys") or {}).items():
+            if keys.setdefault(fingerprint, url) != url:
+                fail(
+                    f"catalog: {target} fetches key {fingerprint} from {url}, "
+                    f"another repository from {keys[fingerprint]}"
+                )
+    return keys
+
+
+def _fetch_signing_key(fingerprint: str, url: str) -> str:
+    """One armored public key, normalized to end in exactly one newline."""
+    print(f"==> fetching signing key {fingerprint}", file=sys.stderr)
+
+    def fetch() -> bytes:
+        with urlopen(url, agent="tine-catalog") as response:
+            return response.read()
+
+    raw = with_retries(f"key {fingerprint}", fetch)
+    # rpm imports armored keys only; a binary keyring such as fedoraproject.org's fedora.gpg is not one.
+    if not raw.startswith(ARMOR_HEADER):
+        fail(f"catalog: {url} is not an armored public key")
+    return raw.decode("ascii").rstrip("\n") + "\n"
+
+
+def _signing_keys(
+    buck: str,
+    catalog_dir: Path,
+    repositories: list[str],
+) -> Iterator[tuple[Path, str]]:
+    """Fetch the declared signing keys the catalog does not hold yet."""
+    for fingerprint, url in sorted(_declared_signing_keys(buck, repositories).items()):
+        path = catalog_dir / SIGNING_KEY_DIRECTORY / (fingerprint + SIGNING_KEY_SUFFIX)
+        if not path.exists():
+            yield path, _fetch_signing_key(fingerprint, url)
+
+
 def _snapshot(buck: str, target: str) -> str:
     """One repository's current pure metadata."""
     print(f"==> snapshotting {_name_of(target)} (via {target}[snapshot])", file=sys.stderr)
@@ -306,11 +362,13 @@ def _regenerate(
     snapshots: list[str],
     resolves: list[str],
 ) -> Iterator[tuple[Path, str]]:
-    """Snapshot repositories and resolve boxes, yielding each result and where it belongs.
+    """Fetch keys, snapshot repositories and resolve boxes, yielding each result and where it belongs.
 
     Nothing is written here, so a verify regenerates through the same commands a refresh does and
     still leaves the checkout exactly as it found it.
     """
+    yield from _signing_keys(buck, catalog_dir, snapshots)
+
     for target in snapshots:
         yield catalog_dir / _repository_snapshot_path(target), _snapshot(buck, target)
 
@@ -319,7 +377,7 @@ def _regenerate(
 
 
 def _commit(catalog_dir: Path) -> None:
-    """Commit the refreshed catalog, pins and snapshots alike.
+    """Commit the refreshed catalog, pins, keys and snapshots alike.
 
     Scoped to the catalog directory rather than the files just written: advancing a pin rewrites
     the declaration too, and a repository snapshotted for the first time is not tracked yet.
