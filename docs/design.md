@@ -443,6 +443,12 @@ the usr-merged `/usr/lib/sysimage/rpm`. A repository pinned with `rpm.remote_rep
 `rpmrepo_mirror`/`rpmrepo_snapshot` carries that pin as `rpmrepo.*` metadata and advances to the newest
 snapshot its gateway enumerates.
 
+`rpmkeys` verifies package signatures. The `keyring` driver imports a repository's declared key files into
+rpm 6's filesystem keyring, which names each key by its fingerprint and so checks the declaration without
+an OpenPGP parser. The `verify` driver checks each package against it at verify level `signature` (upstream
+rpm's default `digest` accepts an unsigned package where Fedora's `all` does not). No key is imported into
+an assembled root's rpmdb, and the installer leaves libdnf5's own checks off.
+
 The bootstrap extractor frames the header off a package and decompresses the payload itself, so it reads
 exactly what the repository serves. It supports the v4/newc payload form the pinned repositories use and
 does not implement RPM v6's index-based payload metadata.
