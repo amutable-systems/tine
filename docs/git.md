@@ -47,9 +47,9 @@ The override has a few constraints:
 
 - The directory must contain at least one file. An empty mount point or uninitialized submodule falls back
   to the remote fetch.
-- Every file not excluded by `[project] ignore` is a build input. The default configuration already
-  excludes `.git`, `target`, and other common generated directories; add project-specific exclusions when
-  needed.
+- Every file not excluded by `.gitignore` or `[project] ignore` is a build input. Tine merges both, plus
+  VCS metadata directories, into the generated ignore list; put build outputs in `.gitignore` and
+  anything Git tracks but Buck should not see in `[project] ignore`.
 - The local checkout is not checked against `rev`. Remove the mount before a release build to restore the
   pinned source.
 - A `BUCK` file in the checkout creates a package boundary that the source glob cannot cross. Projects

@@ -14,5 +14,6 @@ box_python_test(
         "tine",
         "tine.py",
         "tine_test.py",
+        "//:buckconfig",
     ],
 )

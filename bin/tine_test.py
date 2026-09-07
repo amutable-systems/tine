@@ -1473,12 +1473,27 @@ class TestBuckCommand(unittest.TestCase):
         self.assertEqual(environment["BUCK2_ARG0"], "tine buck")
         self.assertTrue((self.root / tine.LOCAL).is_file())
 
-    def test_completing_writes_nothing(self) -> None:
-        # A keypress must not race a build that is writing the configuration it is completing from.
-        with self.running() as execve:
-            tine.buck_command(["complete", "--target=//x"])
-        self.assertTrue(execve)
-        self.assertFalse((self.root / tine.LOCAL).exists())
+    def test_completing_writes_no_shared_config(self) -> None:
+        defaults = Path(__file__).with_name("tine.buckconfig")
+        for cell in (".", "vendor/tine"):
+            with self.subTest(cell=cell):
+                config = self.root / ".buckconfig"
+                config.write_text(
+                    defaults.read_text()
+                    if cell == "."
+                    else tine.render_project_buckconfig(defaults, {"cells": {"tine": cell}})
+                )
+                before = config.stat()
+                with self.running() as execve:
+                    tine.buck_command(["complete", "--target=//x"])
+                self.assertTrue(execve)
+                self.assertFalse((self.root / tine.LOCAL).exists())
+                after = config.stat()
+                self.assertEqual((after.st_ino, after.st_mtime_ns), (before.st_ino, before.st_mtime_ns))
+                self.assertEqual(
+                    tine.read_project_buckconfig(self.root).get("project", {}).get(tine.PROJECT_IGNORE),
+                    ", ".join(tine.VCS_IGNORES),
+                )
 
     def test_tine_cell_uses_its_own_gitignores(self) -> None:
         isolate_git(self)
@@ -1486,7 +1501,7 @@ class TestBuckCommand(unittest.TestCase):
         checkout.mkdir(parents=True)
         git("init", "--quiet", "--initial-branch=main", cwd=checkout)
         (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = vendor/tine\n")
-        (checkout / ".buckconfig").write_text("[cells]\ntine = .\n[project]\nignore = .git\n")
+        (checkout / ".buckconfig").write_text("[cells]\ntine = .\n")
         (checkout / ".gitignore").write_text("*.generated\n!kept.generated\n")
         (checkout / "ignored.generated").touch()
         (checkout / "kept.generated").touch()
@@ -1502,15 +1517,21 @@ class TestBuckCommand(unittest.TestCase):
             tine.buck_command(["build", "tine//..."])
         self.assertEqual(
             tine.read_generated_buckconfig(checkout / tine.LOCAL)["project"][tine.PROJECT_IGNORE],
-            ".git, ignored.generated",
+            ", ".join([*tine.VCS_IGNORES, "ignored.generated"]),
         )
-        self.assertNotIn("project", tine.read_generated_buckconfig(self.root / tine.LOCAL))
+        self.assertEqual(
+            tine.read_generated_buckconfig(self.root / tine.LOCAL)["project"][tine.PROJECT_IGNORE],
+            ", ".join(tine.VCS_IGNORES),
+        )
 
         (checkout / "ignored.generated").unlink()
         with self.running():
             tine.buck_command(["build", "tine//..."])
-        self.assertNotIn("project", tine.read_generated_buckconfig(checkout / tine.LOCAL))
-        self.assertEqual(tine.read_project_buckconfig(checkout)["project"][tine.PROJECT_IGNORE], ".git")
+        self.assertEqual(
+            tine.read_generated_buckconfig(checkout / tine.LOCAL)["project"][tine.PROJECT_IGNORE],
+            ", ".join(tine.VCS_IGNORES),
+        )
+        self.assertNotIn("project", tine.read_project_buckconfig(checkout))
 
     def test_tine_as_root_is_refreshed_once(self) -> None:
         for cell in (".", str(self.root)):
@@ -1518,7 +1539,7 @@ class TestBuckCommand(unittest.TestCase):
                 (self.root / ".buckconfig").write_text(f"[cells]\ntine = {cell}\n")
                 with self.running(), unittest.mock.patch.object(tine, "refresh_local_buckconfig") as refresh:
                     tine.buck_command(["build", "tine//..."])
-                refresh.assert_called_once_with(self.root, [])
+                refresh.assert_called_once_with(self.root, list(tine.VCS_IGNORES))
 
     def test_a_run_without_a_home_gets_one(self) -> None:
         environment = dict(os.environ)
@@ -1564,9 +1585,9 @@ target_platform_detector_spec = target:tine//...->tine//platforms:default
 [build]
 execution_platforms = tine//platforms:default
 
-[project]
-ignore = .git, .jj, \\
-    **/.git, **/.jj, **/.hg, **/.svn
+[custom]
+continued = one, \\
+    two, three
 
 [buck2]
 defer_write_actions = true
@@ -1609,12 +1630,12 @@ class TestRenderProjectBuckconfig(unittest.TestCase):
 
     def test_defaults_and_continued_values_are_copied(self) -> None:
         written = self.written()
-        for kept in ("fbsource = none", "**/.git", "prelude = bundled"):
+        for kept in ("fbsource = none", "one, two, three", "prelude = bundled"):
             self.assertIn(kept, written)
         # A value written across lines stays one, which is what Buck2 reads it as.
         self.assertEqual(
-            self.config()["project"]["ignore"],
-            ".git, .jj, **/.git, **/.jj, **/.hg, **/.svn",
+            self.config()["custom"]["continued"],
+            "one, two, three",
         )
 
     def test_what_the_cell_says_about_being_one_is_left_behind(self) -> None:
@@ -2299,24 +2320,25 @@ class TestProjectIgnores(unittest.TestCase):
         isolate_git(self)
         self.root = scratch(self, "tine-test-project.")
 
-    def checkout(self) -> Path:
-        checkout = scratch(self, "tine-test-checkout.")
+    def checkout(self, relative: str | None = None) -> Path:
+        checkout = self.root / relative if relative is not None else scratch(self, "tine-test-checkout.")
+        checkout.mkdir(parents=True, exist_ok=True)
         git("init", "--quiet", "--initial-branch=main", cwd=checkout)
         return checkout
 
-    def ignores(self, config: dict[str, dict[str, str]], mounts: dict[str, str]) -> list[str]:
-        return tine.collect_project_ignores(self.root, config, mounts)
+    def ignores(self, config: dict[str, dict[str, str]], mounts: list[str]) -> list[str]:
+        return tine.collect_project_ignores(
+            self.root, config, {target: str(self.root / target) for target in mounts}
+        )
 
     def test_mount_build_files_are_added_to_project_ignores(self) -> None:
         self.assertEqual(
             self.ignores(
                 {"cells": {"root": "."}},
-                {
-                    "packages/demo/project": "/checkout/project",
-                    "packages/other/source": "/checkout/source",
-                },
+                ["packages/demo/project", "packages/other/source"],
             ),
             [
+                *tine.VCS_IGNORES,
                 "packages/demo/project/BUCK",
                 "packages/demo/project/**/BUCK",
                 "packages/other/source/BUCK",
@@ -2324,22 +2346,19 @@ class TestProjectIgnores(unittest.TestCase):
             ],
         )
 
-    def test_project_ignores_are_preserved(self) -> None:
-        self.assertEqual(
-            self.ignores(
-                {"project": {tine.PROJECT_IGNORE: "vendor/one, vendor/two"}},
-                {"packages/demo/project": "/checkout/project"},
-            ),
-            [
-                "vendor/one",
-                "vendor/two",
-                "packages/demo/project/BUCK",
-                "packages/demo/project/**/BUCK",
-            ],
-        )
+    def test_configured_project_ignores_are_preserved_without_duplicates(self) -> None:
+        for mounts in ([], ["packages/project"]):
+            with self.subTest(mounts=mounts):
+                expected = ["vendor", *tine.VCS_IGNORES]
+                if mounts:
+                    expected += ["packages/project/BUCK", "packages/project/**/BUCK"]
+                self.assertEqual(
+                    self.ignores({"project": {tine.PROJECT_IGNORE: "vendor, **/.git, vendor,"}}, mounts),
+                    expected,
+                )
 
-    def test_without_mounts_the_project_keeps_its_own_ignores(self) -> None:
-        self.assertEqual(self.ignores({"project": {tine.PROJECT_IGNORE: "vendor"}}, {}), [])
+    def test_internal_exclusions_cover_each_supported_vcs(self) -> None:
+        self.assertEqual(self.ignores({}, []), ["**/.git", "**/.jj", "**/.hg", "**/.svn"])
 
     def test_root_gitignores_apply_with_and_without_mounts(self) -> None:
         self.root = self.checkout()
@@ -2350,21 +2369,24 @@ class TestProjectIgnores(unittest.TestCase):
         (self.root / "kept.generated").touch()
         (self.root / "ignored.generated").touch()
 
-        for mounts in ({}, {"packages/project": "/checkout/project"}):
+        for mounts in ([], ["packages/project"]):
             with self.subTest(mounts=mounts):
-                expected = ["vendor", r"build\[debug]", "ignored.generated"]
+                expected = [*tine.VCS_IGNORES, r"build\[debug]", "ignored.generated"]
                 if mounts:
                     expected += ["packages/project/BUCK", "packages/project/**/BUCK"]
+                self.assertEqual(self.ignores({}, mounts), expected)
+
+    def test_native_project_ignores_are_preserved(self) -> None:
+        for relative in (".buckconfig.d/ignores", ".buckconfig"):
+            with self.subTest(layer=relative):
+                root = scratch(self)
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("[project]\nignore = custom\n")
                 self.assertEqual(
-                    self.ignores({"project": {tine.PROJECT_IGNORE: "vendor"}}, mounts), expected
+                    tine.collect_project_ignores(root, tine.read_project_buckconfig(root), {}),
+                    ["custom", *tine.VCS_IGNORES],
                 )
-
-    def test_root_gitignores_do_not_duplicate_configured_ignores(self) -> None:
-        self.root = self.checkout()
-        (self.root / ".gitignore").write_text("/generated\n")
-        (self.root / "generated").mkdir()
-
-        self.assertEqual(self.ignores({"project": {tine.PROJECT_IGNORE: "generated"}}, {}), [])
 
     def test_a_local_project_ignore_cannot_override_root_gitignores(self) -> None:
         self.root = self.checkout()
@@ -2373,19 +2395,20 @@ class TestProjectIgnores(unittest.TestCase):
         (self.root / tine.LOCAL).write_text(f"[project]\n{tine.PROJECT_IGNORE} = scratch\n")
 
         with self.assertRaisesRegex(SystemExit, "would replace the generated ignores"):
-            self.ignores({}, {})
+            self.ignores({}, [])
 
     def test_mount_path_is_literal_inside_the_ignore_glob(self) -> None:
         self.assertEqual(
-            self.ignores({}, {"packages/[demo]*/project?": "/checkout/project"}),
+            self.ignores({}, ["packages/[demo]*/project?"]),
             [
+                *tine.VCS_IGNORES,
                 r"packages/\[demo]\*/project\?/BUCK",
                 r"packages/\[demo]\*/project\?/**/BUCK",
             ],
         )
 
     def test_gitignored_directories_are_added_to_project_ignores(self) -> None:
-        checkout = self.checkout()
+        checkout = self.checkout("packages/systemd.source")
         (checkout / ".gitignore").write_text("/build*\n/mkosi/mkosi.tools\n")
         (checkout / "build-debug").mkdir()
         mkosi = checkout / "mkosi"
@@ -2397,8 +2420,9 @@ class TestProjectIgnores(unittest.TestCase):
         (tools / r"system-systemd\x2dcryptsetup.slice").write_text("")
 
         self.assertEqual(
-            self.ignores({}, {"packages/systemd.source": str(checkout)}),
+            self.ignores({}, ["packages/systemd.source"]),
             [
+                *tine.VCS_IGNORES,
                 "packages/systemd.source/BUCK",
                 "packages/systemd.source/**/BUCK",
                 "packages/systemd.source/build-debug",
@@ -2407,14 +2431,14 @@ class TestProjectIgnores(unittest.TestCase):
         )
 
     def test_nested_ignores_and_negations_are_resolved_by_git(self) -> None:
-        checkout = self.checkout()
+        checkout = self.checkout("packages/project")
         nested = checkout / "nested"
         nested.mkdir()
         (nested / ".gitignore").write_text("*.tmp\n!kept.tmp\n")
         (nested / "ignored.tmp").write_text("")
         (nested / "kept.tmp").write_text("")
 
-        ignores = self.ignores({}, {"packages/project": str(checkout)})
+        ignores = self.ignores({}, ["packages/project"])
 
         self.assertIn("packages/project/nested/ignored.tmp", ignores)
         self.assertNotIn("packages/project/nested/kept.tmp", ignores)
@@ -2430,13 +2454,13 @@ class TestProjectIgnores(unittest.TestCase):
         self.assertEqual(tine.git_ignored_paths(checkout), ["generated"])
 
     def test_gitignore_and_info_exclude_supply_mount_ignores(self) -> None:
-        checkout = self.checkout()
+        checkout = self.checkout("packages/project")
         (checkout / ".gitignore").write_text("ignored-by-tree\n")
         (checkout / ".git" / "info" / "exclude").write_text("ignored-locally\n")
         (checkout / "ignored-by-tree").mkdir()
         (checkout / "ignored-locally").mkdir()
 
-        ignores = self.ignores({}, {"packages/project": str(checkout)})
+        ignores = self.ignores({}, ["packages/project"])
 
         self.assertIn("packages/project/ignored-by-tree", ignores)
         self.assertIn("packages/project/ignored-locally", ignores)
@@ -2488,44 +2512,47 @@ class TestProjectIgnores(unittest.TestCase):
         self.assertEqual(tine.git_ignored_paths(checkout), ["ignored"])
 
     def test_buck_output_follows_checkout_ignore_rules(self) -> None:
-        checkout = self.checkout()
+        checkout = self.checkout("packages/project")
         output = checkout / "buck-out"
         output.mkdir()
         (output / "log").touch()
 
         self.assertEqual(tine.git_ignored_paths(checkout), [])
         self.assertEqual(
-            self.ignores({}, {"packages/project": str(checkout)}),
-            ["packages/project/BUCK", "packages/project/**/BUCK"],
+            self.ignores({}, ["packages/project"]),
+            [*tine.VCS_IGNORES, "packages/project/BUCK", "packages/project/**/BUCK"],
         )
 
         (checkout / ".gitignore").write_text("/buck-out\n")
         self.assertEqual(tine.git_ignored_paths(checkout), ["buck-out"])
-        self.assertIn("packages/project/buck-out", self.ignores({}, {"packages/project": str(checkout)}))
+        self.assertIn("packages/project/buck-out", self.ignores({}, ["packages/project"]))
 
     def test_tracked_paths_matching_gitignore_remain_visible(self) -> None:
-        checkout = self.checkout()
+        checkout = self.checkout("packages/project")
         (checkout / "tracked.generated").write_text("")
         git("add", "tracked.generated", cwd=checkout)
         (checkout / ".gitignore").write_text("*.generated\n")
 
-        self.assertNotIn(
-            "packages/project/tracked.generated", self.ignores({}, {"packages/project": str(checkout)})
+        self.assertNotIn("packages/project/tracked.generated", self.ignores({}, ["packages/project"]))
+        self.assertIn(
+            "packages/project/tracked.generated",
+            self.ignores(
+                {"project": {tine.PROJECT_IGNORE: "packages/project/tracked.generated"}},
+                ["packages/project"],
+            ),
         )
 
     def test_cell_build_files_remain_visible(self) -> None:
         for target in ("vendor/tine", "vendor"):
             with self.subTest(target=target):
                 self.assertEqual(
-                    self.ignores(
-                        {"cells": {"root": ".", "tine": "vendor/tine"}}, {target: "/checkout/tine"}
-                    ),
-                    [],
+                    self.ignores({"cells": {"root": ".", "tine": "vendor/tine"}}, [target]),
+                    list(tine.VCS_IGNORES),
                 )
 
     def test_a_local_project_ignore_is_refused_while_mounts_are_declared(self) -> None:
         # The generated block may carry the key from an earlier command; only what follows it counts.
-        mounts = {"packages/project": "/checkout/project"}
+        mounts = ["packages/project"]
         local = self.root / tine.LOCAL
         local.write_text(
             f"{tine.BLOCK_BEGIN}\n[project]\n{tine.PROJECT_IGNORE} = generated\n{tine.BLOCK_END}\n"
@@ -2533,6 +2560,7 @@ class TestProjectIgnores(unittest.TestCase):
         self.assertEqual(
             self.ignores({}, mounts),
             [
+                *tine.VCS_IGNORES,
                 "packages/project/BUCK",
                 "packages/project/**/BUCK",
             ],
@@ -2541,4 +2569,5 @@ class TestProjectIgnores(unittest.TestCase):
         local.write_text(local.read_text() + f"\n[project]\n{tine.PROJECT_IGNORE} = scratch\n")
         with self.assertRaisesRegex(SystemExit, "would replace the generated ignores"):
             self.ignores({}, mounts)
-        self.assertEqual(self.ignores({}, {}), [])
+        with self.assertRaisesRegex(SystemExit, "would replace the generated ignores"):
+            self.ignores({}, [])
