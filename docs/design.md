@@ -73,42 +73,113 @@ The package source tree lives in the OS.git repository (which consumes this `tin
 It is intentionally not part of the reusable `tine` cell: package policy and imported source data change
 independently of build machinery.
 
-### Building a path from outside the tree
+### Building with out-of-tree checkouts
 
 A cell root must be project-relative, so Buck cannot point a cell directly at an external directory.
-`tine mount` provides that indirection before Buck starts:
+`tine mount` records local overrides in `.buck/tine-mounts.toml`, mapping project-relative targets to
+absolute source directories. Targets are cell roots or local-checkout slots declared by `git_fetch()`.
+They cannot overlap or cover `.buck/` or `.buckconfig.d/`: nested mounts would depend on application
+order, and those directories hold the mount table and private configuration. Invalid declarations stop
+the command rather than silently falling back to the checked-in directory.
 
-- acquire a user namespace that maps the caller's uid;
-- create a mount namespace, which the kernel keeps private because a fresh user namespace owns it, so
-  nothing mounted in it reaches the host;
-- copy the root `.buckconfig` into a private tmpfs, append the mount digest as its daemon constraint, and
-  bind the copy over the original;
-- bind each declared source over its project-relative target;
-- re-execute `bin/tine` inside that namespace. If the tine cell is mounted, this runs the mounted copy,
-  keeping the rules and their command in sync.
+For example, `tine mount` can make `/work/lib` appear at `vendor/lib` inside a project. Tine sets up the
+bind mounts in a private mount namespace before starting the Buck client, so uncommitted source edits
+are visible without changing Buck's project-relative paths. If a mount covers the tine cell, the wrapper
+re-executes that checkout's `bin/tine`, keeping its command, rules, and Buck2 pin together.
 
-Buck continues to see project-relative paths while the bind mounts provide their contents.
+#### Matching clients and daemons
 
-Tine creates a regular unprivileged user namespace directly with `unshare(CLONE_NEWUSER)` and maps only
-the caller. It makes the namespace capabilities ambient so they survive `execve` and remain available to
-build actions.
+A build needs a daemon with the right mounts, but it should not be stuck with an old copy of every
+project setting. The Buck client sends build requests to a background process, the daemon. The daemon
+keeps the mounts it started with. Changing a mount declaration does not change that daemon's mounts.
 
-A Buck2 daemon stays in the namespace where it started. Every client creates a fresh equivalent namespace;
-the first one that starts a daemon supplies the namespace it remains in. Buck reads startup constraints
-directly from the root config without following includes, so the private copy appends `[buck2]
-daemon_buster` there. The digest covers the mount declarations, source inodes, and exact root config bytes.
-Buck therefore reuses a daemon with the same namespace inputs or replaces one while holding its own
-lifecycle lock. `.buckconfig.local` and files included by the root config remain live, while a root config
-edit conservatively replaces the daemon holding its old snapshot. `buck-out` remains valid because changed
-sources produce different input digests.
+Tine gives each set of mounts a label, called the mount digest, using the `[buck2] daemon_buster` setting.
+The Buck client reads that setting from its config files. If it starts a daemon, it passes the label to
+that daemon in its startup arguments. The daemon keeps that label and reports it to clients; it does not
+reread the config to update it. Each later client reads its own config and compares its label with the
+daemon's saved label before reusing the daemon.
 
-`TINE_MOUNTS` carries the digest and mount-namespace identity only across Tine's re-exec, preventing an
-inherited or manually exported value from skipping namespace creation. It is not a daemon protocol.
+Previously, Tine put that label in a private copy of `.buckconfig`. This also hid later edits to ordinary
+settings. For example, if the copy said `build.threads = 4` and the project changed it to `8`, processes
+using that copy would still read `4`. Only the mount information needs to be private, not the whole
+project config.
 
-Buck's default file watcher runs inside the daemon's namespace, so edits to mounted files invalidate the
-right targets without restarting the daemon. An external Watchman server would instead observe the
-unmounted tree and is not supported. Shell completion creates the same short-lived client namespace as a
-build so it sees the daemon constraint too.
+Putting the label in a shared file would introduce a different problem. Suppose two commands overlap,
+with no daemon running yet:
+
+1. Command A mounts `/work/lib-old` at `vendor/lib`, then pauses before starting its Buck client. Call
+   the label for these mounts "old".
+2. The mount declaration changes to `/work/lib-new`. Command B prepares those mounts and writes their
+   "new" label to the shared config, but has not started its Buck client yet.
+3. A's Buck client starts first. It reads "new" from the shared config and passes that label to a new
+   daemon. The daemon saves "new", but inherits A's mounts, which still point at `/work/lib-old`.
+4. B's Buck client reads "new" from the shared config and compares it with the label reported by the
+   daemon. Both say "new", so B's client reuses that daemon and builds against `/work/lib-old` by mistake.
+
+There is no mismatch for either client to detect. Killing mismatched daemons cannot help when the daemon
+has already been given the wrong label. The build can succeed while using the wrong checkout.
+
+Keep the label and the list of mounted project paths in a small private file,
+`.buckconfig.d/tine-mounts/config`. Each command sees its own version of this file: A sees "old" and B
+sees "new", even though the filename is the same. A private in-memory mount (`tmpfs`) provides that
+separation. The Buck client reads this file before deciding whether to reuse a daemon, and passes the
+label along if it starts a new one. The ordinary `.buckconfig` and `.buckconfig.local` files stay shared,
+so their edits remain visible.
+
+The root-cell config layers are read in order: `.buckconfig.d/`, `.buckconfig`, then `.buckconfig.local`.
+Tine rejects project-owned `[buck2] daemon_buster` and `[tine] dev` while mounts are declared so that a
+higher-precedence setting cannot replace the private label or mounted-path list.
+
+#### Identifying the mounted directory
+
+The label must describe the directory that was actually mounted. For example, after mounting `/work/lib`
+at `vendor/lib`, someone could move `/work/lib` to `/work/lib-retired` and put a new checkout at
+`/work/lib`. The existing mount still points to the original directory. Looking at `/work/lib` now would
+describe the replacement instead. Calculate the label after mounting, using the directory reached
+through `vendor/lib`. The digest includes the target path, source path, and mounted directory's inode.
+It omits the device number because btrfs can assign a new one each time a subvolume is mounted.
+
+When Tine restarts itself to use the mounted checkout's wrapper, it keeps using the saved list of mounted
+paths. It does not reread declarations that another command may already have changed. Git ignores are
+read through the mounted paths too, so they describe the checkout the build will use.
+
+#### Lock scope
+
+A `flock()` on `.buck/tine-mount.lock` protects edits to the mount table, covering the read, validation,
+and atomic replacement. Validation can run a nested `tine buck uquery` to discover new mount targets.
+Buck commands take no mount lock: otherwise that query would wait for the mount command that is waiting
+for the query.
+
+A build can read either the old or new table, but cannot see a partly written one. Replacing a source
+directory does not have to go through `tine mount`, so locking mount-table edits cannot prevent the
+source-replacement case above.
+
+The Buck client can still replace a daemon when the labels really do differ, interrupting its connected
+clients as usual. Replacement does not remove `buck-out`; the decision to retain one output directory
+is explained under [Use bind mounts for out-of-tree content](#use-bind-mounts-for-out-of-tree-content).
+
+#### Shared configuration and nested commands
+
+Before starting an ordinary Buck command, Tine refreshes its generated block in `.buckconfig.local`
+with project ignores and Git-derived image version components. Text outside that block is preserved.
+Configured ignores are merged with VCS metadata exclusions and Git ignores; a project-owned
+`[project] ignore` in `.buckconfig.local` is rejected because it would replace the generated list.
+The version components live under `[tine]` as `version-base`, `version-count`, `version-height`,
+`version-commit`, and, for uncommitted work, `version-dirty`. Each image renders those components against
+its own label budget; see "Image versioning" in [images.md](images.md).
+
+Generated settings go into a file rather than command-line flags because the daemon's file watcher
+reads its ignores from configuration files at startup, without command-line overrides. A file also
+avoids the 128 KiB limit on a single argument, and `buck2 complete` accepts no configuration flags.
+Target completion uses the cached Buck2 without downloading or rewriting shared configuration. Tine
+rewrites Buck2's completion script so target queries run through `tine buck` too.
+
+The selected tine checkout pins Buck2 in `tools/tools.json`. Projects can override the pin in the
+`[buck2]` table of `tine.toml` or `tine.local.toml`, with per-platform fields under
+`[buck2.platforms.<platform>]`.
+
+Tine exports the pinned binary's path as `BUCK2_BINARY`. A nested command inherits the current mounts and
+skips refreshing shared configuration underneath the build that started it.
 
 ### Component model
 

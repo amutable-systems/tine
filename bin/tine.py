@@ -43,7 +43,8 @@ MOUNT_CONFIG = f"{HOME}/tine-mounts.toml"
 MOUNT_TARGET_LABEL = "tine:mount-target"
 MARKER = "TINE_MOUNTS"
 MOUNT_LOCK = f"{HOME}/tine-mount.lock"
-PRIVATE_CONFIG = f"{HOME}/tine-mount/root.buckconfig"
+PRIVATE_MOUNTS = ".buckconfig.d/tine-mounts"
+PRIVATE_CONFIG = f"{PRIVATE_MOUNTS}/config"
 DAEMON_BUSTER = "daemon_buster"
 BUSTER_PREFIX = "tine-mounts-"
 PROJECT_IGNORE = "ignore"
@@ -392,8 +393,9 @@ def validate_mount_declaration(
     path = Path(target)
     if path.is_absolute() or ".." in path.parts or path == Path():
         fail(f"mount {target}: target must be a project-relative path")
-    if path.is_relative_to(HOME):
-        fail(f"mount {target}: {HOME} is reserved for tine")
+    for reserved in (HOME, ".buckconfig.d"):
+        if path.is_relative_to(reserved):
+            fail(f"mount {target}: {reserved} is reserved for tine")
     # mount table goes into a config value, ensure names don't break that
     if any(c.isspace() or c == "," for c in target):
         fail(f"mount {target}: target must not contain whitespace or commas")
@@ -429,26 +431,20 @@ def declared_mounts(root: Path) -> dict[str, str]:
     return mounts
 
 
-def mount_digest(mounts: dict[str, str], buckconfig: bytes) -> str | None:
-    """Return the digest used to match mount declarations to a Buck2 daemon.
+def mount_digest(root: Path, mounts: dict[str, str]) -> str:
+    """Identify the mounts a daemon inherited, including replaced source directories.
 
-    The root config is copied into the namespace, so changing it must replace the daemon holding that
-    snapshot. Include each source inode so replacing a directory at the same path does the same. Do not
-    include the device because btrfs may assign a new one each time a subvolume is mounted. No mounts
-    require no namespace, represented by None.
+    After mounting, read the target inode: the source path may already name a replacement directory.
+    Omit the device because btrfs can assign a new one each time a subvolume is mounted.
     """
-    if not mounts:
-        return None
     import hashlib
 
     digest = hashlib.sha256()
-    digest.update(len(buckconfig).to_bytes(8, byteorder="big"))
-    digest.update(buckconfig)
     for target, source in sorted(mounts.items()):
         try:
-            info = os.stat(source)
+            info = (root / target).stat()
         except OSError as error:
-            fail(f"mount {target}: cannot read {source}: {error}")
+            fail(f"mount {target}: cannot read {root / target}: {error}")
         digest.update(f"{target}\0{source}\0{info.st_ino}\0".encode())
     return digest.hexdigest()[:16]
 
@@ -778,44 +774,41 @@ def mount_namespace_marker(digest: str) -> str:
     return f"{digest} {namespace}"
 
 
-def constrained_config(buckconfig: bytes, digest: str, mounts: dict[str, str]) -> bytes:
-    """Append the mount namespace constraint and dev projects to an exact root config snapshot."""
-    gap = b"" if not buckconfig else b"\n" if buckconfig.endswith(b"\n") else b"\n\n"
-    constraint = f"[buck2]\n{DAEMON_BUSTER} = {BUSTER_PREFIX}{digest}\n"
-    table = f"[{SECTION}]\n{DEV} = {', '.join(sorted(mounts))}\n"
-    return buckconfig + gap + (constraint + table).encode()
+def namespace_mount_targets(root: Path) -> list[str] | None:
+    """Recover mounted targets without rereading mutable declarations or source paths."""
+    value = os.environ.get(MARKER, "")
+    digest = value.partition(" ")[0]
+    if not is_hex(digest, 16) or value != mount_namespace_marker(digest):
+        return None
+    path = root / PRIVATE_CONFIG
+    config = read_generated_buckconfig(path)
+    if DAEMON_BUSTER not in config.get("buck2", {}):
+        return None
+    if config.get("buck2", {}).get(DAEMON_BUSTER) != BUSTER_PREFIX + digest:
+        fail(f"{path}: does not match this invocation's mount namespace")
+    return [target.strip() for target in config.get(SECTION, {}).get(DEV, "").split(",") if target.strip()]
 
 
-def create_mount_namespace(root: Path, mounts: dict[str, str], digest: str, buckconfig: bytes) -> None:
-    """Create a mount namespace, constrain its daemon and apply every bind mount.
-
-    Set it up in this process so the re-executed command inherits it. The user namespace must come first
-    because it grants a non-root caller permission to mount.
-    """
-    private = root / PRIVATE_CONFIG
+def create_mount_namespace(root: Path, mounts: dict[str, str]) -> str:
+    """Keep the mount identity private while the project's ordinary config stays live."""
+    private = root / PRIVATE_MOUNTS
+    if resolved(private) != private:
+        fail(f"{private}: the private config directory must not be a symlink")
     try:
-        private.parent.mkdir(parents=True, exist_ok=True)
+        private.mkdir(parents=True, exist_ok=True)
     except OSError as error:
-        fail(f"cannot prepare {private.parent}: {error}")
-
+        fail(f"cannot prepare {private}: {error}")
     try:
-        # Always make a namespace, even with CAP_SYS_ADMIN, so mount authority stays scoped to this
-        # invocation.
+        # Always create a user namespace, even with CAP_SYS_ADMIN, to scope mount authority to this
+        # invocation. It must precede the mount namespace to grant a non-root caller mount permission.
         isolation.unprivileged_user_namespace(become_root=False)
         isolation.fix_user_namespace_capabilities(network=False)
         isolation.unshare(isolation.CLONE_NEWNS)
     except isolation.SandboxOSError as error:
-        # SandboxOSError carries the kernel or sysctl explanation in its message.
         print(error.message, file=sys.stderr)
         fail("cannot create the mount namespace")
     except OSError as error:
         fail(f"cannot create the mount namespace: {error}")
-
-    try:
-        isolation.mount(Path("tmpfs"), private.parent, "tmpfs", options="mode=0755")
-        private.write_bytes(constrained_config(buckconfig, digest, mounts))
-    except OSError as error:
-        fail(f"cannot prepare buck2's private root config: {error}")
 
     for target, source in mounts.items():
         try:
@@ -823,16 +816,27 @@ def create_mount_namespace(root: Path, mounts: dict[str, str], digest: str, buck
         except OSError as error:
             fail(f"mount {target}: cannot build it from {source}: {error}")
 
-    # The kernel applies a bind to a symlink's destination, which for a symlinked root config is a path
-    # outside the project; `validate_mount_declaration` refuses a declared target for the same reason.
-    original = root / ".buckconfig"
-    if resolved(original) != original:
-        fail(f"{original} is a symlink, so the daemon constraint cannot be bound over it")
+    digest = mount_digest(root, mounts)
+    # Buck reads startup settings from every root-cell config layer, but does not follow includes
+    # or apply command-line overrides there. A private fragment prevents another client from
+    # relabelling these mounts between our setup and Buck's first config read.
+    content = "\n".join(
+        [
+            BLOCK_BEGIN,
+            "[buck2]",
+            f"{DAEMON_BUSTER} = {BUSTER_PREFIX}{digest}",
+            f"[{SECTION}]",
+            f"{DEV} = {', '.join(sorted(mounts))}",
+            BLOCK_END,
+            "",
+        ]
+    )
     try:
-        # Buck reads daemon startup constraints directly from the root config without following includes.
-        isolation.mount(private, original, flags=isolation.MS_BIND)
+        isolation.mount(Path("tmpfs"), private, "tmpfs", options="mode=0755")
+        (root / PRIVATE_CONFIG).write_text(content)
     except OSError as error:
-        fail(f"cannot expose the mount digest to buck2: {error}")
+        fail(f"cannot prepare the private mount config: {error}")
+    return digest
 
 
 def cells_of(config: dict[str, dict[str, str]]) -> dict[str, str]:
@@ -843,9 +847,15 @@ def cells_of(config: dict[str, dict[str, str]]) -> dict[str, str]:
 def configured_mount_targets(root: Path) -> set[str]:
     """Existing project directories registered as cell roots."""
     targets: set[str] = set()
-    for value in cells_of(read_project_buckconfig(root)).values():
+    config = read_project_buckconfig(root)
+    for value in cells_of(config).values():
         path = Path(value)
-        if path == Path() or path.is_absolute() or ".." in path.parts or path.is_relative_to(HOME):
+        if (
+            path == Path()
+            or path.is_absolute()
+            or ".." in path.parts
+            or any(path.is_relative_to(reserved) for reserved in (HOME, ".buckconfig.d"))
+        ):
             continue
         target = path.as_posix()
         if (root / target).is_dir() and resolved(root / target) == root / target:
@@ -910,35 +920,16 @@ def mounted_wrapper_entrypoint(
     return command
 
 
-def reexec_in_mount_namespace(root: Path, config: dict[str, dict[str, str]], argv: list[str]) -> None:
+def reexec_in_mount_namespace(
+    root: Path, config: dict[str, dict[str, str]], mounts: dict[str, str], argv: list[str]
+) -> None:
     """Run this command in the namespace containing the declared mounts.
 
     Every client gets an equivalent namespace. Buck's daemon constraint reuses a daemon with the same
     mounts or replaces one with different mounts under Buck's own lifecycle lock.
     """
-    if os.environ.get("BUCK2_BINARY"):
-        # Tools launched by Buck already inherit the build's namespace.
-        return
-    mounts = declared_mounts(root)
-    if not mounts:
-        return
-    buster = config.get("buck2", {}).get(DAEMON_BUSTER)
-    if buster and buster.startswith(BUSTER_PREFIX):
-        digest = buster.removeprefix(BUSTER_PREFIX)
-        if is_hex(digest, 16) and os.environ.get(MARKER) == mount_namespace_marker(digest):
-            return
-    if buster is not None:
-        fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
-
-    try:
-        buckconfig = (root / ".buckconfig").read_bytes()
-    except OSError as error:
-        fail(f"cannot read {root / '.buckconfig'}: {error}")
-    digest = mount_digest(mounts, buckconfig)
-    assert digest is not None
-
     working = cwd()
-    create_mount_namespace(root, mounts, digest, buckconfig)
+    digest = create_mount_namespace(root, mounts)
     # Resolve both paths after mounting so paths below a target use the mounted tree.
     command = mounted_wrapper_entrypoint(root, config, mounts)
 
@@ -1344,6 +1335,7 @@ fi
 
 GITIGNORE = f"""/buck-out
 **/buck-out
+/{PRIVATE_MOUNTS}
 /{LOCAL}
 /{LOCAL}.*.tmp
 /{LOCAL_SETTINGS}
@@ -1364,6 +1356,13 @@ def buckconfig_overrides(settings: dict[str, dict[str, object]], source: Path) -
             if not re.fullmatch(r"[\w.-]+", key) or not buckconfig_value_round_trips(value) or "\0" in value:
                 fail(f"{description} {key!r} cannot be written to .buckconfig as it stands")
     return config
+
+
+def validate_mount_config(config: dict[str, dict[str, str]]) -> None:
+    """Keep higher-precedence project settings from overriding the private mount identity."""
+    for section, key in (("buck2", DAEMON_BUSTER), (SECTION, DEV)):
+        if key in config.get(section, {}):
+            fail(f"[{section}] {key} is reserved while mounts are declared")
 
 
 def render_project_buckconfig(source: Path, overrides: dict[str, dict[str, str]]) -> str:
@@ -1555,8 +1554,7 @@ def mount_command(root: Path, arguments: list[str]) -> None:
                 and target not in graph_mount_targets(root)
             ):
                 fail(f"mount {target}: not a valid target; `tine mount list` lists valid targets")
-            if DAEMON_BUSTER in read_project_buckconfig(root).get("buck2", {}):
-                fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
+            validate_mount_config(read_project_buckconfig(root))
             for other in declared:
                 if target != other and mount_targets_overlap(target, other):
                     fail(f"mount {target}: overlaps mount {other}")
@@ -1569,6 +1567,7 @@ def mount_command(root: Path, arguments: list[str]) -> None:
             declared[target] = str(source)
             message = f"{target} is built from {source}"
         # Preserve other entries without validation so a stale declaration can still be removed.
+        update_git_excludes(root, GITIGNORE)
         write_mounts(root, declared)
         print(f"tine: {message}", file=sys.stderr)
 
@@ -1603,9 +1602,7 @@ def glob_literal(value: str) -> str:
     return "".join("\\" + char if char in "\\*?{[" else char for char in value)
 
 
-def collect_project_ignores(
-    root: Path, config: dict[str, dict[str, str]], mounts: dict[str, str]
-) -> list[str]:
+def collect_project_ignores(root: Path, config: dict[str, dict[str, str]], mounts: list[str]) -> list[str]:
     """The project ignores, including Git-ignored paths and mounted checkouts' build files.
 
     glob() stops at an upstream BUCK file before applying its exclusions. Buck applies project
@@ -1624,7 +1621,7 @@ def collect_project_ignores(
     patterns += [glob_literal(path) for path in git_ignored_paths(root)]
 
     cell_roots = [Path(value) for value in cells_of(config).values()]
-    for target, source in sorted(mounts.items()):
+    for target in sorted(mounts):
         target_path = Path(target)
         # A cell mount must retain its own build files. A graph-declared checkout is the only other
         # kind of mount, including one nested inside a cell.
@@ -1632,38 +1629,70 @@ def collect_project_ignores(
             continue
         literal = glob_literal(target)
         patterns += [f"{literal}/{name}" for name in ("BUCK", "**/BUCK")]
-        patterns += [f"{literal}/{glob_literal(path)}" for path in git_ignored_paths(Path(source))]
+        patterns += [f"{literal}/{glob_literal(path)}" for path in git_ignored_paths(root / target)]
     return list(dict.fromkeys(patterns))
+
+
+def prepare_buck(root: Path, argv: list[str]) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """Prepare a command without rereading mounts after wrapper handover."""
+    mounts = namespace_mount_targets(root)
+    nested = bool(os.environ.get("BUCK2_BINARY"))
+    if mounts is None and not nested:
+        declared = declared_mounts(root)
+        if declared:
+            reexec_in_mount_namespace(root, read_project_buckconfig(root), declared, argv)
+        mounts = []
+    config = read_project_buckconfig(root)
+    if mounts:
+        validate_mount_config(config)
+    return config, mounts or []
 
 
 def buck_command(argv: list[str]) -> None:
     root = project_root(cwd())
     ensure_home(root)
-    config = read_project_buckconfig(root)
     settings = project_settings(root)
-
-    # A keypress in a completing shell must neither download nor rewrite shared configuration: it
-    # completes nothing until another command has fetched the binary, and must not race a build writing it.
     command = parse_buck_command(argv)
+    # A completing shell must neither download nor rewrite shared configuration on a keypress.
+    config, mounts = prepare_buck(root, ["buck", *argv])
     # Enter first so wrapper_cell_root() reads the mounted checkout's pin.
-    reexec_in_mount_namespace(root, config, ["buck", *argv])
     binary = buck2_binary(settings, wrapper_cell_root(), fetch=command.subcommand != "complete")
     if binary is None:
         return
-    if command.subcommand != "complete":
-        refresh_local_buckconfig(root, collect_project_ignores(root, config, declared_mounts(root)))
+    if command.subcommand != "complete" and not os.environ.get("BUCK2_BINARY"):
+        refresh_local_buckconfig(root, collect_project_ignores(root, config, mounts))
         if (cell := cells_of(config).get(CELL)) is not None and (checkout := root / cell) != root:
             # Buck resolves ignores within each cell, including in the daemon's file watcher.
             refresh_local_buckconfig(
-                checkout, collect_project_ignores(checkout, read_project_buckconfig(checkout), {})
+                checkout, collect_project_ignores(checkout, read_project_buckconfig(checkout), [])
             )
-    # BUCK2_BINARY so a tool Buck runs can nest a Buck2 command without coming through here again:
-    # another refresh mid-build would invalidate the configuration under it.
+    # BUCK2_BINARY lets a tool nest a Buck2 command without refreshing config under its build.
     environment = {"BUCK2_ARG0": "tine buck", "BUCK2_BINARY": str(binary)}
     try:
         os.execve(binary, [str(binary), *argv], os.environ | environment)
     except OSError as error:
         fail(f"cannot run {binary}: {error}")
+
+
+def completion_command(arguments: list[str]) -> None:
+    """Print the pinned Buck completion script in the configured namespace."""
+    if len(arguments) != 1 or arguments[0] not in SHELLS:
+        fail(f"completion takes one of {', '.join(SHELLS)}")
+    try:
+        root = project_root(cwd())
+    except SystemExit as error:
+        reason = str(error).removeprefix("tine: ")
+        fail(f"{reason}; the script comes out of the Buck2 a project pins")
+    ensure_home(root)
+    settings = project_settings(root)
+    prepare_buck(root, ["completion", *arguments])
+    configured = validate_commands(settings.get(COMMANDS, {}), str(root / CONFIG))
+    binary = buck2_binary(settings, wrapper_cell_root())
+    assert binary is not None
+    print(
+        rewrite_completion_script(_buck2_completion_script(binary, arguments[0]), arguments[0], configured),
+        end="",
+    )
 
 
 def usage(configured: dict[str, ProjectCommand]) -> str:
@@ -1702,23 +1731,7 @@ def main(argv: list[str]) -> None:
         # Before the project root is resolved, because writing one is what this is for.
         init_command(cwd(), rest)
     elif name == "completion":
-        if len(rest) != 1 or rest[0] not in SHELLS:
-            fail(f"completion takes one of {', '.join(SHELLS)}")
-        try:
-            root = project_root(cwd())
-        except SystemExit as error:
-            reason = str(error).removeprefix("tine: ")
-            fail(f"{reason}; the script comes out of the Buck2 a project pins")
-        ensure_home(root)
-        config = read_project_buckconfig(root)
-        settings = project_settings(root)
-        configured = validate_commands(settings.get(COMMANDS, {}), str(root / CONFIG))
-        reexec_in_mount_namespace(root, config, argv)
-        binary = buck2_binary(settings, wrapper_cell_root())
-        assert binary is not None
-        print(
-            rewrite_completion_script(_buck2_completion_script(binary, rest[0]), rest[0], configured), end=""
-        )
+        completion_command(rest)
     elif name in (*HELP, None):
         print(usage(configured), end="")
     elif project is not None and name in configured:
