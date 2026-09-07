@@ -196,6 +196,15 @@ class BuildRpm(unittest.TestCase):
         self.assertIsNone(cwd)
         self.assertEqual(binds, [(topdir, "/build"), (build_dir.absolute(), "/build/BUILD")])
 
+    def test_spec_symlink_cannot_write_outside_the_staged_checkout(self) -> None:
+        source = self.scratch / "checkout"
+        source.mkdir()
+        (source / "escape.spec").symlink_to(self.spec_file)
+        spec = self.specification(source, spec_file=source / "escape.spec")
+        with self.assertRaisesRegex(SystemExit, "spec symlink escapes"):
+            build.build_rpm(spec, self.scratch / "topdir")
+        self.assertEqual(self.spec_file.read_text(), "Name: example\n")
+
     def test_capture_makes_build_trees_removable_after_unmount(self) -> None:
         for persistent in (False, True):
             for outcome in (0, 1, RuntimeError("rpmbuild interrupted")):
