@@ -1231,12 +1231,112 @@ class TestNamespaces(MountTestCase):
             replacement.rename(self.source)
             with unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}):
                 config, targets = tine.prepare_buck(self.root, ["buck", "build"])
-            ignores = tine.collect_project_ignores(self.root, config, targets)
+            ignores = tine.collect_project_ignores(
+                self.root, config, targets, tine.namespace_gitdirs(self.root)
+            )
             self.assertIn("sub/original-output", ignores)
             self.assertNotIn("sub/replacement-output", ignores)
             return "mounted ignores"
 
         self.assertEqual(self.answer(mounted), "mounted ignores")
+
+    def test_mounted_relative_gitdir_keeps_its_metadata_and_worktree(self) -> None:
+        isolate_git(self)
+        metadata = scratch(self).resolve()
+        git("init", "--quiet", "--separate-git-dir", str(metadata), cwd=self.source)
+        pointer = f"gitdir: ../{metadata.name}\n"
+        (self.source / ".git").write_text(pointer)
+        git("config", "core.worktree", str(self.source), cwd=self.source)
+        (self.source / ".gitignore").write_text("/original-output\n/tracked-output\n")
+        (self.source / "original-output").mkdir()
+        (self.source / "tracked-output").touch()
+        git("add", "--force", "tracked-output", cwd=self.source)
+        (metadata / "info" / "exclude").write_text("/metadata-output\n")
+        (self.source / "metadata-output").mkdir()
+        replacement = scratch(self)
+        (replacement / ".gitignore").write_text("/replacement-output\n")
+        (replacement / "replacement-output").mkdir()
+        retired = scratch(self) / "retired"
+
+        def mounted() -> str:
+            digest = tine.create_mount_namespace(self.root, {"sub": str(self.source)})
+            self.source.rename(retired)
+            replacement.rename(self.source)
+            declare(self.root, {})
+            with unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}):
+                _, targets = tine.prepare_buck(self.root, ["buck", "build"])
+            ignores = tine.collect_project_ignores(
+                self.root, {"cells": {"root": "."}}, targets, tine.namespace_gitdirs(self.root)
+            )
+            self.assertIn("sub/original-output", ignores)
+            self.assertIn("sub/metadata-output", ignores)
+            self.assertNotIn("sub/tracked-output", ignores)
+            self.assertNotIn("sub/replacement-output", ignores)
+            self.assertEqual((self.root / "sub" / ".git").read_text(), pointer)
+            return "relative gitdir"
+
+        self.assertEqual(self.answer(mounted), "relative gitdir")
+        self.assertEqual((retired / ".git").read_text(), pointer)
+
+    def test_mounted_submodule_cell_keeps_its_gitignores(self) -> None:
+        isolate_git(self)
+        origin = scratch(self)
+        git("init", "--quiet", "--initial-branch=main", cwd=origin)
+        (origin / ".gitignore").write_text("/generated\n")
+        git("add", ".gitignore", cwd=origin)
+        git(
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "--quiet",
+            "--message",
+            "initial",
+            cwd=origin,
+        )
+        parent = scratch(self)
+        git("init", "--quiet", "--initial-branch=main", cwd=parent)
+        git(
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "--quiet",
+            str(origin),
+            "checkout",
+            cwd=parent,
+        )
+        source = parent / "checkout"
+        (source / "generated").mkdir()
+        (source / ".buckconfig").write_text(CELL_BUCKCONFIG)
+        # The checkout's private config belongs to another project, not this invocation.
+        private = source / tine.PRIVATE_CONFIG
+        private.parent.mkdir(parents=True)
+        private.write_text(f"{tine.BLOCK_BEGIN}\n[tine]\ngitdirs = invalid\n{tine.BLOCK_END}\n")
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = sub\n")
+
+        def mounted() -> str:
+            digest = tine.create_mount_namespace(self.root, {"sub": str(source)})
+            with (
+                contextlib.chdir(self.root),
+                unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}),
+                unittest.mock.patch.object(tine, "buck2_binary", return_value=self.root / "buck2"),
+                unittest.mock.patch.object(
+                    tine, "namespace_gitdirs", wraps=tine.namespace_gitdirs
+                ) as gitdirs,
+                unittest.mock.patch.object(os, "execve") as execve,
+            ):
+                tine.buck_command(["build", "tine//..."])
+            execve.assert_called_once()
+            gitdirs.assert_called_once_with(self.root)
+            config = tine.read_generated_buckconfig(self.root / "sub" / tine.LOCAL)
+            self.assertEqual(
+                config["project"][tine.PROJECT_IGNORE], ", ".join([*tine.VCS_IGNORES, "generated"])
+            )
+            return "submodule ignores"
+
+        self.assertEqual(self.answer(mounted), "submodule ignores")
 
     def test_private_config_directory_cannot_be_a_symlink(self) -> None:
         private = self.root / tine.PRIVATE_MOUNTS
@@ -1613,6 +1713,18 @@ class TestBuckCommand(unittest.TestCase):
         self.assertEqual(environment["BUCK2_BINARY"], str(self.binary))
         self.assertEqual(environment["BUCK2_ARG0"], "tine buck")
         self.assertTrue((self.root / tine.LOCAL).is_file())
+
+    def test_no_mounts_skip_private_git_metadata(self) -> None:
+        private = self.root / tine.PRIVATE_CONFIG
+        private.parent.mkdir(parents=True)
+        private.write_text(f"{tine.BLOCK_BEGIN}\n[tine]\ngitdirs = invalid\n{tine.BLOCK_END}\n")
+        with (
+            self.running() as execve,
+            unittest.mock.patch.object(tine, "namespace_gitdirs", wraps=tine.namespace_gitdirs) as gitdirs,
+        ):
+            tine.buck_command(["build", "//x"])
+        gitdirs.assert_not_called()
+        self.assertTrue(execve)
 
     def test_completing_writes_no_shared_config(self) -> None:
         defaults = Path(__file__).with_name("tine.buckconfig")
@@ -2468,7 +2580,7 @@ class TestProjectIgnores(unittest.TestCase):
         return checkout
 
     def ignores(self, config: dict[str, dict[str, str]], mounts: list[str]) -> list[str]:
-        return tine.collect_project_ignores(self.root, config, mounts)
+        return tine.collect_project_ignores(self.root, config, mounts, {})
 
     def test_mount_build_files_are_added_to_project_ignores(self) -> None:
         self.assertEqual(
@@ -2523,7 +2635,7 @@ class TestProjectIgnores(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("[project]\nignore = custom\n")
                 self.assertEqual(
-                    tine.collect_project_ignores(root, tine.read_project_buckconfig(root), []),
+                    tine.collect_project_ignores(root, tine.read_project_buckconfig(root), [], {}),
                     ["custom", *tine.VCS_IGNORES],
                 )
 

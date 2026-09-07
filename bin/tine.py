@@ -50,6 +50,7 @@ BUSTER_PREFIX = "tine-mounts-"
 PROJECT_IGNORE = "ignore"
 VCS_IGNORES = ("**/.git", "**/.jj", "**/.hg", "**/.svn")
 DEV = "dev"
+GITDIRS = "gitdirs"
 
 PINS = "tools/tools.json"
 
@@ -473,12 +474,14 @@ def _git(*args: str, directory: Path) -> str:
         fail(f"git {' '.join(args)} returned non-UTF-8 output: {error}")
 
 
-def git_ignored_paths(directory: Path) -> list[str]:
+def git_ignored_paths(directory: Path, *, gitdir: str | None = None) -> list[str]:
     """Return minimal untracked roots matched by checkout-local Git ignores."""
     if not (directory / ".git").exists():
         return []
 
     output = _git_bytes(
+        # A submodule's core.worktree can still name its original, now replaced checkout.
+        *([f"--git-dir={gitdir}", "--work-tree=."] if gitdir is not None else []),
         # Include info/exclude with Git's normal precedence, but not machine-wide ignore files.
         "-c",
         "core.excludesFile=/dev/null",
@@ -789,8 +792,23 @@ def namespace_mount_targets(root: Path) -> list[str] | None:
     return [target.strip() for target in config.get(SECTION, {}).get(DEV, "").split(",") if target.strip()]
 
 
+def namespace_gitdirs(root: Path) -> dict[Path, str]:
+    """Map mounted gitfile checkouts to their saved Git metadata directories."""
+    import json
+
+    path = root / PRIVATE_CONFIG
+    value = read_generated_buckconfig(path).get(SECTION, {}).get(GITDIRS, "{}")
+    try:
+        gitdirs = string_table(json.loads(value), str(path))
+        return {root / target: gitdir for target, gitdir in gitdirs.items()}
+    except ValueError as error:
+        fail(f"{path}: invalid private Git directories: {error}")
+
+
 def create_mount_namespace(root: Path, mounts: dict[str, str]) -> str:
     """Keep the mount identity private while the project's ordinary config stays live."""
+    import json
+
     private = root / PRIVATE_MOUNTS
     if resolved(private) != private:
         fail(f"{private}: the private config directory must not be a symlink")
@@ -810,7 +828,12 @@ def create_mount_namespace(root: Path, mounts: dict[str, str]) -> str:
     except OSError as error:
         fail(f"cannot create the mount namespace: {error}")
 
+    gitdirs: dict[str, str] = {}
     for target, source in mounts.items():
+        # Git resolves relative gitfile pointers against the original checkout, not its bind target.
+        # Ordinary .git directories stay accessible through the mount and need no extra state.
+        if (Path(source) / ".git").is_file():
+            gitdirs[target] = _git("rev-parse", "--absolute-git-dir", directory=Path(source))
         try:
             isolation.mount(Path(source), root / target, flags=isolation.MS_BIND | isolation.MS_REC)
         except OSError as error:
@@ -827,6 +850,7 @@ def create_mount_namespace(root: Path, mounts: dict[str, str]) -> str:
             f"{DAEMON_BUSTER} = {BUSTER_PREFIX}{digest}",
             f"[{SECTION}]",
             f"{DEV} = {', '.join(sorted(mounts))}",
+            *([f"{GITDIRS} = {json.dumps(gitdirs, sort_keys=True)}"] if gitdirs else []),
             BLOCK_END,
             "",
         ]
@@ -1602,7 +1626,12 @@ def glob_literal(value: str) -> str:
     return "".join("\\" + char if char in "\\*?{[" else char for char in value)
 
 
-def collect_project_ignores(root: Path, config: dict[str, dict[str, str]], mounts: list[str]) -> list[str]:
+def collect_project_ignores(
+    root: Path,
+    config: dict[str, dict[str, str]],
+    mounts: list[str],
+    gitdirs: Mapping[Path, str],
+) -> list[str]:
     """The project ignores, including Git-ignored paths and mounted checkouts' build files.
 
     glob() stops at an upstream BUCK file before applying its exclusions. Buck applies project
@@ -1618,7 +1647,7 @@ def collect_project_ignores(root: Path, config: dict[str, dict[str, str]], mount
     patterns = [entry.strip() for entry in config.get("project", {}).get(PROJECT_IGNORE, "").split(",")]
     # Git's ignored-path listing does not include VCS metadata.
     patterns = [entry for entry in patterns if entry] + list(VCS_IGNORES)
-    patterns += [glob_literal(path) for path in git_ignored_paths(root)]
+    patterns += [glob_literal(path) for path in git_ignored_paths(root, gitdir=gitdirs.get(root))]
 
     cell_roots = [Path(value) for value in cells_of(config).values()]
     for target in sorted(mounts):
@@ -1629,7 +1658,10 @@ def collect_project_ignores(root: Path, config: dict[str, dict[str, str]], mount
             continue
         literal = glob_literal(target)
         patterns += [f"{literal}/{name}" for name in ("BUCK", "**/BUCK")]
-        patterns += [f"{literal}/{glob_literal(path)}" for path in git_ignored_paths(root / target)]
+        patterns += [
+            f"{literal}/{glob_literal(path)}"
+            for path in git_ignored_paths(root / target, gitdir=gitdirs.get(root / target))
+        ]
     return list(dict.fromkeys(patterns))
 
 
@@ -1660,11 +1692,13 @@ def buck_command(argv: list[str]) -> None:
     if binary is None:
         return
     if command.subcommand != "complete" and not os.environ.get("BUCK2_BINARY"):
-        refresh_local_buckconfig(root, collect_project_ignores(root, config, mounts))
+        gitdirs = namespace_gitdirs(root) if mounts else {}
+        refresh_local_buckconfig(root, collect_project_ignores(root, config, mounts, gitdirs))
         if (cell := cells_of(config).get(CELL)) is not None and (checkout := root / cell) != root:
             # Buck resolves ignores within each cell, including in the daemon's file watcher.
             refresh_local_buckconfig(
-                checkout, collect_project_ignores(checkout, read_project_buckconfig(checkout), [])
+                checkout,
+                collect_project_ignores(checkout, read_project_buckconfig(checkout), [], gitdirs),
             )
     # BUCK2_BINARY lets a tool nest a Buck2 command without refreshing config under its build.
     environment = {"BUCK2_ARG0": "tine buck", "BUCK2_BINARY": str(binary)}
