@@ -87,6 +87,10 @@ def _build_rpm(spec: Spec, topdir: Path) -> int:
         if ".." in relative_spec.parts:
             util.fail(f"build_rpm: RPM spec must stay within the source tree: {relative_spec}")
         staged_spec = topdir / "CHECKOUT" / relative_spec
+        # Freezing runs before chroot: an escaping spec symlink must not write into the checkout
+        # through another path in the outer sandbox.
+        if not staged_spec.resolve().is_relative_to((topdir / "CHECKOUT").resolve()):
+            util.fail(f"build_rpm: RPM spec symlink escapes the source tree: {relative_spec}")
         source_spec = staged_spec
         chroot_spec = Path("/build/CHECKOUT") / relative_spec
         sourcedir = chroot_spec.parent
