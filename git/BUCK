@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
+"""Assertions over local checkout artifacts."""
+
+load("//box:defs.bzl", "box")
+load(":defs.bzl", "git")
+
+git.checkout(
+    name = "fixture",
+    sub_targets = ["input"],
+)
+
+# An empty checkout still declares its sub-targets. A project that names a sub-target of a checkout can
+# then be analyzed while the checkout is empty. Whole-graph analysis covers `:empty[missing]`. Building
+# `:empty[missing]` would fail, because the empty checkout contains no path `missing`.
+git.checkout(
+    name = "empty",
+    sub_targets = ["missing"],
+)
+
+# The checkout's directory overrides this fetch, so its revision is deliberately a placeholder.
+git.fetch(
+    name = "fixture.git",
+    repo = "https://github.com/example/fixture",
+    rev = "1111111111111111111111111111111111111111",
+)
+
+# A committed directory overrides every other fetch in this cell, so nothing else evaluates the macro's
+# git_fetch() branch. Compatible with no platform, so `tine//...` declares it without fetching anything.
+git.fetch(
+    name = "remote.git",
+    repo = "https://github.com/example/remote",
+    rev = "1111111111111111111111111111111111111111",
+    target_compatible_with = ["prelude//:none"],
+)
+
+box.sh_test(
+    name = "checkout-test",
+    box = "tine//tools:dev.box",
+    script = """
+        # Buck ignores `.hg`, so neither the checkout nor the fetch override may contain it.
+        for tree in "$1" "$4"; do
+            [[ "$(cat "$tree/input")" == source ]]
+            [[ ! -e "$tree/.hg" ]]
+            # An incremental build compares timestamps, so the copy must keep the timestamp of the
+            # committed file. The copy can be older than the committed file, because Buck does not copy a
+            # file again when only its timestamp changes.
+            [[ "$(stat -c %Y "$tree/input")" -le "$(stat -c %Y git/fixture/input)" ]]
+        done
+        [[ "$(cat "$2")" == source ]]
+        [[ -d "$3" ]]
+        [[ -z "$(ls -A "$3")" ]]
+    """,
+    args = [
+        "$(location :fixture)",
+        "$(location :fixture[input])",
+        "$(location :empty)",
+        "$(location :fixture.git)",
+    ],
+)
