@@ -37,10 +37,9 @@ attribute of an image or composition.
 A **catalog** is a Buck package that declares which OS releases are available to build against. For each
 release it bundles the repository definitions, the release identity and its package sets, a package
 manager (the pinned solve environment that images start from), a buildroot for package builds, and a
-box. The default catalog is [`tine//catalog`](../catalog/BUCK) and currently declares three releases:
+box. The default catalog is [`tine//catalog`](../catalog/BUCK) and currently declares these releases:
 
 - `fedora.rawhide`: pinned to an rpmrepo compose snapshot, so packages never vanish underneath the pins
-- `fedora.44`
 - `arch.rolling`: pinned to a day in the Arch Linux Archive, whose dated trees serve databases that never
   change under a committed pin
 
