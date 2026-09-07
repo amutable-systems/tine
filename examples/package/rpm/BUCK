@@ -33,7 +33,6 @@ box.sh_test(
 rpm.package(
     name = "hello-dev",
     package = "hello",
-    spec = "hello/hello.spec",
     buildroot = _BUILDROOT,
     build_requires = ["gcc"],
     dev = True,
@@ -56,11 +55,10 @@ box.sh_test(
 )
 
 # The same checkout built for release from an in-tree dist-git rather than in dev mode.
-# This is the only one that gets into the shared cache.
+# Like the archive build, and unlike the two dev builds, it reaches the shared cache.
 rpm.package(
     name = "hello-tree",
     package = "hello",
-    spec = "hello/hello.spec",
     buildroot = _BUILDROOT,
     build_requires = ["gcc"],
     in_place_spec = "rpm/hello.spec",
@@ -78,5 +76,30 @@ box.sh_test(
     args = [
         "$(source hello_tree_check.py)",
         "$(location :hello-tree)",
+    ],
+)
+
+# A source tree named by its directory rather than through a checkout target.
+rpm.package(
+    name = "explicit-tree",
+    package = "hello",
+    buildroot = _BUILDROOT,
+    build_requires = ["gcc"],
+    dev = True,
+    in_place_spec = "rpm/hello.spec",
+    release = "1",
+    source_date_epoch = 1754006400,
+    source_tree = "hello.source",
+    subpackages = ["hello"],
+)
+
+box.sh_test(
+    name = "explicit-tree-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = 'python3 "$@"',
+    args = [
+        "$(source hello_dev_check.py)",
+        "$(location :explicit-tree)",
     ],
 )

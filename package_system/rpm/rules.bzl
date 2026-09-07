@@ -75,6 +75,8 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
         ]
 
     source_tree = ctx.attrs.source_tree
+    if ctx.attrs.copy_source_tree:
+        source_tree = project.digested(ctx.actions, _PRIVATE + "/source", source_tree)
     rpms = ctx.actions.declare_output("rpms", dir = True)
     build_dir = ctx.actions.declare_output(_PRIVATE + "/build", dir = True) if ctx.attrs.configured_dev else None
     in_place_spec = ctx.attrs.in_place_spec if source_tree != None else None
@@ -109,7 +111,13 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
             },
         ),
     )
-    ctx.actions.run(build, category = "rpmbuild", allow_cache_upload = not ctx.attrs.configured_dev, no_outputs_cleanup = ctx.attrs.configured_dev)
+    ctx.actions.run(
+        build,
+        category = "rpmbuild",
+        no_outputs_cleanup = ctx.attrs.configured_dev,
+        # Live checkouts can contain ignored files, unlike fetched trees and explicit archive inputs.
+        allow_cache_upload = not ctx.attrs.configured_dev and (source_tree == None or not source_tree.is_source),
+    )
 
     sub_targets = {s: [DefaultInfo(default_output = out)] for s, out in sub_outputs.items()}
     sub_targets["buildroot"] = [DefaultInfo(default_outputs = buildroot)]
@@ -142,6 +150,9 @@ _rpm_package = rule(
         ),
         "configured_dev": attrs.bool(
             doc = "whether project configuration selects this package for dev mode",
+        ),
+        "copy_source_tree": attrs.bool(
+            doc = "source_tree is a directory of this package, built from the copy Buck digested",
         ),
         "dist": attrs.string(default = ".aos"),
         "in_place_rpmbuild_options": attrs.list(
@@ -193,6 +204,9 @@ def rpm_package(
         source = name + ".source"
         populated = git.checkout(name = source)
         source_tree = ":" + source if populated else None
+    if spec != None and source_tree != None and project.is_directory(source_tree) and spec.startswith(source_tree.rstrip("/") + "/"):
+        # The tree is built from a copy, where a path into the directory no longer points.
+        fail("rpm_package {}: select a spec inside source_tree with in_place_spec".format(name))
     if spec == None and (source_tree == None or in_place_spec == None):
         spec = package + ".spec"
     _rpm_package(
@@ -200,6 +214,7 @@ def rpm_package(
         package = package,
         spec = spec,
         configured_dev = project.is_dev(name, source = source_tree, override = dev),
+        copy_source_tree = source_tree != None and project.is_directory(source_tree),
         source_tree = source_tree,
         in_place_rpmbuild_options = in_place_rpmbuild_options,
         in_place_spec = in_place_spec,

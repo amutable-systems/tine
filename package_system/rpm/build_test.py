@@ -1,11 +1,12 @@
 """Tests for the RPM build driver."""
 
 import contextlib
+import os
 import shutil
 import subprocess
 import tempfile
 import unittest
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import cast, override
 from unittest import mock
@@ -49,21 +50,29 @@ class BuildRpm(unittest.TestCase):
         )
 
     def invoke(
-        self, spec: build.Spec
+        self, spec: build.Spec, inspect: Callable[[Path], None] | None = None
     ) -> tuple[list[str], Path | None, dict[str, str], Path, list[tuple[str | Path, str | Path]]]:
         """Run the driver with its isolation and rpmbuild process observed."""
         topdir = self.scratch / "topdir"
-        completed = subprocess.CompletedProcess([], 0)
+        completed = subprocess.CompletedProcess[str]([], 0)
+
+        def run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            if inspect is not None:
+                inspect(topdir)
+            return completed
+
         with (
             mock.patch.object(build.rootfs, "rootfs", return_value=contextlib.nullcontext()) as mounted,
-            mock.patch.object(build.subprocess, "run", return_value=completed) as run,
+            mock.patch.object(build.subprocess, "run", side_effect=run) as process,
+            # Patch the module wrapper first so TemporaryDirectory still uses the real rmtree.
+            mock.patch.object(build, "shutil", mock.Mock(wraps=shutil)),
             mock.patch.object(build.shutil, "rmtree") as remove,
         ):
             self.assertEqual(build.build_rpm(spec, topdir), 0)
         remove.assert_called_once_with(topdir)
-        command = cast(list[str], run.call_args.args[0])
-        cwd = cast(Path | None, run.call_args.kwargs["cwd"])
-        environment = cast(dict[str, str], run.call_args.kwargs["env"])
+        command = cast(list[str], process.call_args.args[0])
+        cwd = cast(Path | None, process.call_args.kwargs["cwd"])
+        environment = cast(dict[str, str], process.call_args.kwargs["env"])
         binds = cast(list[tuple[str | Path, str | Path]], mounted.call_args.kwargs["binds"])
         return command, cwd, environment, topdir, binds
 
@@ -83,13 +92,17 @@ class BuildRpm(unittest.TestCase):
         frozen = (topdir / "SPECS" / "example.spec").read_text()
         self.assertTrue(frozen.startswith("%global autorelease 7%{?dist}\n%global autochangelog %{nil}\n"))
 
-    def test_source_tree_builds_in_place_from_a_disposable_copy(self) -> None:
+    def test_source_tree_builds_in_place_from_a_disposable_overlay(self) -> None:
         source = self.scratch / "checkout"
         (source / "nested").mkdir(parents=True)
         (source / "nested" / "payload").write_text("local checkout\n")
         (source / "nested" / "parent").symlink_to("..")
 
-        command, cwd, _environment, topdir, binds = self.invoke(self.specification(source))
+        def inspect(topdir: Path) -> None:
+            self.assertEqual((topdir / "CHECKOUT" / "nested" / "payload").read_text(), "local checkout\n")
+            self.assertEqual((topdir / "CHECKOUT" / "nested" / "parent").readlink(), Path(".."))
+
+        command, cwd, _environment, topdir, binds = self.invoke(self.specification(source), inspect)
 
         self.assertIn("-bb", command)
         self.assertIn("--noprep", command)
@@ -105,8 +118,7 @@ class BuildRpm(unittest.TestCase):
         self.assertEqual(command[-1], "/build/SPECS/example.spec")
         self.assertEqual(binds, [(topdir, "/build")])
         self.assertEqual(cwd, Path("/build/CHECKOUT"))
-        self.assertEqual((topdir / "CHECKOUT" / "nested" / "payload").read_text(), "local checkout\n")
-        self.assertEqual((topdir / "CHECKOUT" / "nested" / "parent").readlink(), Path(".."))
+        self.assertEqual(list((topdir / "CHECKOUT").iterdir()), [])
         self.assertEqual((topdir / "SOURCES" / "auxiliary").read_text(), "packaging input\n")
         self.assertEqual((source / "nested" / "payload").read_text(), "local checkout\n")
 
@@ -119,18 +131,24 @@ class BuildRpm(unittest.TestCase):
         (packaging / "helper").write_text("checkout helper\n")
 
         specification = self.specification(source, spec_file=local_spec)
-        command, cwd, _environment, topdir, _binds = self.invoke(specification)
+
+        def inspect(topdir: Path) -> None:
+            frozen = (topdir / "CHECKOUT" / "packaging" / "fedora" / "local.spec").read_text()
+            self.assertTrue(
+                frozen.startswith("%global autorelease 7%{?dist}\n%global autochangelog %{nil}\n")
+            )
+            self.assertIn("Name: from-checkout\n", frozen)
+            self.assertEqual(
+                (topdir / "CHECKOUT" / "packaging" / "fedora" / "helper").read_text(),
+                "checkout helper\n",
+            )
+
+        command, cwd, _environment, topdir, _binds = self.invoke(specification, inspect)
 
         self.assertEqual(command[-1], "/build/CHECKOUT/packaging/fedora/local.spec")
         self.assertIn("_sourcedir /build/CHECKOUT/packaging/fedora", command)
         self.assertEqual(cwd, Path("/build/CHECKOUT"))
-        frozen = (topdir / "CHECKOUT" / "packaging" / "fedora" / "local.spec").read_text()
-        self.assertTrue(frozen.startswith("%global autorelease 7%{?dist}\n%global autochangelog %{nil}\n"))
-        self.assertIn("Name: from-checkout\n", frozen)
-        self.assertEqual(
-            (topdir / "CHECKOUT" / "packaging" / "fedora" / "helper").read_text(),
-            "checkout helper\n",
-        )
+        self.assertEqual(list((topdir / "CHECKOUT").iterdir()), [])
         self.assertFalse((topdir / "SOURCES" / "auxiliary").exists())
         self.assertEqual(local_spec.read_text(), "Name: from-checkout\nSource1: helper\n")
 
@@ -196,14 +214,88 @@ class BuildRpm(unittest.TestCase):
         self.assertIsNone(cwd)
         self.assertEqual(binds, [(topdir, "/build"), (build_dir.absolute(), "/build/BUILD")])
 
+    def test_source_overlay_is_disposable_even_after_failure(self) -> None:
+        self.check_source_overlay(persistent=False)
+
+    def test_persistent_source_overlay_is_disposable_even_after_failure(self) -> None:
+        self.check_source_overlay(persistent=True)
+
+    def check_source_overlay(self, *, persistent: bool) -> None:
+        source = self.scratch / "checkout"
+        source.mkdir()
+        original = source / "original"
+        original.write_text("checkout\n")
+        os.utime(original, ns=(1234567890123456789, 1234567890123456789))
+        (source / "link").symlink_to("original")
+        (source / "readonly").mkdir(mode=0o555)
+        (source / ".wh.literal").write_text("ordinary checkout file\n")
+        before = original.stat()
+        build_dir = self.scratch / "persistent" if persistent else None
+        spec = self.specification(source, build_dir=build_dir)
+        for index, outcome in enumerate((0, 1, RuntimeError("interrupted"), 0)):
+            with self.subTest(outcome=outcome):
+                topdir = self.scratch / f"topdir-{index}"
+
+                def run(
+                    *_args: object,
+                    stage: Path = topdir,
+                    iteration: int = index,
+                    result: int | RuntimeError = outcome,
+                    **_kwargs: object,
+                ) -> subprocess.CompletedProcess[str]:
+                    merged = stage / "CHECKOUT"
+                    self.assertEqual((merged / "original").stat().st_mtime_ns, before.st_mtime_ns)
+                    self.assertEqual((merged / "link").readlink(), Path("original"))
+                    self.assertTrue((merged / ".wh.literal").is_file())
+                    self.assertFalse((merged / "generated").exists())
+                    self.assertEqual((merged / "readonly").stat().st_mode & 0o777, 0o555)
+                    (merged / "link").write_text("RPM changed this\n")
+                    (merged / "original").unlink()
+                    (merged / "generated").write_text("discard\n")
+                    (merged / "readonly").chmod(0o700)
+                    if build_dir is not None:
+                        state = build_dir / "state"
+                        self.assertEqual(state.read_text() if state.exists() else "0", str(iteration))
+                        state.write_text(str(iteration + 1))
+                    if isinstance(result, RuntimeError):
+                        raise result
+                    return subprocess.CompletedProcess([], result)
+
+                with (
+                    mock.patch.object(build.rootfs, "rootfs", return_value=contextlib.nullcontext()),
+                    mock.patch.object(build.subprocess, "run", side_effect=run),
+                    mock.patch.object(build.shutil, "copytree", side_effect=AssertionError("source copy")),
+                ):
+                    if isinstance(outcome, RuntimeError):
+                        with self.assertRaisesRegex(RuntimeError, "interrupted"):
+                            build.build_rpm(spec, topdir)
+                    else:
+                        self.assertEqual(build.build_rpm(spec, topdir), outcome)
+                self.assertEqual(original.read_text(), "checkout\n")
+                self.assertEqual(original.stat().st_mtime_ns, before.st_mtime_ns)
+                self.assertEqual((source / "readonly").stat().st_mode & 0o777, 0o555)
+                self.assertFalse((source / "generated").exists())
+                if outcome == 0:
+                    self.assertFalse(topdir.exists())
+                else:
+                    self.assertEqual(list((topdir / "CHECKOUT").iterdir()), [])
+
     def test_spec_symlink_cannot_write_outside_the_staged_checkout(self) -> None:
         source = self.scratch / "checkout"
         source.mkdir()
         (source / "escape.spec").symlink_to(self.spec_file)
-        spec = self.specification(source, spec_file=source / "escape.spec")
-        with self.assertRaisesRegex(SystemExit, "spec symlink escapes"):
-            build.build_rpm(spec, self.scratch / "topdir")
-        self.assertEqual(self.spec_file.read_text(), "Name: example\n")
+        for persistent in (False, True):
+            with self.subTest(persistent=persistent):
+                topdir = self.scratch / f"topdir-{persistent}"
+                spec = self.specification(
+                    source,
+                    build_dir=self.scratch / "persistent" if persistent else None,
+                    spec_file=source / "escape.spec",
+                )
+                with self.assertRaisesRegex(SystemExit, "spec symlink escapes"):
+                    build.build_rpm(spec, topdir)
+                self.assertEqual(self.spec_file.read_text(), "Name: example\n")
+                self.assertEqual(list((topdir / "CHECKOUT").iterdir()), [])
 
     def test_capture_makes_build_trees_removable_after_unmount(self) -> None:
         for persistent in (False, True):

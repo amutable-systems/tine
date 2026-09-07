@@ -57,39 +57,41 @@ class Spec(TypedDict):
 
 def build_rpm(spec: Spec, topdir: Path = Path("/var/tmp/topdir")) -> int:
     """Build the RPMs described by `spec` in action scratch space."""
-    with rootfs.capture_on_exit(topdir):
-        rc = _build_rpm(spec, topdir)
+    if not spec["lower"]:
+        util.fail("build_rpm: the buildroot stack cannot be empty")
+    # Action scratch space, which is what the sandbox backs /var/tmp with. Buck clears it before each
+    # execution, so a fixed name neither collides with a preserved failed tree nor accumulates across
+    # builds.
+    topdir.mkdir(parents=True, exist_ok=True)
+    source_tree = spec["source_tree"]
+    checkout = topdir / "CHECKOUT" if source_tree is not None else None
+    with (
+        rootfs.capture_on_exit(topdir),
+        rootfs.source_overlay(Path(source_tree), checkout)
+        if source_tree is not None and checkout is not None
+        else nullcontext(),
+    ):
+        rc = _build_rpm(spec, topdir, checkout)
     if rc == 0:
         shutil.rmtree(topdir)
     return rc
 
 
-def _build_rpm(spec: Spec, topdir: Path) -> int:
-    if not spec["lower"]:
-        util.fail("build_rpm: the buildroot stack cannot be empty")
-
-    # Use action scratch space, which is what the sandbox backs /var/tmp with. Buck clears it
-    # before each execution, so a fixed name neither collides with a preserved failed tree nor
-    # accumulates across builds.
+def _build_rpm(spec: Spec, topdir: Path, checkout: Path | None) -> int:
+    # In-place builds generate files in the caller's disposable checkout, kept separate from SOURCES.
+    # RPM runs in a chroot; only the escape-checked spec freeze writes into the checkout before it.
     for d in ("SOURCES", "SPECS", "BUILD", "BUILDROOT", "RPMS", "SRPMS"):
-        (topdir / d).mkdir(parents=True)
-    source_tree = spec["source_tree"]
-    if source_tree is not None:
-        # Inputs are immutable artifacts, while build-in-place projects routinely generate files in
-        # their checkout. Keep this writable copy separate from RPM's SOURCES archives and patches.
-        # Keep symlinks as symlinks: a tree may link a directory to its own parent, and following that
-        # copies it into itself until the path length runs out.
-        shutil.copytree(source_tree, topdir / "CHECKOUT", symlinks=True)
-
+        (topdir / d).mkdir()
     spec_file = Path(spec["spec_file"])
-    if source_tree is not None and spec_file.is_relative_to(source_tree):
+    source_tree = spec["source_tree"]
+    if checkout is not None and source_tree is not None and spec_file.is_relative_to(source_tree):
         relative_spec = spec_file.relative_to(source_tree)
         if ".." in relative_spec.parts:
             util.fail(f"build_rpm: RPM spec must stay within the source tree: {relative_spec}")
-        staged_spec = topdir / "CHECKOUT" / relative_spec
+        staged_spec = checkout / relative_spec
         # Freezing runs before chroot: an escaping spec symlink must not write into the checkout
         # through another path in the outer sandbox.
-        if not staged_spec.resolve().is_relative_to((topdir / "CHECKOUT").resolve()):
+        if not staged_spec.resolve().is_relative_to(checkout.resolve()):
             util.fail(f"build_rpm: RPM spec symlink escapes the source tree: {relative_spec}")
         source_spec = staged_spec
         chroot_spec = Path("/build/CHECKOUT") / relative_spec
@@ -151,7 +153,7 @@ def _build_rpm(spec: Spec, topdir: Path) -> int:
         mode = ["-ba"]
         options = spec["rpmbuild_options"] + (_INCREMENTAL_RPMBUILD_OPTIONS if build_dir is not None else [])
         cwd = None
-        if source_tree is not None:
+        if checkout is not None:
             mode = ["-bb", "--noprep", "--build-in-place"]
             options += spec["in_place_rpmbuild_options"]
             cwd = Path("/build/CHECKOUT")
@@ -183,7 +185,7 @@ def _build_rpm(spec: Spec, topdir: Path) -> int:
             util.clone_file(f, out / f.name, allow_link=True)
             if not f.name.endswith(".src.rpm"):
                 produced[f.name] = f
-    source_output = "" if source_tree is not None else " + srpm"
+    source_output = "" if checkout is not None else " + srpm"
     print(f"collected {len(produced)} binary rpms{source_output} into {out}", file=sys.stderr)
 
     if spec["subpackages"]:
