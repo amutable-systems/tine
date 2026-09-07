@@ -12,7 +12,7 @@ import os
 import shutil
 import stat
 import tempfile
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
 from enum import Enum, auto
 from pathlib import Path
@@ -181,6 +181,68 @@ def capture_on_exit(tree: str | Path) -> Iterator[Path]:
 # Root setup.
 
 
+@contextmanager
+def source_overlay(source: Path, target: Path) -> Iterator[Path]:
+    """Mount `source` at `target` as an overlay, and discard every write when the context exits.
+
+    `rootfs()` decodes the `.wh.` and `.esc.` marker files of a stored image layer. This function
+    does not, because a checkout is not an image layer and can contain such names.
+    """
+    with ExitStack() as stack:
+        scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="source.")))
+        upper, work = scratch / "upper", scratch / "work"
+        upper.mkdir()
+        work.mkdir()
+        # Make sure the root directory has the source mode and times rather than the tmpdir
+        # mode and times.
+        source_attributes = source.stat()
+        upper.chmod(stat.S_IMODE(source_attributes.st_mode))
+        os.utime(upper, ns=(source_attributes.st_atime_ns, source_attributes.st_mtime_ns))
+        # A child process can keep a file descriptor open in the mount, and a normal unmount then
+        # fails with EBUSY.
+        stack.enter_context(Overlay((source,), upper, work, target, lazy_unmount=True))
+        yield target
+
+
+@contextmanager
+def readonly_project(project: Path, outputs: Mapping[Path, Path]) -> Iterator[None]:
+    """Make `project` read-only and change into it, but keep each output directory writable.
+
+    `outputs` maps an output directory under `project` to a mount point outside `project`.
+    """
+    project = project.absolute()
+    if len(set(outputs.values())) != len(outputs):
+        raise ValueError(f"readonly_project: outputs share a mount point: {sorted(outputs)}")
+    # ExitStack runs this callback last, after every unmount. An earlier chdir() would change into
+    # the read-only bind of `project`, and getcwd() fails once the unmount has detached that bind.
+    with ExitStack() as stack:
+        stack.callback(os.chdir, os.getcwd())
+        # Mount the outputs before `project` becomes read-only. A bind of a directory on a read-only
+        # mount is read-only too.
+        for output, mounted in outputs.items():
+            # A build of an older revision can have declared this output on a content-based path.
+            # Buck then left a symlink to the content-based path at the plain path, and a kept action
+            # never removes that symlink. `kept_dir` in project/defs.bzl describes the problem. The
+            # bind would follow the symlink out of `project`.
+            if (project / output).is_symlink():
+                (project / output).unlink()
+            # The bind and mkdir() follow a symlink in any component of the path, not only in the
+            # last component. For an output whose resolved path is outside `project`, mkdir() would
+            # create directories outside `project`, and the bind would make an outside directory
+            # writable for the build. The check runs after the removal of the stale symlink above.
+            resolved = Path(os.path.realpath(project / output))
+            if not resolved.is_relative_to(os.path.realpath(project)):
+                raise ValueError(f"readonly_project: output leaves the project: {output} -> {resolved}")
+            (project / output).mkdir(parents=True, exist_ok=True)
+            stack.enter_context(Bind(project / output, mounted))
+        # The read-only bind covers `project`, but the working directory of this process still
+        # refers to the writable mount underneath. Change into `project` again, so that relative
+        # paths of this process and of its children resolve through the read-only bind.
+        stack.enter_context(Bind(project, project, readonly=True))
+        os.chdir(project)
+        yield
+
+
 def _apivfs(stack: ExitStack, target: Path) -> None:
     """Mount the API and temporary filesystems expected by package scripts."""
     tty = Path(os.ttyname(2)) if os.isatty(2) else None
@@ -188,21 +250,21 @@ def _apivfs(stack: ExitStack, target: Path) -> None:
     stack.enter_context(Bind(Path("/proc"), target / "proc"))
     stack.enter_context(Tmpfs(target / "run"))
 
-    # The same split the sandbox makes for its own (box/sandbox.py): /tmp is a tmpfs, for small
-    # and short-lived files, and everything large belongs under /var/tmp, which gets Buck's on-disk
-    # per-action scratch directory rather than RAM -- package scripts stage gigabytes there. Buck
-    # clears the scratch path before each execution, so the backing neither accumulates nor collides
-    # with an earlier run's leftovers. Outside a run action there is no scratch directory (`buck run`
-    # on a box, and `buck test`), and a tmpfs is all that is available.
+    # The root splits temporary space as box/sandbox.py does. /tmp is a tmpfs for small files that
+    # live briefly. /var/tmp is on disk, because package scripts stage gigabytes there. `buck run`
+    # on a box and `buck test` have no scratch directory, so /var/tmp is a tmpfs there as well.
     stack.enter_context(Tmpfs(target / "tmp"))
 
-    staging = os.environ.get("BUCK_SCRATCH_PATH")
-    if staging is None:
+    if "BUCK_SCRATCH_PATH" not in os.environ:
         stack.enter_context(Tmpfs(target / "var/tmp"))
     else:
-        Path(staging).mkdir(parents=True, exist_ok=True)
-        # A unique name per call: one action can mount several roots.
-        backing = Path(tempfile.mkdtemp(dir=staging, prefix="var-tmp."))
+        # In a run action, TMPDIR is the scratch directory that the sandbox mounts. The scratch
+        # directory is inside the project but stays writable when `readonly_project()` makes the
+        # project read-only. The backing directory gets a unique name, because one action can mount
+        # several roots.
+        backing = Path(
+            stack.enter_context(tempfile.TemporaryDirectory(prefix="var-tmp.", ignore_cleanup_errors=True))
+        )
         backing.chmod(0o1777)  # what a tmpfs mounted on /var/tmp defaults to
         stack.enter_context(Bind(backing, target / "var/tmp"))
 
