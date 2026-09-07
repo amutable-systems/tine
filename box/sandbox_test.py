@@ -56,6 +56,10 @@ def _binds(launch: sandbox.Launch) -> list[Bind]:
     return [filesystem for filesystem in launch.sandbox.filesystems if isinstance(filesystem, Bind)]
 
 
+def _bind_specs(launch: sandbox.Launch) -> list[tuple[Path, Path, bool, bool]]:
+    return [(bind.source, bind.target, bind.readonly, bind.nofollow) for bind in _binds(launch)]
+
+
 def _symlinks(launch: sandbox.Launch) -> list[Symlink]:
     return [filesystem for filesystem in launch.sandbox.filesystems if isinstance(filesystem, Symlink)]
 
@@ -88,7 +92,9 @@ class TestHermetic(unittest.TestCase):
         with _project() as (_, tools):
             launch = _launch("--tools", str(tools), "--", "true")
 
-            self.assertIn(Symlink(Path("usr/bin"), Path("/bin")), _symlinks(launch))
+            self.assertIn(
+                (Path("usr/bin"), Path("/bin")), [(link.source, link.target) for link in _symlinks(launch)]
+            )
             self.assertNotIn(tools / "bin", [bind.source for bind in _binds(launch)])
 
     def test_tools_directories_are_bound_read_only(self) -> None:
@@ -106,8 +112,11 @@ class TestHermetic(unittest.TestCase):
 
             for name in ("proc", "sys", "dev", "run", "tmp", "boot"):
                 self.assertNotIn(tools / name, [bind.source for bind in _binds(launch)])
-            self.assertIn(Bind(Path("/proc"), Path("/proc")), _binds(launch))
-            self.assertIn(Devices(Path("/dev")), launch.sandbox.filesystems)
+            self.assertIn((Path("/proc"), Path("/proc"), False, False), _bind_specs(launch))
+            self.assertIn(
+                (Path("/dev"), None),
+                [(fs.target, fs.tty) for fs in launch.sandbox.filesystems if isinstance(fs, Devices)],
+            )
             self.assertEqual(
                 [tmpfs.target for tmpfs in _tmpfs(launch)], list(map(Path, ("/run", "/tmp", "/var/tmp")))
             )
@@ -116,7 +125,7 @@ class TestHermetic(unittest.TestCase):
         with _project() as (project, tools):
             launch = _launch("--tools", str(tools), "--bind-cwd", "--", "true")
 
-            self.assertIn(Bind(project, Path(_PROJECT)), _binds(launch))
+            self.assertIn((project, Path(_PROJECT), False, False), _bind_specs(launch))
             self.assertEqual(launch.sandbox.chdir, Path(_PROJECT))
 
     def test_tools_directory_on_the_project_path_is_bound_like_any_other(self) -> None:
@@ -128,7 +137,7 @@ class TestHermetic(unittest.TestCase):
 
             launch = _launch("--tools", str(tools), "--bind-cwd", "--", "true")
 
-            self.assertIn(Bind(occupied, Path("/") / occupied.name, readonly=True), _binds(launch))
+            self.assertIn((occupied, Path("/") / occupied.name, True, False), _bind_specs(launch))
 
     def test_absolute_project_paths_in_the_command_follow_the_mount(self) -> None:
         with _project() as (project, tools):
@@ -173,7 +182,7 @@ class TestHermetic(unittest.TestCase):
                 launch = _launch("--tools", str(tools), "--bind-cwd", "--", "true")
 
             self.assertNotIn(Path("/var/tmp"), [tmpfs.target for tmpfs in _tmpfs(launch)])
-            self.assertIn(Bind(project / "scratch/var-tmp", Path("/var/tmp")), _binds(launch))
+            self.assertIn((project / "scratch/var-tmp", Path("/var/tmp"), False, False), _bind_specs(launch))
             self.assertTrue((project / "scratch/var-tmp").is_dir())
 
     def test_network_replaces_the_unshared_namespace(self) -> None:
@@ -181,10 +190,10 @@ class TestHermetic(unittest.TestCase):
             launch = _launch("--tools", str(tools), "--network", "--", "true")
 
             self.assertFalse(launch.sandbox.isolate_network)
-            self.assertIn(Bind(Path("/run"), Path("/run"), readonly=True), _binds(launch))
+            self.assertIn((Path("/run"), Path("/run"), True, False), _bind_specs(launch))
             self.assertIn(
-                Bind(Path("/etc/resolv.conf"), Path("/etc/resolv.conf"), readonly=True, nofollow=True),
-                _binds(launch),
+                (Path("/etc/resolv.conf"), Path("/etc/resolv.conf"), True, True),
+                _bind_specs(launch),
             )
 
     def test_builds_get_fakeroot_semantics(self) -> None:
@@ -201,7 +210,7 @@ class TestRelaxed(unittest.TestCase):
         with _project() as (project, tools):
             launch = _launch("--tools", str(tools), "--relaxed", "--", "true")
 
-            self.assertIn(Bind(tools / "usr", Path("/usr"), readonly=True), _binds(launch))
+            self.assertIn((tools / "usr", Path("/usr"), True, False), _bind_specs(launch))
             self.assertEqual(launch.sandbox.chdir, project)
             self.assertFalse(launch.sandbox.isolate_network)
             self.assertFalse(launch.sandbox.become_root)

@@ -3,11 +3,13 @@
 import ctypes
 import errno
 import os
+from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from types import TracebackType
+from typing import Self, cast, override
 
 AT_EMPTY_PATH = 0x1000
 AT_FDCWD = -100
@@ -35,6 +37,7 @@ CLONE_NEWUSER = 0x10000000
 LINUX_CAPABILITY_U32S_3 = 2
 LINUX_CAPABILITY_VERSION_3 = 0x20080522
 MNT_DETACH = 2
+UMOUNT_NOFOLLOW = 8
 MOUNT_ATTR_RDONLY = 0x00000001
 MOUNT_ATTR_SIZE_VER0 = 32
 MOVE_MOUNT_F_EMPTY_PATH = 0x00000004
@@ -535,22 +538,54 @@ def _resolve(root: Path, path: Path, *, nofollow: bool = False) -> Path:
     return _under(root, resolved)
 
 
-@dataclass(frozen=True)
-class Bind:
-    source: Path
-    target: Path
-    readonly: bool = False
-    nofollow: bool = False
+class _Mount(ABC):
+    _unmount_flags: int = 0
 
-    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> None:
+    def __init__(self, target: Path) -> None:
+        self.target = target
+        self._mounted_target: Path | None = None
+
+    @abstractmethod
+    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> Path:
+        """Mount permanently and return the actual mount point."""
+
+    def __enter__(self) -> Self:
+        if self._mounted_target is not None:
+            raise RuntimeError("mount context is already entered")
+        self._mounted_target = self.mount()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        assert self._mounted_target is not None
+        # Do not resolve the user's path again: cwd or a symlink may have changed in the body.
+        umount2(self._mounted_target, self._unmount_flags | UMOUNT_NOFOLLOW)
+        self._mounted_target = None
+
+
+class Bind(_Mount):
+    _unmount_flags = MNT_DETACH
+
+    def __init__(self, source: Path, target: Path, readonly: bool = False, nofollow: bool = False) -> None:
+        super().__init__(target)
+        self.source = source
+        self.readonly = readonly
+        self.nofollow = nofollow
+
+    @override
+    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> Path:
         source = _resolve(old_root, self.source, nofollow=self.nofollow)
         source_is_link = self.nofollow and source.is_symlink()
         source_is_directory = source.is_dir() and not source_is_link
-        unresolved_target = _under(new_root, self.target)
+        unresolved_target = _resolve(new_root, self.target, nofollow=True)
 
         if not source_is_directory and unresolved_target.is_symlink():
             _bind_mount(source, unresolved_target, readonly=self.readonly)
-            return
+            return unresolved_target
 
         target = _resolve(new_root, self.target)
         if not target.exists():
@@ -561,18 +596,30 @@ class Bind:
                 target.mkdir(mode=0o755)
 
         _bind_mount(source, target, readonly=self.readonly)
+        return target
 
 
-@dataclass(frozen=True)
-class Devices:
-    target: Path
-    tty: Path | None = None
+class Devices(_Mount):
+    _unmount_flags = MNT_DETACH
 
-    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> None:
+    def __init__(self, target: Path, tty: Path | None = None) -> None:
+        super().__init__(target)
+        self.tty = tty
+
+    @override
+    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> Path:
         target = _resolve(new_root, self.target)
         target.mkdir(mode=0o755, parents=True, exist_ok=True)
         mount(Path("tmpfs"), target, "tmpfs", options="mode=0755")
 
+        with ExitStack() as stack:
+            # A later device bind can fail after the parent tmpfs is already mounted.
+            stack.callback(umount2, target, MNT_DETACH)
+            self._populate(old_root, target)
+            stack.pop_all()
+        return target
+
+    def _populate(self, old_root: Path, target: Path) -> None:
         for name in ("null", "zero", "full", "random", "urandom", "tty", "fuse"):
             source = _under(old_root, Path("/dev") / name)
             if name == "fuse" and not source.exists():
@@ -598,22 +645,23 @@ class Devices:
             mount(_under(old_root, self.tty), destination, flags=MS_BIND)
 
 
-@dataclass(frozen=True)
-class Tmpfs:
-    target: Path
+class Tmpfs(_Mount):
+    _unmount_flags = MNT_DETACH
 
-    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> None:
+    @override
+    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> Path:
         target = _resolve(new_root, self.target)
         target.mkdir(mode=0o755, parents=True, exist_ok=True)
 
         options = None if target.name in ("tmp", "var/tmp") else "mode=0755"
         mount(Path("tmpfs"), target, "tmpfs", options=options)
+        return target
 
 
-@dataclass(frozen=True)
 class Symlink:
-    source: Path
-    target: Path
+    def __init__(self, source: Path, target: Path) -> None:
+        self.source = source
+        self.target = target
 
     def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> None:
         target = _under(new_root, self.target)
@@ -626,14 +674,15 @@ class Symlink:
                 raise
 
 
-@dataclass(frozen=True)
-class Overlay:
-    lowerdirs: tuple[Path, ...]
-    upperdir: Path
-    workdir: Path
-    target: Path
+class Overlay(_Mount):
+    def __init__(self, lowerdirs: tuple[Path, ...], upperdir: Path, workdir: Path, target: Path) -> None:
+        super().__init__(target)
+        self.lowerdirs = lowerdirs
+        self.upperdir = upperdir
+        self.workdir = workdir
 
-    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> None:
+    @override
+    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> Path:
         lowers = tuple(_resolve(old_root, path) for path in self.lowerdirs)
         upper = _resolve(old_root, self.upperdir)
         work = _resolve(old_root, self.workdir)
@@ -658,6 +707,7 @@ class Overlay:
         )
 
         mount(Path("overlayfs"), target, "overlay", options=options)
+        return target
 
 
 Filesystem = Bind | Devices | Tmpfs | Symlink | Overlay

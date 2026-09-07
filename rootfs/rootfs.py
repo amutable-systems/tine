@@ -15,12 +15,10 @@ from enum import Enum, auto
 from pathlib import Path
 
 from isolation import (
-    MNT_DETACH,
     Bind,
     Devices,
     Overlay,
     Tmpfs,
-    umount2,
 )
 from isolation import (
     chroot as _chroot,
@@ -180,19 +178,12 @@ def capture_on_exit(tree: str | Path) -> Iterator[Path]:
 # Root setup.
 
 
-def _bind(src: str | Path, dst: str | Path) -> None:
-    Bind(Path(src), Path(dst)).mount()
-
-
 def _apivfs(stack: ExitStack, target: Path) -> None:
     """Mount the API and temporary filesystems expected by package scripts."""
     tty = Path(os.ttyname(2)) if os.isatty(2) else None
-    Devices(target / "dev", tty).mount()
-    stack.callback(umount2, target / "dev", MNT_DETACH)
-    _bind("/proc", target / "proc")
-    stack.callback(umount2, target / "proc", MNT_DETACH)
-    Tmpfs(target / "run").mount()
-    stack.callback(umount2, target / "run", MNT_DETACH)
+    stack.enter_context(Devices(target / "dev", tty))
+    stack.enter_context(Bind(Path("/proc"), target / "proc"))
+    stack.enter_context(Tmpfs(target / "run"))
 
     # The same split the sandbox makes for its own (box/sandbox.py): /tmp is a tmpfs, for small
     # and short-lived files, and everything large belongs under /var/tmp, which gets Buck's on-disk
@@ -200,19 +191,17 @@ def _apivfs(stack: ExitStack, target: Path) -> None:
     # clears the scratch path before each execution, so the backing neither accumulates nor collides
     # with an earlier run's leftovers. Outside a run action there is no scratch directory (`buck run`
     # on a box, and `buck test`), and a tmpfs is all that is available.
-    Tmpfs(target / "tmp").mount()
-    stack.callback(umount2, target / "tmp", MNT_DETACH)
+    stack.enter_context(Tmpfs(target / "tmp"))
 
     staging = os.environ.get("BUCK_SCRATCH_PATH")
     if staging is None:
-        Tmpfs(target / "var/tmp").mount()
+        stack.enter_context(Tmpfs(target / "var/tmp"))
     else:
         Path(staging).mkdir(parents=True, exist_ok=True)
         # A unique name per call: one action can mount several roots.
         backing = Path(tempfile.mkdtemp(dir=staging, prefix="var-tmp."))
         backing.chmod(0o1777)  # what a tmpfs mounted on /var/tmp defaults to
-        _bind(backing, target / "var/tmp")
-    stack.callback(umount2, target / "var/tmp", MNT_DETACH)
+        stack.enter_context(Bind(backing, target / "var/tmp"))
 
 
 @contextmanager
@@ -262,25 +251,22 @@ def rootfs(
                 upper, work = scratch / "upper", scratch / "work"
             upper.mkdir(parents=True, exist_ok=True)
             work.mkdir(parents=True, exist_ok=True)
-            Overlay(tuple(components), upper, work, target).mount()
             if upperdir is not None:
                 # Enter before registering the unmount so capture runs after it.
                 stack.enter_context(capture_on_exit(upper))
-            stack.callback(umount2, target, 0)
+            stack.enter_context(Overlay(tuple(components), upper, work, target))
         elif bind is not None:
-            _bind(bind, target)
             if capture_bind:
                 # Enter before registering the unmount so capture runs after it.
                 stack.enter_context(capture_on_exit(bind))
-            stack.callback(umount2, target, MNT_DETACH)
+            stack.enter_context(Bind(Path(bind), target))
         else:
             raise ValueError("rootfs needs bind= or lowers=")
         if apivfs:
             _apivfs(stack, target)
         for src, dst in binds or []:
             dest = target / str(dst).lstrip("/")
-            _bind(src, dest)  # Bind creates the mountpoint itself
-            stack.callback(umount2, dest, MNT_DETACH)
+            stack.enter_context(Bind(Path(src), dest))
         if chroot:
             # Enter last so callbacks resolve paths after the chroot unwinds.
             stack.enter_context(_chroot(target))
