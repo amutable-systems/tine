@@ -641,6 +641,22 @@ class TestMountAdd(MountTestCase):
         self.mount("add", str(self.root / "sub"), str(other))
         self.assertEqual(self.declared(), {"sub": str(other)})
 
+    def test_add_repairs_a_missing_source_without_querying_the_graph(self) -> None:
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\n")
+        declare(self.root, {"sub": "/nonexistent/source"})
+        with unittest.mock.patch.object(tine, "graph_mount_targets") as query:
+            self.mount("add", str(self.root / "sub"), str(self.source))
+        query.assert_not_called()
+        self.assertEqual(self.declared(), {"sub": str(self.source)})
+
+    def test_add_does_not_validate_unrelated_stale_mounts(self) -> None:
+        (self.root / "other").mkdir()
+        declare(self.root, {"other": "/nonexistent/source"})
+        self.mount("add", str(self.root / "sub"), str(self.source))
+        self.assertEqual(
+            tine.local_mounts(self.root), {"other": "/nonexistent/source", "sub": str(self.source)}
+        )
+
     def test_add_does_not_rewrite_buckconfig_local(self) -> None:
         local = self.root / tine.LOCAL
         local.write_text("[build]\nthreads = 4\n")
