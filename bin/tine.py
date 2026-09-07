@@ -1512,7 +1512,12 @@ def mount_command(root: Path, arguments: list[str]) -> None:
         source = resolved(Path(args.source))
         # Validate before writing so this command cannot create an unusable declaration.
         validate_mount_declaration(root, target, str(source), allow_missing_target=True)
-        if target not in configured_mount_targets(root) and target not in graph_mount_targets(root):
+        # Repairing an existing declaration must not need a graph query using its missing source.
+        if (
+            target not in local_mounts(root)
+            and target not in configured_mount_targets(root)
+            and target not in graph_mount_targets(root)
+        ):
             fail(f"mount {target}: not a valid target; `tine mount list` lists valid targets")
 
     declared = local_mounts(root)
