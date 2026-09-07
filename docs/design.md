@@ -199,14 +199,16 @@ optional generated forms:
   The target's `.repository` or `.box` suffix is not repeated in the snapshot filename;
 - `snapshot/key/<FINGERPRINT>.key` holds one signing key a repository declares. The declaration in the
   catalog's BUCK names the key by fingerprint, which is what a reviewer checks against the distribution's
-  published one, together with the URL to fetch it from.
+  published one, together with the URL to fetch it from. `refresh-catalog` fetches a missing key file
+  once and never updates it: a key is immutable by fingerprint, and whether the file is the declared key
+  is checked by the build with the package system's own tools, not by the refresh.
 
 A box with a resolver box and no committed transaction resolves through that predecessor as a normal
 cacheable build action. The generated transaction is an input to the existing dynamic package selectors,
 so the box builds in one invocation without mutating the source tree. Its package selection changes only
 when its authored policy, resolver box, or pinned repository inputs change.
 
-`tine buck run tine//tools:refresh-catalog` refreshes the default `tine//catalog` package in three
+`tine buck run tine//tools:refresh-catalog` refreshes the default `tine//catalog` package in several
 phases. Pass another catalog package after `--`, for example
 `tine buck run tine//tools:refresh-catalog -- my_project//catalog`:
 
@@ -222,15 +224,17 @@ phases. Pass another catalog package after `--`, for example
    Advancing is scoped to the repositories the same run is about to re-snapshot: a base URL from one
    snapshot composing package locations pinned in another builds nothing. `verify-catalog` skips this
    phase and checks the committed pins.
-1. Run every remote repository's `[snapshot]` sub-target on the host. The snapshot driver downloads and
+1. Fetch every signing key the selected repositories declare and the catalog does not hold yet, on the
+   host. `verify-catalog` reports a missing one.
+2. Run every remote repository's `[snapshot]` sub-target on the host. The snapshot driver downloads and
    verifies repository metadata, drops unused streams, validates package locations, and writes
    deterministic, pure snapshot JSON. It does not carry packages forward from an earlier snapshot.
-2. Run the selected boxes' `[resolve]` sub-targets against the freshly pinned repository trees and
+3. Run the selected boxes' `[resolve]` sub-targets against the freshly pinned repository trees and
    atomically replace their optional frozen transactions. The target box's release, repository
    selection, package list, and architecture define the solve.
 
-Both phases take the result from the driver's stdout: a resolve runs in a sandbox that binds the project
-and nothing else, so stdout is the one destination that needs no writable path. The tool then atomically
+Snapshot and resolve take the result from the driver's stdout: a resolve runs in a sandbox that binds the
+project and nothing else, so stdout is the one destination that needs no writable path. The tool then atomically
 replaces the committed file, or, for `verify-catalog`, compares in memory and leaves the checkout as it
 found it.
 
