@@ -5,6 +5,7 @@
 
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//git:defs.bzl", "git")
 load("//project:defs.bzl", "project")
 
 _PRIVATE = "__tine"
@@ -191,9 +192,9 @@ def go_package(
     root, and is read once the source has been built, so a project whose tree arrives from a fetch
     needs nothing committed here.
     """
-    _go_package(
-        name = name,
-        incremental = project.is_dev(name, source = src, override = dev),
-        src = src if src != None else name,
-        **kwargs,
-    )
+    incremental = project.is_dev(name, source = src, override = dev)
+    if src == None or not (":" in src or "//" in src):
+        # Build a directory of this package from a copy of the files that Buck digested, the same way
+        # as a checkout slot.
+        src = git.source(name + ".src", src if src != None else name)
+    _go_package(name = name, incremental = incremental, src = src, **kwargs)

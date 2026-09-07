@@ -129,4 +129,3 @@ How the modules are pinned, fetched and verified is described under "Go source b
 - **A committed `vendor/` tree is ignored**, because the build passes `-mod=readonly`, and an explicit
   `-mod` is what turns off go's habit of preferring a vendor directory. Every module comes from the
   `go.sum` either way.
-- **`go.work` workspaces are refused**, because a workspace spans modules where this rule builds one.

@@ -205,6 +205,15 @@ def clone_file(src: Path, dst: Path, allow_link: bool = False) -> None:
     shutil.copymode(src, dst)
 
 
+def named_files(source: Path, name: str) -> list[Path]:
+    """Find files called `name` under `source`, and return their paths relative to `source`."""
+    found: list[Path] = []
+    for directory, _, files in source.walk():
+        if name in files:
+            found.append((directory / name).relative_to(source))
+    return sorted(found)
+
+
 def take_binaries(built: Path, binaries: dict[str, str], *, tool: str, where: str) -> None:
     """Copy each declared binary out of a build tree.
 
