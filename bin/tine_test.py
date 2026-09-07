@@ -12,10 +12,12 @@ import json
 import os
 import re
 import runpy
+import select
 import signal
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -885,6 +887,96 @@ class TestDeclaredMounts(MountTestCase):
         mount_config(self.root).write_text('[commands.check]\nsteps = [["buck"]]\n')
         with self.assertRaisesRegex(SystemExit, "owned by `tine mount`.*unsupported keys"):
             self.declared()
+
+
+class TestMountUpdates(MountTestCase):
+    @contextlib.contextmanager
+    def process(self, code: str, *args: str) -> collections.abc.Iterator[subprocess.Popen[str]]:
+        prefix = f"import sys\nsys.path[:] = {sys.path!r}\nimport tine\n"
+        with subprocess.Popen(
+            [sys.executable, "-c", prefix + textwrap.dedent(code), str(self.root), *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        ) as process:
+            try:
+                yield process
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate(timeout=5)
+
+    def line(self, process: subprocess.Popen[str]) -> str:
+        assert process.stdout is not None
+        self.assertTrue(select.select([process.stdout], [], [], 5)[0], "child did not respond")
+        line = process.stdout.readline().strip()
+        if not line:
+            assert process.stderr is not None
+            self.fail(process.stderr.read())
+        return line
+
+    def wait_for_lock(self, process: subprocess.Popen[str]) -> None:
+        self.assertEqual(self.line(process), "ready")
+        assert process.stderr is not None
+        self.assertTrue(select.select([process.stderr], [], [], 5)[0], "child did not wait")
+        self.assertEqual(
+            process.stderr.readline().strip(), "tine: waiting for another mount update to finish"
+        )
+
+    def test_concurrent_mount_updates_preserve_both_entries(self) -> None:
+        (self.root / "other").mkdir()
+        code = """
+            from pathlib import Path
+            print("ready", flush=True)
+            tine.mount_command(Path(sys.argv[1]), ["add", sys.argv[2], sys.argv[3]])
+            print("updated", flush=True)
+        """
+        with contextlib.ExitStack() as cleanup:
+            with tine.mount_table_lock(self.root):
+                client = cleanup.enter_context(self.process(code, str(self.root / "sub"), str(self.source)))
+                self.wait_for_lock(client)
+                declare(self.root, {"other": str(self.source)})
+            self.assertEqual(self.line(client), "updated")
+            self.assertEqual(client.wait(timeout=5), 0)
+        self.assertEqual(tine.local_mounts(self.root), {"other": str(self.source), "sub": str(self.source)})
+
+    def test_removed_mount_is_revalidated_after_waiting_for_lock(self) -> None:
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\n")
+        declare(self.root, {"sub": "/nonexistent/source"})
+        code = """
+            from pathlib import Path
+            from unittest.mock import patch
+            print("ready", flush=True)
+            with patch.object(tine, "graph_mount_targets", return_value=set()):
+                tine.mount_command(Path(sys.argv[1]), ["add", sys.argv[2], sys.argv[3]])
+        """
+        with contextlib.ExitStack() as cleanup:
+            with tine.mount_table_lock(self.root):
+                client = cleanup.enter_context(self.process(code, str(self.root / "sub"), str(self.source)))
+                self.wait_for_lock(client)
+                declare(self.root, {})
+            _, stderr = client.communicate(timeout=5)
+            self.assertEqual(client.returncode, 1, stderr)
+            self.assertIn("mount sub: not a valid target", stderr)
+        self.assertEqual(self.declared(), {})
+
+    def test_builds_can_update_mount_declarations(self) -> None:
+        # Builds hold no lock, so their nested mount commands must remain allowed.
+        with unittest.mock.patch.dict(os.environ, {"BUCK2_BINARY": "buck2"}):
+            self.mount("add", str(self.root / "sub"), str(self.source))
+        self.assertEqual(self.declared(), {"sub": str(self.source)})
+
+    def test_lock_parent_creation_error_is_reported(self) -> None:
+        (self.root / tine.HOME).touch()
+        with self.assertRaisesRegex(SystemExit, "cannot prepare .* for locking"):
+            with tine.mount_table_lock(self.root):
+                self.fail("lock unexpectedly acquired")
+
+    def test_lock_open_error_is_reported(self) -> None:
+        (self.root / tine.MOUNT_LOCK).mkdir(parents=True)
+        with self.assertRaisesRegex(SystemExit, "cannot prepare .* for locking"):
+            with tine.mount_table_lock(self.root):
+                self.fail("lock unexpectedly acquired")
 
 
 class TestMountDigest(MountTestCase):

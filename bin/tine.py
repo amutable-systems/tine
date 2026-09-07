@@ -4,12 +4,14 @@ Every Buck command starts by running this, and a keypress in a completing shell 
 any pinned tools are available.
 """
 
+import fcntl
 import os
 import re
 import signal
 import sys
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -40,6 +42,7 @@ MOUNTS = "mounts"
 MOUNT_CONFIG = f"{HOME}/tine-mounts.toml"
 MOUNT_TARGET_LABEL = "tine:mount-target"
 MARKER = "TINE_MOUNTS"
+MOUNT_LOCK = f"{HOME}/tine-mount.lock"
 PRIVATE_CONFIG = f"{HOME}/tine-mount/root.buckconfig"
 DAEMON_BUSTER = "daemon_buster"
 BUSTER_PREFIX = "tine-mounts-"
@@ -1061,7 +1064,6 @@ def command_descriptions(configured: dict[str, ProjectCommand]) -> dict[str, str
 def run_step(argv: list[str]) -> int:
     """Run an intermediate step while keeping signals attached to its child."""
     import subprocess
-    from contextlib import ExitStack
 
     with subprocess.Popen(argv) as process, ExitStack() as cleanup:
         forwarded = None
@@ -1386,6 +1388,30 @@ def render_project_buckconfig(source: Path, overrides: dict[str, dict[str, str]]
     return "\n".join(lines) + "\n"
 
 
+@contextmanager
+def mount_table_lock(root: Path) -> Iterator[None]:
+    """Keep concurrent mount-table edits from losing each other's changes."""
+    path = root / MOUNT_LOCK
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handle = path.open("a")
+    except OSError as error:
+        fail(f"cannot prepare {path} for locking: {error}")
+    with handle:
+        try:
+            # Only contention is retryable; failures from either flock must reach the outer handler.
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                print("tine: waiting for another mount update to finish", file=sys.stderr)
+                fcntl.flock(handle, fcntl.LOCK_EX)
+        except OSError as error:
+            fail(f"cannot lock {path}: {error}")
+        except KeyboardInterrupt:
+            fail("mount update interrupted")
+        yield
+
+
 def update_git_excludes(directory: Path, entries: str) -> None:
     """Keep what a build leaves behind out of git's way where `.gitignore` is not ours to write.
 
@@ -1512,37 +1538,38 @@ def mount_command(root: Path, arguments: list[str]) -> None:
         source = resolved(Path(args.source))
         # Validate before writing so this command cannot create an unusable declaration.
         validate_mount_declaration(root, target, str(source), allow_missing_target=True)
-        # Repairing an existing declaration must not need a graph query using its missing source.
-        if (
-            target not in local_mounts(root)
-            and target not in configured_mount_targets(root)
-            and target not in graph_mount_targets(root)
-        ):
-            fail(f"mount {target}: not a valid target; `tine mount list` lists valid targets")
 
-    declared = local_mounts(root)
-    if args.verb == "remove":
-        if declared.pop(target, None) is None:
-            fail(f"{target} is not mounted")
-        message = f"{target} is no longer mounted"
-    else:
-        assert source is not None
-        if DAEMON_BUSTER in read_project_buckconfig(root).get("buck2", {}):
-            fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
-        for other in declared:
-            if target != other and mount_targets_overlap(target, other):
-                fail(f"mount {target}: overlaps mount {other}")
-        if not (root / target).exists():
-            try:
-                (root / target).mkdir()
-            except OSError as error:
-                fail(f"mount {target}: cannot create its directory: {error}")
-        validate_mount_declaration(root, target, str(source))
-        declared[target] = str(source)
-        message = f"{target} is built from {source}"
-    # Preserve other entries without validation so a stale declaration can still be removed.
-    write_mounts(root, declared)
-    print(f"tine: {message}", file=sys.stderr)
+    with mount_table_lock(root):
+        declared = local_mounts(root)
+        if args.verb == "remove":
+            if declared.pop(target, None) is None:
+                fail(f"{target} is not mounted")
+            message = f"{target} is no longer mounted"
+        else:
+            assert source is not None
+            # Repairing an existing declaration must not need a graph query using its missing source.
+            if (
+                target not in declared
+                and target not in configured_mount_targets(root)
+                and target not in graph_mount_targets(root)
+            ):
+                fail(f"mount {target}: not a valid target; `tine mount list` lists valid targets")
+            if DAEMON_BUSTER in read_project_buckconfig(root).get("buck2", {}):
+                fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
+            for other in declared:
+                if target != other and mount_targets_overlap(target, other):
+                    fail(f"mount {target}: overlaps mount {other}")
+            if not (root / target).exists():
+                try:
+                    (root / target).mkdir()
+                except OSError as error:
+                    fail(f"mount {target}: cannot create its directory: {error}")
+            validate_mount_declaration(root, target, str(source))
+            declared[target] = str(source)
+            message = f"{target} is built from {source}"
+        # Preserve other entries without validation so a stale declaration can still be removed.
+        write_mounts(root, declared)
+        print(f"tine: {message}", file=sys.stderr)
 
 
 @dataclass(frozen=True, slots=True)
