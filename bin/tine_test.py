@@ -46,9 +46,16 @@ def git(*args: str, cwd: Path) -> str:
     ).stdout.strip()
 
 
+def mount_config(root: Path) -> Path:
+    """The machine-local mount file, in a state directory `tine mount` would have created."""
+    path = root / tine.MOUNT_CONFIG
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def declare(root: Path, mounts: dict[str, str]) -> None:
     """Write the machine-local declarations `tine mount` would have left."""
-    (root / tine.LOCAL_CONFIG).write_text(tine.render_mounts(mounts))
+    mount_config(root).write_text(tine.render_mounts(mounts))
 
 
 def scratch(case: unittest.TestCase, prefix: str = "tine-test.") -> Path:
@@ -510,7 +517,7 @@ class MountTestCase(unittest.TestCase):
         return tine.declared_mounts(self.root)
 
     def local(self) -> str:
-        return (self.root / tine.LOCAL_CONFIG).read_text()
+        return (self.root / tine.MOUNT_CONFIG).read_text()
 
 
 class TestMountAdd(MountTestCase):
@@ -752,12 +759,12 @@ class TestDeclaredMounts(MountTestCase):
         self.assertEqual(self.declared(), {})
 
     def test_local_mount_values_must_be_strings(self) -> None:
-        (self.root / tine.LOCAL_CONFIG).write_text("[mounts]\nsub = 1\n")
+        mount_config(self.root).write_text("[mounts]\nsub = 1\n")
         with self.assertRaisesRegex(SystemExit, "must contain only strings"):
             self.declared()
 
     def test_the_mount_file_rejects_unrelated_local_settings(self) -> None:
-        (self.root / tine.LOCAL_CONFIG).write_text('[commands.check]\nsteps = [["buck"]]\n')
+        mount_config(self.root).write_text('[commands.check]\nsteps = [["buck"]]\n')
         with self.assertRaisesRegex(SystemExit, "owned by `tine mount`.*unsupported keys"):
             self.declared()
 
@@ -1357,8 +1364,8 @@ class TestInit(unittest.TestCase):
         self.assertIn(f"/{tine.LOCAL}\n", gitignore)
         # The name an interrupted write leaves behind, which is nobody's to commit either.
         self.assertIn(f"/{tine.LOCAL}.*.tmp\n", gitignore)
-        self.assertIn(f"/{tine.LOCAL_CONFIG}\n", gitignore)
-        self.assertIn(f"/{tine.LOCAL_CONFIG}.*.tmp\n", gitignore)
+        # Covers the mount file tine writes under it.
+        self.assertIn(f"/{tine.HOME}\n", gitignore)
 
     def test_the_checkout_it_is_part_of_is_the_one_it_writes(self) -> None:
         with unittest.mock.patch.object(tine, "cell_root", return_value=self.checkout):

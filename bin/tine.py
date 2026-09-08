@@ -18,10 +18,9 @@ import isolation
 
 LOCAL = ".buckconfig.local"
 CONFIG = "tine.toml"
-LOCAL_CONFIG = ".tine.local.toml"
 
-# Buck2 refuses to start without $HOME (some CI environments don't set it). Fall back to setting HOME to
-# a gitignored directory (relative to our project root).
+# Tine's own state, gitignored and relative to our project root. Buck2 also refuses to start without
+# $HOME (some CI environments don't set it), fallback to this.
 HOME = ".buck"
 
 CELL = "tine"
@@ -29,6 +28,7 @@ COMMAND = "bin/tine"
 COMMANDS = "commands"
 COMMAND_PATH = Path(__file__).with_suffix("")
 MOUNTS = "mounts"
+MOUNT_CONFIG = f"{HOME}/tine-mounts.toml"
 MOUNT_TARGET_LABEL = "tine:mount-target"
 MARKER = "TINE_MOUNTS"
 PRIVATE_CONFIG = f"{HOME}/tine-mount/root.buckconfig"
@@ -339,7 +339,7 @@ def string_table(value: object, description: str) -> dict[str, str]:
 
 def local_mounts(root: Path) -> dict[str, str]:
     """Read the machine-local mount table owned by `tine mount`."""
-    path = root / LOCAL_CONFIG
+    path = root / MOUNT_CONFIG
     config = read_toml(path)
     if extra := sorted(set(config) - {MOUNTS}):
         raise fail(f"{path} is owned by `tine mount` and has unsupported keys: {', '.join(extra)}")
@@ -363,7 +363,9 @@ def render_mounts(mounts: dict[str, str]) -> str:
 
 def write_mounts(root: Path, mounts: dict[str, str]) -> None:
     """Atomically replace the machine-local mount configuration."""
-    write_if_changed(root / LOCAL_CONFIG, render_mounts(mounts))
+    path = root / MOUNT_CONFIG
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_if_changed(path, render_mounts(mounts))
 
 
 def mountable(
@@ -1287,8 +1289,6 @@ GITIGNORE = f"""/buck-out
 **/buck-out
 /{LOCAL}
 /{LOCAL}.*.tmp
-/{LOCAL_CONFIG}
-/{LOCAL_CONFIG}.*.tmp
 /{HOME}
 """
 

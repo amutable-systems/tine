@@ -31,7 +31,7 @@ Cell layout and architecture: [the design plan](docs/design.md).
 
 **Every `buck` below means `tine buck`**: nothing else on this machine is the Buck2 this project pins.
 `mise.toml` puts `./bin` and `./tools` on `PATH`; every pinned tool is declared in `tools/tools.json`.
-`tine buck` runs Buck with the mounts declared by `tine mount` in `.buckconfig.local`.
+`tine buck` runs Buck with the mounts declared by `tine mount` in `.buck/tine-mounts.toml`.
 
 - **Build everything:** `buck build tine//...`, which runs no tests.
 - **Lint (format, lint, type-check, whole-graph analysis):** `buck run tine//tools:lint`

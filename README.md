@@ -99,14 +99,15 @@ tine mount remove tine                 # use the project's checkout again
 
 Cell roots and local-checkout slots declared by `git_fetch()` are mount targets. The `add` command rejects
 anything else. `tine mount list` shows the active local source, or `default` when a target is not
-overridden. `add` creates a missing directory for a declared checkout slot and records the mount in the
-gitignored `.buckconfig.local`. The build runs in a private mount namespace where `tine/` is a bind mount
-of `~/Projects/tine`, so uncommitted edits are available immediately. When the tine cell is mounted,
-`tine/bin/tine` re-executes the mounted copy of itself. The rules and the command configuring them
-therefore come from the same checkout.
+overridden. `add` creates a missing directory for a declared checkout slot and records it internally.
+The build runs in a private mount namespace where `tine/` is a bind mount of `~/Projects/tine`, so
+uncommitted edits are available immediately. When the tine cell is mounted, `tine/bin/tine` re-executes
+the mounted copy of itself. The rules and the command configuring them therefore come from the same
+checkout.
 
 Mounts cannot overlap or cover `.buck/`. Nested mounts would depend on application order, while `.buck/`
-holds Tine's namespace-private Buck configuration, so `tine mount add` rejects both.
+holds the mount table itself and the namespace-private Buck configuration derived from it, so
+`tine mount add` rejects both.
 
 `tine mount` does not restart Buck2 immediately. On the next `tine buck`, Buck itself reuses a daemon
 started for the same mounts or replaces one started for different mounts, under its own lifecycle lock.
