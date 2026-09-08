@@ -86,7 +86,9 @@ def install(
     if not docs:
         # This skips %doc only; the licenses packages ship stay installed.
         cfg.tsflags = ["nodocs"]
-    # Package digests are already pinned; disable both checks used by Transaction.run().
+    # Every upstream rpm here was verified against its repository's declared keys when it was selected,
+    # and our own builds are unsigned. libdnf5's checks would also need the keys in the target's
+    # rpmdb, which is deliberately not where they live.
     cfg.pkg_gpgcheck = False
     cfg.localpkg_gpgcheck = False
     base.setup()

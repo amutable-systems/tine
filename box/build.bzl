@@ -5,6 +5,7 @@ load("//package:release.bzl", "OsReleaseInfo")
 load(
     "//package:repository.bzl",
     "ConfiguredPackageRepositoryInfo",
+    "PackagePoolInfo",
     "PackageRepositoryInfo",
     "select_package_artifacts",
     "select_repositories",
@@ -30,6 +31,8 @@ def _configure_repositories(repositories: list[Dependency]) -> list[ConfiguredPa
                 directory = repo.dir,
                 priority = _REPOSITORY_PRIORITY,
                 baseurl = repo.baseurl,
+                # Unverified: a box has nothing to verify with.
+                packages = repository[PackagePoolInfo].value,
             )
         )
     return configured

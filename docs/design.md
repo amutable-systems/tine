@@ -296,10 +296,19 @@ Packages built in this repository use transaction entries with `source = "local"
 input package directory. They are projected directly from the producing target rather than copied into a
 second pool.
 
+A repository that declares signing keys verifies package signatures after fetching them. The repository
+cannot verify them itself, because that takes a box and the box a release names is built from the
+release's own repositories; so the package manager or the box rule declares the verification with the box
+it has: one keyring built from the declared key files (validated against the committed fingerprints) and
+one verify action per package during package selection during a transaction. Everything a manager
+installs shares its verification, and a derived manager inherits it. The result is again a checksum-keyed
+map of package artifacts. The unverified pool is only being used by the repository configuration code.
+
 Why repository ownership matters:
 
 - one digest and one action graph node define each upstream package;
-- a future derived form, such as a signature-verified one, has a natural shared owner;
+- a derived form such as the verified copy keys on the same digest, so consumers sharing a manager share
+  the verification;
 - box, buildroot, and image closures become cheap selectors;
 - repository snapshot skew fails at the lookup boundary instead of silently downloading different bytes.
 
@@ -387,8 +396,9 @@ Native package installation has three phases shared by buildroots and images:
 1. **Plan.** Run `PackageSystemInfo.plan` against each configured repository's materialized directory,
    effective priority, and solver cache. Weak dependencies are disabled. Existing lower layers are mounted
    read-only so installed packages can satisfy an incremental request.
-2. **Select.** Use the resulting transaction to select raw package files from repository pools, named with
-   the package system's declared suffix so its installer finds them. A local repository is materialized by
+2. **Select.** Use the resulting transaction to select package files from repository pools, verified after
+   download if the repository declares signing keys, named with the package system's declared suffix so its
+   installer finds them. A local repository is materialized by
    an anonymous indexing target using the consuming package manager's box. The same path handles
    package-build inputs and lets the solve choose between local and upstream packages.
    Extra packages arrive on two mutually exclusive paths: a package build passes its explicit
@@ -610,6 +620,9 @@ Limitations specific to this system:
 - It cannot build packages, so an Arch image can only install upstream ones and no target builds a
   local alpm repository. The local-package naming rule is unit-tested, but nothing exercises that
   path end to end.
+- Package signatures are not verified. Arch signs each package with an individual packager's key,
+  trusted through master-key certifications in `archlinux-keyring` rather than one key a catalog could
+  declare by fingerprint, so its repositories declare no signing keys and the system has no verify driver.
 - Pinning a database by content means a rolling mirror goes stale the moment it advances; only an
   archive with immutable dated trees is usable as a pinned repository.
 
@@ -1326,8 +1339,10 @@ belong to one package system are listed in its own section instead:
   `git.fetch()`, and Go verifies module downloads against the committed `go.sum`.
 - Crate downloads carry no recorded size, so Buck learns it from an HTTP HEAD whenever a download action
   executes. A cold daemon therefore needs the network even when every crate is already cached.
-- Upstream package signatures are not verified. SHA-256 pinning gives integrity after refresh, not
-  authenticity at refresh time.
+- Repository metadata is trusted on first use: neither Fedora's GA trees nor the pinned mirrors serve a
+  signed `repomd.xml`, so a substituted one at refresh time could select other validly signed packages.
+  Reviewing the snapshot diff is the check for that.
+- Boxes install their packages unverified. Arch packages are not verified at all.
 - Archive ownership is intentionally normalized to uid/gid zero. Capabilities, xattrs, and SELinux labels do
   not survive as Buck directory metadata; deferred tmpfiles can restore xattrs at terminal assembly, and tar
   preserves them in PAX headers, but newc cpio cannot represent general xattrs.
@@ -1369,17 +1384,15 @@ must be explicit; silently pretending a cyclic source graph is acyclic is not ac
 
 ### Supply-chain authenticity and release output
 
-The accepted direction for upstream authenticity is:
+Upstream authenticity for rpm follows the catalog pinning and package pool sections: a repository declares
+its signing keys by fingerprint, refresh fetches the files once, and a consumer with a box verifies each
+package against them as it is selected. What remains:
 
-1. Pin reviewed distribution signing keys in repository snapshots.
-2. Add a repository-owned verified package representation, using each package system's own
-   signature verification.
-3. Make installation select verified artifacts while preserving the raw form a repository serves.
-4. Handle box trust inductively: an existing trusted box verifies the inputs of its successor rather
-   than allowing a new box to vouch for itself.
-
-The exact key policy and first-trust/bootstrap procedure remain open. HTTPS plus committed SHA-256
-locks currently provides reviewable integrity but is not a substitute for signature verification.
+1. Boxes: an existing trusted box verifies the inputs of its successor rather than allowing a new box to
+   vouch for itself.
+2. Arch's per-packager keys need a trust model for `archlinux-keyring` before its repositories can declare
+   anything a build could verify against.
+3. Repository metadata stays unsigned upstream; the snapshot diff is its review.
 
 A later release pipeline needs repository composition, package-group metadata, source/debuginfo publication
 policy, provenance/attestations, and signing. Secure Boot signing should use deterministic RSA PKCS#1 v1.5

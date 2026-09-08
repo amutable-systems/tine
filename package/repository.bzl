@@ -8,7 +8,10 @@ PackageArtifactInfo = record(
 )
 
 PackagePoolInfo = provider(
-    doc = "A repository-owned dynamic package pool.",
+    doc = """A repository-owned dynamic pool of its packages, unverified.
+
+    Only the code configuring a repository for a consumer reads it; the consumer selects from
+    `ConfiguredPackageRepositoryInfo.packages`.""",
     fields = {"value": provider_field(DynamicValue)},
 )
 
@@ -210,6 +213,11 @@ ConfiguredPackageRepositoryInfo = record(
     directory = Artifact,
     priority = int,
     baseurl = field(str | None, default = None),
+    # The packages a consumer may select, a dynamic value resolving to a PackagePoolValueInfo. Whoever
+    # configures the repository decides what they are: verified against the declared signing keys as a
+    # transaction first selects them, or unverified where the repository declares no keys.
+    # None for a local repository, whose packages are its input directories.
+    packages = field(DynamicValue | None, default = None),
 )
 
 # What every remote repository declares, whichever package system owns it.
@@ -645,8 +653,11 @@ def select_package_artifacts(
             fail("select_package_artifacts: repository '{}' has no declaration".format(configured.id))
         if repository.get(LocalPackageRepositoryInfo) != None:
             local_packages[configured.id] = repository[LocalPackageRepositoryInfo].package_dirs
-        else:
-            pools[configured.id] = repository[PackagePoolInfo].value
+            continue
+        if configured.packages == None:
+            # Internal consistency check: a remote repository is configured with its packages.
+            fail("select_package_artifacts: repository '{}' is configured without packages".format(configured.id))
+        pools[configured.id] = configured.packages
     if extra_packages:
         local_packages["extra"] = extra_packages
     ctx.actions.dynamic_output_new(
