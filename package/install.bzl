@@ -35,11 +35,6 @@ def resolve_packages(
     the solver; `local_seed` widens that seed beyond this request, e.g. to a whole layer stack."""
     package_manager = package_manager_dep[PackageManagerInfo]
     configured_repositories = package_manager.repositories
-    repositories = []
-    for configured in configured_repositories:
-        if configured.dependency == None:
-            fail("package manager contains inline repository '{}'".format(configured.id))
-        repositories.append(configured.dependency)
     box = package_manager.box[BoxInfo]
     system = package_manager.package_system[PackageSystemInfo]
 
@@ -90,7 +85,7 @@ def resolve_packages(
     return select_package_artifacts(
         ctx,
         tx,
-        repositories = repositories,
+        repositories = configured_repositories,
         suffix = system.package_suffix,
         extra_packages = extra_packages,
         name = prefix + "install.closure",

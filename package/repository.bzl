@@ -628,19 +628,25 @@ _select_package_artifacts_action = dynamic_actions(
 def select_package_artifacts(
     ctx: AnalysisContext,
     tx: Artifact,
-    repositories: list[Dependency],
+    repositories: list[ConfiguredPackageRepositoryInfo],
     suffix: str,
     extra_packages: list[Artifact] = [],
     name: str = "install.closure",
 ) -> Artifact:
     """Select each transaction package's artifact into a directory."""
     output = ctx.actions.declare_output(name, dir = True)
-    pools = {repository.label.name: repository[PackagePoolInfo].value for repository in repositories if repository.get(PackagePoolInfo) != None}
-    local_packages = {
-        repository.label.name: repository[LocalPackageRepositoryInfo].package_dirs
-        for repository in repositories
-        if repository.get(LocalPackageRepositoryInfo) != None
-    }
+    pools = {}
+    local_packages = {}
+    for configured in repositories:
+        repository = configured.dependency
+        if repository == None:
+            # Internal consistency check: Only the planner's inline `extra` repository has None, and its
+            # packages arrive as `extra_packages` rather than through the configured repo list.
+            fail("select_package_artifacts: repository '{}' has no declaration".format(configured.id))
+        if repository.get(LocalPackageRepositoryInfo) != None:
+            local_packages[configured.id] = repository[LocalPackageRepositoryInfo].package_dirs
+        else:
+            pools[configured.id] = repository[PackagePoolInfo].value
     if extra_packages:
         local_packages["extra"] = extra_packages
     ctx.actions.dynamic_output_new(

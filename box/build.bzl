@@ -85,7 +85,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     packages = select_package_artifacts(
         ctx,
         transaction,
-        repositories = repositories,
+        repositories = configured_repositories,
         suffix = system.package_suffix,
     )
     installer_box = resolver_box
