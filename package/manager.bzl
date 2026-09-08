@@ -15,6 +15,7 @@ load(
 )
 load(":solver.bzl", "solver_cache")
 load(":system.bzl", "PackageSystemInfo")
+load(":verify.bzl", "repository_packages")
 
 _LOCAL_REPOSITORY_PRIORITY = 50
 _REMOTE_REPOSITORY_PRIORITY = 99
@@ -130,10 +131,12 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
         rid = repository.label.name
         configured = configured_by_id.get(rid)
         local = repository.get(LocalPackageRepositoryInfo)
+        packages = None
         if configured != None:
             directory = configured.directory
             default_priority = configured.priority
             baseurl = configured.baseurl
+            packages = configured.packages
         else:
             default_priority = _LOCAL_REPOSITORY_PRIORITY if local != None else _REMOTE_REPOSITORY_PRIORITY
             if local != None:
@@ -149,6 +152,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
                 baseurl = repo.baseurl
                 if baseurl == None:
                     fail("remote repository '{}' has no base URL".format(rid))
+                packages = repository_packages(ctx, box, repository)
             else:
                 fail("package_manager: repository '{}' has no directory".format(rid))
         priority = ctx.attrs.repository_priorities.get(rid, default_priority)
@@ -158,6 +162,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
             directory = directory,
             priority = priority,
             baseurl = baseurl,
+            packages = packages,
         )
         if rid not in configured_by_id and package_system[PackageSystemInfo].solver_cache:
             solver_caches.append(
