@@ -2,14 +2,12 @@
 /buck-out
 **/buck-out
 
-# The home directory bin/tine falls back to where the environment sets none (CI)
+# bin/tine's own state, including its home directory if the environment does not set one
 /.buck
 
 # Local (non-committed) config overrides, one block of which bin/tine writes
 /.buckconfig.local
 /.buckconfig.local.*.tmp
-/.tine.local.toml
-/.tine.local.toml.*.tmp
 .claude/settings.local.json
 
 # Build output of a cargo build run by hand inside a checked-out Rust project
