@@ -107,7 +107,7 @@ def cwd() -> Path:
     try:
         return Path.cwd()
     except OSError as error:
-        raise fail(f"cannot read the working directory: {error}") from error
+        fail(f"cannot read the working directory: {error}")
 
 
 def project_root(start: Path) -> Path:
@@ -125,7 +125,7 @@ def project_root(start: Path) -> Path:
         if (directory / ".buckroot").is_file():
             break
     if root is None:
-        raise fail(f"no .buckconfig in {start} or any parent directory")
+        fail(f"no .buckconfig in {start} or any parent directory")
     return root
 
 
@@ -140,7 +140,7 @@ def ensure_home(root: Path) -> None:
     try:
         path.mkdir(exist_ok=True)
     except OSError as error:
-        raise fail(f"cannot create {path} to use as a home directory: {error}") from error
+        fail(f"cannot create {path} to use as a home directory: {error}")
     os.environ["HOME"] = str(path)
 
 
@@ -162,7 +162,7 @@ def read_lines(path: Path) -> list[str]:
         with path.open(encoding="utf-8", newline="") as handle:
             text = handle.read()
     except (OSError, UnicodeDecodeError) as error:
-        raise fail(f"cannot read {path}: {error}") from error
+        fail(f"cannot read {path}: {error}")
     lines = text.split("\n")
     return lines[:-1] if not lines[-1] else lines
 
@@ -175,9 +175,9 @@ def read_toml(path: Path) -> dict[str, object]:
     except FileNotFoundError:
         return {}
     except tomllib.TOMLDecodeError as error:
-        raise fail(f"cannot parse {path}: {error}") from error
+        fail(f"cannot parse {path}: {error}")
     except (OSError, UnicodeDecodeError) as error:
-        raise fail(f"cannot read {path}: {error}") from error
+        fail(f"cannot read {path}: {error}")
 
 
 def project_settings(root: Path) -> dict[str, dict[str, object]]:
@@ -190,7 +190,7 @@ def project_settings(root: Path) -> dict[str, dict[str, object]]:
     for path in (root / CONFIG, root / LOCAL_SETTINGS):
         settings = read_toml(path)
         if extra := sorted(set(settings) - {BUCK2, COMMANDS}):
-            raise fail(f"{path} has unknown sections: {', '.join(extra)}")
+            fail(f"{path} has unknown sections: {', '.join(extra)}")
         for section, table in settings.items():
             merged[section] = merged.get(section, {}) | object_table(table, f"[{section}] in {path}")
     return merged
@@ -210,16 +210,16 @@ def _split(path: Path) -> tuple[list[str], list[str]]:
     for line in read_lines(path):
         if line.strip() == BLOCK_BEGIN:
             if inside:
-                raise fail(f"{path}: a generated block begins inside another; restore or delete it")
+                fail(f"{path}: a generated block begins inside another; restore or delete it")
             inside = True
         elif line.strip() == BLOCK_END:
             if not inside:
-                raise fail(f"{path}: a generated block ends without beginning; restore or delete it")
+                fail(f"{path}: a generated block ends without beginning; restore or delete it")
             inside = False
         else:
             (generated if inside else kept).append(line)
     if inside:
-        raise fail(f"{path}: the generated block has no {BLOCK_END!r} line; restore or delete it")
+        fail(f"{path}: the generated block has no {BLOCK_END!r} line; restore or delete it")
     return kept, generated
 
 
@@ -316,9 +316,9 @@ def relative(root: Path, path: Path) -> str:
     try:
         target = path.relative_to(root)
     except ValueError:
-        raise fail(f"{path} is outside the project at {root}") from None
+        fail(f"{path} is outside the project at {root}")
     if target == Path():
-        raise fail(f"{root} is the project root and cannot be mounted over")
+        fail(f"{root} is the project root and cannot be mounted over")
     return target.as_posix()
 
 
@@ -327,7 +327,7 @@ def string_table(value: object, description: str) -> dict[str, str]:
     table: dict[str, str] = {}
     for key, item in object_table(value, description).items():
         if not isinstance(item, str):
-            raise fail(f"{description} must contain only strings")
+            fail(f"{description} must contain only strings")
         table[key] = item
     return table
 
@@ -337,7 +337,7 @@ def local_mounts(root: Path) -> dict[str, str]:
     path = root / MOUNT_CONFIG
     config = read_toml(path)
     if extra := sorted(set(config) - {MOUNTS}):
-        raise fail(f"{path} is owned by `tine mount` and has unsupported keys: {', '.join(extra)}")
+        fail(f"{path} is owned by `tine mount` and has unsupported keys: {', '.join(extra)}")
     return string_table(config.get(MOUNTS, {}), f"[{MOUNTS}] in {path}")
 
 
@@ -378,22 +378,22 @@ def mountable(
     drop = f"; `tine mount remove {target}` drops it" if declared else ""
     path = Path(target)
     if path.is_absolute() or ".." in path.parts or path == Path():
-        raise fail(f"mount {target}: target must be a project-relative path")
+        fail(f"mount {target}: target must be a project-relative path")
     if path.is_relative_to(HOME):
-        raise fail(f"mount {target}: {HOME} is reserved for tine")
+        fail(f"mount {target}: {HOME} is reserved for tine")
     # mount table goes into a config value, ensure names don't break that
     if any(c.isspace() or c == "," for c in target):
-        raise fail(f"mount {target}: target must not contain whitespace or commas")
+        fail(f"mount {target}: target must not contain whitespace or commas")
     if not Path(source).is_absolute():
-        raise fail(f"mount {target}: source must be an absolute path, got {source}")
+        fail(f"mount {target}: source must be an absolute path, got {source}")
     if not (root / target).is_dir() and not (allow_missing_target and not (root / target).exists()):
-        raise fail(f"mount {target}: this project has no such directory{drop}")
+        fail(f"mount {target}: this project has no such directory{drop}")
     if resolved(root / target) != root / target:
-        raise fail(f"mount {target}: target is a symlink{drop}")
+        fail(f"mount {target}: target is a symlink{drop}")
     if not Path(source).is_dir():
-        raise fail(f"mount {target}: {source} is not a directory{drop}")
+        fail(f"mount {target}: {source} is not a directory{drop}")
     if resolved(Path(source)).is_relative_to(root):
-        raise fail(f"mount {target}: source {source} must be outside the project{drop}")
+        fail(f"mount {target}: source {source} must be outside the project{drop}")
 
 
 def overlaps(first: str, second: str) -> bool:
@@ -411,7 +411,7 @@ def declared_mounts(root: Path) -> dict[str, str]:
         mountable(root, target, source, declared=True)
         for other in mounts:
             if overlaps(target, other):
-                raise fail(f"mount {target}: overlaps mount {other}")
+                fail(f"mount {target}: overlaps mount {other}")
         mounts[target] = source
     return mounts
 
@@ -435,7 +435,7 @@ def mount_digest(mounts: dict[str, str], buckconfig: bytes) -> str | None:
         try:
             info = os.stat(source)
         except OSError as error:
-            raise fail(f"mount {target}: cannot read {source}: {error}") from error
+            fail(f"mount {target}: cannot read {source}: {error}")
         digest.update(f"{target}\0{source}\0{info.st_ino}\0".encode())
     return digest.hexdigest()[:16]
 
@@ -448,12 +448,12 @@ def _git_bytes(*args: str, directory: Path) -> bytes:
     try:
         proc = subprocess.run(command, capture_output=True, env=environment)
     except OSError:
-        raise fail("required tool not found: git") from None
+        fail("required tool not found: git")
     if proc.returncode != 0:
         # One line: a reason ends up in a generated buckconfig, where anything after the first line
         # would be read as configuration.
         reason = " ".join(proc.stderr.decode(errors="replace").split()) or f"exit {proc.returncode}"
-        raise fail(f"git {' '.join(args)}: {reason}")
+        fail(f"git {' '.join(args)}: {reason}")
     return proc.stdout
 
 
@@ -461,7 +461,7 @@ def _git(*args: str, directory: Path) -> str:
     try:
         return _git_bytes(*args, directory=directory).decode().strip()
     except UnicodeDecodeError as error:
-        raise fail(f"git {' '.join(args)} returned non-UTF-8 output: {error}") from error
+        fail(f"git {' '.join(args)} returned non-UTF-8 output: {error}")
 
 
 def git_ignored_paths(directory: Path) -> list[str]:
@@ -485,7 +485,7 @@ def git_ignored_paths(directory: Path) -> list[str]:
     try:
         paths = output.decode().split("\0")
     except UnicodeDecodeError as error:
-        raise fail(f"gitignored path in {directory} is not UTF-8: {error}") from error
+        fail(f"gitignored path in {directory} is not UTF-8: {error}")
 
     ignored = []
     for value in paths:
@@ -494,9 +494,9 @@ def git_ignored_paths(directory: Path) -> list[str]:
             continue
         path = Path(value)
         if path.is_absolute() or ".." in path.parts:
-            raise fail(f"git returned an invalid ignored path for {directory}: {value!r}")
+            fail(f"git returned an invalid ignored path for {directory}: {value!r}")
         if "," in value or not round_trips(value):
-            raise fail(f"gitignored path cannot be represented in Buck project.ignore: {value!r}")
+            fail(f"gitignored path cannot be represented in Buck project.ignore: {value!r}")
         ignored.append(value)
     paths = set(ignored)
     return sorted(
@@ -581,7 +581,7 @@ def refresh(root: Path, ignores: list[str]) -> None:
 def _platform() -> str:
     system, _, _, _, machine = os.uname()
     if (platform := f"{system}-{machine}") not in PLATFORMS:
-        raise fail(f"unsupported platform: {platform}")
+        fail(f"unsupported platform: {platform}")
     return platform
 
 
@@ -597,7 +597,7 @@ def _decompress(archive: Path, binary: Path) -> None:
             while chunk := compressed.read(1 << 20):
                 out.write(chunk)
     except (zstd.ZstdError, EOFError) as error:
-        raise fail(f"the pinned artifact is not a whole zstd stream: {error}") from error
+        fail(f"the pinned artifact is not a whole zstd stream: {error}")
 
 
 def _unzstd(archive: Path, binary: Path) -> None:
@@ -608,9 +608,9 @@ def _unzstd(archive: Path, binary: Path) -> None:
     try:
         proc = subprocess.run(command)
     except OSError:
-        raise fail("required tool not found: zstd, or a python 3.14 or newer to unpack with") from None
+        fail("required tool not found: zstd, or a python 3.14 or newer to unpack with")
     if proc.returncode != 0:
-        raise fail(f"zstd could not unpack {archive}")
+        fail(f"zstd could not unpack {archive}")
 
 
 def _download(url: str, sha256: str, binary: Path, *, compressed: bool) -> Path:
@@ -632,7 +632,7 @@ def _download(url: str, sha256: str, binary: Path, *, compressed: bool) -> Path:
                     digest.update(chunk)
                     out.write(chunk)
             if digest.hexdigest() != sha256:
-                raise fail(f"{url} has SHA-256 {digest.hexdigest()}, not the pinned {sha256}")
+                fail(f"{url} has SHA-256 {digest.hexdigest()}, not the pinned {sha256}")
             unpacked = Path(directory) / binary.name
             if compressed:
                 _decompress(fetched, unpacked)
@@ -642,7 +642,7 @@ def _download(url: str, sha256: str, binary: Path, *, compressed: bool) -> Path:
             into.mkdir(exist_ok=True)
             unpacked.replace(binary)
     except OSError as error:
-        raise fail(f"cannot fetch {url}: {error}") from error
+        fail(f"cannot fetch {url}: {error}")
     return binary
 
 
@@ -669,32 +669,32 @@ def declared_pin(cell: Path, tool: str, platform: str) -> dict[str, str]:
             "sha256": entry["sha256"],
         }
     except OSError as error:
-        raise fail(f"cannot read {path}: {error}") from error
+        fail(f"cannot read {path}: {error}")
     except (KeyError, TypeError, ValueError) as error:
-        raise fail(f"{path} declares no {tool} for {platform}: {error}") from error
+        fail(f"{path} declares no {tool} for {platform}: {error}")
 
 
 def configured_pin(config: Mapping[str, object], platform: str) -> dict[str, str]:
     """Validate Buck2 overrides and select the fields for the current platform."""
     table = object_table(config.get(BUCK2, {}), f"[{BUCK2}] in {SETTINGS}")
     if extra := sorted(set(table) - {"platforms", "release", "repository"}):
-        raise fail(f"[{BUCK2}] in {SETTINGS} has unsupported keys: {', '.join(extra)}")
+        fail(f"[{BUCK2}] in {SETTINGS} has unsupported keys: {', '.join(extra)}")
     overrides: dict[str, str] = {}
     for key in ("repository", "release"):
         if key not in table:
             continue
         value = table[key]
         if not isinstance(value, str) or not value:
-            raise fail(f"[{BUCK2}] {key} in {SETTINGS} must be a non-empty string")
+            fail(f"[{BUCK2}] {key} in {SETTINGS} must be a non-empty string")
         overrides[key] = value
 
     platforms = object_table(table.get("platforms", {}), f"[{BUCK2}.platforms] in {SETTINGS}")
     if extra := sorted(set(platforms) - set(PLATFORMS)):
-        raise fail(f"[{BUCK2}.platforms] in {SETTINGS} has unsupported platforms: {', '.join(extra)}")
+        fail(f"[{BUCK2}.platforms] in {SETTINGS} has unsupported platforms: {', '.join(extra)}")
     for configured_platform, value in platforms.items():
         entry = object_table(value, f"[{BUCK2}.platforms.{configured_platform}] in {SETTINGS}")
         if extra := sorted(set(entry) - {"artifact", "sha256"}):
-            raise fail(
+            fail(
                 f"[{BUCK2}.platforms.{configured_platform}] in {SETTINGS} has unsupported keys: "
                 f"{', '.join(extra)}"
             )
@@ -703,12 +703,12 @@ def configured_pin(config: Mapping[str, object], platform: str) -> dict[str, str
                 continue
             item = entry[key]
             if not isinstance(item, str) or not item:
-                raise fail(
+                fail(
                     f"[{BUCK2}.platforms.{configured_platform}] {key} in {SETTINGS} "
                     "must be a non-empty string"
                 )
             if key == "sha256" and not is_hex(item, 64):
-                raise fail(
+                fail(
                     f"[{BUCK2}.platforms.{configured_platform}] sha256 in {SETTINGS} "
                     "must be 64 lowercase hexadecimal characters"
                 )
@@ -730,9 +730,9 @@ def _pinned(
     artifact = pin.get("artifact")
     sha256 = pin.get("sha256")
     if not (repository and release and artifact and sha256):
-        raise fail(f"{source} pins no whole {tool} for {platform}")
+        fail(f"{source} pins no whole {tool} for {platform}")
     if not is_hex(sha256, 64):
-        raise fail(f"the {tool} pinned for {platform} has no SHA-256 to verify against: {sha256!r}")
+        fail(f"the {tool} pinned for {platform} has no SHA-256 to verify against: {sha256!r}")
 
     cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
     binary = cache / "tine" / tool / sha256 / tool
@@ -783,7 +783,7 @@ def create(root: Path, mounts: dict[str, str], digest: str, buckconfig: bytes) -
     try:
         private.parent.mkdir(parents=True, exist_ok=True)
     except OSError as error:
-        raise fail(f"cannot prepare {private.parent}: {error}") from error
+        fail(f"cannot prepare {private.parent}: {error}")
 
     try:
         # Always make a namespace, even with CAP_SYS_ADMIN, so mount authority stays scoped to this
@@ -794,32 +794,32 @@ def create(root: Path, mounts: dict[str, str], digest: str, buckconfig: bytes) -
     except isolation.SandboxOSError as error:
         # SandboxOSError carries the kernel or sysctl explanation in its message.
         print(error.message, file=sys.stderr)
-        raise fail("cannot create the mount namespace") from error
+        fail("cannot create the mount namespace")
     except OSError as error:
-        raise fail(f"cannot create the mount namespace: {error}") from error
+        fail(f"cannot create the mount namespace: {error}")
 
     try:
         isolation.mount(Path("tmpfs"), private.parent, "tmpfs", options="mode=0755")
         private.write_bytes(constrained_config(buckconfig, digest, mounts))
     except OSError as error:
-        raise fail(f"cannot prepare buck2's private root config: {error}") from error
+        fail(f"cannot prepare buck2's private root config: {error}")
 
     for target, source in mounts.items():
         try:
             isolation.mount(Path(source), root / target, flags=isolation.MS_BIND | isolation.MS_REC)
         except OSError as error:
-            raise fail(f"mount {target}: cannot build it from {source}: {error}") from error
+            fail(f"mount {target}: cannot build it from {source}: {error}")
 
     # The kernel applies a bind to a symlink's destination, which for a symlinked root config is a path
     # outside the project; `mountable` refuses a declared target for the same reason.
     original = root / ".buckconfig"
     if resolved(original) != original:
-        raise fail(f"{original} is a symlink, so the daemon constraint cannot be bound over it")
+        fail(f"{original} is a symlink, so the daemon constraint cannot be bound over it")
     try:
         # Buck reads daemon startup constraints directly from the root config without following includes.
         isolation.mount(private, original, flags=isolation.MS_BIND)
     except OSError as error:
-        raise fail(f"cannot expose the mount digest to buck2: {error}") from error
+        fail(f"cannot expose the mount digest to buck2: {error}")
 
 
 def cells_of(config: dict[str, dict[str, str]]) -> dict[str, str]:
@@ -857,7 +857,7 @@ def graph_mount_targets(root: Path) -> set[str]:
     try:
         proc = subprocess.run(command, cwd=root, stdout=subprocess.PIPE, text=True)
     except OSError as error:
-        raise fail(f"cannot query mount targets: {error}") from error
+        fail(f"cannot query mount targets: {error}")
     if proc.returncode != 0:
         raise SystemExit(proc.returncode)
 
@@ -866,7 +866,7 @@ def graph_mount_targets(root: Path) -> set[str]:
         package, separator, name = label.rpartition(":")
         cell, root_separator, path = package.partition("//")
         if not separator or not root_separator or not cell or not name:
-            raise fail(f"buck returned an invalid mount target: {label!r}")
+            fail(f"buck returned an invalid mount target: {label!r}")
         target = (Path(path) / name.removesuffix(".git")).as_posix()
         targets.add(target)
     return targets
@@ -891,7 +891,7 @@ def entrypoint(root: Path, config: dict[str, dict[str, str]], mounts: dict[str, 
         return COMMAND_PATH.absolute()
     command = root / cell / COMMAND
     if not command.is_file():
-        raise fail(f"mounted {CELL} cell has no {COMMAND}")
+        fail(f"mounted {CELL} cell has no {COMMAND}")
     return command
 
 
@@ -913,12 +913,12 @@ def enter(root: Path, config: dict[str, dict[str, str]], argv: list[str]) -> Non
         if is_hex(digest, 16) and os.environ.get(MARKER) == marker(digest):
             return
     if buster is not None:
-        raise fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
+        fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
 
     try:
         buckconfig = (root / ".buckconfig").read_bytes()
     except OSError as error:
-        raise fail(f"cannot read {root / '.buckconfig'}: {error}") from error
+        fail(f"cannot read {root / '.buckconfig'}: {error}")
     digest = mount_digest(mounts, buckconfig)
     assert digest is not None
 
@@ -930,11 +930,11 @@ def enter(root: Path, config: dict[str, dict[str, str]], argv: list[str]) -> Non
     try:
         os.chdir(working)
     except OSError as error:
-        raise fail(f"cannot return to {working}: {error}") from error
+        fail(f"cannot return to {working}: {error}")
     try:
         os.execve(command, [str(command), *argv], os.environ | {MARKER: marker(digest)})
     except OSError as error:
-        raise fail(f"cannot run {command}: {error}") from error
+        fail(f"cannot run {command}: {error}")
 
 
 VERBS = {
@@ -968,10 +968,10 @@ def command_name(name: str, source: str) -> None:
         or name.startswith("-")
         or not all(c.isascii() and (c.isalnum() or c in "._-") for c in name)
     ):
-        raise fail(f"[commands] in {source} has invalid command name {name!r}")
+        fail(f"[commands] in {source} has invalid command name {name!r}")
 
     if name in VERBS or name in HELP:
-        raise fail(f"[commands] in {source} uses reserved command name {name!r}")
+        fail(f"[commands] in {source} uses reserved command name {name!r}")
 
 
 def validate_commands(value: object, source: str = SETTINGS) -> dict[str, ProjectCommand]:
@@ -983,50 +983,48 @@ def validate_commands(value: object, source: str = SETTINGS) -> dict[str, Projec
 
         definition = object_table(value, f"[{COMMANDS}.{name}] in {source}")
         if extra := sorted(set(definition) - {"cwd", "description", "script", "steps"}):
-            raise fail(f"[{COMMANDS}.{name}] in {source} has unsupported keys: {', '.join(extra)}")
+            fail(f"[{COMMANDS}.{name}] in {source} has unsupported keys: {', '.join(extra)}")
 
         description = definition.get("description", PROJECT_COMMAND_DESCRIPTION)
         if not isinstance(description, str) or not description.strip() or not description.isprintable():
-            raise fail(f"[{COMMANDS}.{name}] description in {source} must be a non-empty printable string")
+            fail(f"[{COMMANDS}.{name}] description in {source} must be a non-empty printable string")
 
         if ("steps" in definition) == ("script" in definition):
-            raise fail(f"[{COMMANDS}.{name}] in {source} must define exactly one of steps or script")
+            fail(f"[{COMMANDS}.{name}] in {source} must define exactly one of steps or script")
 
         command_cwd = None
         if "cwd" in definition:
             raw_cwd = definition["cwd"]
             if not isinstance(raw_cwd, str) or not raw_cwd or "\0" in raw_cwd or Path(raw_cwd).is_absolute():
-                raise fail(f"[{COMMANDS}.{name}] cwd in {source} must be a non-empty relative path")
+                fail(f"[{COMMANDS}.{name}] cwd in {source} must be a non-empty relative path")
             command_cwd = Path(raw_cwd)
 
         if "script" in definition:
             script = definition["script"]
             if not isinstance(script, str) or not script.strip():
-                raise fail(f"[{COMMANDS}.{name}] script in {source} must be a non-empty string")
+                fail(f"[{COMMANDS}.{name}] script in {source} must be a non-empty string")
             if "\0" in script:
-                raise fail(f"[{COMMANDS}.{name}] script in {source} must not contain NUL")
+                fail(f"[{COMMANDS}.{name}] script in {source} must not contain NUL")
             commands[name] = ProjectCommand(description, script, command_cwd)
             continue
 
         raw_steps = definition["steps"]
         if not isinstance(raw_steps, list) or not raw_steps:
-            raise fail(f"[{COMMANDS}.{name}] steps in {source} must be a non-empty array")
+            fail(f"[{COMMANDS}.{name}] steps in {source} must be a non-empty array")
 
         steps: list[tuple[str, ...]] = []
         for number, raw_step in enumerate(raw_steps, start=1):
             if not isinstance(raw_step, list) or not raw_step:
-                raise fail(f"[{COMMANDS}.{name}] step {number} in {source} must be a non-empty array")
+                fail(f"[{COMMANDS}.{name}] step {number} in {source} must be a non-empty array")
 
             if any(not isinstance(argument, str) for argument in raw_step):
-                raise fail(f"[{COMMANDS}.{name}] step {number} in {source} must contain only strings")
+                fail(f"[{COMMANDS}.{name}] step {number} in {source} must contain only strings")
 
             step = tuple(cast(list[str], raw_step))
             if any("\0" in argument for argument in step):
-                raise fail(f"[{COMMANDS}.{name}] step {number} in {source} must not contain NUL")
+                fail(f"[{COMMANDS}.{name}] step {number} in {source} must not contain NUL")
             if step[0] != "buck":
-                raise fail(
-                    f"[{COMMANDS}.{name}] step {number} in {source} must start with buck, not {step[0]}"
-                )
+                fail(f"[{COMMANDS}.{name}] step {number} in {source} must start with buck, not {step[0]}")
 
             steps.append(step)
 
@@ -1089,14 +1087,14 @@ def run_project_command(
         try:
             os.chdir(directory)
         except OSError as error:
-            raise fail(f"cannot run command {name} from {directory}: {error}") from error
+            fail(f"cannot run command {name} from {directory}: {error}")
 
     if isinstance(command.body, str):
         argv = ["sh", "-c", command.body, name, *arguments]
         try:
             os.execvp(argv[0], argv)
         except OSError as error:
-            raise fail(f"cannot run command {name}: {error}") from error
+            fail(f"cannot run command {name}: {error}")
         return
 
     steps = command.body
@@ -1105,20 +1103,20 @@ def run_project_command(
         try:
             returncode = run_step(argv)
         except OSError as error:
-            raise fail(f"cannot run command {name} step {number}: {error}") from error
+            fail(f"cannot run command {name} step {number}: {error}")
         if returncode != 0:
             raise SystemExit(returncode if returncode > 0 else 128 - returncode)
     argv = [executable, *steps[-1], *arguments]
     try:
         os.execv(executable, argv)
     except OSError as error:
-        raise fail(f"cannot run command {name} step {len(steps)}: {error}") from error
+        fail(f"cannot run command {name} step {len(steps)}: {error}")
 
 
 def _patch(script: str, old: str, new: str) -> str:
     """Replace what Buck2's completion script says, rather than emit one that completes nothing."""
     if old not in script:
-        raise fail(f"buck2's completion script has no {old!r} to rewrite; the pin moved under it")
+        fail(f"buck2's completion script has no {old!r} to rewrite; the pin moved under it")
     return script.replace(old, new)
 
 
@@ -1128,7 +1126,7 @@ def _buck2_completion(binary: Path, shell: str) -> str:
     try:
         proc = subprocess.run([binary, "completion", shell], stdout=subprocess.PIPE, text=True)
     except OSError as error:
-        raise fail(f"cannot run {binary}: {error}") from error
+        fail(f"cannot run {binary}: {error}")
     if proc.returncode != 0:
         raise SystemExit(proc.returncode)
     return proc.stdout
@@ -1388,7 +1386,7 @@ def exclude(directory: Path, entries: str) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
     except OSError as error:
-        raise fail(f"cannot create {path.parent}: {error}") from error
+        fail(f"cannot create {path.parent}: {error}")
     write_if_changed(path, "\n".join([*lines, *([] if header in lines else [header]), *missing]) + "\n")
     print(f"tine: excluded {', '.join(missing)} in {path}", file=sys.stderr)
 
@@ -1410,18 +1408,18 @@ def init(directory: Path, arguments: list[str]) -> None:
     )
     args = parser.parse_args(arguments)
     if (directory / ".buckconfig").exists():
-        raise fail(f"{directory / '.buckconfig'} already exists")
+        fail(f"{directory / '.buckconfig'} already exists")
 
     # Against the project rather than the working directory, which differ where a path was passed.
     checkout = (directory / Path(args.cell).expanduser()).absolute() if args.cell else cell_root()
     try:
         path = checkout.relative_to(directory.absolute())
     except ValueError:
-        raise fail(f"{checkout} is not in {directory}, so it cannot be a cell of this project") from None
+        fail(f"{checkout} is not in {directory}, so it cannot be a cell of this project")
     if not (checkout / PINS).is_file():
-        raise fail(f"{checkout} is no checkout of the {CELL} cell: it has no {PINS}")
+        fail(f"{checkout} is no checkout of the {CELL} cell: it has no {PINS}")
     if not round_trips(str(path)):
-        raise fail(f"{path} cannot be written to .buckconfig as it stands")
+        fail(f"{path} cannot be written to .buckconfig as it stands")
 
     # `.buckconfig` last: it is what a second run refuses to overwrite, so nothing that can fail
     # should come after it.
@@ -1475,25 +1473,25 @@ def mount(root: Path, arguments: list[str]) -> None:
         # Validate before writing so this command cannot create an unusable declaration.
         mountable(root, target, str(source), allow_missing_target=True)
         if target not in configured_mount_targets(root) and target not in graph_mount_targets(root):
-            raise fail(f"mount {target}: not a valid target; `tine mount list` lists valid targets")
+            fail(f"mount {target}: not a valid target; `tine mount list` lists valid targets")
 
     declared = local_mounts(root)
     if args.verb == "remove":
         if declared.pop(target, None) is None:
-            raise fail(f"{target} is not mounted")
+            fail(f"{target} is not mounted")
         message = f"{target} is no longer mounted"
     else:
         assert source is not None
         if DAEMON_BUSTER in project_config(root).get("buck2", {}):
-            raise fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
+            fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
         for other in declared:
             if target != other and overlaps(target, other):
-                raise fail(f"mount {target}: overlaps mount {other}")
+                fail(f"mount {target}: overlaps mount {other}")
         if not (root / target).exists():
             try:
                 (root / target).mkdir()
             except OSError as error:
-                raise fail(f"mount {target}: cannot create its directory: {error}") from error
+                fail(f"mount {target}: cannot create its directory: {error}")
         mountable(root, target, str(source))
         declared[target] = str(source)
         message = f"{target} is built from {source}"
@@ -1547,7 +1545,7 @@ def mount_ignores(root: Path, config: dict[str, dict[str, str]], mounts: dict[st
     # What follows the generated block replaces its values, so a project ignore kept there would
     # drop everything added here.
     if PROJECT_IGNORE in parse_buckconfig(root / LOCAL).get("project", {}):
-        raise fail(
+        fail(
             f"{LOCAL}: [project] {PROJECT_IGNORE} would replace the generated ignores; set it in .buckconfig"
         )
 
@@ -1596,7 +1594,7 @@ def buck(argv: list[str]) -> None:
     try:
         os.execve(binary, [str(binary), *argv], os.environ | environment)
     except OSError as error:
-        raise fail(f"cannot run {binary}: {error}") from error
+        fail(f"cannot run {binary}: {error}")
 
 
 def usage(configured: dict[str, ProjectCommand]) -> str:
@@ -1636,12 +1634,12 @@ def main(argv: list[str]) -> None:
         init(cwd(), rest)
     elif name == "completion":
         if len(rest) != 1 or rest[0] not in SHELLS:
-            raise fail(f"completion takes one of {', '.join(SHELLS)}")
+            fail(f"completion takes one of {', '.join(SHELLS)}")
         try:
             root = project_root(cwd())
         except SystemExit as error:
             reason = str(error).removeprefix("tine: ")
-            raise fail(f"{reason}; the script comes out of the Buck2 a project pins") from None
+            fail(f"{reason}; the script comes out of the Buck2 a project pins")
         ensure_home(root)
         config = project_config(root)
         settings = project_settings(root)
@@ -1656,7 +1654,7 @@ def main(argv: list[str]) -> None:
         root, _ = project
         run_project_command(root, name, configured[name], rest)
     else:
-        raise fail(f"no such command: {name}\n{usage(configured)}")
+        fail(f"no such command: {name}\n{usage(configured)}")
 
 
 if __name__ == "__main__":
