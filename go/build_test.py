@@ -6,102 +6,62 @@ The driver hands everything needing a toolchain to go, so what is left to test i
 read and which declarations it refuses. The box these tests run in carries no go.
 """
 
+import subprocess
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import build
 
-# What `go list -e -json=ImportPath,Name,Target` prints for a v2 module whose command sits at the
-# module root, beside one in cmd/ and a library. go names the first after the second-to-last element
-# of the import path, skipping the version, and leaves .Target off anything it would not install.
-V2_LISTING = """\
-{
-	"ImportPath": "example.com/mycmd/v2",
-	"Name": "main",
-	"Target": "/var/tmp/gobin/mycmd"
-}
-{
-	"ImportPath": "example.com/mycmd/v2/cmd/tool",
-	"Name": "main",
-	"Target": "/var/tmp/gobin/tool"
-}
-{
-	"ImportPath": "example.com/mycmd/v2/internal/quote",
-	"Name": "quote"
-}
-"""
-
-COLLIDING_LISTING = """\
-{
-	"ImportPath": "example.com/p/cmd/agent",
-	"Name": "main",
-	"Target": "/var/tmp/gobin/agent"
-}
-{
-	"ImportPath": "example.com/p/internal/testtools/agent",
-	"Name": "main",
-	"Target": "/var/tmp/gobin/agent"
-}
-{
-	"ImportPath": "example.com/p/cmd/server",
-	"Name": "main",
-	"Target": "/var/tmp/gobin/server"
-}
-"""
-
-
-class TestMainPackages(unittest.TestCase):
-    def test_names_come_from_gos_own_target(self) -> None:
-        self.assertEqual(
-            build._group_by_name(V2_LISTING),
-            {"mycmd": ["example.com/mycmd/v2"], "tool": ["example.com/mycmd/v2/cmd/tool"]},
-        )
-
-    def test_ignores_everything_that_is_not_a_command(self) -> None:
-        """The stream carries a module's libraries too; only its main packages build a binary."""
-        self.assertNotIn("quote", build._group_by_name(V2_LISTING))
-
-    def test_builds_only_the_declared_binaries(self) -> None:
-        self.assertEqual(
-            build._select(["tool"], build._group_by_name(V2_LISTING), []),
-            ["example.com/mycmd/v2/cmd/tool"],
-        )
-
-    def test_undeclared_commands_may_collide(self) -> None:
-        self.assertEqual(
-            build._select(["server"], build._group_by_name(COLLIDING_LISTING), []),
-            ["example.com/p/cmd/server"],
-        )
-
-    def test_rejects_a_collision_among_declared_binaries(self) -> None:
-        with self.assertRaises(SystemExit) as caught:
-            build._select(["agent"], build._group_by_name(COLLIDING_LISTING), [])
-        self.assertEqual(
-            str(caught.exception),
-            "tine: go-build: several main packages build agent: example.com/p/cmd/agent, "
-            "example.com/p/internal/testtools/agent",
-        )
-
-    def test_names_the_tags_a_missing_binary_was_looked_for_under(self) -> None:
-        with self.assertRaises(SystemExit) as caught:
-            build._select(["mycmd", "gated"], build._group_by_name(V2_LISTING), ["http", "insecure"])
-        self.assertEqual(
-            str(caught.exception),
-            "tine: go-build: no main package builds gated with tags [http insecure]; "
-            "the module's commands are: mycmd, tool",
-        )
-
 
 class TestBuildCommand(unittest.TestCase):
-    def test_builds_the_selected_packages(self) -> None:
+    def test_output_name_and_linker_flags(self) -> None:
         self.assertEqual(
-            build._build_command(Path("/var/tmp/binaries"), ["example.com/mycmd/v2"], []),
-            ["go", "build", "-o", "/var/tmp/binaries/", "example.com/mycmd/v2"],
+            build._build_command(Path("/var/tmp/binaries/etcd"), "example.com/server/v3", ["-s", "-w"]),
+            ["go", "build", "-o", "/var/tmp/binaries/etcd", "-ldflags=-s -w", "example.com/server/v3"],
         )
 
-    def test_linker_flags_become_one_argument(self) -> None:
-        """go splits GOFLAGS on spaces, which is why these ride on the command line instead."""
+    def test_builds_the_selected_package(self) -> None:
         self.assertEqual(
-            build._build_command(Path("/var/tmp/binaries"), ["example.com/p"], ["-s", "-w"]),
-            ["go", "build", "-o", "/var/tmp/binaries/", "-ldflags=-s -w", "example.com/p"],
+            build._build_command(Path("/var/tmp/binaries/tool"), "example.com/mycmd/v2", []),
+            ["go", "build", "-o", "/var/tmp/binaries/tool", "example.com/mycmd/v2"],
         )
+
+
+class TestPackage(unittest.TestCase):
+    def test_resolves_root_relative_and_import_paths(self) -> None:
+        for selector in [".", "./cmd/server", "example.com/server/v3"]:
+            with self.subTest(selector=selector), patch("build.subprocess.run") as run:
+                run.return_value.stdout = '{"ImportPath": "example.com/server/v3", "Name": "main"}'
+                self.assertEqual(
+                    build._package(selector, Path("workspace"), {"GOFLAGS": "-tags=test"}),
+                    "example.com/server/v3",
+                )
+                run.assert_called_once_with(
+                    ["go", "list", "-json=ImportPath,Name", selector],
+                    check=True,
+                    cwd=Path("workspace"),
+                    env={"GOFLAGS": "-tags=test"},
+                    stdout=subprocess.PIPE,
+                    text=True,
+                )
+
+    def test_rejects_libraries_empty_and_multiple_matches(self) -> None:
+        main = '{"ImportPath": "example.com/server", "Name": "main"}'
+        for listing in ["", '{"ImportPath": "example.com/lib", "Name": "lib"}', main + main]:
+            with self.subTest(listing=listing), patch("build.subprocess.run") as run:
+                run.return_value.stdout = listing
+                with self.assertRaisesRegex(SystemExit, "must resolve to exactly one main package"):
+                    build._package("./...", Path("workspace"), {})
+
+    def test_rejects_flags_files_and_empty_selectors(self) -> None:
+        for selector in ["", "-help", "main.go"]:
+            with self.subTest(selector=selector), patch("build.subprocess.run") as run:
+                with self.assertRaisesRegex(SystemExit, "invalid package selection"):
+                    build._package(selector, Path("workspace"), {})
+                run.assert_not_called()
+
+    def test_propagates_missing_or_excluded_package_errors(self) -> None:
+        with patch("build.subprocess.run", side_effect=subprocess.CalledProcessError(1, "go list")):
+            with self.assertRaises(subprocess.CalledProcessError):
+                build._package("./missing", Path("workspace"), {})

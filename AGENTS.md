@@ -86,6 +86,7 @@ from it; every other function takes what it needs as typed parameters.
 - Use context managers (`ExitStack`/`AsyncExitStack` where needed) for anything that needs cleanup.
 - Use `pathlib.Path` and prefer its methods over `os.*`. The exceptions are `box/sandbox.py` and
   `box/isolation.py`: use string paths and `os.path` there to keep startup imports to the absolute minimum.
+- Never import `.bzl` files into Python tests, including through `runpy`.
 
 ### Paths in action scripts
 

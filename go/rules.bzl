@@ -34,6 +34,7 @@ def _go_build_impl(
     gocache: OutputArtifact | None,
     incremental: bool,
     linker_flags: list[str],
+    packages: dict[str, str],
     sources: dict[str, Artifact],
     src: Artifact,
     tags: list[str],
@@ -80,6 +81,7 @@ def _go_build_impl(
                     "gocache": gocache,
                     "linker_flags": linker_flags,
                     "module_cache_dir": module_cache,
+                    "packages": packages,
                     "root": module["root"],
                     "src": src,
                     "tags": tags,
@@ -103,6 +105,7 @@ _go_build = dynamic_actions(
         "gocache": dynattrs.option(dynattrs.output()),
         "incremental": dynattrs.value(bool),
         "linker_flags": dynattrs.value(list[str]),
+        "packages": dynattrs.value(dict[str, str]),
         "sources": dynattrs.dict(str, dynattrs.value(Artifact)),
         "src": dynattrs.value(Artifact),
         "tags": dynattrs.value(list[str]),
@@ -116,10 +119,15 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
     # Symlinked, not copied: the build driver copies the tree into its scratch space anyway, and
     # copying twice buys nothing.
     src = ctx.actions.symlinked_dir(_PRIVATE + "/src", sources)
-    reserved = [name for name in ctx.attrs.binaries if name == _PRIVATE or name.startswith(_PRIVATE + "/")]
-    if reserved:
-        fail("go_package {}: binaries may not be named {}".format(ctx.label.name, reserved))
-    outputs = {name: ctx.actions.declare_output(name) for name in ctx.attrs.binaries}
+    names = ctx.attrs.packages.keys()
+    if not names:
+        fail("go_package: declare packages to build")
+    for name in names:
+        if name == _PRIVATE or name.startswith(_PRIVATE + "/"):
+            fail("go_package: reserved output name {}".format(name))
+        if not name or name in [".", ".."] or "/" in name or "\\" in name:
+            fail("go_package: invalid output name {}".format(repr(name)))
+    outputs = {name: ctx.actions.declare_output(name) for name in names}
 
     # go's own build cache. An action's outputs are the only place it may leave state behind, and buck
     # clears them before rerunning it unless told not to. A declared output is also uploaded to the
@@ -154,6 +162,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             gocache = gocache.as_output() if gocache != None else None,
             incremental = ctx.attrs.incremental,
             linker_flags = ctx.attrs.linker_flags,
+            packages = ctx.attrs.packages,
             sources = sources,
             src = src,
             tags = ctx.attrs.tags,
@@ -166,12 +175,12 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
 _go_package = rule(
     impl = _go_package_impl,
     attrs = {
-        "binaries": attrs.list(attrs.string(), doc = "binaries to take out of the build"),
         "box": attrs.exec_dep(providers = [BoxInfo], doc = "box carrying the Go toolchain"),
         "cgo": attrs.option(attrs.bool(), default = None, doc = "force cgo on or off, box toolchain default when unset"),
         "cgo_cflags": attrs.list(attrs.string(), default = [], doc = "extra C compiler flags for a cgo build"),
         "incremental": attrs.bool(doc = "keep go's caches across dev-mode rebuilds"),
         "linker_flags": attrs.list(attrs.string(), default = [], doc = "flags for the Go linker, passed as -ldflags"),
+        "packages": attrs.dict(attrs.string(), attrs.string()),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, go.mod and go.sum included"),
         "tags": attrs.list(attrs.string(), default = [], doc = "build tags selecting the project's optional files"),
         "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//go:build"),
@@ -182,7 +191,6 @@ _go_package = rule(
 
 def go_package(
     name: str,
-    binaries: list[str],
     srcs: list[str] | None = None,
     dev: bool | None = None,
     **kwargs,
@@ -191,13 +199,10 @@ def go_package(
 
     The sources default to the checkout named after the target. A go.mod among them marks the module
     root, and is read once the sources have been built, so a project whose tree arrives from a fetch
-    needs nothing committed here. Each binary carries the name go itself would install it under.
+    needs nothing committed here.
     """
-    if not binaries:
-        fail("go_package {}: declare the binaries to take out of the build".format(name))
     _go_package(
         name = name,
-        binaries = binaries,
         incremental = project.is_dev(name, override = dev),
         srcs = srcs if srcs != None else glob([name + "/**"]),
         **kwargs,

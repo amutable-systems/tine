@@ -26,15 +26,45 @@ box.new(
 # after the target, and the go.mod in them marks the module root.
 go.package(
     name = "hello",
-    binaries = ["hello-cli"],
     box = ":go.box",
+    packages = {"hello-cli": "./cmd/hello-cli"},
 )
 
 # A project with no dependencies at all, which therefore commits no go.sum and fetches nothing.
 go.package(
     name = "nodeps",
-    binaries = ["nodeps"],
     box = ":go.box",
+    packages = {"nodeps": "."},
+)
+
+go.package(
+    name = "renamed",
+    box = ":go.box",
+    packages = {"renamed": "."},
+    srcs = glob(["nodeps/**"]),
+)
+
+go.package(
+    name = "multiple",
+    box = ":go.box",
+    packages = {
+        "first": ".",
+        "second": "example.com/nodeps",
+    },
+    srcs = glob(["nodeps/**"]),
+)
+
+box.sh_test(
+    name = "packages-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = 'for binary in "$@"; do [[ "$("$binary")" == "no dependencies here" ]]; done',
+    args = [
+        "$(location :nodeps[nodeps])",
+        "$(location :renamed[renamed])",
+        "$(location :multiple[first])",
+        "$(location :multiple[second])",
+    ],
 )
 
 package.manager(
