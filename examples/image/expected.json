@@ -1,4 +1,7 @@
 {
+  "boot-demo.fedora": {
+    "sha256": "87c2db6c9187167944f847ee0b73415ee2591c76e395f30ec677dcd8d48415b5"
+  },
   "boot-demo.fedora[boot][initrd]": {
     "sha256": "52a6cb8023ea8cc01eb14ed2e1b4ea01dcef80bc4078240e4fd81d204ede3894"
   },
