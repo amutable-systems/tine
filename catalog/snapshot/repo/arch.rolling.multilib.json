@@ -5,7 +5,7 @@
         "out": "multilib.db",
         "sha256": "1ce13e8322d4dd8a15f6f9405af846fc5dbf7fd67688d4e2ed2db7150977dae2",
         "size": 84692,
-        "url": "https://archive.archlinux.org/repos/2026/09/06/multilib/os/x86_64/multilib.db"
+        "url": "https://archive.archlinux.org/repos/2026/09/08/multilib/os/x86_64/multilib.db"
       }
     ],
     "inline": {}
