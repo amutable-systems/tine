@@ -184,6 +184,16 @@ image.bootable_disk(
     # The composition generates the databases those packages only describe, hwdb's among them.
     package_sets = ["bootable"],
     packages = ["less"],
+    ops = [
+        # HACK: Temporary workaround until https://github.com/systemd/systemd/pull/43591 and
+        # https://github.com/systemd/systemd/pull/43705 land and we pick up the new version.
+        # Otherwise this causes an eternal boot hang in half of the cases.
+        # Mounting the ESP before sysext runs avoids the race.
+        image.write_file(
+            "/usr/lib/systemd/system/systemd-sysext.service.d/50-tine-esp-before-reload.conf",
+            "[Unit]\nWantsMountsFor=/boot\n",
+        ),
+    ],
     profiles = [
         image.uki_profile(
             id = "debug",
