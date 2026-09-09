@@ -726,9 +726,13 @@ class UpstreamPackages(PackagesTestCase):
             self.tool.import_upstream("fedora", "epel10", "ebp", None)
 
     def test_nonexistent_package(self) -> None:
-        # dist_git points at our local (empty) tree, so the clone fails locally without network.
-        with self.assertRaises(subprocess.CalledProcessError):
+        # The local clone fails immediately; skip the retry delays but check their schedule.
+        with (
+            mock.patch("time.sleep") as sleep,
+            self.assertRaises(subprocess.CalledProcessError),
+        ):
             self.tool.import_upstream("fedora", "rawhide", "ghost", None)
+        self.assertEqual(sleep.call_args_list, [mock.call(delay) for delay in (2, 4, 8, 16)])
 
 
 class ArchBucketing(PackagesTestCase):
