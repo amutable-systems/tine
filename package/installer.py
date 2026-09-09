@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import specs
+from util import fail
 
 import rootfs
 
@@ -111,14 +112,14 @@ def run(
 
     if spec["installroot"] is not None:
         if spec["target"] is not None or layered or spec["work"] is not None:
-            raise SystemExit(f"{prog}: installroot excludes target, lower, and work")
+            fail(f"{prog}: installroot excludes target, lower, and work")
         installroot = Path(spec["installroot"]).absolute()
         install(packages_dir, installroot, spec, layered)
         _normalize(installroot, spec)
         return
 
     if spec["target"] is None:
-        raise SystemExit(f"{prog}: one of target and installroot is required")
+        fail(f"{prog}: one of target and installroot is required")
 
     # Bind sources must exist.
     target = Path(spec["target"]).absolute()
@@ -126,7 +127,7 @@ def run(
 
     if layered:
         if spec["work"] is None:
-            raise SystemExit(f"{prog}: lower needs a work overlay directory")
+            fail(f"{prog}: lower needs a work overlay directory")
         root = rootfs.rootfs(
             BUILDROOT,
             lowers=spec["lower"],

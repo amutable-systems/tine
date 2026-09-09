@@ -20,6 +20,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import specs
+from util import fail
 
 import alpm
 import rootfs
@@ -47,9 +48,7 @@ def load_repositories(spec: transaction.Spec) -> list[transaction.Repository]:
 def database(repository: transaction.Repository) -> Path:
     databases = sorted(repository.path.glob("*.db"))
     if len(databases) != 1:
-        raise SystemExit(
-            f"{repository.id}: expected exactly one *.db in {repository.path}, found {len(databases)}"
-        )
+        fail(f"{repository.id}: expected exactly one *.db in {repository.path}, found {len(databases)}")
     return databases[0]
 
 
@@ -98,7 +97,7 @@ def main(argv: list[str] | None = None) -> None:
 
     spec = specs.load(SolveSpec, args.spec, prog="plan")
     if not spec["install"]:
-        raise SystemExit("plan: a solve needs at least one install spec")
+        fail("plan: a solve needs at least one install spec")
     repositories = load_repositories(spec)
 
     with ExitStack() as stack:

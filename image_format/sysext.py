@@ -68,7 +68,7 @@ def _os_release(tree: Path) -> dict[str, str]:
             if key and sep and not key.startswith("#"):
                 fields[key] = value.strip("\"'")
         return fields
-    raise SystemExit("sysext: the base image ships no os-release to match against")
+    util.fail("sysext: the base image ships no os-release to match against")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -78,7 +78,7 @@ def main(argv: list[str] | None = None) -> None:
     base = spec["base"]
     lowers: list[str | Path] = list(spec["lower"])
     if base < 0 or (base and base >= len(lowers)):
-        raise SystemExit("sysext: base must leave at least one delta layer")
+        util.fail("sysext: base must leave at least one delta layer")
     if base:
         # The extension must pin the base identity it was built against, so systemd-sysext
         # refuses to merge it onto anything else except when it declares ID=_any which also
@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> None:
         with rootfs.rootfs("/buildroot", lowers=lowers) as tree:
             fields = _os_release(tree)
         if "ID" not in fields:
-            raise SystemExit("sysext: the base os-release lacks ID")
+            util.fail("sysext: the base os-release lacks ID")
         if release.get("ID") != "_any":
             strict = {
                 key: fields[key] for key in ("ID", "VERSION_ID") if key in fields and key not in release

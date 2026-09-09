@@ -120,7 +120,7 @@ class TestCrateDownloads(unittest.TestCase):
             lock.crate_downloads("hello", _lock(lock_text))
         self.assertEqual(
             str(caught.exception),
-            f"cargo_package hello: libc 0.2.180: unsupported dependency source {source}",
+            f"tine: cargo_package hello: libc 0.2.180: unsupported dependency source {source}",
         )
 
     def test_rejects_missing_checksum(self) -> None:
@@ -236,7 +236,7 @@ class TestBuild(unittest.TestCase):
             build._reject_unlocked_dependencies(self._workspace(MANIFEST))
         self.assertEqual(
             str(caught.exception),
-            "cargo-build: [dependencies] without a Cargo.lock; commit the lock cargo writes",
+            "tine: cargo-build: [dependencies] without a Cargo.lock; commit the lock cargo writes",
         )
 
     def test_cargo_config(self) -> None:
@@ -273,7 +273,7 @@ class TestBuild(unittest.TestCase):
             )
         self.assertEqual(
             str(caught.exception),
-            "cargo-build: no hello in target/release, which holds: hello-cli",
+            "tine: cargo-build: no hello in target/release, which holds: hello-cli",
         )
 
 

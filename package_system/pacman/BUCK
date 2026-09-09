@@ -19,7 +19,7 @@ tine_python_binary(
 tine_python_binary(
     name = "install",
     main = "install.py",
-    deps = [":alpm", "//package:installer"],
+    deps = [":alpm", "//:util", "//package:installer"],
 )
 
 # The capture driver implements the terminal-image contract, so it takes that library.
@@ -41,6 +41,7 @@ tine_python_binary(
     deps = [
         ":alpm",
         "//:specs",
+        "//:util",
         "//package:href",
         "//package:transaction",
         "//rootfs:rootfs",
@@ -50,7 +51,7 @@ tine_python_binary(
 tine_python_binary(
     name = "snapshot",
     main = "snapshot.py",
-    deps = [":alpm", "//package:href", "//package:snapshotter"],
+    deps = [":alpm", "//:util", "//package:href", "//package:snapshotter"],
 )
 
 # `build` stays unset: Arch has no makepkg rule here yet.

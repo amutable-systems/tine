@@ -78,7 +78,7 @@ class TestMainPackages(unittest.TestCase):
             build._select(["agent"], build._group_by_name(COLLIDING_LISTING), [])
         self.assertEqual(
             str(caught.exception),
-            "go-build: several main packages build agent: example.com/p/cmd/agent, "
+            "tine: go-build: several main packages build agent: example.com/p/cmd/agent, "
             "example.com/p/internal/testtools/agent",
         )
 
@@ -87,7 +87,7 @@ class TestMainPackages(unittest.TestCase):
             build._select(["mycmd", "gated"], build._group_by_name(V2_LISTING), ["http", "insecure"])
         self.assertEqual(
             str(caught.exception),
-            "go-build: no main package builds gated with tags [http insecure]; "
+            "tine: go-build: no main package builds gated with tags [http insecure]; "
             "the module's commands are: mycmd, tool",
         )
 

@@ -15,6 +15,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from util import fail
+
 import alpm
 import installer
 
@@ -124,7 +126,7 @@ def install(
         *packages,
     ]  # fmt: skip
     if subprocess.run(command).returncode != 0:
-        raise SystemExit("pacman transaction failed")
+        fail("pacman transaction failed")
 
 
 def parkdb(installroot: Path, epoch: int) -> None:
@@ -132,7 +134,7 @@ def parkdb(installroot: Path, epoch: int) -> None:
     local = installroot / alpm.LOCAL_DB
     descs = sorted(local.glob("*/desc"))
     if not descs:
-        raise SystemExit(f"no alpm database at {local}; the install did not populate it")
+        fail(f"no alpm database at {local}; the install did not populate it")
     for desc in descs:
         text = desc.read_text(encoding="utf-8")
         lines = text.splitlines(keepends=True)

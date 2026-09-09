@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import specs
+from util import fail
 
 import rootfs
 
@@ -39,7 +40,7 @@ def run(prog: str, unpack: Callable[[Path, Path], int], argv: list[str] | None =
     dest = Path(spec["out"])
     packages = expand(spec["packages"])
     if not packages:
-        raise SystemExit(f"{prog}: no packages to extract")
+        fail(f"{prog}: no packages to extract")
     with rootfs.capture_on_exit(dest):
         total = sum(unpack(package, dest) for package in packages)
     print(f"extracted {total} entries from {len(packages)} package(s) into {dest}", file=sys.stderr)

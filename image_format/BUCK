@@ -32,12 +32,13 @@ tine_python_binary(
 tine_python_library(
     name = "repart",
     srcs = ["repart.py"],
+    deps = ["//:util"],
 )
 
 tine_python_binary(
     name = "convert",
     main = "convert.py",
-    deps = ["//:specs"],
+    deps = ["//:specs", "//:util"],
     visibility = ["PUBLIC"],
 )
 

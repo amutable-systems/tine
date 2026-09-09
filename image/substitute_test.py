@@ -36,5 +36,5 @@ class TestExpand(unittest.TestCase):
             substitute.expand("units", UNIT, {"@sysconfdir@": "/etc"})
         self.assertEqual(
             str(caught.exception),
-            "substitute units: the template holds no @sysconfdir@",
+            "tine: substitute units: the template holds no @sysconfdir@",
         )

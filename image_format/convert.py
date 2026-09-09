@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import specs
+from util import fail
 
 
 class Spec(TypedDict):
@@ -20,7 +21,7 @@ def main(argv: list[str] | None = None) -> None:
     source = Path(spec["input"])
     out = Path(spec["out"])
     if spec["format"] not in ("qcow2", "raw.zst"):
-        raise SystemExit(f"convert: unknown format {spec['format']!r}")
+        fail(f"convert: unknown format {spec['format']!r}")
     if spec["format"] == "qcow2":
         # convert drops zero clusters, so the qcow2 stays compact regardless of the raw size.
         cmd = ["qemu-img", "convert", "-f", "raw", "-O", "qcow2", str(source), str(out)]

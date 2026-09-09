@@ -65,7 +65,7 @@ def read_pkginfo(package: Path) -> dict[str, list[str]]:
                 key, _, value = line.partition("=")
                 info.setdefault(key.strip(), []).append(value.strip())
             return info
-    raise SystemExit(f"{package}: no .PKGINFO; not an alpm package")
+    util.fail(f"{package}: no .PKGINFO; not an alpm package")
 
 
 def _checksum(package: Path) -> str:
@@ -91,7 +91,7 @@ def index(entries: list[tuple[str, Path]], out: Path, epoch: int) -> None:
     out.mkdir(parents=True, exist_ok=True)
     entries = sorted(entries)
     if not entries:
-        raise SystemExit("no packages given")
+        util.fail("no packages given")
 
     # A location is relative to the repository base URL, which is a directory here.
     for name, package in entries:

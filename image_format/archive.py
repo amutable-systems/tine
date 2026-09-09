@@ -40,18 +40,18 @@ def _pack(tree: Path, out: Path, fmt: str, epoch: int) -> None:
     elif fmt == "cpio":
         cpio.pack_tree(tree, out, epoch)
     else:
-        raise SystemExit(f"unknown archive format {fmt!r}")
+        util.fail(f"unknown archive format {fmt!r}")
 
 
 def _archive(tree: Path, out: Path, fmt: str, epoch: int, compression: str) -> None:
     if fmt == "directory":
         if compression != "none":
-            raise SystemExit("archive: the directory format cannot be compressed")
+            util.fail("archive: the directory format cannot be compressed")
 
         # Reject names that would wedge Buck while storing the thawed tree.
         for path in tree.rglob("*"):
             if "\\" in path.name:
-                raise SystemExit(
+                util.fail(
                     f"archive: {path.relative_to(tree)} contains a backslash, which buck cannot "
                     "store; the directory format cannot represent this image — use tar"
                 )
@@ -61,7 +61,7 @@ def _archive(tree: Path, out: Path, fmt: str, epoch: int, compression: str) -> N
     elif compression == "none":
         _pack(tree, out, fmt, epoch)
     elif compression != "zstd":
-        raise SystemExit(f"archive: unknown compression {compression!r}")
+        util.fail(f"archive: unknown compression {compression!r}")
     else:
         # zstd needs the finished archive, so pack it beside the output rather than in TMPDIR: the
         # shared filesystem keeps the packer's reflink cloning working, and Buck only ever sees the

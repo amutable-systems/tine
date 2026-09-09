@@ -43,6 +43,7 @@ tine_python_binary(
         ":finalize",
         ":kmod",
         "//:specs",
+        "//:util",
         "//archive:cpio",
     ],
     visibility = ["PUBLIC"],
@@ -51,6 +52,7 @@ tine_python_binary(
 tine_python_library(
     name = "kmod",
     srcs = ["kmod.py"],
+    deps = ["//:util"],
 )
 
 tine_python_library(
@@ -62,7 +64,7 @@ tine_python_library(
 tine_python_binary(
     name = "substitute",
     main = "substitute.py",
-    deps = ["//:specs"],
+    deps = ["//:specs", "//:util"],
     visibility = ["PUBLIC"],
 )
 
@@ -111,6 +113,7 @@ tine_python_binary(
     deps = [
         ":finalize",
         "//:specs",
+        "//:util",
     ],
     visibility = ["PUBLIC"],
 )
@@ -122,6 +125,7 @@ tine_python_library(
     deps = [
         ":finalize",
         "//:specs",
+        "//:util",
     ],
     visibility = ["//image_format:"],
 )
@@ -129,7 +133,7 @@ tine_python_library(
 tine_python_library(
     name = "finalize",
     srcs = ["finalize.py"],
-    deps = ["//rootfs:rootfs"],
+    deps = ["//:util", "//rootfs:rootfs"],
     visibility = ["PUBLIC"],
 )
 
@@ -165,6 +169,7 @@ tine_python_binary(
         ":kmod",
         ":version",
         "//:specs",
+        "//:util",
     ],
     visibility = ["PUBLIC"],
 )

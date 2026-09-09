@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import specs
+from util import fail
 
 _MODULE = "go.mod"
 _SUM = "go.sum"
@@ -45,11 +46,11 @@ def _named(sources: dict[str, str], name: str) -> list[Path]:
 def resolve_workspace(target: str, sources: dict[str, str]) -> dict[str, str | None]:
     """The project's go.mod, its go.sum if it has one, and the module root, as logical paths."""
     if _named(sources, _WORK):
-        raise SystemExit(f"go_package {target}: go workspaces are not supported; keep {_WORK} out of srcs")
+        fail(f"go_package {target}: go workspaces are not supported; keep {_WORK} out of srcs")
 
     modules = _named(sources, _MODULE)
     if not modules:
-        raise SystemExit(
+        fail(
             f"go_package {target}: srcs hold no {_MODULE}; by default the checkout is expected in "
             f"the {target}/ directory, pass `srcs` when it lives elsewhere"
         )
@@ -61,7 +62,7 @@ def resolve_workspace(target: str, sources: dict[str, str]) -> dict[str, str | N
     root = module.parent
     strays = [str(other) for other in modules if other != module and root not in other.parents]
     if strays:
-        raise SystemExit(
+        fail(
             f"go_package {target}: {strays} is not nested in {module}, so srcs hold no single "
             "project; narrow `srcs` to one module"
         )

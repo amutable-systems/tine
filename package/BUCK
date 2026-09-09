@@ -7,19 +7,20 @@ tine_python_library(
     name = "href",
     srcs = ["href.py"],
     visibility = ["PUBLIC"],
+    deps = ["//:util"],
 )
 
 tine_python_library(
     name = "extractor",
     srcs = ["extractor.py"],
     visibility = ["PUBLIC"],
-    deps = ["//:specs", "//rootfs:rootfs"],
+    deps = ["//:specs", "//:util", "//rootfs:rootfs"],
 )
 
 tine_python_library(
     name = "installer",
     srcs = ["installer.py"],
-    deps = ["//:specs", "//rootfs:rootfs"],
+    deps = ["//:specs", "//:util", "//rootfs:rootfs"],
     visibility = ["PUBLIC"],
 )
 

@@ -174,7 +174,7 @@ def unpack(fd: int, dest: Path, *, offset: int = 0) -> int:
         except ValueError as error:
             # What the reader raises for an archive that is not the format it claims, which is an
             # input being wrong rather than a bug worth a traceback.
-            raise SystemExit(f"cpio: {error}") from error
+            util.fail(f"cpio: {error}")
 
 
 # Writer.

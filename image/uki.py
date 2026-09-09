@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import specs
+from util import fail
 
 import cpio
 import finalize
@@ -65,7 +66,7 @@ class Spec(finalize.ImageSpec):
 def _kernels(tree: Path) -> list[kmod.Kernel]:
     found = kmod.kernels(tree)
     if not found:
-        raise SystemExit("uki: found no kernel under /usr/lib/modules or /boot")
+        fail("uki: found no kernel under /usr/lib/modules or /boot")
     return sorted(found)
 
 
@@ -95,10 +96,10 @@ def _cmdline(arguments: list[str], root_hash: Path | None, kind: str | None) -> 
     assert kind is not None
     parameter = f"{kind}hash"
     if any(word.split("=", 1)[0] == parameter for argument in arguments for word in argument.split()):
-        raise SystemExit(f"uki: {parameter}= is both explicit and generated")
+        fail(f"uki: {parameter}= is both explicit and generated")
     digest = root_hash.read_text().strip()
     if not digest or any(character not in "0123456789abcdefABCDEF" for character in digest):
-        raise SystemExit("uki: invalid verity root hash")
+        fail("uki: invalid verity root hash")
     return " ".join([*arguments, f"{parameter}={digest.lower()}"])
 
 
@@ -110,9 +111,7 @@ def _provider(source: str) -> str:
     """
     prefix = "provider:"
     if not source.startswith(prefix):
-        raise SystemExit(
-            f"uki: ukify can only load key material through an OpenSSL provider, got {source!r}"
-        )
+        fail(f"uki: ukify can only load key material through an OpenSSL provider, got {source!r}")
     return source.removeprefix(prefix)
 
 
@@ -213,7 +212,7 @@ def main(argv: list[str] | None = None) -> None:
         scratch = Path(scratch_dir)
         found = _kernels(tree)
         if len(found) > 1:
-            raise SystemExit(
+            fail(
                 "uki: one image holds one kernel, found: "
                 + ", ".join(installed.release for installed in found)
                 + " — split kernel variants into separate images"
@@ -221,12 +220,10 @@ def main(argv: list[str] | None = None) -> None:
         kver, kernel = found[0]
         os_release = tree / "usr/lib/os-release"
         if not os_release.exists():
-            raise SystemExit(
-                "uki: the image ships no /usr/lib/os-release (ukify needs it) — install a release package"
-            )
+            fail("uki: the image ships no /usr/lib/os-release (ukify needs it) — install a release package")
         stub = tree / "usr/lib/systemd/boot/efi" / f"linux{efi_arch}.efi.stub"
         if not stub.exists():
-            raise SystemExit("uki: the image ships no systemd-boot stub — install systemd-boot-unsigned")
+            fail("uki: the image ships no systemd-boot stub — install systemd-boot-unsigned")
 
         root_hash = spec["root_hash"]
         base = _cmdline(
@@ -243,7 +240,7 @@ def main(argv: list[str] | None = None) -> None:
         profile_pes = []
         addon_stub = tree / "usr/lib/systemd/boot/efi" / f"addon{efi_arch}.efi.stub"
         if profiles and not addon_stub.exists():
-            raise SystemExit("uki: the image ships no addon stub — install systemd-boot-unsigned")
+            fail("uki: the image ships no addon stub — install systemd-boot-unsigned")
         for profile in profiles:
             section = scratch / f"{profile['id']}.profile"
             section.write_text(f"ID={profile['id']}\nTITLE={profile['title']}\n")

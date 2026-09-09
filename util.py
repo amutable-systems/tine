@@ -63,10 +63,10 @@ def _zstd(stream: IO[bytes]) -> io.BufferedIOBase:
     try:
         import compression.zstd
     except ImportError:
-        raise SystemExit(
+        fail(
             f"this stream is zstd-compressed and {sys.executable} has no compression.zstd, which "
             "arrived in python 3.14"
-        ) from None
+        )
 
     return compression.zstd.ZstdFile(stream, mode="rb")
 
@@ -210,7 +210,7 @@ def take_binaries(built: Path, binaries: dict[str, str], *, tool: str, where: st
         found = sorted(
             entry.name for entry in built.iterdir() if entry.is_file() and os.access(entry, os.X_OK)
         )
-        raise SystemExit(f"{tool}: no {', '.join(missing)} in {where}, which holds: {', '.join(found)}")
+        fail(f"{tool}: no {', '.join(missing)} in {where}, which holds: {', '.join(found)}")
     for name, out in binaries.items():
         # Replace, never rewrite: buck does not clear a kept action's outputs, and whatever consumed
         # the previous binary may hold a hard link to it.
@@ -335,7 +335,7 @@ def package_directory(buck: str, package: str) -> Path:
     """Where a `cell//path` package label lives on disk, asked of Buck rather than assumed."""
     cell, separator, path = package.partition("//")
     if not separator or not cell or ":" in package or "..." in package:
-        raise SystemExit(f"expected a cell-relative package label, got {package!r}")
+        fail(f"expected a cell-relative package label, got {package!r}")
     return Path(buck_output(buck, "audit", "cell", cell, "--paths-only")) / path
 
 

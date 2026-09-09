@@ -15,6 +15,8 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import TypedDict
 
+from util import fail
+
 import rootfs
 
 
@@ -67,7 +69,7 @@ def apply_tmpfiles(tree: Path, snippets: list[str], *, program: str) -> None:
         return
     tmpfiles = shutil.which("systemd-tmpfiles")
     if tmpfiles is None:
-        raise SystemExit(f"{program}: systemd-tmpfiles is required to finalize this image")
+        fail(f"{program}: systemd-tmpfiles is required to finalize this image")
 
     config = "".join(snippet if snippet.endswith("\n") else snippet + "\n" for snippet in snippets)
     subprocess.run(
@@ -81,7 +83,7 @@ def apply_tmpfiles(tree: Path, snippets: list[str], *, program: str) -> None:
 def _box_tool(name: str, what: str) -> str:
     path = shutil.which(name)
     if path is None:
-        raise SystemExit(f"{what}: this box carries no {name}")
+        fail(f"{what}: this box carries no {name}")
     return path
 
 
@@ -89,14 +91,14 @@ def _image_tool(name: str, what: str) -> str:
     """Find a tool inside the already-entered image, which is the only place it can come from."""
     path = shutil.which(name)
     if path is None:
-        raise SystemExit(f"{what}: the image itself has to carry {name}, and does not")
+        fail(f"{what}: the image itself has to carry {name}, and does not")
     return path
 
 
 def _run(what: str, cmd: list[str]) -> None:
     rc = subprocess.run(cmd).returncode
     if rc != 0:
-        raise SystemExit(f"{what}: `{' '.join(cmd)}` failed (rc={rc})")
+        fail(f"{what}: `{' '.join(cmd)}` failed (rc={rc})")
 
 
 def kernel_versions(tree: Path) -> list[str]:

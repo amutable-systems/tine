@@ -36,7 +36,7 @@ class Spec(TypedDict):
 def main(argv: list[str] | None = None) -> int:
     spec = specs.parse(Spec, "build_rpm", argv)
     if not spec["lower"]:
-        raise SystemExit("build_rpm: the buildroot stack cannot be empty")
+        util.fail("build_rpm: the buildroot stack cannot be empty")
 
     # Use action scratch space, which is what the sandbox backs /var/tmp with. Buck clears it
     # before each execution, so a fixed name neither collides with a preserved failed tree nor
@@ -124,7 +124,7 @@ def _emit_subpackages(declared: dict[str, str], produced: dict[str, Path]) -> No
         f for f in produced if f not in set(matched.values()) and not re.search(r"-debug(info|source)-", f)
     )
     if missing or unexpected:
-        raise SystemExit(
+        util.fail(
             "subpackage fidelity gate failed:\n"
             f"  declared but not produced: {missing}\n"
             f"  produced but not declared: {unexpected}"

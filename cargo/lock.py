@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 import specs
+from util import fail
 
 # Both spellings of the crates.io index. The sparse protocol replaced the git one, and locks written
 # before a project switched over keep the old string.
@@ -28,7 +29,7 @@ class Spec(TypedDict):
 def _packages(target: str, lock: dict[str, Any]) -> list[dict[str, Any]]:
     packages = lock.get("package")
     if not isinstance(packages, list):
-        raise SystemExit(f"cargo_package {target}: `lock` is not a Cargo.lock: it has no [[package]] list")
+        fail(f"cargo_package {target}: `lock` is not a Cargo.lock: it has no [[package]] list")
     return packages
 
 
@@ -41,11 +42,9 @@ def crate_downloads(target: str, lock: dict[str, Any]) -> list[dict[str, str]]:
         if source is None or source.startswith("git+"):
             continue
         if source not in _CRATES_IO:
-            raise SystemExit(
-                f"cargo_package {target}: {name} {version}: unsupported dependency source {source}"
-            )
+            fail(f"cargo_package {target}: {name} {version}: unsupported dependency source {source}")
         if "checksum" not in package:
-            raise SystemExit(
+            fail(
                 f"cargo_package {target}: {name} {version}: no checksum; "
                 "Cargo.lock version 3 or newer is required"
             )
@@ -69,9 +68,7 @@ def git_sources(target: str, lock: dict[str, Any]) -> dict[str, dict[str, str]]:
             continue
         head, separator, commit = source.rpartition("#")
         if not separator or len(commit) != 40 or commit.lower().strip("0123456789abcdef"):
-            raise SystemExit(
-                f"cargo_package {target}: git source without a full commit in the lock: {source}"
-            )
+            fail(f"cargo_package {target}: git source without a full commit in the lock: {source}")
         url, _, query = head.removeprefix("git+").partition("?")
         fields = {"git": url}
         for parameter in query.split("&"):
@@ -80,7 +77,7 @@ def git_sources(target: str, lock: dict[str, Any]) -> dict[str, dict[str, str]]:
                 fields[name] = value
         previous = sources.setdefault(commit, fields)
         if previous != fields:
-            raise SystemExit(
+            fail(
                 f"cargo_package {target}: commit {commit[:12]} comes from two spellings of one git "
                 f"source ({previous} vs {fields}); make the dependency declarations agree"
             )
@@ -108,7 +105,7 @@ def resolve_workspace(target: str, sources: dict[str, str]) -> dict[str, Any]:
     """Return the workspace root and remote inputs resolved from its lock."""
     locks = _named(sources, "Cargo.lock")
     if len(locks) > 1:
-        raise SystemExit(
+        fail(
             f"cargo_package {target}: srcs hold several Cargo.lock files: "
             f"{[str(logical) for logical, _ in locks]}"
         )
@@ -118,20 +115,20 @@ def resolve_workspace(target: str, sources: dict[str, str]) -> dict[str, Any]:
         root = locks[0][0].parent
         manifests = [manifest for manifest in manifests if manifest[0].parent == root]
     elif not manifests:
-        raise SystemExit(
+        fail(
             f"cargo_package {target}: srcs hold no Cargo.toml; by default the checkout is expected "
             f"in the {target}/ directory, pass `srcs` when it lives elsewhere"
         )
     elif len(manifests) == 1:
         root = manifests[0][0].parent
     else:
-        raise SystemExit(
+        fail(
             f"cargo_package {target}: srcs hold no Cargo.lock and {len(manifests)} Cargo.toml files; "
             "commit the lock"
         )
 
     if not manifests:
-        raise SystemExit(f"cargo_package {target}: srcs hold no Cargo.toml beside the Cargo.lock")
+        fail(f"cargo_package {target}: srcs hold no Cargo.toml beside the Cargo.lock")
 
     lock: dict[str, Any] = {"package": []}
     if locks:

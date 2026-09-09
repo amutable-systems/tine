@@ -84,7 +84,7 @@ class TestResolveWorkspace(unittest.TestCase):
             )
         self.assertEqual(
             str(caught.exception),
-            "go_package hello: ['second/go.mod'] is not nested in first/go.mod, so srcs hold no "
+            "tine: go_package hello: ['second/go.mod'] is not nested in first/go.mod, so srcs hold no "
             "single project; narrow `srcs` to one module",
         )
 
@@ -99,6 +99,6 @@ class TestResolveWorkspace(unittest.TestCase):
             workspace.resolve_workspace("hello", {"fetched": str(self.checkout)})
         self.assertEqual(
             str(caught.exception),
-            "go_package hello: srcs hold no go.mod; by default the checkout is expected in the "
+            "tine: go_package hello: srcs hold no go.mod; by default the checkout is expected in the "
             "hello/ directory, pass `srcs` when it lives elsewhere",
         )

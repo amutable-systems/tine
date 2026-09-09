@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any, cast
 
-from util import buck_output, nested_buck
+from util import buck_output, fail, nested_buck
 
 
 def _bold(label: str) -> None:
@@ -99,14 +99,14 @@ def _lint(args: argparse.Namespace) -> None:
     _bold("test targets")
     if orphans := _orphan_tests(args.buck, cell):
         listing = "\n".join(f"  {p.relative_to(cell)}" for p in orphans)
-        raise SystemExit(f"no box_python_test lists these, so they never run:\n{listing}")
+        fail(f"no box_python_test lists these, so they never run:\n{listing}")
     _bold("ruff")
     _run([args.ruff, "format", "--check", "--no-cache", cell])
     _run([args.ruff, "check", "--no-cache", cell])
     _bold("ty")
     targets = buck_output(args.buck, "uquery", "attrfilter(labels, 'python-typecheck', tine//...)").split()
     if not targets:
-        raise SystemExit("ty: no generated type-check targets found")
+        fail("ty: no generated type-check targets found")
     _run([args.buck, "build", *targets])
     _bold("starlark_fmt")
     # starlark_fmt has no check mode, so diff each file and fail on the first rewrite it would make.
@@ -210,7 +210,7 @@ def _ty(args: argparse.Namespace) -> None:
     box = Path(args.box)
     site_packages = sorted((box / "usr/lib").glob("python*/site-packages"))
     if len(site_packages) != 1:
-        raise SystemExit(f"ty: expected one site-packages directory in {box}, found {len(site_packages)}")
+        fail(f"ty: expected one site-packages directory in {box}, found {len(site_packages)}")
     env = os.environ.copy()
     pythonpath = [str(site_packages[0])]
     if inherited := env.get("PYTHONPATH"):

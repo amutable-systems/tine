@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import specs
+from util import fail
 
 
 class Spec(TypedDict):
@@ -75,7 +76,7 @@ def main(argv: list[str] | None = None) -> None:
     # module graph's go.mod hashes into the staged go.sum on the way. So a go.sum that comes back
     # changed is one with incomplete pins, which the build would fail on further along.
     if not filecmp.cmp(spec["sum"], module / "go.sum", shallow=False):
-        raise SystemExit(
+        fail(
             "go-fetch: go.sum is missing go.mod hashes of the module graph; "
             "run `go mod tidy` and commit the result"
         )

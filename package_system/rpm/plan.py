@@ -15,6 +15,7 @@ import libdnf5
 import libdnf5.comps
 import libdnf5.conf
 import specs
+from util import fail
 
 import rootfs
 import transaction
@@ -112,7 +113,7 @@ def plan(
         if log.get_problem() != libdnf5.base.GoalProblem_ALREADY_INSTALLED
     ]
     if problems:
-        raise SystemExit("plan resolution failed:\n  " + "\n  ".join(problems))
+        fail("plan resolution failed:\n  " + "\n  ".join(problems))
 
     # Only inbound transaction items need downloading.
     resolved: list[transaction.TransactionPackage] = []
@@ -121,10 +122,10 @@ def plan(
             continue
         pkg = tp.get_package()
         if pkg.get_arch() in MULTILIB_ARCHES:
-            raise SystemExit(f"refusing multilib package {pkg.get_nevra()} (32-bit in a {arch} closure)")
+            fail(f"refusing multilib package {pkg.get_nevra()} (32-bit in a {arch} closure)")
         chk = pkg.get_checksum()
         if chk.get_type_str() != "sha256":
-            raise SystemExit(f"expected sha256 repodata checksum for {pkg.get_nevra()}")
+            fail(f"expected sha256 repodata checksum for {pkg.get_nevra()}")
         repo = repositories[pkg.get_repo_id()]
         resolved.append(
             transaction.entry(
@@ -168,7 +169,7 @@ def main(argv: list[str] | None = None) -> None:
 
     solve_spec = specs.load(SolveSpec, args.spec, prog="plan")
     if not solve_spec["install"]:
-        raise SystemExit("plan: a solve needs at least one install spec")
+        fail("plan: a solve needs at least one install spec")
     repos = load_repositories(solve_spec)
     seeds = [Path(cache_dir).absolute() for cache_dir in solve_spec["cache"]]
 
