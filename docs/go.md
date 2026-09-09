@@ -18,8 +18,8 @@ load("@tine//go:defs.bzl", "go")
 
 go.package(
     name = "hello",
-    binaries = ["hello-cli"],
     box = ":go.box",
+    packages = {"hello-cli": "./cmd/hello-cli"},
 )
 ```
 
@@ -35,12 +35,9 @@ go.package(
   project's own `go.mod` pins what the fetch may download. A module that resolves nothing has no
   `go.sum`; then nothing is fetched and the build runs with `GOPROXY=off`, so anything go would want to
   resolve fails.
-- `binaries` names which commands to build; at least one is required. A name is the one `go install`
-  would give: `cmd/hello-cli` produces `hello-cli`. A main package at the root of module
-  `example.com/mycmd/v2` produces `mycmd`, because go skips the version element. Each name becomes a
-  sub-target (`:hello[hello-cli]`), and together they are the target's default outputs. A name matching
-  no main package fails the action and lists the ones that do, as does one that two main packages
-  would both produce. Only the private name `__tine` is reserved by the rule.
+- `packages` maps output names to Go main packages, such as `{"etcd": "."}` or
+  `{"server": "./cmd/server"}`. Values are paths relative to the module root or full import paths;
+  keys set the binary's filename and sub-target name. Together these are the target's default outputs.
 - `box` is the build environment, declared by the consumer because only the consumer knows what its
   projects need.
 - `tags` are Go build tags: a `//go:build <tag>` line decides whether a file compiles at all. Nothing
@@ -60,6 +57,17 @@ go.package(
 
 The binaries are ordinary artifacts, so an image installs one with an `image.copy()` operation; see the
 example.
+
+For example, the `etcd` target builds the module's root package (`.`) as the binary `etcd-server`,
+available through `:etcd[etcd-server]`:
+
+```Starlark
+go.package(
+    name = "etcd",
+    box = ":go.box",
+    packages = {"etcd-server": "."},
+)
+```
 
 ## What the builder box needs
 

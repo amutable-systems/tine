@@ -721,13 +721,10 @@ network stays confined to the first:
    implicitly). `-mod=readonly` makes a lock that no longer agrees with `go.mod` a failure rather than a
    silent re-resolution, and `GOTOOLCHAIN=local` keeps the box's go the only toolchain.
 
-The declared binaries also select what gets built, rather than only what is taken out of a build of
-everything. A checked-out project often carries commands an image does not install; building those would
-cost time for nothing, and worse, may require additional build requirements. The driver therefore asks go
-which main packages exist (`go list -e`, which loads metadata without compiling and tolerates a package
-that does not load at all) and passes only the declared ones to `go build`. The same listing reports the
-name go itself would give each binary, and turns a misdeclared binary into a failure that names the
-module's actual commands before anything compiles.
+The `packages` mapping selects the main packages to build and names their outputs. A checked-out project
+often carries commands an image does not install; building those would cost time and may require 
+additional build requirements. The driver resolves each selection with `go list` and builds it with 
+`go build -o`, using the declared output name.
 
 No auditable wrapper exists in this path because go itself embeds the module list in every binary it
 links. syft catalogs these as `pkg:golang` components in the image SBOM. The declaration contract is in
