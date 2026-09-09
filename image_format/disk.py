@@ -239,21 +239,6 @@ def _copy_partition(row: dict[str, Any], name: str, blocks: Path, metadata: Path
     metadata.write_text(json.dumps(described, sort_keys=True, separators=(",", ":")) + "\n")
 
 
-def _clamp_vfat_label(image: Path, offset: int, label: str) -> None:
-    """Rewrite a vfat label in place, clamping its timestamp to the source date.
-
-    As of dosfstools 4.2, mkfs.fat stamps the volume-label entry with the build's wall clock and
-    ignores SOURCE_DATE_EPOCH; mlabel honors it, and rewrites the entry even when the label does not
-    change.
-
-    Once the catalog pins a dosfstools with https://bugzilla.redhat.com/show_bug.cgi?id=2524875
-    applied, we can drop this.
-    """
-    # FAT stores local time, so pin the zone the epoch is rendered in.
-    env = os.environ | {"TZ": "UTC", "MTOOLS_SKIP_CHECK": "1"}
-    subprocess.run(["mlabel", "-i", f"{image}@@{offset}", f"::{label}"], check=True, env=env)
-
-
 def _grow(disk: Path, size: str) -> None:
     """Extend a composed disk to its requested size, leaving the added room a hole.
 
@@ -383,21 +368,8 @@ def main(argv: list[str] | None = None) -> None:
         result = subprocess.run([*cmd, str(disk)], check=True, env=env, stdout=subprocess.PIPE, text=True)
         rows: list[dict[str, Any]] = json.loads(result.stdout)
 
-        # The label comes from the row rather than the definition: repart derives one from the
-        # partition type when none is declared. We must update what mkfs wrote.
-        vfat = {
-            partition.definition.name for partition in written if partition.definition.filesystem == "vfat"
-        }
-        for name in vfat:
-            row = _partition_row(rows, files[name])
-            _clamp_vfat_label(disk, int(row["offset"]), row["label"])
-
         for name, blocks, metadata in splits:
-            row = _partition_row(rows, files[name])
-            _copy_partition(row, name, blocks, metadata)
-            # The split artifact was written by repart before the relabel above could reach it.
-            if name in vfat:
-                _clamp_vfat_label(blocks, 0, row["label"])
+            _copy_partition(_partition_row(rows, files[name]), name, blocks, metadata)
         if spec["root_hash_out"]:
             repart.write_root_hash(rows, Path(spec["root_hash_out"]))
         if out and splits:
