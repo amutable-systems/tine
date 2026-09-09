@@ -40,6 +40,9 @@ DIST = ".fc99"
 NATIVE_DIST = tool.NATIVE_DIST
 NDIST = DIST + NATIVE_DIST
 
+# Keep bytes, not paths into a previous test's deleted temporary directory.
+_RPM_CACHE: dict[tuple[str, str, str, bytes, tuple[str, ...]], dict[Path, bytes]] = {}
+
 
 def git(*args: str, cwd: Path) -> str:
     return subprocess.run(
@@ -240,13 +243,33 @@ def build_rpms(
     (topdir / "SOURCES" / f"{pkg}-{version}.tar.gz").write_bytes(tarball)
     spec = topdir / "SPECS" / f"{pkg}.spec"
     spec.write_text(spec_text)
-    cmd = ["rpmbuild", "-ba", "--define", f"_topdir {topdir}", "--define", f"dist {dist}", *(options or [])]
+    # These fixtures have at most a few files; extra workers cost more than they save.
+    cmd = [
+        "-ba",
+        "--define",
+        "_smp_build_nthreads 1",
+        "--define",
+        f"dist {dist}",
+        *(options or []),
+    ]
     if target:
         cmd += ["--target", target]
     for k, v in defines.items():
         cmd += ["--define", f"{k} {v}"]
-    subprocess.run([*cmd, str(spec)], check=True, capture_output=True)
-    return sorted(topdir.rglob("*.rpm"))
+    key = (pkg, version, spec_text, tarball, tuple(cmd))
+    if key not in _RPM_CACHE:
+        subprocess.run(
+            ["rpmbuild", "--define", f"_topdir {topdir}", *cmd, str(spec)],
+            check=True,
+            capture_output=True,
+        )
+        _RPM_CACHE[key] = {r.relative_to(topdir): r.read_bytes() for r in sorted(topdir.rglob("*.rpm"))}
+    else:
+        for relative, data in _RPM_CACHE[key].items():
+            rpm = topdir / relative
+            rpm.parent.mkdir(parents=True, exist_ok=True)
+            rpm.write_bytes(data)
+    return [topdir / relative for relative in _RPM_CACHE[key]]
 
 
 class FakeKoji:
