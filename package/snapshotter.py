@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import IO, Any, TypedDict
 
 import specs
-from util import text_destination, urlopen, with_retries
+from util import fail, text_destination, urlopen, with_retries
 
 AGENT = "tine-snapshot"
 
@@ -56,7 +56,7 @@ def checksum(rid: str, what: str, value: str | None) -> str:
     """Normalize and validate a sha256 a repository states about its own contents."""
     digest = "" if value is None else value.strip().lower()
     if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
-        raise SystemExit(f"{rid}: {what} has invalid sha256 {digest!r}")
+        fail(f"{rid}: {what} has invalid sha256 {digest!r}")
     return digest
 
 
@@ -85,13 +85,13 @@ def download(
             while chunk := response.read(1024 * 1024):
                 total += len(chunk)
                 if size is not None and total > size:
-                    raise SystemExit(f"{rid}: {what} is larger than the stated {size} bytes")
+                    fail(f"{rid}: {what} is larger than the stated {size} bytes")
                 digest.update(chunk)
                 output.write(chunk)
         if size is not None and total != size:
-            raise SystemExit(f"{rid}: {what} is {total} bytes, not the stated {size}")
+            fail(f"{rid}: {what} is {total} bytes, not the stated {size}")
         if sha256 is not None and digest.hexdigest() != sha256:
-            raise SystemExit(f"{rid}: {what} does not match the checksum stated for it")
+            fail(f"{rid}: {what} does not match the checksum stated for it")
         return digest.hexdigest(), total
 
     return with_retries(f"{rid}: {url}", fetch)
@@ -104,7 +104,7 @@ def add_package(packages: dict[str, PackageEntry], rid: str, digest: str, entry:
         packages[digest] = entry
         return
     if previous["size"] != entry["size"]:
-        raise SystemExit(f"{rid}: duplicate checksum {digest} has conflicting sizes")
+        fail(f"{rid}: duplicate checksum {digest} has conflicting sizes")
 
     # One package can be served under more than one name; pick a stable one.
     previous["location"] = min(previous["location"], entry["location"])

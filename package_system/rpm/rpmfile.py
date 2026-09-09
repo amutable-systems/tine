@@ -17,7 +17,7 @@ CPIO_MAGIC = b"070701"  # newc — an already-uncompressed payload passes throug
 
 def _header_end(view: memoryview, off: int) -> int:
     if bytes(view[off : off + 4]) != MAGIC:
-        raise SystemExit(f"bad rpm header magic at {off}: {bytes(view[off : off + 4]).hex()}")
+        util.fail(f"bad rpm header magic at {off}: {bytes(view[off : off + 4]).hex()}")
     nindex, nbytes = struct.unpack(">II", view[off + 8 : off + 16])
     return off + 16 + 16 * nindex + nbytes
 
@@ -37,7 +37,7 @@ def decompress_stream(source: BinaryIO, output: BinaryIO) -> None:
     open_compressed = util.decompressor(magic)
     if open_compressed is None:
         if not magic.startswith(CPIO_MAGIC):
-            raise SystemExit(f"unknown payload compressor (magic {magic.hex()})")
+            util.fail(f"unknown payload compressor (magic {magic.hex()})")
         shutil.copyfileobj(source, output, length=1024 * 1024)
         return
     with open_compressed(source) as reader:

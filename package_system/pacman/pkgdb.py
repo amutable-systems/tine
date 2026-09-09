@@ -36,10 +36,10 @@ def main(argv: list[str] | None = None) -> None:
     with finalize.image(spec, program="pkgdb") as tree:
         source = tree / alpm.LOCAL_DB
         if not source.is_dir():
-            raise SystemExit(f"no alpm database at {source}; the image has no installed packages")
+            util.fail(f"no alpm database at {source}; the image has no installed packages")
         entries = sorted(source.glob("*/desc"))
         if not entries:
-            raise SystemExit(f"no alpm database entries under {source}")
+            util.fail(f"no alpm database entries under {source}")
         # Beside the output rather than in TMPDIR, so reflink cloning keeps working on the way
         # through and Buck only ever sees the finished file.
         with tempfile.TemporaryDirectory(dir=out.parent) as scratch:

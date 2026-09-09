@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import cast
 
 import specs
+from util import fail
 
 import finalize
 
@@ -74,7 +75,7 @@ def inode_type(mode: int) -> str:
     for predicate, name in _INODE_TYPES:
         if predicate(mode):
             return name
-    raise SystemExit(f"manifest: inode type {stat.S_IFMT(mode):#o} has no manifest representation")
+    fail(f"manifest: inode type {stat.S_IFMT(mode):#o} has no manifest representation")
 
 
 def check_name(name: str) -> str:
@@ -86,12 +87,12 @@ def check_name(name: str) -> str:
     try:
         name.encode("utf-8")
     except UnicodeEncodeError:
-        raise SystemExit(f"manifest: {name!r} is not valid UTF-8, which a manifest name must be") from None
+        fail(f"manifest: {name!r} is not valid UTF-8, which a manifest name must be")
     if any(ord(character) < 32 or ord(character) == 127 for character in name):
-        raise SystemExit(f"manifest: {name!r} contains a control character")
+        fail(f"manifest: {name!r} contains a control character")
     top = name.split("/", 1)[0]
     if top == _RESERVED or top.startswith(_RESERVED + "."):
-        raise SystemExit(f"manifest: {name!r} is the reserved manifest file name")
+        fail(f"manifest: {name!r} is the reserved manifest file name")
     return name
 
 
@@ -231,14 +232,14 @@ def _objects(source: Path) -> Iterator[dict[str, object]]:
     data = source.read_bytes()
     head, separator, rest = data.partition(_RS)
     if not separator or head:
-        raise SystemExit(f"manifest: {source} does not open with a record")
+        fail(f"manifest: {source} does not open with a record")
     for index, record in enumerate(rest.split(_RS)):
         if not record.endswith(_LF):
-            raise SystemExit(f"manifest: {source} holds a record that no line feed ends")
+            fail(f"manifest: {source} holds a record that no line feed ends")
         obj = cast(dict[str, object], json.loads(record))
         if index == 0:
             if obj != {"mediaType": MEDIA_TYPE}:
-                raise SystemExit(f"manifest: {source} does not open with a {MEDIA_TYPE} object")
+                fail(f"manifest: {source} does not open with a {MEDIA_TYPE} object")
             continue
         yield obj
 

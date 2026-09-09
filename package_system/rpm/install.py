@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import override
 
 import libdnf5
+from util import fail
 
 import installer
 
@@ -110,7 +111,7 @@ def install(
 
     problems = tx.get_resolve_logs_as_strings()
     if problems:
-        raise SystemExit("install resolution failed:\n  " + "\n  ".join(problems))
+        fail("install resolution failed:\n  " + "\n  ".join(problems))
 
     n = len(tx.get_transaction_packages())
     print(f"installing {n} rpms into {installroot}", file=sys.stderr)
@@ -122,7 +123,7 @@ def install(
         details = callbacks.errors + list(tx.get_transaction_problems()) + list(tx.get_rpm_messages())
         if not details:
             details.append(tx.transaction_result_to_string(result))
-        raise SystemExit("transaction failed:\n  " + "\n  ".join(details))
+        fail("transaction failed:\n  " + "\n  ".join(details))
 
 
 def parkdb(installroot: Path) -> None:
@@ -131,7 +132,7 @@ def parkdb(installroot: Path) -> None:
     db = dbdir / "rpmdb.sqlite"
     if not db.exists():
         # sqlite3.connect would silently create a bogus empty database.
-        raise SystemExit(f"no rpmdb at {db}; the install did not populate it")
+        fail(f"no rpmdb at {db}; the install did not populate it")
     con = sqlite3.connect(db, isolation_level=None)
     try:
         con.execute("PRAGMA wal_checkpoint(TRUNCATE)")

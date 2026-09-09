@@ -7,11 +7,13 @@ write. Every package system's snapshot driver runs its locations through this.
 
 from urllib.parse import unquote, urlsplit
 
+from util import fail
+
 
 def relative_href(rid: str, what: str, href: str | None) -> str:
     """Check that `href` is a plain repository-relative path, and return it unchanged."""
     if not href:
-        raise SystemExit(f"{rid}: {what} has an empty location")
+        fail(f"{rid}: {what} has an empty location")
     parsed = urlsplit(href)
 
     # An alpm package carries its epoch as `fakeroot-1:1.37.2-2-...`, which parses as a scheme.
@@ -43,5 +45,5 @@ def relative_href(rid: str, what: str, href: str | None) -> str:
     non_ascii = any(ord(character) > 127 for character in href)
     control_character = any(ord(character) < 32 or ord(character) == 127 for character in decoded)
     if external or invalid_path or non_ascii or control_character:
-        raise SystemExit(f"{rid}: {what} has unsupported location {href!r}")
+        fail(f"{rid}: {what} has unsupported location {href!r}")
     return href

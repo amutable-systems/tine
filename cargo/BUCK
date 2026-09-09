@@ -8,7 +8,7 @@ tine_python_binary(
     name = "lock",
     main = "lock.py",
     visibility = ["PUBLIC"],
-    deps = ["//:specs"],
+    deps = ["//:specs", "//:util"],
 )
 
 # The downloaded crates in, the directory cargo builds against out.

@@ -17,7 +17,7 @@ import tarfile
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
-from typing import IO, NamedTuple, Self, cast
+from typing import IO, NamedTuple, NoReturn, Self, cast
 
 import util
 
@@ -69,7 +69,7 @@ def local_location(href: str, what: str) -> str:
     """Recover the `<directory>/<file>` location a locally built package is recorded under."""
     directory, separator, name = href.partition("-")
     if not separator or not directory.isdigit():
-        raise SystemExit(f"{what}: {href!r} was not published by this package system's indexer")
+        util.fail(f"{what}: {href!r} was not published by this package system's indexer")
     return f"{directory}/{name}"
 
 
@@ -94,12 +94,12 @@ def package_from_desc(entry: dict[str, list[str]], repo: str, what: str) -> Pack
         if not values and default is not None:
             return default
         if len(values) != 1:
-            raise SystemExit(f"{what}: entry has {len(values)} %{key}% values, expected one")
+            util.fail(f"{what}: entry has {len(values)} %{key}% values, expected one")
         return values[0]
 
     size = one("CSIZE", "0")
     if not size.isdigit():
-        raise SystemExit(f"{what}: entry has invalid %CSIZE% {size!r}")
+        util.fail(f"{what}: entry has invalid %CSIZE% {size!r}")
     return Package(
         name=one("NAME"),
         version=one("VERSION"),
@@ -147,7 +147,7 @@ def write_db(entries: list[tuple[str, dict[str, list[str]]]], out: Path, epoch: 
             with tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as db:
                 names = [name for name, _ in entries]
                 if len(set(names)) != len(names):
-                    raise SystemExit(f"write_db: {out} would carry a package twice")
+                    util.fail(f"write_db: {out} would carry a package twice")
                 for name, entry in sorted(entries, key=lambda entry: entry[0]):
                     directory = tarfile.TarInfo(name)
                     directory.type = tarfile.DIRTYPE
@@ -215,7 +215,7 @@ def _load() -> ctypes.CDLL:
     try:
         lib = ctypes.CDLL(SONAME, use_errno=True)
     except OSError as error:
-        raise SystemExit(f"plan: resolving alpm packages needs {SONAME}: {error}") from error
+        util.fail(f"plan: resolving alpm packages needs {SONAME}: {error}")
 
     ptr, text, cint = ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int
     for name, restype, argtypes in (
@@ -274,14 +274,14 @@ class Alpm:
             ctypes.byref(error),
         )
         if not handle:
-            raise SystemExit(f"plan: {self._lib.alpm_strerror(error.value).decode()}")
+            util.fail(f"plan: {self._lib.alpm_strerror(error.value).decode()}")
         self._handle = handle
         # Without this libalpm takes the architecture from the build host's uname.
         self._lib.alpm_option_add_architecture(self._handle, arch.encode())
         for capability in ASSUME_INSTALLED:
             depend = self._lib.alpm_dep_from_string(capability.encode())
             if not depend or self._lib.alpm_option_add_assumeinstalled(self._handle, depend) != 0:
-                raise self._fail(f"assuming {capability} installed")
+                self._fail(f"assuming {capability} installed")
 
         self.ambiguous: list[Ambiguous] = []
         # Held on self: ctypes would otherwise collect the thunk libalpm still points at.
@@ -294,10 +294,8 @@ class Alpm:
     def __exit__(self, *exception: object) -> None:
         self._lib.alpm_release(self._handle)
 
-    def _fail(self, what: str) -> SystemExit:
-        return SystemExit(
-            f"plan: {what}: {self._lib.alpm_strerror(self._lib.alpm_errno(self._handle)).decode()}"
-        )
+    def _fail(self, what: str) -> NoReturn:
+        util.fail(f"plan: {what}: {self._lib.alpm_strerror(self._lib.alpm_errno(self._handle)).decode()}")
 
     def _each(self, head: ctypes._Pointer[_List]) -> Iterator[ctypes.c_void_p]:
         node = head
@@ -324,7 +322,7 @@ class Alpm:
         # The databases are pinned inputs whose bytes are already checksummed, and no key
         # material exists here, so no signature level is requested.
         if not self._lib.alpm_register_syncdb(self._handle, name.encode(), 0):
-            raise self._fail(f"cannot register {name}")
+            self._fail(f"cannot register {name}")
 
     def _needed(self, package: ctypes.c_void_p) -> bool:
         """Whether the root is missing this package, or carries something older."""
@@ -346,7 +344,7 @@ class Alpm:
             return [package]
         members = list(self._each(self._lib.alpm_find_group_pkgs(databases, spec.encode())))
         if not members:
-            raise SystemExit(f"plan: nothing provides {spec!r}")
+            util.fail(f"plan: nothing provides {spec!r}")
         return members
 
     def _unsatisfied(self, missing: ctypes._Pointer[_List]) -> list[str]:
@@ -362,7 +360,7 @@ class Alpm:
     @contextmanager
     def _transaction(self) -> Iterator[None]:
         if self._lib.alpm_trans_init(self._handle, _NO_FLAGS) != 0:
-            raise self._fail("cannot start a transaction")
+            self._fail("cannot start a transaction")
         try:
             yield
         finally:
@@ -375,15 +373,15 @@ class Alpm:
                 for package in self._target(spec):
                     # An install spec a lower layer already carries adds nothing.
                     if self._needed(package) and self._lib.alpm_add_pkg(self._handle, package) != 0:
-                        raise self._fail(f"cannot add {self._name(package)}")
+                        self._fail(f"cannot add {self._name(package)}")
 
             missing = _LIST()
             if self._lib.alpm_trans_prepare(self._handle, ctypes.byref(missing)) != 0:
                 reasons = self._unsatisfied(missing)
-                raise self._fail("\n  ".join(["cannot resolve", *reasons]) if reasons else "cannot resolve")
+                self._fail("\n  ".join(["cannot resolve", *reasons]) if reasons else "cannot resolve")
 
             if self.ambiguous:
-                raise SystemExit(
+                util.fail(
                     "plan: "
                     + "; ".join(", ".join(entry.providers) for entry in self.ambiguous)
                     + " each provide a required capability; name the one you want among the "
@@ -396,7 +394,7 @@ class Alpm:
             if removals:
                 # A transaction is a set of packages to add. Nothing downstream can express a
                 # removal, so refuse rather than hand on a closure that silently drops one.
-                raise SystemExit(f"plan: installing this would remove {', '.join(sorted(removals))}")
+                util.fail(f"plan: installing this would remove {', '.join(sorted(removals))}")
 
             return [
                 self._package(package) for package in self._each(self._lib.alpm_trans_get_add(self._handle))
@@ -407,7 +405,7 @@ class Alpm:
         filename = self._lib.alpm_pkg_get_filename(package)
         name = self._name(package)
         if not checksum or not filename:
-            raise SystemExit(f"plan: {name} has no checksum or file name in its repository")
+            util.fail(f"plan: {name} has no checksum or file name in its repository")
         return Package(
             name=name,
             version=self._lib.alpm_pkg_get_version(package).decode(),

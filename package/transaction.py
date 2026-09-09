@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Literal, NamedTuple, NotRequired, TypedDict
 
-from util import text_destination
+from util import fail, text_destination
 
 
 class Repository(NamedTuple):
@@ -60,7 +60,7 @@ def checksum(what: str, value: str) -> str:
     """Check that a package's digest is one a pool can be keyed by."""
     digest = value.lower()
     if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
-        raise SystemExit(f"{what} has invalid sha256 {value!r}")
+        fail(f"{what} has invalid sha256 {value!r}")
     return digest
 
 
@@ -86,7 +86,7 @@ def entry(
         package["location"] = location
     else:
         if size <= 0:
-            raise SystemExit(f"{package_id} has invalid download size {size}")
+            fail(f"{package_id} has invalid download size {size}")
         package["size"] = size
         package["url"] = repository.baseurl.rstrip("/") + "/" + location.lstrip("/")
     return package

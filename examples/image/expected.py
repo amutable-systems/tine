@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from util import amend_paths, atomic_write_text, buck_output, nested_buck, package_directory
+from util import amend_paths, atomic_write_text, buck_output, fail, nested_buck, package_directory
 
 PACKAGE = "tine//examples/image"
 EXPECTATIONS = "expected.json"
@@ -26,7 +26,7 @@ def _digests(buck: str, names: list[str]) -> dict[str, str]:
     for name, target in zip(names, targets, strict=True):
         path = built.get(target)
         if not path:
-            raise SystemExit(f"expected: {target} builds no single artifact to digest")
+            fail(f"expected: {target} builds no single artifact to digest")
         with Path(path).open("rb") as stream:
             digests[name] = hashlib.file_digest(stream, "sha256").hexdigest()
     return digests
@@ -43,7 +43,7 @@ def main(argv: list[str] | None = None) -> None:
     path = package_directory(buck, PACKAGE) / EXPECTATIONS
     expectations = json.loads(path.read_text(encoding="utf-8"))
     if not expectations:
-        raise SystemExit(f"expected: {path} tracks no target")
+        fail(f"expected: {path} tracks no target")
 
     names = sorted(expectations)
     print(f"==> building {len(names)} tracked target(s)", file=sys.stderr)

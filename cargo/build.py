@@ -69,7 +69,7 @@ def _reject_unlocked_dependencies(workspace: Path) -> None:
     manifest = tomllib.loads((workspace / "Cargo.toml").read_text(encoding="utf-8"))
     declared = [table for table in _DEPENDENCY_TABLES if manifest.get(table)]
     if declared:
-        raise SystemExit(f"cargo-build: [{declared[0]}] without a Cargo.lock; commit the lock cargo writes")
+        util.fail(f"cargo-build: [{declared[0]}] without a Cargo.lock; commit the lock cargo writes")
 
 
 def _reject_local_config(build: Path, workspace: Path) -> None:
@@ -84,7 +84,7 @@ def _reject_local_config(build: Path, workspace: Path) -> None:
         for name in ("config.toml", "config"):
             found = directory / ".cargo" / name
             if found.exists():
-                raise SystemExit(
+                util.fail(
                     f"cargo-build: {found.relative_to(build)} would override the vendored source "
                     "configuration; keep it out of srcs"
                 )

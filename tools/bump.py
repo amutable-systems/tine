@@ -20,7 +20,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
-from util import atomic_write_text
+from util import atomic_write_text, fail
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _COMMIT = re.compile(r"[0-9a-f]{40}")
@@ -320,7 +320,7 @@ def main() -> None:
         subprocess.CalledProcessError,
         urllib.error.URLError,
     ) as error:
-        raise SystemExit(f"bump: {error}") from error
+        fail(f"bump: {error}")
 
 
 if __name__ == "__main__":

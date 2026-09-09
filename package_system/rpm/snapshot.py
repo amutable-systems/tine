@@ -10,7 +10,7 @@ from contextlib import ExitStack
 from pathlib import PurePosixPath
 from typing import Protocol, TypedDict
 
-from util import MAGIC, decompressor
+from util import MAGIC, decompressor, fail
 
 import snapshotter
 from href import relative_href
@@ -41,7 +41,7 @@ def _location_href(rid: str, what: str, location: ET.Element | None) -> str:
         None if location is None else (location.get("base") or location.get(f"{{{_XML_NS}}}base"))
     )
     if location_base is not None:
-        raise SystemExit(f"{rid}: {what} has unsupported location {href!r}")
+        fail(f"{rid}: {what} has unsupported location {href!r}")
     return relative_href(rid, what, href)
 
 
@@ -52,7 +52,7 @@ def _metadata_int(rid: str, what: str, value: str | None, *, minimum: int) -> in
     except ValueError:
         number = minimum - 1
     if number < minimum:
-        raise SystemExit(f"{rid}: {what} has invalid size/count {value!r}")
+        fail(f"{rid}: {what} has invalid size/count {value!r}")
     return number
 
 
@@ -61,10 +61,10 @@ def _parse_primary(rid: str, source: BinaryReader) -> dict[str, PackageEntry]:
     events = ET.iterparse(source, events=("start", "end"))
     _, root = next(events)
     if root.tag != f"{{{_PRIMARY_NS}}}metadata":
-        raise SystemExit(f"{rid}: primary metadata has unexpected root {root.tag!r}")
+        fail(f"{rid}: primary metadata has unexpected root {root.tag!r}")
     declared = root.get("packages")
     if declared is None:
-        raise SystemExit(f"{rid}: primary metadata root lacks its package count")
+        fail(f"{rid}: primary metadata root lacks its package count")
     expected = _metadata_int(rid, "primary metadata package count", declared, minimum=0)
 
     packages: dict[str, PackageEntry] = {}
@@ -79,9 +79,9 @@ def _parse_primary(rid: str, source: BinaryReader) -> dict[str, PackageEntry]:
         location = element.find(f"{{{_PRIMARY_NS}}}location")
         size = element.find(f"{{{_PRIMARY_NS}}}size")
         if checksum is None or checksum.text is None:
-            raise SystemExit(f"{rid}: primary package {count} lacks a checksum")
+            fail(f"{rid}: primary package {count} lacks a checksum")
         if checksum.get("type") != "sha256" or checksum.get("pkgid") != "YES":
-            raise SystemExit(f"{rid}: primary package {count} does not have a sha256 pkgid")
+            fail(f"{rid}: primary package {count} does not have a sha256 pkgid")
         pkgid = snapshotter.checksum(rid, f"primary package {count} pkgid", checksum.text)
 
         href = _location_href(rid, f"primary package {pkgid}", location)
@@ -92,7 +92,7 @@ def _parse_primary(rid: str, source: BinaryReader) -> dict[str, PackageEntry]:
         element.clear()
 
     if count != expected:
-        raise SystemExit(f"{rid}: primary metadata declared {expected} packages but contained {count}")
+        fail(f"{rid}: primary metadata declared {expected} packages but contained {count}")
     return packages
 
 
@@ -117,7 +117,7 @@ def _load_package_index(rid: str, stream: MetadataFile) -> dict[str, PackageEntr
             elif magic.lstrip().startswith(b"<"):
                 source = compressed
             else:
-                raise SystemExit(f"{rid}: unsupported primary compression (magic {magic.hex()})")
+                fail(f"{rid}: unsupported primary compression (magic {magic.hex()})")
             return _parse_primary(rid, source)
 
 
@@ -139,7 +139,7 @@ def _repository_stream(
         or size is None
         or size.text is None
     ):
-        raise SystemExit(f"{rid}: {stream_type} record lacks a location, sha256 checksum, or size")
+        fail(f"{rid}: {stream_type} record lacks a location, sha256 checksum, or size")
 
     href = _location_href(rid, f"{stream_type} stream", location)
     return MetadataFile(
@@ -174,21 +174,21 @@ def snapshot_repodata(rid: str, baseurl: str) -> RepositorySnapshot:
             root.remove(data)
             continue
         if stream_type in kept:
-            raise SystemExit(f"{rid}: repomd.xml contains duplicate {stream_type!r} streams")
+            fail(f"{rid}: repomd.xml contains duplicate {stream_type!r} streams")
         kept.add(stream_type)
 
         stream = _repository_stream(rid, base, stream_type, data)
         if stream["out"] in outputs:
-            raise SystemExit(f"{rid}: repomd.xml streams share output basename {stream['out']!r}")
+            fail(f"{rid}: repomd.xml streams share output basename {stream['out']!r}")
         outputs.add(stream["out"])
         streams.append(stream)
         if stream_type == "primary":
             primary = stream
 
     if missing := [stream for stream in _REQUIRED_STREAMS if stream not in kept]:
-        raise SystemExit(f"{rid}: repomd.xml missing {missing}")
+        fail(f"{rid}: repomd.xml missing {missing}")
     if primary is None:
-        raise SystemExit(f"{rid}: repomd.xml has no primary stream")
+        fail(f"{rid}: repomd.xml has no primary stream")
 
     filtered = ET.tostring(root, encoding="unicode", xml_declaration=True)
     return {

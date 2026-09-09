@@ -15,6 +15,8 @@ from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple, Self, cast
 
+from util import fail
+
 MODULES = PurePosixPath("usr/lib/modules")
 FIRMWARE = PurePosixPath("usr/lib/firmware")
 BOOT = PurePosixPath("boot")
@@ -198,7 +200,7 @@ def _load() -> ctypes.CDLL:
     try:
         lib = ctypes.CDLL("libkmod.so.2", use_errno=True)
     except OSError as error:
-        raise SystemExit(f"kmod: selecting kernel modules needs libkmod: {error}") from error
+        fail(f"kmod: selecting kernel modules needs libkmod: {error}")
     ptr = ctypes.c_void_p
     out = ctypes.POINTER(ctypes.c_void_p)
     text = ctypes.c_char_p
@@ -233,12 +235,12 @@ class Kmod:
         # Every lookup is answered out of depmod's binary index. Without it there are no dependencies
         # to find and the initrd would come out quietly incomplete.
         if not (modulesd / "modules.dep.bin").exists():
-            raise SystemExit(f"kmod: {modulesd} has no modules.dep.bin, so depmod never ran for it")
+            fail(f"kmod: {modulesd} has no modules.dep.bin, so depmod never ran for it")
         self._lib = _load()
         # An empty configuration vector keeps the build hermetic: libkmod reads no modprobe.d.
         ctx = self._lib.kmod_new(os.fsencode(modulesd), (ctypes.c_char_p * 1)(None))
         if not ctx:
-            raise SystemExit(f"kmod: cannot read the module directory {modulesd}")
+            fail(f"kmod: cannot read the module directory {modulesd}")
         self._ctx: Handle = ctx
         self._lib.kmod_load_resources(self._ctx)
 
@@ -382,7 +384,7 @@ def _chase(tree: Path, rel: PurePosixPath) -> Iterator[PurePosixPath]:
         target = PurePosixPath(os.readlink(tree / current))
         current = PurePosixPath() if target.is_absolute() else current.parent
         todo = [*target.parts, *todo]
-    raise SystemExit(f"kmod: {rel} does not resolve within {_LINK_DEPTH} symlinks")
+    fail(f"kmod: {rel} does not resolve within {_LINK_DEPTH} symlinks")
 
 
 def carry(tree: Path, rel: PurePosixPath) -> set[PurePosixPath]:
@@ -401,7 +403,7 @@ def firmware_files(tree: Path, names: Iterable[str]) -> tuple[dict[str, list[Pur
     for name in sorted(set(names)):
         # An initrd holds what modules need, and nothing a module claims can reach out of the tree.
         if name.startswith("/") or ".." in PurePosixPath(name).parts:
-            raise SystemExit(f"kmod: a module declares {name!r}, which is not firmware below /{FIRMWARE}")
+            fail(f"kmod: a module declares {name!r}, which is not firmware below /{FIRMWARE}")
         if any(character in name for character in "*?["):
             candidates = sorted(
                 PurePosixPath(path.relative_to(tree)) for path in (tree / FIRMWARE).glob(name)

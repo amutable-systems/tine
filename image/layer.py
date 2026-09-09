@@ -50,7 +50,7 @@ def _chroots(operation: list[object]) -> bool:
 
 def _operation(value: object) -> list[object]:
     if not isinstance(value, list) or not value or not isinstance(value[0], str):
-        raise SystemExit(f"image op is not a tagged array: {value!r}")
+        util.fail(f"image op is not a tagged array: {value!r}")
     return cast(list[object], value)
 
 
@@ -58,24 +58,24 @@ def _mapping(tag: str, field: str, raw: object) -> dict[str, str]:
     if not isinstance(raw, dict) or not all(
         isinstance(key, str) and isinstance(value, str) for key, value in raw.items()
     ):
-        raise SystemExit(f"image op {tag!r} has invalid {field}: {raw!r}")
+        util.fail(f"image op {tag!r} has invalid {field}: {raw!r}")
     return cast(dict[str, str], raw)
 
 
 def _run(tag: str, raw_cmd: object, raw_env: object, cwd: str | None = None) -> None:
     if not isinstance(raw_cmd, list) or not raw_cmd or not all(isinstance(arg, str) for arg in raw_cmd):
-        raise SystemExit(f"image op {tag!r} has invalid cmd: {raw_cmd!r}")
+        util.fail(f"image op {tag!r} has invalid cmd: {raw_cmd!r}")
     cmd = cast(list[str], raw_cmd)
     env = _mapping(tag, "env", raw_env)
     rc = subprocess.run(cmd, env=os.environ | env, cwd=cwd).returncode
     if rc != 0:
-        raise SystemExit(f"image op `{tag} {cmd}` failed (rc={rc})")
+        util.fail(f"image op `{tag} {cmd}` failed (rc={rc})")
 
 
 def _destination(tree: Path, value: str) -> Path:
     path = PurePosixPath(value)
     if not path.is_absolute() or ".." in path.parts:
-        raise SystemExit(f"image copy destination must be an absolute image path: {value!r}")
+        util.fail(f"image copy destination must be an absolute image path: {value!r}")
     return tree.joinpath(*path.parts[1:])
 
 
@@ -83,13 +83,13 @@ def _copy(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if source.is_symlink():
         if destination.is_dir() and not destination.is_symlink():
-            raise SystemExit(f"cannot replace directory {destination} with symlink {source}")
+            util.fail(f"cannot replace directory {destination} with symlink {source}")
         if destination.exists() or destination.is_symlink():
             destination.unlink()
         shutil.copy2(source, destination, follow_symlinks=False)
     elif source.is_dir():
         if destination.is_symlink() or (destination.exists() and not destination.is_dir()):
-            raise SystemExit(f"cannot merge directory {source} into non-directory {destination}")
+            util.fail(f"cannot merge directory {source} into non-directory {destination}")
         shutil.copytree(
             source,
             destination,
@@ -100,7 +100,7 @@ def _copy(source: Path, destination: Path) -> None:
         )
     else:
         if destination.is_dir() and not destination.is_symlink():
-            raise SystemExit(f"cannot replace directory {destination} with file {source}")
+            util.fail(f"cannot replace directory {destination} with file {source}")
         if destination.is_symlink():
             destination.unlink()
         util.clone_file(source, destination)
@@ -111,10 +111,10 @@ def _merge_os_release(tree: Path, raw_fields: object) -> None:
     fields = dict(_mapping("os_release", "fields", raw_fields))
     for key, value in fields.items():
         if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
-            raise SystemExit(f"image op 'os_release' has invalid key: {key!r}")
+            util.fail(f"image op 'os_release' has invalid key: {key!r}")
         # Values are emitted double-quoted verbatim, so refuse anything needing escapes.
         if '"' in value or "\\" in value or "\n" in value:
-            raise SystemExit(f"image op 'os_release' value needs escaping: {value!r}")
+            util.fail(f"image op 'os_release' value needs escaping: {value!r}")
     path = tree / "usr/lib/os-release"
     lines = []
     if path.exists():
@@ -131,7 +131,7 @@ def _merge_os_release(tree: Path, raw_fields: object) -> None:
 def _remove_glob(tree: Path, value: str) -> None:
     pattern = PurePosixPath(value)
     if not pattern.is_absolute() or ".." in pattern.parts:
-        raise SystemExit(f"image remove pattern must be an absolute image path: {value!r}")
+        util.fail(f"image remove pattern must be an absolute image path: {value!r}")
     relative = str(PurePosixPath(*pattern.parts[1:]))
     matches = sorted(tree.glob(relative), key=lambda path: (len(path.parts), str(path)), reverse=True)
     for path in matches:
@@ -172,7 +172,7 @@ def _apply_filesystem(operation: list[object]) -> None:
         case ["remove", str(path)]:
             _remove_glob(Path("/"), path)
         case _:
-            raise SystemExit(f"invalid image filesystem op: {operation!r}")
+            util.fail(f"invalid image filesystem op: {operation!r}")
 
 
 def _install(install: LayerInstall, target: Path, scratch: Path) -> None:
@@ -191,7 +191,7 @@ def _install(install: LayerInstall, target: Path, scratch: Path) -> None:
     spec = specs.write(scratch / "install.spec.json", dict(request))
     rc = subprocess.run([install["installer"], "--spec", str(spec)]).returncode
     if rc != 0:
-        raise SystemExit(f"image package installation failed (rc={rc})")
+        util.fail(f"image package installation failed (rc={rc})")
 
 
 def _apply(value: object, target: Path) -> None:
@@ -218,7 +218,7 @@ def _apply(value: object, target: Path) -> None:
             with rootfs.chroot(target):
                 _apply_filesystem(operation)
         case _:
-            raise SystemExit(f"invalid image op: {operation!r}")
+            util.fail(f"invalid image op: {operation!r}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -241,7 +241,7 @@ def main(argv: list[str] | None = None) -> None:
     lower = spec["lower"]
     if lower:
         if spec["work"] is None:
-            raise SystemExit("image lower stack needs a work overlay directory")
+            util.fail("image lower stack needs a work overlay directory")
         mounted = rootfs.rootfs(
             "/buildroot",
             lowers=lower,
@@ -252,7 +252,7 @@ def main(argv: list[str] | None = None) -> None:
         )
     else:
         if spec["work"] is not None:
-            raise SystemExit("image work overlay directory requires a lower stack")
+            util.fail("image work overlay directory requires a lower stack")
         mounted = rootfs.rootfs(
             "/buildroot",
             bind=out,

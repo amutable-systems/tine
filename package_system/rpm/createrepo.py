@@ -34,7 +34,7 @@ def createrepo(entries: list[tuple[str, Path]], out: Path, revision: str) -> Non
     out.mkdir(parents=True, exist_ok=True)
     entries = sorted(entries)
     if not entries:
-        raise SystemExit("no packages given")
+        util.fail("no packages given")
 
     # location_href is relative to the repository base URL.
     for href, rpm in entries:

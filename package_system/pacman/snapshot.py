@@ -11,6 +11,8 @@ import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 
+from util import fail
+
 import alpm
 import snapshotter
 from href import relative_href
@@ -28,10 +30,10 @@ def _inventory(rid: str, db: Path) -> dict[str, PackageEntry]:
         what = f"package {package.id}"
         digest = snapshotter.checksum(rid, f"{what} %SHA256SUM%", package.sha256)
         if package.size <= 0:
-            raise SystemExit(f"{rid}: {what} has invalid %CSIZE% {package.size}")
+            fail(f"{rid}: {what} has invalid %CSIZE% {package.size}")
         location = relative_href(rid, what, package.filename)
         if not alpm.is_package(location):
-            raise SystemExit(f"{rid}: {what} is not an alpm package: {location!r}")
+            fail(f"{rid}: {what} is not an alpm package: {location!r}")
         snapshotter.add_package(packages, rid, digest, PackageEntry(location=location, size=package.size))
     return packages
 

@@ -3,6 +3,8 @@
 from pathlib import Path
 from typing import Any, TypedDict
 
+from util import fail
+
 
 class KeySpec(TypedDict):
     """One signing key as a driver-spec object; sign.bzl's signing_key_spec() produces it."""
@@ -34,5 +36,5 @@ def write_root_hash(rows: list[dict[str, Any]], output: Path) -> None:
     # TBD: placeholder of a partition repart did not generate
     hashes = {value for row in rows if (value := row.get("roothash")) not in (None, "TBD")}
     if len(hashes) != 1:
-        raise SystemExit(f"repart: expected one generated verity root hash, found {len(hashes)}")
+        fail(f"repart: expected one generated verity root hash, found {len(hashes)}")
     output.write_text(hashes.pop() + "\n")

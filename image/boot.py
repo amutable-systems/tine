@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import specs
+from util import fail
 
 import artifacts
 import finalize
@@ -99,7 +100,7 @@ def _select(tree: Path) -> Selection:
         if initrd is None and (standalone := _matching_initrd(tree, uki.kernel_release)) is not None:
             initrd = Source(_image_name(tree, standalone))
         if initrd is None:
-            raise SystemExit(f"boot: selected kernel {uki.kernel_release} has no matching initrd")
+            fail(f"boot: selected kernel {uki.kernel_release} has no matching initrd")
         source = Source(_image_name(tree, uki.path))
         return Selection(
             kernel_release=uki.kernel_release,
@@ -110,11 +111,11 @@ def _select(tree: Path) -> Selection:
 
     kernels = _kernels(tree)
     if not kernels:
-        raise SystemExit("boot: image contains no UKI or standalone kernel")
+        fail("boot: image contains no UKI or standalone kernel")
     kernel = max(kernels, key=functools.cmp_to_key(_candidate_compare))
     initrd = _matching_initrd(tree, kernel.kernel_release)
     if initrd is None:
-        raise SystemExit(f"boot: selected kernel {kernel.kernel_release} has no matching initrd")
+        fail(f"boot: selected kernel {kernel.kernel_release} has no matching initrd")
     return Selection(
         kernel_release=kernel.kernel_release,
         uki=None,

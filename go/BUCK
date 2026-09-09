@@ -8,7 +8,7 @@ tine_python_binary(
     name = "workspace",
     main = "workspace.py",
     visibility = ["PUBLIC"],
-    deps = ["//:specs"],
+    deps = ["//:specs", "//:util"],
 )
 
 # Runs inside the box with the network: go.mod and go.sum in, the verified module cache out.
@@ -16,7 +16,7 @@ tine_python_binary(
     name = "fetch",
     main = "fetch.py",
     visibility = ["PUBLIC"],
-    deps = ["//:specs"],
+    deps = ["//:specs", "//:util"],
 )
 
 # Runs inside the box offline: the source tree and its module cache in, the declared binaries out.

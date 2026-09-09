@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 import specs
+from util import fail
 
 import finalize
 
@@ -57,7 +58,7 @@ def main(argv: list[str] | None = None) -> None:
     with finalize.image(spec, program="pkgdb") as tree:
         src = tree / DBPATH
         if not src.exists():
-            raise SystemExit(f"no rpmdb at {src}; the image has no installed packages")
+            fail(f"no rpmdb at {src}; the image has no installed packages")
         shutil.copy2(src, out)
     _trim(out)
     print(f"pkgdb: captured Packages-only database -> {out}", file=sys.stderr)

@@ -28,6 +28,7 @@ from util import (
     atomic_write_text,
     buck_output,
     commit_paths,
+    fail,
     nested_buck,
     package_directory,
     urlopen,
@@ -44,7 +45,7 @@ PACMAN_REMOTE_REPOSITORY_LABEL = "tine:pacman-remote-repository"
 def _catalog_pattern(catalog: str) -> str:
     package = catalog.removesuffix(":")
     if "//" not in package or ":" in package or "..." in package:
-        raise SystemExit(f"catalog: expected a package label, got {catalog!r}")
+        fail(f"catalog: expected a package label, got {catalog!r}")
     return f"{package}:"
 
 
@@ -60,14 +61,14 @@ def _name_of(target: str) -> str:
 def _catalog_directory(buck: str, targets: list[str]) -> Path:
     packages = {target.rsplit(":", 1)[0] for target in targets}
     if len(packages) != 1:
-        raise SystemExit(f"catalog: expected targets in one package, found {sorted(packages)}")
+        fail(f"catalog: expected targets in one package, found {sorted(packages)}")
     return package_directory(buck, packages.pop())
 
 
 def _snapshot_path(target: str, kind: str, suffix: str) -> Path:
     name = _name_of(target)
     if not name.endswith(suffix):
-        raise SystemExit(f"catalog: {target} does not end with {suffix!r}")
+        fail(f"catalog: {target} does not end with {suffix!r}")
     return Path("snapshot") / kind / f"{name.removesuffix(suffix)}.json"
 
 
@@ -122,7 +123,7 @@ def _rewrite_pin(declaration: Path, attribute: str, current: str, wanted: str) -
     pin = f'{attribute} = "{current}"'
     content = declaration.read_text(encoding="utf-8")
     if pin not in content:
-        raise SystemExit(f"catalog: expected {pin!r} in {declaration}")
+        fail(f"catalog: expected {pin!r} in {declaration}")
     declaration.write_text(content.replace(pin, f'{attribute} = "{wanted}"'), encoding="utf-8")
 
 
@@ -159,7 +160,7 @@ def _advance(
         others = set(groups) - {current}
         others.update(planned for other, (planned, _) in advances.items() if other != current)
         if wanted in others:
-            raise SystemExit(
+            fail(
                 f"catalog: {names} would advance onto {wanted!r}, which {attribute} pins "
                 "elsewhere; refresh those together"
             )
@@ -181,7 +182,7 @@ def _newest_rpmrepo_snapshot(pins: dict[str, dict[str, str]]) -> str:
         for target, pin in pins.items()
     }
     if len(wanted) != 1:
-        raise SystemExit(f"catalog: {sorted(pins)} disagree on their successor: {sorted(wanted)}")
+        fail(f"catalog: {sorted(pins)} disagree on their successor: {sorted(wanted)}")
     return wanted.pop()
 
 
@@ -189,7 +190,7 @@ def _newest_snapshot(repository: str, mirror: str, series: str) -> str:
     """The newest snapshot of `series` that the mirror's gateway enumerates."""
     gateway, found, _ = mirror.partition("/v2/mirror/")
     if not found:
-        raise SystemExit(f"{repository}: mirror {mirror!r} is not an rpmrepo /v2/mirror/ URL")
+        fail(f"{repository}: mirror {mirror!r} is not an rpmrepo /v2/mirror/ URL")
 
     def enumerate_snapshots() -> list[object]:
         with urlopen(gateway + "/v2/enumerate", agent="tine-catalog") as response:
@@ -198,7 +199,7 @@ def _newest_snapshot(repository: str, mirror: str, series: str) -> str:
     snapshots = with_retries(f"{repository}: enumerate", enumerate_snapshots)
     matches = [s for s in snapshots if isinstance(s, str) and _series(s) == series]
     if not matches:
-        raise SystemExit(f"{repository}: the mirror enumerates no {series!r} snapshots")
+        fail(f"{repository}: the mirror enumerates no {series!r} snapshots")
     # Snapshot ids end in a datestamp, so the newest sorts last.
     return max(matches)
 
@@ -256,11 +257,11 @@ def _select_boxes(all_resolves: list[str], selected_boxes: list[str] | None) -> 
         return all_resolves
     duplicates = sorted({name for name in selected_boxes if selected_boxes.count(name) > 1})
     if duplicates:
-        raise SystemExit(f"catalog: box names selected more than once: {duplicates}")
+        fail(f"catalog: box names selected more than once: {duplicates}")
     by_name = {_name_of(target): target for target in all_resolves}
     unknown = sorted(set(selected_boxes) - by_name.keys())
     if unknown:
-        raise SystemExit(f"catalog: unknown box names: {unknown}")
+        fail(f"catalog: unknown box names: {unknown}")
     selected = set(selected_boxes)
     return [target for target in all_resolves if _name_of(target) in selected]
 
@@ -292,7 +293,7 @@ def _plan(
         snapshots = _repositories_for_boxes(buck, resolves)
     targets = all_resolves + snapshots
     if not targets:
-        raise SystemExit(f"catalog: no repository/box refresh targets found in {catalog}")
+        fail(f"catalog: no repository/box refresh targets found in {catalog}")
     catalog_dir = _catalog_directory(buck, targets)
     if advance_snapshots:
         _advance_snapshots(buck, catalog, catalog_dir, snapshots)
@@ -398,7 +399,7 @@ def main(argv: list[str] | None = None) -> None:
     if stale:
         for report in stale:
             print(report, end="", file=sys.stderr)
-        raise SystemExit("catalog: the committed catalog is not what the pinned resolvers produce")
+        fail("catalog: the committed catalog is not what the pinned resolvers produce")
 
 
 if __name__ == "__main__":

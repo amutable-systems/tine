@@ -65,14 +65,14 @@ def _select(binaries: list[str], packages: dict[str, list[str]], tags: list[str]
     if missing:
         # Naming the tags because they are the one cause go stays quiet about: a directory whose
         # files they all exclude is not a package, and `go list` omits it without a word either way.
-        raise SystemExit(
+        util.fail(
             f"go-build: no main package builds {', '.join(missing)} with tags "
             f"[{' '.join(tags)}]; the module's commands are: {', '.join(sorted(packages))}"
         )
     # `go build -o <directory>` would write one of them over the other and still succeed.
     ambiguous = [name for name in binaries if len(packages[name]) > 1]
     if ambiguous:
-        raise SystemExit(
+        util.fail(
             "go-build: several main packages build "
             + "; ".join(f"{name}: {', '.join(packages[name])}" for name in ambiguous)
         )

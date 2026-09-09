@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
+from util import fail
+
 from isolation import Bind, Devices, Filesystem, Sandbox, SandboxOSError, Symlink, Tmpfs, enter
 
 # Hermetic sandbox mount point of the project (host cwd). A path of tine's own rather than just keeping
@@ -80,7 +82,7 @@ def _kv(pairs: list[str], sep: str) -> list[tuple[str, str]]:
     out = []
     for p in pairs:
         if sep not in p:
-            raise SystemExit(f"expected SRC{sep}DST, got {p!r}")
+            fail(f"expected SRC{sep}DST, got {p!r}")
         a, b = p.split(sep, 1)
         out.append((a, b))
     return out
@@ -182,11 +184,11 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("cmd", nargs="*", help="the command to run (after `--`)")
     args = p.parse_args(argv)
     if not args.cmd and not args.box:
-        raise SystemExit("no command given (expected `-- cmd ...`)")
+        fail("no command given (expected `-- cmd ...`)")
     if args.relaxed and args.bind_cwd:
-        raise SystemExit("--bind-cwd is for hermetic builds; --relaxed sees the host cwd already")
+        fail("--bind-cwd is for hermetic builds; --relaxed sees the host cwd already")
     if args.box and not args.relaxed:
-        raise SystemExit("--box describes an interactive host-integrated shell; it requires --relaxed")
+        fail("--box describes an interactive host-integrated shell; it requires --relaxed")
     return args
 
 
@@ -212,7 +214,7 @@ def _interactive_shell(environment: dict[str, str]) -> str:
                 prefix = environment.get("SHELL_PROMPT_PREFIX", "")
                 environment["SHELL_PROMPT_PREFIX"] = _prompt_prefix(name, previous, prefix)
         return shell
-    raise SystemExit("no shell installed in box ($SHELL and bash were not found)")
+    fail("no shell installed in box ($SHELL and bash were not found)")
 
 
 def _launch(args: argparse.Namespace) -> Launch:

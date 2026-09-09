@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import specs
+from util import fail
 
 
 class Spec(TypedDict):
@@ -33,7 +34,7 @@ def expand(target: str, template: str, replacements: dict[str, str]) -> str:
     expanded = template
     for placeholder, value in sorted(replacements.items()):
         if placeholder not in expanded:
-            raise SystemExit(f"substitute {target}: the template holds no {placeholder}")
+            fail(f"substitute {target}: the template holds no {placeholder}")
         expanded = expanded.replace(placeholder, value)
     return expanded
 
