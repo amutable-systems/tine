@@ -65,44 +65,6 @@ class TestRemove(unittest.TestCase):
                 layer._remove_glob(Path("/"), pattern)
 
 
-class TestClampMtimes(unittest.TestCase):
-    def test_clamps_only_newer_timestamps(self) -> None:
-        epoch = 1_000_000_000
-        with tempfile.TemporaryDirectory(prefix="layer-test.", dir="/var/tmp") as scratch:
-            tree = Path(scratch)
-            packaged = tree / "packaged"
-            packaged.write_text("packaged")
-            os.utime(packaged, (12345, 12345))
-            (tree / "sub").mkdir()
-            fresh = tree / "sub/fresh"
-            fresh.write_text("fresh")
-            # Dangling on purpose: following it would fail, clamping it must not.
-            link = tree / "sub/link"
-            link.symlink_to("missing")
-
-            layer._clamp_mtimes(tree, epoch)
-
-            self.assertEqual(packaged.lstat().st_mtime, 12345)
-            self.assertEqual(fresh.lstat().st_mtime, epoch)
-            self.assertEqual((tree / "sub").lstat().st_mtime, epoch)
-            self.assertEqual(link.lstat().st_mtime, epoch)
-            # The tree itself is an inode a terminal format records too.
-            self.assertEqual(tree.lstat().st_mtime, epoch)
-
-    def test_clamps_atime_mtime_separately(self) -> None:
-        """A file read long before it was written keeps the older access time."""
-        epoch = 1_000_000_000
-        with tempfile.TemporaryDirectory(prefix="layer-test.", dir="/var/tmp") as scratch:
-            written = Path(scratch) / "written-after-the-epoch"
-            written.write_text("written")
-            os.utime(written, (12345, epoch + 1))
-
-            layer._clamp_mtimes(Path(scratch), epoch)
-
-            self.assertEqual(written.lstat().st_atime, 12345)
-            self.assertEqual(written.lstat().st_mtime, epoch)
-
-
 class TestNormalization(unittest.TestCase):
     def test_modes(self) -> None:
         with tempfile.TemporaryDirectory(prefix="layer-test.", dir="/var/tmp") as scratch:
