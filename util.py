@@ -18,7 +18,7 @@ import urllib.request
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import IO, TextIO, cast
+from typing import IO, NoReturn, TextIO, cast
 
 # Fall back only when the filesystem does not support the range copy or linking.
 _COPY_FALLBACK_ERRNOS = frozenset({errno.EINVAL, errno.ENOSYS, errno.EOPNOTSUPP, errno.EXDEV})
@@ -29,14 +29,14 @@ _TRANSIENT_HTTP_STATUS = frozenset((408, 429, 500, 502, 503, 504))
 _FETCH_ATTEMPTS = 4
 
 
-def fail(message: str) -> SystemExit:
-    return SystemExit(f"tine: {message}")
+def fail(message: str) -> NoReturn:
+    sys.exit(f"tine: {message}")
 
 
 def object_table(value: object, description: str) -> dict[str, object]:
     """Require a TOML table with string keys."""
     if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
-        raise fail(f"{description} must be a table")
+        fail(f"{description} must be a table")
     return cast(dict[str, object], value)
 
 
@@ -49,7 +49,7 @@ def resolved(argument: Path) -> Path:
     try:
         return argument.expanduser().resolve()
     except (OSError, RuntimeError) as error:
-        raise fail(f"{argument} names no path: {error}") from error
+        fail(f"{argument} names no path: {error}")
 
 
 def _zstd(stream: IO[bytes]) -> io.BufferedIOBase:
@@ -310,7 +310,7 @@ def write_if_changed(path: Path, text: str) -> None:
         tmp.replace(path)
     except OSError as error:
         tmp.unlink(missing_ok=True)
-        raise fail(f"cannot write {path}: {error}") from error
+        fail(f"cannot write {path}: {error}")
 
 
 def nested_buck() -> str:
