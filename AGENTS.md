@@ -84,7 +84,8 @@ from it; every other function takes what it needs as typed parameters.
 - Don't use `TypeVar`; use the 3.12+ generics syntax. Never `from __future__ import annotations`. Use
   `Self` for a class's own type, not a string type.
 - Use context managers (`ExitStack`/`AsyncExitStack` where needed) for anything that needs cleanup.
-- Always `pathlib.Path`, never `os.path` or string paths; prefer `Path` methods over `os.*`.
+- Use `pathlib.Path` and prefer its methods over `os.*`. The exceptions are `box/sandbox.py` and
+  `box/isolation.py`: use string paths and `os.path` there to keep startup imports to the absolute minimum.
 
 ### Paths in action scripts
 
