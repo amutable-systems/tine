@@ -7,13 +7,17 @@ go takes every module and re-verifies it against the committed go.sum.
 
 import json
 import os
-import shutil
 import subprocess
+import tempfile
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import TypedDict, cast
 
 import specs
 import util
+
+from isolation import Bind, Overlay
 
 
 class Spec(TypedDict):
@@ -32,12 +36,34 @@ class Spec(TypedDict):
     module_cache_dir: str | None
     # Output name -> Go package selector.
     packages: dict[str, str]
-    # Where the module sits inside `src`, empty when the project is its own root.
+    # Where the module sits inside src, empty when the project is its own root.
     root: str
-    # The project's source tree.
+    # The project's source directory artifact.
     src: str
     # The build tags gating which of the project's files compile.
     tags: list[str]
+
+
+@contextmanager
+def _build_tree(source: Path, scratch: Path) -> Iterator[Path]:
+    """Mount a writable source view without copying or changing the input tree."""
+    scratch.mkdir(parents=True)
+    tree = scratch / "src"
+    # OverlayFS creates a mode-000 subdirectory inside the supplied workdir. Remove its storage while
+    # the sandbox still has the capabilities to enter it; Buck's host-side scratch cleanup does not.
+    with tempfile.TemporaryDirectory(prefix="overlay.", dir=scratch) as directory:
+        upper, work = (Path(directory) / name for name in ("upper", "work"))
+        upper.mkdir()
+        work.mkdir()
+        # Upstream links may leave the overlay and reach another input. The child builds from `tree`,
+        # so any path back into the project crosses this read-only mount. Keep scratch outside it.
+        project = Path.cwd()
+        with (
+            Bind(project, project, readonly=True),
+            # The temporary upper/work directories must be unused before their removal.
+            Overlay((source,), upper, work, tree, lazy_unmount=False),
+        ):
+            yield tree
 
 
 def _package(selector: str, workspace: Path, env: dict[str, str]) -> str:
@@ -77,16 +103,14 @@ def _build_command(binary: Path, package: str, linker_flags: list[str]) -> list[
 def main(argv: list[str] | None = None) -> None:
     spec = specs.parse(Spec, "go-build", argv)
 
-    # Built in a copy so that nothing go does can land in `src`, which is an output artifact of
-    # this same target: -mod=readonly should keep go out of the tree, but a build tree is not the
-    # place to rely on "should". The sandbox backs /var/tmp with the action's scratch space.
+    # The sandbox backs /var/tmp with the action's scratch space. OverlayFS preserves upstream
+    # symlinks, including dangling fixtures, and copies only files the build actually writes.
     build = Path("/var/tmp/build")
     binaries = Path("/var/tmp/binaries")
-    shutil.copytree(spec["src"], build)
     binaries.mkdir()
 
-    gocache = Path(spec["gocache"] or "/var/tmp/gocache").resolve()
-    gocache.mkdir(parents=True, exist_ok=True)
+    gocache = Path("/var/tmp/gocache")
+    gocache.mkdir()
 
     if spec["module_cache_dir"] is None:
         # Nothing was fetched; anything go would want to resolve is a hard, named failure.
@@ -97,7 +121,6 @@ def main(argv: list[str] | None = None) -> None:
         # output is verified again right here.
         proxy = "file://{}/cache/download".format(Path(spec["module_cache_dir"]).resolve())
 
-    workspace = build / spec["root"]
     # Carried in GOFLAGS rather than on each command line, so that the listing below and the build
     # cannot end up disagreeing about which of the project's files are in the module at all.
     # -trimpath and -buildvcs=false are for reproducibility: no absolute paths in the binaries, no
@@ -132,14 +155,21 @@ def main(argv: list[str] | None = None) -> None:
         # enough to need a C compiler in the box and to link the binary dynamically.
         env["CGO_ENABLED"] = "1" if spec["cgo"] else "0"
 
-    for name, selector in spec["packages"].items():
-        package = _package(selector, workspace, env)
-        subprocess.run(
-            _build_command(binaries / name, package, spec["linker_flags"]),
-            check=True,
-            cwd=workspace,
-            env=env,
-        )
+    with ExitStack() as stack:
+        if spec["gocache"] is not None:
+            cache = Path(spec["gocache"])
+            cache.mkdir(parents=True, exist_ok=True)
+            # Retain writable access before the project is mounted read-only for the build.
+            stack.enter_context(Bind(cache, gocache))
+        workspace = stack.enter_context(_build_tree(Path(spec["src"]), build)) / spec["root"]
+        for name, selector in spec["packages"].items():
+            package = _package(selector, workspace, env)
+            subprocess.run(
+                _build_command(binaries / name, package, spec["linker_flags"]),
+                check=True,
+                cwd=workspace,
+                env=env,
+            )
 
     util.take_binaries(binaries, spec["binaries"], tool="go-build", where="the go build output")
 

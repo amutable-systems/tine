@@ -24,35 +24,31 @@ class Spec(TypedDict):
     name: str
     # Where to write the resolved workspace.
     out: str
-    # The project's sources: logical path -> materialized path, directory artifacts included.
-    sources: dict[str, str]
+    # The project's source directory artifact.
+    src: str
 
 
-def _named(sources: dict[str, str], name: str) -> list[Path]:
-    """The logical path of every file called `name`, those inside directory artifacts included."""
+def _named(source: Path, name: str) -> list[Path]:
+    """Find files called `name`, relative to the source directory."""
     found: list[Path] = []
-    for short_path, artifact_path in sorted(sources.items()):
-        logical, artifact = Path(short_path), Path(artifact_path)
-        if artifact.is_dir():
-            for directory, directories, files in artifact.walk():
-                directories.sort()
-                if name in files:
-                    found.append(logical / (directory / name).relative_to(artifact))
-        elif logical.name == name:
-            found.append(logical)
+    for directory, _, files in source.walk():
+        if name in files:
+            found.append((directory / name).relative_to(source))
     return sorted(found)
 
 
-def resolve_workspace(target: str, sources: dict[str, str]) -> dict[str, str | None]:
-    """The project's go.mod, its go.sum if it has one, and the module root, as logical paths."""
-    if _named(sources, _WORK):
-        fail(f"go_package {target}: go workspaces are not supported; keep {_WORK} out of srcs")
+def resolve_workspace(target: str, source: Path) -> dict[str, str | None]:
+    """Find the module root and pins relative to the source directory."""
+    if not source.is_dir():
+        fail(f"go_package {target}: src must be a directory")
+    if _named(source, _WORK):
+        fail(f"go_package {target}: go workspaces are not supported; keep {_WORK} out of src")
 
-    modules = _named(sources, _MODULE)
+    modules = _named(source, _MODULE)
     if not modules:
         fail(
-            f"go_package {target}: srcs hold no {_MODULE}; by default the checkout is expected in "
-            f"the {target}/ directory, pass `srcs` when it lives elsewhere"
+            f"go_package {target}: src holds no {_MODULE}; by default the checkout is expected in "
+            f"the {target}/ directory, pass `src` when it lives elsewhere"
         )
 
     # A second go.mod belongs to a module nested in the project, a tools or testdata helper, common
@@ -63,8 +59,8 @@ def resolve_workspace(target: str, sources: dict[str, str]) -> dict[str, str | N
     strays = [str(other) for other in modules if other != module and root not in other.parents]
     if strays:
         fail(
-            f"go_package {target}: {strays} is not nested in {module}, so srcs hold no single "
-            "project; narrow `srcs` to one module"
+            f"go_package {target}: {strays} is not nested in {module}, so src holds no single "
+            "project; narrow `src` to one module"
         )
 
     # A module that resolves nothing has nothing to pin, and then nothing is fetched either.
@@ -72,13 +68,13 @@ def resolve_workspace(target: str, sources: dict[str, str]) -> dict[str, str | N
     return {
         "mod": str(module),
         "root": "" if root == Path() else str(root),
-        "sum": str(pinned) if pinned in _named(sources, _SUM) else None,
+        "sum": str(pinned) if pinned in _named(source, _SUM) else None,
     }
 
 
 def main(argv: list[str] | None = None) -> None:
     spec = specs.parse(Spec, "go-workspace", argv)
-    workspace = resolve_workspace(spec["name"], spec["sources"])
+    workspace = resolve_workspace(spec["name"], Path(spec["src"]))
     Path(spec["out"]).write_text(json.dumps(workspace, sort_keys=True) + "\n", encoding="utf-8")
 
 

@@ -9,21 +9,6 @@ _PRIVATE = "__tine"
 # All machinery lives under one deliberately private output name. The public output namespace then
 # belongs to binaries, including names such as `src` that internals must not claim.
 
-def _source(sources: dict[str, Artifact], path: str) -> Artifact:
-    """The artifact holding `path`, taken out of a directory source when it sits inside one.
-
-    Only these two files reach the fetch, rather than the tree they came with, so editing sources
-    never refetches. They are found in the sources themselves because the symlinked build tree
-    cannot be projected through the symlink standing in for a directory source.
-    """
-    if path in sources:
-        return sources[path]
-    for short_path, source in sources.items():
-        prefix = short_path + "/"
-        if path.startswith(prefix):
-            return source.project(path[len(prefix) :])
-    fail("go_package: {} is in none of the sources".format(path))
-
 def _go_build_impl(
     actions: AnalysisActions,
     binaries: dict[str, OutputArtifact],
@@ -35,7 +20,6 @@ def _go_build_impl(
     incremental: bool,
     linker_flags: list[str],
     packages: dict[str, str],
-    sources: dict[str, Artifact],
     src: Artifact,
     tags: list[str],
     workspace: ArtifactValue,
@@ -56,9 +40,9 @@ def _go_build_impl(
                     actions,
                     _PRIVATE + "/go-fetch.spec.json",
                     {
-                        "mod": _source(sources, module["mod"]),
+                        "mod": src.project(module["mod"]),
                         "module_cache_dir": module_cache.as_output(),
-                        "sum": _source(sources, module["sum"]),
+                        "sum": src.project(module["sum"]),
                     },
                 ),
             ),
@@ -106,7 +90,6 @@ _go_build = dynamic_actions(
         "incremental": dynattrs.value(bool),
         "linker_flags": dynattrs.value(list[str]),
         "packages": dynattrs.value(dict[str, str]),
-        "sources": dynattrs.dict(str, dynattrs.value(Artifact)),
         "src": dynattrs.value(Artifact),
         "tags": dynattrs.value(list[str]),
         "workspace": dynattrs.artifact_value(),
@@ -114,11 +97,7 @@ _go_build = dynamic_actions(
 )
 
 def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
-    sources = {source.short_path: source for source in ctx.attrs.srcs}
-
-    # Symlinked, not copied: the build driver copies the tree into its scratch space anyway, and
-    # copying twice buys nothing.
-    src = ctx.actions.symlinked_dir(_PRIVATE + "/src", sources)
+    src = ctx.attrs.src
     names = ctx.attrs.packages.keys()
     if not names:
         fail("go_package: declare packages to build")
@@ -144,7 +123,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
                 {
                     "name": ctx.label.name,
                     "out": workspace.as_output(),
-                    "sources": sources,
+                    "src": src,
                 },
             ),
         ),
@@ -163,7 +142,6 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             incremental = ctx.attrs.incremental,
             linker_flags = ctx.attrs.linker_flags,
             packages = ctx.attrs.packages,
-            sources = sources,
             src = src,
             tags = ctx.attrs.tags,
             workspace = workspace,
@@ -181,7 +159,7 @@ _go_package = rule(
         "incremental": attrs.bool(doc = "keep go's caches across dev-mode rebuilds"),
         "linker_flags": attrs.list(attrs.string(), default = [], doc = "flags for the Go linker, passed as -ldflags"),
         "packages": attrs.dict(attrs.string(), attrs.string()),
-        "srcs": attrs.list(attrs.source(), doc = "the project's source tree, go.mod and go.sum included"),
+        "src": attrs.source(allow_directory = True, doc = "the project's source directory, go.mod and go.sum included"),
         "tags": attrs.list(attrs.string(), default = [], doc = "build tags selecting the project's optional files"),
         "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//go:build"),
         "_fetch": attrs.exec_dep(providers = [RunInfo], default = "tine//go:fetch"),
@@ -191,19 +169,19 @@ _go_package = rule(
 
 def go_package(
     name: str,
-    srcs: list[str] | None = None,
+    src: str | None = None,
     dev: bool | None = None,
     **kwargs,
 ) -> None:
     """Build a checked-out Go project against the modules its go.sum pins.
 
-    The sources default to the checkout named after the target. A go.mod among them marks the module
-    root, and is read once the sources have been built, so a project whose tree arrives from a fetch
+    The source defaults to the checkout named after the target. Its go.mod marks the module
+    root, and is read once the source has been built, so a project whose tree arrives from a fetch
     needs nothing committed here.
     """
     _go_package(
         name = name,
-        incremental = project.is_dev(name, override = dev),
-        srcs = srcs if srcs != None else glob([name + "/**"]),
+        incremental = project.is_dev(name, source = src, override = dev),
+        src = src if src != None else name,
         **kwargs,
     )

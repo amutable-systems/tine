@@ -2,8 +2,7 @@
 
     buck test tine//go:test
 
-Sources reach the driver either as files, which a checkout in the consuming repository globs into,
-or as one directory artifact holding a whole fetched tree. Both are exercised here.
+The source directory can contain a module at its root or nested inside a fetched tree.
 """
 
 import tempfile
@@ -17,7 +16,7 @@ import workspace
 class TestResolveWorkspace(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        tmp = tempfile.TemporaryDirectory(prefix="go-workspace-test.")
+        tmp = tempfile.TemporaryDirectory(prefix="go-workspace-test.", dir="/var/tmp")
         self.addCleanup(tmp.cleanup)
         self.checkout = Path(tmp.name) / "checkout"
         self.checkout.mkdir()
@@ -28,33 +27,28 @@ class TestResolveWorkspace(unittest.TestCase):
             written.parent.mkdir(parents=True, exist_ok=True)
             written.touch()
 
-    def _files(self, *paths: str) -> dict[str, str]:
-        """The sources a globbed checkout hands over: one entry per file."""
-        self._write(*paths)
-        return {f"hello/{path}": str(self.checkout / path) for path in paths}
-
-    def test_finds_a_module_among_globbed_files(self) -> None:
-        sources = self._files("go.mod", "go.sum", "main.go")
-
-        self.assertEqual(
-            workspace.resolve_workspace("hello", sources),
-            {"mod": "hello/go.mod", "root": "hello", "sum": "hello/go.sum"},
-        )
-
     def test_finds_a_module_inside_a_directory_artifact(self) -> None:
         self._write("go.mod", "go.sum", "cmd/hello/main.go")
 
         self.assertEqual(
-            workspace.resolve_workspace("hello", {"fetched": str(self.checkout)}),
-            {"mod": "fetched/go.mod", "root": "fetched", "sum": "fetched/go.sum"},
+            workspace.resolve_workspace("hello", self.checkout),
+            {"mod": "go.mod", "root": "", "sum": "go.sum"},
+        )
+
+    def test_finds_a_nested_module(self) -> None:
+        self._write("hello/go.mod", "hello/go.sum", "hello/main.go")
+
+        self.assertEqual(
+            workspace.resolve_workspace("hello", self.checkout),
+            {"mod": "hello/go.mod", "root": "hello", "sum": "hello/go.sum"},
         )
 
     def test_a_module_resolving_nothing_pins_nothing(self) -> None:
         self._write("go.mod", "main.go")
 
         self.assertEqual(
-            workspace.resolve_workspace("nodeps", {"fetched": str(self.checkout)}),
-            {"mod": "fetched/go.mod", "root": "fetched", "sum": None},
+            workspace.resolve_workspace("nodeps", self.checkout),
+            {"mod": "go.mod", "root": "", "sum": None},
         )
 
     def test_the_outermost_module_is_the_projects_own(self) -> None:
@@ -62,43 +56,53 @@ class TestResolveWorkspace(unittest.TestCase):
         self._write("go.mod", "go.sum", "internal/tools/go.mod", "internal/tools/go.sum")
 
         self.assertEqual(
-            workspace.resolve_workspace("hello", {"fetched": str(self.checkout)}),
-            {"mod": "fetched/go.mod", "root": "fetched", "sum": "fetched/go.sum"},
+            workspace.resolve_workspace("hello", self.checkout),
+            {"mod": "go.mod", "root": "", "sum": "go.sum"},
         )
 
     def test_a_go_sum_below_the_root_is_not_the_projects_own(self) -> None:
         self._write("go.mod", "internal/tools/go.mod", "internal/tools/go.sum")
 
-        self.assertIsNone(workspace.resolve_workspace("hello", {"fetched": str(self.checkout)})["sum"])
+        self.assertIsNone(workspace.resolve_workspace("hello", self.checkout)["sum"])
 
     def test_rejects_modules_that_are_not_one_project(self) -> None:
-        other = self.checkout.parent / "other"
-        other.mkdir()
-        (other / "go.mod").touch()
-        self._write("go.mod")
+        self._write("first/go.mod", "second/go.mod")
 
         with self.assertRaises(SystemExit) as caught:
-            workspace.resolve_workspace(
-                "hello",
-                {"first": str(self.checkout), "second": str(other)},
-            )
+            workspace.resolve_workspace("hello", self.checkout)
         self.assertEqual(
             str(caught.exception),
-            "tine: go_package hello: ['second/go.mod'] is not nested in first/go.mod, so srcs hold no "
-            "single project; narrow `srcs` to one module",
+            "tine: go_package hello: ['second/go.mod'] is not nested in first/go.mod, so src holds no "
+            "single project; narrow `src` to one module",
         )
 
     def test_rejects_a_workspace(self) -> None:
         self._write("go.mod", "go.work")
 
         with self.assertRaisesRegex(SystemExit, "go workspaces are not supported"):
-            workspace.resolve_workspace("hello", {"fetched": str(self.checkout)})
+            workspace.resolve_workspace("hello", self.checkout)
 
     def test_rejects_sources_holding_no_module(self) -> None:
         with self.assertRaises(SystemExit) as caught:
-            workspace.resolve_workspace("hello", {"fetched": str(self.checkout)})
+            workspace.resolve_workspace("hello", self.checkout)
         self.assertEqual(
             str(caught.exception),
-            "tine: go_package hello: srcs hold no go.mod; by default the checkout is expected in the "
-            "hello/ directory, pass `srcs` when it lives elsewhere",
+            "tine: go_package hello: src holds no go.mod; by default the checkout is expected in the "
+            "hello/ directory, pass `src` when it lives elsewhere",
+        )
+
+    def test_rejects_individual_files_and_missing_inputs(self) -> None:
+        self._write("go.mod")
+        for source in [self.checkout / "go.mod", self.checkout / "missing"]:
+            with self.subTest(source=source), self.assertRaisesRegex(SystemExit, "src must be a directory"):
+                workspace.resolve_workspace("hello", source)
+
+    def test_does_not_follow_directory_symlinks_or_dangling_fixtures(self) -> None:
+        self._write("go.mod", "go.sum")
+        (self.checkout / "cycle").symlink_to(".")
+        (self.checkout / "dangling").symlink_to("missing")
+
+        self.assertEqual(
+            workspace.resolve_workspace("hello", self.checkout),
+            {"mod": "go.mod", "root": "", "sum": "go.sum"},
         )
