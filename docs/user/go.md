@@ -33,14 +33,20 @@ go.package(
   `src = ":hello.git"` for a directory artifact produced by [`git.fetch()`](git.md). Individual files and
   lists of sources are not accepted. Nothing needs to be added inside the checkout, so a pristine project
   clone works.
-- The source directory must contain a `go.mod`, and its directory is the module root the build runs in.
-  An action finds it once the source directory has been built, and the fetch and the build are declared
-  from what it reports.
-- A checkout carrying more than one `go.mod` declares modules nested in the project, such as a tools or
-  testdata helper; go leaves those out of a `./...` build, and so does this. The `go.sum` beside the
-  project's own `go.mod` pins what the fetch may download. A module that resolves nothing has no
-  `go.sum`; then nothing is fetched and the build runs with `GOPROXY=off`, so anything go would want to
-  resolve fails.
+- The source directory must contain a `go.mod`. The directory of the selected `go.mod` is the module root
+  the build runs in. An action finds it once the source directory has been built, and the fetch and the
+  build are declared from what it reports.
+- Without `module_root`, the build selects the outermost `go.mod`. Every other `go.mod` must be in a
+  directory below it, such as a tools or testdata helper module. go leaves nested modules out of a `./...`
+  build, and so does `go.package()`. A checkout with a `go.mod` at its root builds that module, even when the
+  program is in a module below it. A checkout whose modules are side by side, with no `go.mod` above them,
+  fails. The `go.sum` beside the selected `go.mod` pins what the fetch may download, and a `go.sum` elsewhere
+  in `src` is not read. A module that resolves nothing has no `go.sum`; then nothing is fetched and the build
+  runs with `GOPROXY=off`, so anything go would want to resolve fails.
+- `module_root` selects the module to build in a checkout with several modules. It is the path of the
+  directory that contains the module's `go.mod`, relative to `src`, such as `"server"`. A `replace`
+  directive in the selected `go.mod` can point at another module in `src`. `packages` are relative to the
+  selected module.
 - `packages` maps output names to Go main packages, such as `{"etcd": "."}` or
   `{"server": "./cmd/server"}`. Values are paths relative to the module root or full import paths;
   keys set the binary's filename and sub-target name. Together these are the target's default outputs.
@@ -69,13 +75,27 @@ go.package(
 The binaries are ordinary artifacts, so an image installs one with an `image.copy()` operation; see the
 example.
 
-For example, the `etcd` target builds the module's root package (`.`) as the binary `etcd-server`,
-available through `:etcd[etcd-server]`:
+For example, etcd's build scripts build the server in `server/`, which contains the server module. The
+server's `go.mod` replaces other etcd modules with their directories in the checkout:
+
+```
+replace (
+	go.etcd.io/etcd/api/v3 => ../api
+	go.etcd.io/etcd/client/pkg/v3 => ../client/pkg
+	go.etcd.io/etcd/client/v3 => ../client/v3
+	go.etcd.io/etcd/pkg/v3 => ../pkg
+)
+```
+
+The `etcd` target below selects the server module and builds its root package (`.`) as the binary
+`etcd-server`, available through `:etcd[etcd-server]`. The fetch and the build find the replaced modules in
+the checkout:
 
 ```Starlark
 go.package(
     name = "etcd",
     box = ":go.box",
+    module_root = "server",
     packages = {"etcd-server": "."},
 )
 ```
@@ -131,5 +151,7 @@ How the modules are pinned, fetched and verified is described under "Go source b
   `go.sum` either way.
 - **A `replace` directive must point inside `src`.** A `go.mod` that replaces a module with a directory
   outside `src` fails the build, because the build would read files that are not among its inputs.
+- **`module_root` must be a directory in `src` that contains a `go.mod`.** An empty path, an absolute path,
+  a path with `..` and a path through a symlink to a directory fail the build.
 - **A committed `go.work` is ignored**, because the build sets `GOWORK=off`. The module builds against its
   own `go.sum`.

@@ -978,15 +978,15 @@ cycle to speed up, and the large intermediate build artifacts are not uploaded t
 
 `go.package()` gives a checked-out Go project the same treatment, sources in and declared binaries out. The
 project carries no build file pointing at its own root, so a `go_workspace` action finds the `go.mod` among
-the built sources and a dynamic action declares the two steps below from what it reports; as with
-`cargo.package()`, that is what lets the sources be a fetched directory artifact rather than a checkout. The
-fetch's inputs are the `go.mod`, the `go.sum` beside it, and the `go.mod` of each module that a `replace`
-directive points at a directory in the sources. A dependency bump reruns the fetch, and an edit to a Go
-source file does not. But the pinning is delegated rather than translated: A `go.sum` records `h1:` dirhashes
-over each module's contents, not the hash of any bytes a proxy serves, so there is nothing a hash-verified
-`download_file` could check a download against. Deriving byte hashes would mean a second, generated lock to
-keep refreshed. Instead go itself is the verifier, and the build is two actions so the network stays confined
-to the first:
+the built sources, or reads the `go.mod` in the directory that `module_root` names, and a dynamic action
+declares the two steps below from what it reports; as with `cargo.package()`, that is what lets the sources
+be a fetched directory artifact rather than a checkout. The fetch's inputs are the `go.mod`, the `go.sum`
+beside it, and the `go.mod` of each module that a `replace` directive points at a directory in the sources. A
+dependency bump reruns the fetch, and an edit to a Go source file does not. But the pinning is delegated
+rather than translated: A `go.sum` records `h1:` dirhashes over each module's contents, not the hash of any
+bytes a proxy serves, so there is nothing a hash-verified `download_file` could check a download against.
+Deriving byte hashes would mean a second, generated lock to keep refreshed. Instead go itself is the
+verifier, and the build is two actions so the network stays confined to the first:
 
 1. `go_fetch` is the online action: `go mod download` in the consumer's box with the network shared, reading
    only the fetch's inputs named above, so an edit to a Go source file never refetches. go checks a download

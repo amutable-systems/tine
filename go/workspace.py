@@ -6,10 +6,10 @@
 """Find the Go module a project's sources hold, ahead of the actions that build it.
 
 A project is checked out, not written by us, so it carries no build file pointing at its own root;
-the go.mod marks it. A tree that arrives as a directory artifact only says where that sits once it
-has been built, so this runs as an action and the fetch and the build are declared from what it
-reports. It also reports the go.mod of each module that the project replaces with a directory,
-because the fetch reads those too.
+the outermost go.mod marks it, unless the go_package's module_root names another. A tree that
+arrives as a directory artifact only says where that sits once it has been built, so this runs as an
+action and the fetch and the build are declared from what it reports. It also reports the go.mod of
+each module that the project replaces with a directory. The fetch reads those go.mod files as well.
 """
 
 import json
@@ -30,6 +30,8 @@ _COMMENT = re.compile(r"(?:^|\s)//")
 
 
 class Spec(TypedDict):
+    # The directory of the go.mod to build, relative to src. Unset selects the outermost go.mod.
+    module_root: str | None
     # The target, named in whatever this refuses.
     name: str
     # Where to write the resolved workspace.
@@ -67,7 +69,7 @@ def local_replacements(text: str) -> list[str]:
     return directories
 
 
-def resolve_workspace(target: str, source: Path) -> Workspace:
+def resolve_workspace(target: str, source: Path, module_root: str | None = None) -> Workspace:
     """Find the module root, its pins, and the go.mod files the fetch reads, relative to `source`."""
     if not source.is_dir():
         fail(f"go_package {target}: src must be a directory")
@@ -79,17 +81,34 @@ def resolve_workspace(target: str, source: Path) -> Workspace:
             f"the {target}/ directory, pass `src` when it lives elsewhere"
         )
 
-    # A second go.mod belongs to a module nested in the project, a tools or testdata helper, common
-    # enough in Go repositories. go leaves those out of a `./...` build by itself, so the one
-    # containing all the others is the project's own.
-    module = min(modules, key=lambda path: len(path.parts))
-    root = module.parent
-    strays = [str(other) for other in modules if other != module and root not in other.parents]
-    if strays:
-        fail(
-            f"go_package {target}: {strays} is not nested in {module}, so src holds no single "
-            "project; narrow `src` to one module"
-        )
+    if module_root is not None:
+        # Path("") equals Path("."), so an empty module_root would select the module at the root of
+        # src. go_package refuses the empty string at analysis time, and resolve_workspace refuses it
+        # as well.
+        if not module_root:
+            fail(f"go_package {target}: module_root must not be empty")
+        root = Path(module_root)
+        module = root / _MODULE
+        # `modules` contains only relative paths inside src. An absolute module_root, or a
+        # module_root with `..`, is therefore never in `modules` and is refused. named_files does not
+        # descend into a symlink to a directory. A module_root whose path contains such a symlink is
+        # refused for the same reason.
+        if module not in modules:
+            fail(
+                f"go_package {target}: module_root {module_root!r} is not a directory in src that "
+                f"contains a {_MODULE}; src contains {[str(path) for path in modules]}"
+            )
+    else:
+        # A second go.mod belongs to a module nested in the project, a tools or testdata helper,
+        # which go leaves out of a `./...` build itself. The outermost one is the default.
+        module = min(modules, key=lambda path: len(path.parts))
+        root = module.parent
+        strays = [str(other) for other in modules if other != module and root not in other.parents]
+        if strays:
+            fail(
+                f"go_package {target}: {strays} is not nested in {module}, so src holds no single "
+                "project; set `module_root` to select a module"
+            )
 
     # go applies only the replace directives of the module it builds, and reads the go.mod in each
     # directory they name. go reads that go.mod only when the build needs the replaced module, so
@@ -122,7 +141,7 @@ def resolve_workspace(target: str, source: Path) -> Workspace:
 
 def main(argv: list[str] | None = None) -> None:
     spec = specs.parse(Spec, "go-workspace", argv)
-    workspace = resolve_workspace(spec["name"], Path(spec["src"]))
+    workspace = resolve_workspace(spec["name"], Path(spec["src"]), spec["module_root"])
     Path(spec["out"]).write_text(json.dumps(workspace, sort_keys=True) + "\n", encoding="utf-8")
 
 

@@ -105,17 +105,18 @@ class TestResolveWorkspace(unittest.TestCase):
         self.assertEqual(
             str(caught.exception),
             "tine: go_package hello: ['second/go.mod'] is not nested in first/go.mod, so src holds no "
-            "single project; narrow `src` to one module",
+            "single project; set `module_root` to select a module",
         )
 
     def test_rejects_sources_holding_no_module(self) -> None:
-        with self.assertRaises(SystemExit) as caught:
-            workspace.resolve_workspace("hello", self.checkout)
-        self.assertEqual(
-            str(caught.exception),
-            "tine: go_package hello: src holds no go.mod; by default the checkout is expected in the "
-            "hello/ directory, pass `src` when it lives elsewhere",
-        )
+        for module_root in [None, "server"]:
+            with self.subTest(module_root=module_root), self.assertRaises(SystemExit) as caught:
+                workspace.resolve_workspace("hello", self.checkout, module_root)
+            self.assertEqual(
+                str(caught.exception),
+                "tine: go_package hello: src holds no go.mod; by default the checkout is expected in the "
+                "hello/ directory, pass `src` when it lives elsewhere",
+            )
 
     def test_rejects_individual_files_and_missing_inputs(self) -> None:
         self._write("go.mod")
@@ -132,6 +133,96 @@ class TestResolveWorkspace(unittest.TestCase):
             workspace.resolve_workspace("hello", self.checkout),
             {"mod": "go.mod", "modules": ["go.mod"], "root": "", "sum": "go.sum"},
         )
+
+    def test_selects_the_server_module_in_an_etcd_checkout(self) -> None:
+        self._write("go.mod", "go.sum", "api/go.mod", "client/v3/go.mod", "server/go.sum")
+        self._write("server/go.mod", text="replace go.etcd.io/etcd/api/v3 => ../api\n")
+
+        self.assertEqual(
+            workspace.resolve_workspace("etcd", self.checkout, "server"),
+            {
+                "mod": "server/go.mod",
+                "modules": ["api/go.mod", "server/go.mod"],
+                "root": "server",
+                "sum": "server/go.sum",
+            },
+        )
+
+    def test_selects_a_module_among_siblings_without_a_root_module(self) -> None:
+        self._write("api/go.mod", "server/go.mod")
+
+        self.assertEqual(
+            workspace.resolve_workspace("etcd", self.checkout, "server"),
+            {"mod": "server/go.mod", "modules": ["server/go.mod"], "root": "server", "sum": None},
+        )
+
+    def test_selects_a_module_nested_in_another(self) -> None:
+        self._write(
+            "go.mod",
+            "go.sum",
+            "server/go.mod",
+            "server/go.sum",
+            "server/tools/go.mod",
+            "server/tools/go.sum",
+        )
+
+        self.assertEqual(
+            workspace.resolve_workspace("etcd", self.checkout, "server/tools"),
+            {
+                "mod": "server/tools/go.mod",
+                "modules": ["server/tools/go.mod"],
+                "root": "server/tools",
+                "sum": "server/tools/go.sum",
+            },
+        )
+
+    def test_the_selected_module_uses_only_its_own_pins(self) -> None:
+        self._write("go.mod", "go.sum", "server/go.mod")
+
+        self.assertIsNone(workspace.resolve_workspace("etcd", self.checkout, "server")["sum"])
+
+    def test_does_not_search_for_a_module_below_it(self) -> None:
+        self._write("go.mod", "server/nested/go.mod")
+
+        for module_root in ["server", "missing", "server/nested/go.mod"]:
+            with self.subTest(module_root=module_root), self.assertRaises(SystemExit) as caught:
+                workspace.resolve_workspace("etcd", self.checkout, module_root)
+            self.assertEqual(
+                str(caught.exception),
+                f"tine: go_package etcd: module_root {module_root!r} is not a directory in src that "
+                "contains a go.mod; src contains ['go.mod', 'server/nested/go.mod']",
+            )
+
+    def test_rejects_an_empty_module_root(self) -> None:
+        self._write("go.mod")
+
+        with self.assertRaisesRegex(SystemExit, "module_root must not be empty"):
+            workspace.resolve_workspace("etcd", self.checkout, "")
+
+    def test_rejects_absolute_and_parent_paths_to_an_existing_module(self) -> None:
+        self._write("go.mod", "server/go.mod")
+
+        for module_root in [str(self.checkout / "server"), "../checkout/server", "server/../server"]:
+            with (
+                self.subTest(module_root=module_root),
+                self.assertRaisesRegex(SystemExit, "is not a directory in src that contains a go.mod"),
+            ):
+                workspace.resolve_workspace("etcd", self.checkout, module_root)
+
+    def test_rejects_selection_through_directory_symlinks(self) -> None:
+        self._write("server/go.mod")
+        outside = self.checkout.parent / "outside"
+        (outside / "server").mkdir(parents=True)
+        (outside / "server/go.mod").touch()
+        (self.checkout / "outside").symlink_to(outside)
+        (self.checkout / "alias").symlink_to("server")
+
+        for module_root in ["outside/server", "alias"]:
+            with (
+                self.subTest(module_root=module_root),
+                self.assertRaisesRegex(SystemExit, "is not a directory in src that contains a go.mod"),
+            ):
+                workspace.resolve_workspace("etcd", self.checkout, module_root)
 
 
 class TestLocalReplacements(unittest.TestCase):

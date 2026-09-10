@@ -122,6 +122,13 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
     # cache, only do that for incremental builds; otherwise build in scratch space.
     gocache = project.kept_dir(ctx.actions, _PRIVATE + "/gocache") if ctx.attrs.incremental else None
 
+    # The go_workspace action checks that module_root contains a go.mod. go_workspace runs only after
+    # src is built, and building src can mean a git fetch. Checking the form of the path at analysis
+    # time reports an empty, absolute or `..` path before src is built.
+    module_root = ctx.attrs.module_root
+    if module_root != None and (not module_root or module_root.startswith("/") or ".." in module_root.split("/")):
+        fail("go_package {}: module_root must be a relative path inside src without '..': {}".format(ctx.label.name, repr(module_root)))
+
     workspace = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
     ctx.actions.run(
         cmd_args(
@@ -130,6 +137,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
                 ctx.actions,
                 _PRIVATE + "/go-workspace.spec.json",
                 {
+                    "module_root": module_root,
                     "name": ctx.label.name,
                     "out": workspace.as_output(),
                     "src": src,
@@ -172,6 +180,7 @@ _go_package = rule(
         "cgo_cflags": attrs.list(attrs.string(), default = [], doc = "extra C compiler flags for a cgo build"),
         "incremental": attrs.bool(doc = "keep go's caches across dev-mode rebuilds"),
         "linker_flags": attrs.list(attrs.string(), default = [], doc = "flags for the Go linker, passed as -ldflags"),
+        "module_root": attrs.option(attrs.string(), default = None, doc = "directory of the go.mod to build, relative to src; the outermost go.mod when unset"),
         "packages": attrs.dict(attrs.string(), attrs.string(), default = {}, doc = "output name to main package; unset builds the module's only one"),
         "src": attrs.source(allow_directory = True, doc = "the project's source directory, go.mod and go.sum included"),
         "tags": attrs.list(attrs.string(), default = [], doc = "build tags selecting the project's optional files"),
@@ -189,9 +198,9 @@ def go_package(
 ) -> None:
     """Build a checked-out Go project against the modules its go.sum pins.
 
-    The source defaults to the checkout named after the target. Its go.mod marks the module
-    root, and is read once the source has been built, so a project whose tree arrives from a fetch
-    needs nothing committed here.
+    The source defaults to the checkout named after the target. Its outermost go.mod marks the
+    module root unless `module_root` names another. The go.mod is read once the source has been
+    built, so a project whose tree arrives from a fetch needs nothing committed here.
     """
     _go_package(
         name = name,
