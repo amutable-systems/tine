@@ -299,16 +299,15 @@ second pool.
 A repository that declares signing keys verifies package signatures after fetching them. The repository
 cannot verify them itself, because that takes a box and the box a release names is built from the
 release's own repositories; so the package manager or the box rule declares the verification with the box
-it has: one keyring built from the declared key files (validated against the committed fingerprints) and
-one verify action per package during package selection during a transaction. Everything a manager
-installs shares its verification, and a derived manager inherits it. The result is again a checksum-keyed
-map of package artifacts. The unverified pool is only being used by the repository configuration code.
+it has: one keyring built from the declared key files (validated against the committed fingerprints), and
+the selector then verifies what a transaction selects from that repository in one action, publishing the
+closure's copies of those packages. One action per closure and repository, as the overhead of launching
+the sandbox and `rpmverify` per package is unbearably high. derived manager inherits the verifier. The
+unverified pool is only being used by the repository configuration code.
 
 Why repository ownership matters:
 
 - one digest and one action graph node define each upstream package;
-- a derived form such as the verified copy keys on the same digest, so consumers sharing a manager share
-  the verification;
 - box, buildroot, and image closures become cheap selectors;
 - repository snapshot skew fails at the lookup boundary instead of silently downloading different bytes.
 

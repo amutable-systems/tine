@@ -12,7 +12,7 @@ load(
 )
 load("//package:solver.bzl", "solve_command", "solver_cache")
 load("//package:system.bzl", "PackageSystemInfo")
-load("//package:verify.bzl", "repository_packages")
+load("//package:verify.bzl", "repository_verifier")
 load(":runtime.bzl", "BoxInfo", "box_run")
 
 _REPOSITORY_PRIORITY = 99
@@ -20,27 +20,32 @@ _REPOSITORY_PRIORITY = 99
 def _configure_repositories(
     ctx: AnalysisContext,
     repositories: list[Dependency],
-    verifier: BoxInfo | None,
+    verifier_box: BoxInfo | None,
 ) -> list[ConfiguredPackageRepositoryInfo]:
     """The box's repositories at the native default priority.
 
-    Their packages are verified by `verifier`; without one they stay unverified, which only a root
-    box's bootstrap, with nothing to verify with yet, may take."""
+    Their packages are verified by `verifier_box`. Use None only for bootstrapping the root box, as
+    that has nothing to verify with."""
     configured = []
     for repository in repositories:
         repo = repository[PackageRepositoryInfo]
+        rid = repository.label.name
         if repo.dir == None:
-            fail("box: repository '{}' has no bootstrap directory".format(repository.label.name))
+            fail("box: repository '{}' has no bootstrap directory".format(rid))
         if repo.baseurl == None:
-            fail("box: repository '{}' has no bootstrap base URL".format(repository.label.name))
+            fail("box: repository '{}' has no bootstrap base URL".format(rid))
+        verifier = None
+        if verifier_box != None:
+            verifier = repository_verifier(ctx, verifier_box, rid, repo.signing_keys, repo.package_system)
         configured.append(
             ConfiguredPackageRepositoryInfo(
-                id = repository.label.name,
+                id = rid,
                 dependency = repository,
                 directory = repo.dir,
                 priority = _REPOSITORY_PRIORITY,
                 baseurl = repo.baseurl,
-                packages = repository_packages(ctx, verifier, repository) if verifier != None else repository[PackagePoolInfo].value,
+                packages = repository[PackagePoolInfo].value,
+                verifier = verifier,
             )
         )
     return configured
