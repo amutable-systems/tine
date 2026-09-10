@@ -167,7 +167,7 @@ _go_package = rule(
     impl = _go_package_impl,
     attrs = {
         "binaries": attrs.list(attrs.string(), doc = "binaries to take out of the build"),
-        "box": attrs.dep(providers = [BoxInfo], doc = "box carrying the Go toolchain"),
+        "box": attrs.exec_dep(providers = [BoxInfo], doc = "box carrying the Go toolchain"),
         "cgo": attrs.option(attrs.bool(), default = None, doc = "force cgo on or off, box toolchain default when unset"),
         "cgo_cflags": attrs.list(attrs.string(), default = [], doc = "extra C compiler flags for a cgo build"),
         "incremental": attrs.bool(doc = "keep go's caches across rebuilds of a mounted checkout"),

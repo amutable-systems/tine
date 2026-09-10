@@ -48,7 +48,7 @@ _box_python_test = rule(
     """,
     impl = _box_python_test_impl,
     attrs = {
-        "box": attrs.dep(providers = [BoxInfo], doc = "box whose hermetic sandbox runs the tests"),
+        "box": attrs.exec_dep(providers = [BoxInfo], doc = "box whose hermetic sandbox runs the tests"),
         "deps": attrs.list(
             attrs.dep(providers = [PythonBootstrapSources]),
             default = [],
@@ -110,7 +110,7 @@ box_sh_test = rule(
     impl = _box_sh_test_impl,
     attrs = {
         "args": attrs.list(attrs.arg(), default = [], doc = "arguments to the script, artifacts included"),
-        "box": attrs.dep(providers = [BoxInfo], doc = "box whose hermetic sandbox runs the script"),
+        "box": attrs.exec_dep(providers = [BoxInfo], doc = "box whose hermetic sandbox runs the script"),
         "labels": attrs.list(attrs.string(), default = [], doc = "passed to the test runner, for `buck test` filtering"),
         "script": attrs.option(
             attrs.string(),

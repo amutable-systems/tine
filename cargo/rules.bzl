@@ -149,7 +149,7 @@ _cargo_package = rule(
     impl = _cargo_package_impl,
     attrs = {
         "binaries": attrs.list(attrs.string(), doc = "binaries to take out of the build"),
-        "box": attrs.dep(providers = [BoxInfo], doc = "box carrying the Rust toolchain"),
+        "box": attrs.exec_dep(providers = [BoxInfo], doc = "box carrying the Rust toolchain"),
         "incremental": attrs.bool(doc = "keep cargo's build directory across rebuilds of a mounted checkout"),
         "srcs": attrs.list(attrs.source(), doc = "the project's source tree, Cargo.lock included"),
         "_auditable": attrs.exec_dep(providers = [RunInfo], default = "tine//tools:cargo-auditable"),
