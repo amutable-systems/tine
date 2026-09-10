@@ -186,14 +186,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
         "transaction": [DefaultInfo(default_output = transaction)],
     }
 
-    # Running a box target is an interactive act, so its own RunInfo is the host-integrated relaxed
-    # entry. Build actions never reach it: they take BoxInfo and construct their own hermetic
-    # box_run.
-    return [
-        DefaultInfo(default_output = stage2, sub_targets = sub_targets),
-        info,
-        box_run(info, relaxed = True, name = ctx.label.name.removesuffix(".box")),
-    ]
+    return [DefaultInfo(default_output = stage2, sub_targets = sub_targets), info]
 
 _box = rule(
     impl = _box_impl,
@@ -201,7 +194,6 @@ _box = rule(
         "arch": attrs.string(default = "x86_64", doc = "the resolution arch"),
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
-        "labels": attrs.list(attrs.string(), default = []),
         "lock": attrs.option(
             attrs.source(),
             default = None,
@@ -213,7 +205,7 @@ _box = rule(
         ),
         "release": attrs.dep(providers = [OsReleaseInfo], doc = "base OS release for the box root"),
         "resolver_box": attrs.option(
-            attrs.dep(providers = [BoxInfo]),
+            attrs.exec_dep(providers = [BoxInfo]),
             default = None,
             doc = "predecessor box used to resolve and install this box's transaction",
         ),
@@ -222,6 +214,27 @@ _box = rule(
     },
 )
 
+def _box_alias_impl(ctx: AnalysisContext) -> list[Provider]:
+    # Running a box target is an interactive act, so its RunInfo is the host-integrated relaxed
+    # entry. Build actions never reach it: they take BoxInfo and construct their own hermetic
+    # box_run.
+    relaxed = box_run(ctx.attrs.actual[BoxInfo], relaxed = True, name = ctx.label.name.removesuffix(".box"))
+    return ctx.attrs.actual.providers + [relaxed]
+
+# The box's public name. An indirection to build the box only once, regardless of the caller's target
+# configuration; see "Box bootstrap" in docs/design.md.
+_box_alias = rule(
+    impl = _box_alias_impl,
+    attrs = {
+        "actual": attrs.exec_dep(providers = [BoxInfo]),
+        "labels": attrs.list(attrs.string(), default = []),
+    },
+)
+
+# Avoid rebuilding boxes for different caller configurations (they are independent of that), only build
+# them for different execution platforms (we just have one).
+_EXECUTION_CONFIGURATION = "prelude//cfg/exec_platform/marker:is_exec_platform[true]"
+
 def new(
     name: str,
     packages: list[str],
@@ -229,6 +242,7 @@ def new(
     resolver_box: str | None = None,
     root: bool = False,
     labels: list[str] = [],
+    visibility: list[str] | None = None,
     **kwargs,
 ) -> None:
     """Declare a box rooted in one base OS release.
@@ -247,11 +261,17 @@ def new(
         resolver_box = release.removesuffix(".release") + ".box"
     locks = glob(["snapshot/box/" + name[: -len(".box")] + ".json"])
     _box(
-        name = name,
+        name = name + ".exec",
         packages = packages,
         release = release,
         resolver_box = resolver_box,
-        labels = ["tine:box"] + labels,
         lock = locks[0] if locks else None,
+        target_compatible_with = [_EXECUTION_CONFIGURATION],
         **kwargs,
+    )
+    _box_alias(
+        name = name,
+        actual = ":" + name + ".exec",
+        labels = ["tine:box"] + labels,
+        visibility = visibility,
     )

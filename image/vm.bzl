@@ -105,7 +105,7 @@ _image_vm = rule(
             default = None,
             doc = "user to log in automatically without authentication",
         ),
-        "box": attrs.dep(providers = [BoxInfo], doc = "execution environment supplying the VM stack"),
+        "box": attrs.exec_dep(providers = [BoxInfo], doc = "execution environment supplying the VM stack"),
         "cmdline_extra": attrs.list(
             attrs.string(),
             default = [],

@@ -622,7 +622,7 @@ disk_convert = rule(
     impl = _disk_convert_impl,
     attrs = {
         "basename": attrs.string(default = "image", doc = "file name of the re-encoded disk, without extension"),
-        "box": attrs.dep(providers = [BoxInfo], doc = "execution environment supplying conversion tools"),
+        "box": attrs.exec_dep(providers = [BoxInfo], doc = "execution environment supplying conversion tools"),
         "disk": attrs.dep(providers = [RepartInfo], doc = "the composed raw disk to re-encode"),
         "format": attrs.enum(DISK_FORMATS),
     }

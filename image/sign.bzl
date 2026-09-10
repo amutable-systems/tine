@@ -152,7 +152,7 @@ def _signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
 generate_signing_key = rule(
     impl = _signing_key_impl,
     attrs = {
-        "box": attrs.dep(
+        "box": attrs.exec_dep(
             providers = [BoxInfo],
             default = "tine//catalog:fedora.rawhide.box",
             doc = "box providing ukify",
@@ -330,7 +330,7 @@ def _pkcs11_signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
 _pkcs11_signing_key = rule(
     impl = _pkcs11_signing_key_impl,
     attrs = {
-        "box": attrs.dep(
+        "box": attrs.exec_dep(
             providers = [BoxInfo],
             default = "tine//catalog:fedora.rawhide.box",
             doc = "box providing keyutil and the PKCS#11 provider",

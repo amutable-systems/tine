@@ -807,7 +807,7 @@ _image = rule(
     attrs = IMAGE_ATTRS
     | {
         "box": attrs.option(
-            attrs.dep(providers = [BoxInfo]),
+            attrs.exec_dep(providers = [BoxInfo]),
             default = None,
             doc = "the execution environment fixed for an initial image and all derived artifacts",
         ),

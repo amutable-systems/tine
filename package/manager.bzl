@@ -42,7 +42,7 @@ def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
 _materialize_local_repository = anon_rule(
     impl = _materialize_local_repository_impl,
     attrs = {
-        "box": attrs.dep(providers = [BoxInfo]),
+        "box": attrs.exec_dep(providers = [BoxInfo]),
         "package_dirs": attrs.list(attrs.source()),
         "package_system": attrs.dep(providers = [PackageSystemInfo]),
     },
@@ -201,7 +201,7 @@ _package_manager = rule(
             default = [],
         ),
         "base": attrs.option(attrs.dep(providers = [PackageManagerInfo]), default = None),
-        "box": attrs.option(attrs.dep(providers = [BoxInfo]), default = None),
+        "box": attrs.option(attrs.exec_dep(providers = [BoxInfo]), default = None),
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
         "local_packages": attrs.option(

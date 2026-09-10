@@ -319,6 +319,14 @@ the image-building tools; a VM runner takes its box explicitly, so only a box as
 that stack. The base release identifies where this userspace came from, not the only release it may
 operate on.
 
+A box runs on the build host, so it is an execution dependency: a rule takes it with `attrs.exec_dep`, a
+command line with `$(location_exec)`. Buck configures those for the execution
+platform (tine has just one) rather than for the consumer's target. A target named on the command line is
+configured for the target platform instead, which would be a second build of the same box. To avoid that,
+`box.new` declares the box under a hidden name that is compatible with the execution configuration only,
+and the public name as an alias reaching it through an execution dependency, so `buck build`, `buck run`
+and ordinary dependencies all arrive at the same box.
+
 A lockless box uses its resolver box, by default the one its release names, to produce its build
 transaction and perform the authoritative installation. Its target root therefore contains only the
 requested packages and their dependencies; it does not need Python, package-manager libraries, or

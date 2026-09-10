@@ -70,7 +70,7 @@ def _ty_check_impl(ctx: AnalysisContext) -> list[Provider]:
 _ty_check = rule(
     impl = _ty_check_impl,
     attrs = {
-        "boxes": attrs.list(attrs.dep(providers = [BoxInfo]), default = []),
+        "boxes": attrs.list(attrs.exec_dep(providers = [BoxInfo]), default = []),
         "deps": attrs.list(attrs.dep(providers = [PythonBootstrapSources]), default = []),
         "labels": attrs.list(attrs.string(), default = []),
         "srcs": attrs.list(attrs.source()),
