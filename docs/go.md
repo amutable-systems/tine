@@ -23,13 +23,14 @@ go.package(
 )
 ```
 
-- `srcs` defaults to `glob(["<name>/**"])`: the checkout is expected in a directory named after the
-  target. Pass `srcs` explicitly when it is called something else. Nothing needs to be added inside the
-  checkout, i.e. a pristine project clone works.
-- One of the sources must be a `go.mod`, and its directory is the module root the build runs in. An
-  action finds it once the sources have been built, and the fetch and the build are declared from what
-  it reports, so the sources can be a checkout's files or one directory artifact another target
-  produced, including a project tree from [`git.fetch()`](git.md).
+- `src` is one source directory and defaults to `"<name>"`: the checkout is expected in a directory named
+  after the target. Pass `src = "checkout"` when it lives elsewhere, or a target such as
+  `src = ":hello.git"` for a directory artifact produced by [`git.fetch()`](git.md). Individual files and
+  lists of sources are not accepted. Nothing needs to be added inside the checkout, so a pristine project
+  clone works.
+- The source directory must contain a `go.mod`, and its directory is the module root the build runs in.
+  An action finds it once the source directory has been built, and the fetch and the build are declared
+  from what it reports.
 - A checkout carrying more than one `go.mod` declares modules nested in the project, such as a tools or
   testdata helper; go leaves those out of a `./...` build, and so does this. The `go.sum` beside the
   project's own `go.mod` pins what the fetch may download. A module that resolves nothing has no
@@ -109,11 +110,11 @@ How the modules are pinned, fetched and verified is described under "Go source b
   `GOPROXY` (`proxy.golang.org`, then `direct`) and checksum database rather than taking the box's,
   which a distribution patches.
 - **A local `go build` in the checkout wants `-o`.** A bare one writes its binary into the current
-  directory, and everything in `srcs` is an action input, so that binary lands in the next build.
+  directory. Since `src` is an action input, use `-o` to place that binary outside the source directory.
 - **A checkout is not the only way in.** The module is found in the built sources rather than at parse
   time, so [`git.fetch()`](git.md) can supply the complete project tree without committing it to the
   consuming repository.
 - **A committed `vendor/` tree is ignored**, because the build passes `-mod=readonly`, and an explicit
   `-mod` is what turns off go's habit of preferring a vendor directory. Every module comes from the
-  `go.sum` either way; excluding the tree from `srcs` only saves copying it.
+  `go.sum` either way.
 - **`go.work` workspaces are refused**, because a workspace spans modules where this rule builds one.

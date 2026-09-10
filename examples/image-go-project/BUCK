@@ -5,6 +5,7 @@ it builds. `hello/` plays that checkout.
 """
 
 load("@tine//box:defs.bzl", "box")
+load("@tine//git:defs.bzl", "git")
 load("@tine//go:defs.bzl", "go")
 load("@tine//image:defs.bzl", "image")
 load("@tine//package:defs.bzl", "package")
@@ -37,21 +38,30 @@ go.package(
     packages = {"nodeps": "."},
 )
 
+# The local checkout must override this fetch, so its revision is deliberately a placeholder.
+git.fetch(
+    name = "nodeps.git",
+    repo = "https://github.com/example/nodeps",
+    rev = "1111111111111111111111111111111111111111",
+)
+
 go.package(
     name = "renamed",
     box = ":go.box",
     packages = {"renamed": "."},
-    srcs = glob(["nodeps/**"]),
+    src = ":nodeps.git",
 )
 
 go.package(
     name = "multiple",
     box = ":go.box",
+    # Force the persistent-cache path for this test; real projects select dev mode with tine mount.
+    dev = True,
     packages = {
         "first": ".",
         "second": "example.com/nodeps",
     },
-    srcs = glob(["nodeps/**"]),
+    src = "nodeps",
 )
 
 box.sh_test(
