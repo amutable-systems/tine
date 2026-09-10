@@ -1,6 +1,7 @@
 """Native package repositories, universes, and dynamic transaction selection."""
 
 load(":system.bzl", "PackageSystemInfo")
+load(":verify.bzl", "Verifier", "verify_packages")
 
 PackageArtifactInfo = record(
     artifact = Artifact,
@@ -213,11 +214,11 @@ ConfiguredPackageRepositoryInfo = record(
     directory = Artifact,
     priority = int,
     baseurl = field(str | None, default = None),
-    # The packages a consumer may select, a dynamic value resolving to a PackagePoolValueInfo. Whoever
-    # configures the repository decides what they are: verified against the declared signing keys as a
-    # transaction first selects them, or unverified where the repository declares no keys.
+    # The packages a consumer may select, a dynamic value resolving to a PackagePoolValueInfo.
     # None for a local repository, whose packages are its input directories.
     packages = field(DynamicValue | None, default = None),
+    # The `repository_verifier` for a selected closure.
+    verifier = field(Verifier | None, default = None),
 )
 
 # What every remote repository declares, whichever package system owns it.
@@ -550,8 +551,10 @@ def _select_package_artifacts_impl(
     tx: ArtifactValue,
     output: OutputArtifact,
     local_packages: dict[str, list[Artifact]],
+    name: str,
     pools: dict[str, ResolvedDynamicValue],
     suffix: str,
+    verifiers: dict[str, Verifier],
 ) -> list[Provider]:
     # Select already-owned artifacts; the transaction never creates new downloads.
     entries = tx.read_json()
@@ -560,6 +563,7 @@ def _select_package_artifacts_impl(
 
     by_repo = {rid: pool.providers[PackagePoolValueInfo].packages for rid, pool in pools.items()}
     artifacts = {}
+    selected = {}
     for entry in entries:
         if type(entry) != type({}):
             fail("transaction entry is not an object: {}".format(entry))
@@ -597,9 +601,7 @@ def _select_package_artifacts_impl(
             idx = int(parts[0])
             if idx >= len(package_dirs):
                 fail("local transaction entry refers to missing package directory: {}".format(entry))
-            output_name = _closure_name(parts[1], checksum, suffix)
-            if output_name not in artifacts:
-                artifacts[output_name] = package_dirs[idx].project(parts[1])
+            artifacts[_closure_name(parts[1], checksum, suffix)] = package_dirs[idx].project(parts[1])
             continue
 
         url = entry.get("url")
@@ -615,10 +617,13 @@ def _select_package_artifacts_impl(
                 ("{} ({}/{}) is absent from the pinned repository package pool; " + "run refresh-catalog").format(package_id, rid, checksum),
             )
         package = by_repo[rid][checksum]
-        output_name = _closure_name(package.name, checksum, suffix)
-        if output_name not in artifacts:
-            artifacts[output_name] = package.artifact
+        selected.setdefault(rid, {})[_closure_name(package.name, checksum, suffix)] = package.artifact
 
+    for rid, packages in selected.items():
+        if rid in verifiers:
+            verified = verify_packages(actions, name, rid, verifiers[rid], packages)
+            packages = {output_name: verified.project(output_name) for output_name in packages}
+        artifacts |= packages
     actions.symlinked_dir(output, artifacts)
     return []
 
@@ -626,10 +631,12 @@ _select_package_artifacts_action = dynamic_actions(
     impl = _select_package_artifacts_impl,
     attrs = {
         "local_packages": dynattrs.value(dict[str, list[Artifact]]),
+        "name": dynattrs.value(str),
         "output": dynattrs.output(),
         "pools": dynattrs.dict(str, dynattrs.dynamic_value()),
         "suffix": dynattrs.value(str),
         "tx": dynattrs.artifact_value(),
+        "verifiers": dynattrs.value(dict[str, Verifier]),
     },
 )
 
@@ -641,9 +648,13 @@ def select_package_artifacts(
     extra_packages: list[Artifact] = [],
     name: str = "install.closure",
 ) -> Artifact:
-    """Select each transaction package's artifact into a directory."""
+    """Select each transaction package's artifact into a directory.
+
+    For a repository configured with a verifier, the directory holds verified copies.
+    """
     output = ctx.actions.declare_output(name, dir = True)
     pools = {}
+    verifiers = {}
     local_packages = {}
     for configured in repositories:
         repository = configured.dependency
@@ -658,6 +669,8 @@ def select_package_artifacts(
             # Internal consistency check: a remote repository is configured with its packages.
             fail("select_package_artifacts: repository '{}' is configured without packages".format(configured.id))
         pools[configured.id] = configured.packages
+        if configured.verifier != None:
+            verifiers[configured.id] = configured.verifier
     if extra_packages:
         local_packages["extra"] = extra_packages
     ctx.actions.dynamic_output_new(
@@ -665,8 +678,10 @@ def select_package_artifacts(
             tx = tx,
             output = output.as_output(),
             local_packages = local_packages,
+            name = name,
             pools = pools,
             suffix = suffix,
+            verifiers = verifiers,
         )
     )
     return output

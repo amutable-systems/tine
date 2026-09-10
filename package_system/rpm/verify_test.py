@@ -108,10 +108,10 @@ class TestVerify(unittest.TestCase):
         keyring.keyring(keyring.Spec(keys={f: str(path) for f, path in files.items()}, out=str(out)))
         return out
 
-    def verify(self, keyring: Path, package: Path) -> Path:
-        out = keyring.parent / (package.name + ".verified")
+    def verify(self, keyring: Path, *packages: Path) -> Path:
+        out = keyring.parent / "verified"
         verify.verify(
-            verify.Spec(keyring=str(keyring), name=package.name, package=str(package), out=str(out))
+            verify.Spec(keyring=str(keyring), out=str(out), packages={p.name: str(p) for p in packages})
         )
         return out
 
@@ -136,22 +136,33 @@ class TestVerify(unittest.TestCase):
             self.keyring(declared={self.signer.fingerprint: bundle})
         self.assertIn(f"undeclared ['{self.other.fingerprint}']", str(failure.exception))
 
-    def test_publishes_a_package_its_key_signed(self) -> None:
-        out = self.verify(self.keyring(self.signer, self.other), self.signed)
-        self.assertEqual(out.read_bytes(), self.signed.read_bytes())
+    def test_publishes_the_packages_its_keys_signed(self) -> None:
+        other_signed = Path(self._scratch.name) / "pkg-1-1.noarch.other.rpm"
+        self.other.sign(self.unsigned, other_signed)
+        out = self.verify(self.keyring(self.signer, self.other), self.signed, other_signed)
+        for package in (self.signed, other_signed):
+            self.assertEqual((out / package.name).read_bytes(), package.read_bytes())
 
     def test_rejects_a_package_another_key_signed(self) -> None:
         keyring = self.keyring(self.other)
         with self.assertRaises(SystemExit) as failure:
             self.verify(keyring, self.signed)
-        self.assertIn(f"{self.signed.name} has no valid signature", str(failure.exception))
-        self.assertFalse((keyring.parent / (self.signed.name + ".verified")).exists())
+        self.assertIn(
+            f"no valid signature from the declared keys on {self.signed.name}", str(failure.exception)
+        )
+        self.assertFalse((keyring.parent / "verified" / self.signed.name).exists())
 
     def test_rejects_an_unsigned_package(self) -> None:
         # Well formed, so what fails below is the missing signature and nothing else.
         _run("rpmkeys", "--define", "_pkgverify_level digest", "--checksig", str(self.unsigned))
         with self.assertRaises(SystemExit):
             self.verify(self.keyring(self.signer), self.unsigned)
+
+    def test_a_batch_names_the_rejected_package_only(self) -> None:
+        with self.assertRaises(SystemExit) as failure:
+            self.verify(self.keyring(self.signer), self.signed, self.unsigned)
+        self.assertIn(f"on {self.unsigned.name},", str(failure.exception))
+        self.assertNotIn(self.signed.name, str(failure.exception))
 
 
 if __name__ == "__main__":
