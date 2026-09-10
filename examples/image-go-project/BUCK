@@ -64,6 +64,23 @@ go.package(
     src = "nodeps",
 )
 
+# This checkout has a go.mod at its root and the server module in server/. The server's go.mod
+# replaces the module in api/ with that directory. The root module does not require the server.
+# Without `module_root`, the build selects the root module, which contains no Go package.
+go.package(
+    name = "siblings",
+    box = ":go.box",
+    module_root = "server",
+)
+
+box.sh_test(
+    name = "module-root-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = '[[ "$("$1")" == "server using sibling api: "* ]]',
+    args = ["$(exe :siblings)"],
+)
+
 box.sh_test(
     name = "packages-test",
     labels = ["image"],
