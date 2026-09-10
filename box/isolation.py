@@ -1,15 +1,26 @@
-"""Enter Linux namespaces and assemble filesystems for Tine sandboxes."""
+"""Enter Linux namespaces and assemble filesystems for Tine sandboxes.
+
+Every sandbox imports this module. Keep imports, including transitive imports, to the absolute
+minimum to minimize startup time.
+"""
 
 import ctypes
 import errno
 import os
-from abc import ABC, abstractmethod
-from collections.abc import Iterator
-from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
-from pathlib import Path
-from types import TracebackType
-from typing import Self, cast, override
+import sys
+
+TYPE_CHECKING = False
+
+# The host-side launcher also imports this module on Python 3.12/3.13, which evaluate annotations eagerly.
+if TYPE_CHECKING or sys.version_info < (3, 14):  # noqa: UP036
+    from typing import Self, override
+else:
+
+    def override[T](method: T) -> T:
+        return method
+
+
+type StrPath = str | os.PathLike[str]
 
 AT_EMPTY_PATH = 0x1000
 AT_FDCWD = -100
@@ -71,7 +82,7 @@ _NR_OPEN_TREE = 428
 _NR_MOVE_MOUNT = 429
 _NR_MOUNT_SETATTR = 442
 _OPEN_TREE_CLOEXEC = os.O_CLOEXEC
-_ROOT = Path("/")
+_ROOT = "/"
 _COMPAT_ARCHITECTURES = {
     SCMP_ARCH_X86_64: (SCMP_ARCH_X86, SCMP_ARCH_X32),
     SCMP_ARCH_AARCH64: (SCMP_ARCH_ARM,),
@@ -164,15 +175,15 @@ class SandboxOSError(OSError):
         self.message = message
 
 
-def _error(call: str, path: Path | None = None, number: int = 0) -> None:
+def _error(call: str, path: StrPath | None = None, number: int = 0) -> None:
     number = number or ctypes.get_errno()
 
     raise OSError(number, f"{call}: {os.strerror(number)}", path)
 
 
 def mount(
-    source: Path | None,
-    target: Path,
+    source: StrPath | None,
+    target: StrPath,
     filesystem: str | None = None,
     flags: int = 0,
     options: str | None = None,
@@ -190,7 +201,7 @@ def mount(
         _error("mount", target)
 
 
-def umount2(path: Path, flags: int = 0) -> None:
+def umount2(path: StrPath, flags: int = 0) -> None:
     if _LIBC.umount2(os.fsencode(path), flags) < 0:
         _error("umount2", path)
 
@@ -201,7 +212,7 @@ def unshare(flags: int) -> None:
 
 
 def _prctl(option: int, argument: int) -> int:
-    result = cast(int, _LIBC.prctl(option, argument, 0, 0, 0))
+    result = int(_LIBC.prctl(option, argument, 0, 0, 0))
 
     if result < 0:
         _error("prctl")
@@ -238,7 +249,8 @@ def fix_user_namespace_capabilities(*, network: bool) -> None:
         _error("capget")
 
     permitted = ((data[1].permitted << 32) | data[0].permitted) & _capability_mask(capabilities)
-    last = int(Path("/proc/sys/kernel/cap_last_cap").read_text(encoding="ascii"))
+    with open("/proc/sys/kernel/cap_last_cap", encoding="ascii") as handle:
+        last = int(handle.read())
 
     for capability in range(last + 1):
         if not permitted & (1 << capability):
@@ -292,15 +304,18 @@ def unprivileged_user_namespace(*, become_root: bool) -> None:
 
         try:
             os.read(read_fd, 1)
-            Path(f"/proc/{parent}/setgroups").write_text("deny\n", encoding="ascii")
+            with open(f"/proc/{parent}/setgroups", "w", encoding="ascii") as handle:
+                handle.write("deny\n")
 
             gid = os.getgid()
             uid = os.getuid()
             mapped_gid = 0 if become_root else gid
             mapped_uid = 0 if become_root else uid
 
-            Path(f"/proc/{parent}/gid_map").write_text(f"{mapped_gid} {gid} 1\n", encoding="ascii")
-            Path(f"/proc/{parent}/uid_map").write_text(f"{mapped_uid} {uid} 1\n", encoding="ascii")
+            with open(f"/proc/{parent}/gid_map", "w", encoding="ascii") as handle:
+                handle.write(f"{mapped_gid} {gid} 1\n")
+            with open(f"/proc/{parent}/uid_map", "w", encoding="ascii") as handle:
+                handle.write(f"{mapped_uid} {uid} 1\n")
         except OSError as error:
             os._exit(error.errno or 1)
         except BaseException:
@@ -337,7 +352,8 @@ def unprivileged_user_namespace(*, become_root: bool) -> None:
 
 def _single_user_namespace() -> bool:
     try:
-        lines = Path("/proc/self/uid_map").read_text(encoding="ascii").splitlines()
+        with open("/proc/self/uid_map", encoding="ascii") as handle:
+            lines = handle.read().splitlines()
     except FileNotFoundError:
         return False
 
@@ -405,7 +421,7 @@ def _suppress_syscalls(*, chown: bool, sync: bool) -> None:
         library.seccomp_release(context)
 
 
-def _open_tree(path: Path, *, recursive: bool) -> int:
+def _open_tree(path: StrPath, *, recursive: bool) -> int:
     flags = AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW | OPEN_TREE_CLONE | _OPEN_TREE_CLOEXEC
     if recursive:
         flags |= AT_RECURSIVE
@@ -413,10 +429,9 @@ def _open_tree(path: Path, *, recursive: bool) -> int:
     try:
         function = _LIBC.open_tree
         function.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
-        result = cast(int, function(AT_FDCWD, os.fsencode(path), flags))
+        result = int(function(AT_FDCWD, os.fsencode(path), flags))
     except AttributeError:
-        result = cast(
-            int,
+        result = int(
             _LIBC.syscall(
                 ctypes.c_long(_NR_OPEN_TREE),
                 ctypes.c_int(AT_FDCWD),
@@ -459,7 +474,7 @@ def _mount_setattr(fd: int, *, readonly: bool, recursive: bool) -> None:
         _error("mount_setattr")
 
 
-def _move_mount(fd: int, target: Path) -> None:
+def _move_mount(fd: int, target: StrPath) -> None:
     try:
         function = _LIBC.move_mount
         function.argtypes = (
@@ -484,70 +499,101 @@ def _move_mount(fd: int, target: Path) -> None:
         _error("move_mount", target)
 
 
-def _bind_mount(source: Path, target: Path, *, readonly: bool, recursive: bool = True) -> None:
-    fd = _open_tree(source, recursive=recursive)
+class _Close:
+    def __init__(self, fd: int) -> None:
+        self.fd = fd
 
-    try:
+    def __enter__(self) -> int:
+        return self.fd
+
+    def __exit__(self, *exc: object) -> None:
+        os.close(self.fd)
+
+
+def _touch(path: str, mode: int = 0o666) -> None:
+    with _Close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)):
+        pass
+
+
+def _bind_mount(source: str, target: str, *, readonly: bool, recursive: bool = True) -> None:
+    with _Close(_open_tree(source, recursive=recursive)) as fd:
         _mount_setattr(fd, readonly=readonly, recursive=recursive)
         _move_mount(fd, target)
-    finally:
-        os.close(fd)
 
 
-@contextmanager
-def chroot(root: Path) -> Iterator[None]:
+class chroot:
     """Temporarily change the process root and restore it afterward."""
 
-    previous = Path.cwd()
-    root_fd = os.open(_ROOT, os.O_CLOEXEC | os.O_PATH | os.O_DIRECTORY)
-    changed = False
+    def __init__(self, root: StrPath) -> None:
+        self.root = os.fspath(root)
+        self.root_fd = -1
 
-    try:
-        os.chroot(root)
-        changed = True
-        os.chdir(_ROOT)
-        yield
-    finally:
-        if changed:
-            os.fchdir(root_fd)
-            os.chroot(".")
-            os.chdir(previous)
-        os.close(root_fd)
+    def __enter__(self) -> None:
+        if self.root_fd >= 0:
+            raise RuntimeError("chroot context is already entered")
+        self.previous = os.getcwd()
+        self.root_fd = os.open(_ROOT, os.O_CLOEXEC | os.O_PATH | os.O_DIRECTORY)
+        self.changed = False
+        try:
+            os.chroot(self.root)
+            self.changed = True
+            os.chdir(_ROOT)
+        except BaseException:
+            self.__exit__()
+            raise
+
+    def __exit__(self, *exc: object) -> None:
+        try:
+            if self.changed:
+                os.fchdir(self.root_fd)
+                os.chroot(".")
+                os.chdir(self.previous)
+        finally:
+            os.close(self.root_fd)
+            self.root_fd = -1
 
 
-def _under(root: Path, path: Path) -> Path:
+def _under(root: StrPath, path: StrPath) -> str:
+    root, path = os.fspath(root), os.fspath(path)
     if root == _ROOT:
         return path
 
-    if path.is_absolute():
-        return root.joinpath(*path.parts[1:])
-
-    return root / path
+    path = path.lstrip("/")
+    return os.path.join(root, path) if path else root
 
 
-def _resolve(root: Path, path: Path, *, nofollow: bool = False) -> Path:
-    if root == _ROOT:
-        return path.parent.resolve() / path.name if nofollow else path.resolve()
+def _resolve(root: StrPath, path: StrPath, *, nofollow: bool = False) -> str:
+    root, path = os.fspath(root), os.fspath(path)
+    path = path.rstrip("/") or ("/" if os.path.isabs(path) else ".")
 
-    if not path.is_absolute():
+    if root != _ROOT and not os.path.isabs(path):
         raise ValueError(f"sandbox path must be absolute: {path}")
 
-    with chroot(root):
-        resolved = path.parent.resolve() / path.name if nofollow else path.resolve()
+    parent, name = os.path.split(path) if nofollow else (path, "")
+    # Traversal components must be resolved inside the chroot, not appended after leaving it.
+    if name in (".", ".."):
+        parent, name = path, ""
 
-    return _under(root, resolved)
+    if root == _ROOT:
+        resolved = os.path.realpath(parent)
+    else:
+        with chroot(root):
+            resolved = os.path.realpath(parent)
+
+    resolved = _under(root, resolved)
+    return os.path.join(resolved, name) if name else resolved
 
 
-class _Mount(ABC):
+class _Mount:
     _unmount_flags: int = 0
 
-    def __init__(self, target: Path) -> None:
-        self.target = target
-        self._mounted_target: Path | None = None
+    def __init__(self, target: StrPath) -> None:
+        self.target = os.fspath(target)
+        self._mounted_target: str | None = None
 
-    @abstractmethod
-    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> Path:
+    def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> str:
         """Mount permanently and return the actual mount point."""
+        raise NotImplementedError
 
     def __enter__(self) -> Self:
         if self._mounted_target is not None:
@@ -555,12 +601,7 @@ class _Mount(ABC):
         self._mounted_target = self.mount()
         return self
 
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
+    def __exit__(self, *exc: object) -> None:
         assert self._mounted_target is not None
         # Do not resolve the user's path again: cwd or a symlink may have changed in the body.
         umount2(self._mounted_target, self._unmount_flags | UMOUNT_NOFOLLOW)
@@ -570,78 +611,90 @@ class _Mount(ABC):
 class Bind(_Mount):
     _unmount_flags = MNT_DETACH
 
-    def __init__(self, source: Path, target: Path, readonly: bool = False, nofollow: bool = False) -> None:
+    def __init__(
+        self, source: StrPath, target: StrPath, readonly: bool = False, nofollow: bool = False
+    ) -> None:
         super().__init__(target)
-        self.source = source
+        self.source = os.fspath(source)
         self.readonly = readonly
         self.nofollow = nofollow
 
     @override
-    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> Path:
+    def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> str:
         source = _resolve(old_root, self.source, nofollow=self.nofollow)
-        source_is_link = self.nofollow and source.is_symlink()
-        source_is_directory = source.is_dir() and not source_is_link
+        source_is_link = self.nofollow and os.path.islink(source)
+        source_is_directory = os.path.isdir(source) and not source_is_link
         unresolved_target = _resolve(new_root, self.target, nofollow=True)
 
-        if not source_is_directory and unresolved_target.is_symlink():
+        if not source_is_directory and os.path.islink(unresolved_target):
             _bind_mount(source, unresolved_target, readonly=self.readonly)
             return unresolved_target
 
         target = _resolve(new_root, self.target)
-        if not target.exists():
-            target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-            if source_is_link or source.is_file():
-                target.touch(mode=0o644, exist_ok=False)
+        if not os.path.exists(target):
+            os.makedirs(os.path.dirname(target), mode=0o755, exist_ok=True)
+            if source_is_link or os.path.isfile(source):
+                _touch(target, mode=0o644)
             else:
-                target.mkdir(mode=0o755)
+                os.mkdir(target, mode=0o755)
 
         _bind_mount(source, target, readonly=self.readonly)
         return target
 
 
+class _UnmountOnError:
+    def __init__(self, target: str) -> None:
+        self.target = target
+
+    def __enter__(self) -> None:
+        pass
+
+    def __exit__(self, exc_type: type[BaseException] | None, *exc: object) -> None:
+        if exc_type is not None:
+            umount2(self.target, MNT_DETACH)
+
+
 class Devices(_Mount):
     _unmount_flags = MNT_DETACH
 
-    def __init__(self, target: Path, tty: Path | None = None) -> None:
+    def __init__(self, target: StrPath, tty: StrPath | None = None) -> None:
         super().__init__(target)
-        self.tty = tty
+        self.tty = None if tty is None else os.fspath(tty)
 
     @override
-    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> Path:
+    def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> str:
         target = _resolve(new_root, self.target)
-        target.mkdir(mode=0o755, parents=True, exist_ok=True)
-        mount(Path("tmpfs"), target, "tmpfs", options="mode=0755")
+        os.makedirs(target, mode=0o755, exist_ok=True)
+        mount("tmpfs", target, "tmpfs", options="mode=0755")
 
-        with ExitStack() as stack:
+        with _UnmountOnError(target):
             # A later device bind can fail after the parent tmpfs is already mounted.
-            stack.callback(umount2, target, MNT_DETACH)
             self._populate(old_root, target)
-            stack.pop_all()
         return target
 
-    def _populate(self, old_root: Path, target: Path) -> None:
+    def _populate(self, old_root: StrPath, target: str) -> None:
         for name in ("null", "zero", "full", "random", "urandom", "tty", "fuse"):
-            source = _under(old_root, Path("/dev") / name)
-            if name == "fuse" and not source.exists():
+            source = _under(old_root, "/dev/" + name)
+            if name == "fuse" and not os.path.exists(source):
                 continue
 
-            destination = target / name
-            destination.touch(exist_ok=False)
+            destination = os.path.join(target, name)
+            _touch(destination)
             mount(source, destination, flags=MS_BIND)
 
         for descriptor, name in enumerate(("stdin", "stdout", "stderr")):
-            (target / name).symlink_to(f"/proc/self/fd/{descriptor}")
+            os.symlink(f"/proc/self/fd/{descriptor}", os.path.join(target, name))
 
-        (target / "fd").symlink_to("/proc/self/fd")
-        (target / "core").symlink_to("/proc/kcore")
-        (target / "shm").mkdir(mode=0o1777)
-        (target / "pts").mkdir(mode=0o755)
-        mount(Path("devpts"), target / "pts", "devpts", options="newinstance,ptmxmode=0666,mode=620")
-        (target / "ptmx").symlink_to("pts/ptmx")
+        os.symlink("/proc/self/fd", os.path.join(target, "fd"))
+        os.symlink("/proc/kcore", os.path.join(target, "core"))
+        os.mkdir(os.path.join(target, "shm"), mode=0o1777)
+        os.mkdir(os.path.join(target, "pts"), mode=0o755)
+        mount("devpts", os.path.join(target, "pts"), "devpts", options="newinstance,ptmxmode=0666,mode=620")
+        os.symlink("pts/ptmx", os.path.join(target, "ptmx"))
 
         if self.tty is not None:
-            destination = target / "console"
-            destination.touch(exist_ok=False)
+            destination = os.path.join(target, "console")
+            _touch(destination)
             mount(_under(old_root, self.tty), destination, flags=MS_BIND)
 
 
@@ -649,55 +702,61 @@ class Tmpfs(_Mount):
     _unmount_flags = MNT_DETACH
 
     @override
-    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> Path:
+    def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> str:
         target = _resolve(new_root, self.target)
-        target.mkdir(mode=0o755, parents=True, exist_ok=True)
+        os.makedirs(target, mode=0o755, exist_ok=True)
 
-        options = None if target.name in ("tmp", "var/tmp") else "mode=0755"
-        mount(Path("tmpfs"), target, "tmpfs", options=options)
+        options = None if os.path.basename(target) == "tmp" else "mode=0755"
+        mount("tmpfs", target, "tmpfs", options=options)
         return target
 
 
 class Symlink:
-    def __init__(self, source: Path, target: Path) -> None:
-        self.source = source
-        self.target = target
+    def __init__(self, source: StrPath, target: StrPath) -> None:
+        self.source = os.fspath(source)
+        self.target = os.fspath(target)
 
-    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> None:
-        target = _under(new_root, self.target)
-        target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> None:
+        target = _resolve(new_root, self.target, nofollow=True)
+        os.makedirs(os.path.dirname(target) or ".", mode=0o755, exist_ok=True)
 
         try:
-            target.symlink_to(self.source)
+            os.symlink(self.source, target)
         except FileExistsError:
-            if not target.is_symlink() or target.readlink() != self.source:
+            if not os.path.islink(target) or os.readlink(target) != self.source:
                 raise
 
 
 class Overlay(_Mount):
-    def __init__(self, lowerdirs: tuple[Path, ...], upperdir: Path, workdir: Path, target: Path) -> None:
+    def __init__(
+        self,
+        lowerdirs: tuple[StrPath, ...],
+        upperdir: StrPath,
+        workdir: StrPath,
+        target: StrPath,
+    ) -> None:
         super().__init__(target)
-        self.lowerdirs = lowerdirs
-        self.upperdir = upperdir
-        self.workdir = workdir
+        self.lowerdirs = tuple(os.fspath(path) for path in lowerdirs)
+        self.upperdir = os.fspath(upperdir)
+        self.workdir = os.fspath(workdir)
 
     @override
-    def mount(self, old_root: Path = _ROOT, new_root: Path = _ROOT) -> Path:
+    def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> str:
         lowers = tuple(_resolve(old_root, path) for path in self.lowerdirs)
         upper = _resolve(old_root, self.upperdir)
         work = _resolve(old_root, self.workdir)
         target = _resolve(new_root, self.target)
 
         for path in (*lowers, upper, work):
-            if not path.exists():
+            if not os.path.exists(path):
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), path)
 
-        target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-        target.mkdir(mode=0o755, exist_ok=True)
+        os.makedirs(os.path.dirname(target), mode=0o755, exist_ok=True)
+        os.makedirs(target, mode=0o755, exist_ok=True)
 
         options = ",".join(
             (
-                f"lowerdir={':'.join(map(str, lowers))}",
+                f"lowerdir={':'.join(lowers)}",
                 f"upperdir={upper}",
                 f"workdir={work}",
                 "userxattr",
@@ -706,30 +765,39 @@ class Overlay(_Mount):
             )
         )
 
-        mount(Path("overlayfs"), target, "overlay", options=options)
+        mount("overlayfs", target, "overlay", options=options)
         return target
 
 
 Filesystem = Bind | Devices | Tmpfs | Symlink | Overlay
 
 
-@dataclass(frozen=True)
 class Sandbox:
-    filesystems: tuple[Filesystem, ...]
-    chdir: Path | None = None
-    become_root: bool = False
-    isolate_network: bool = False
-    suppress_chown: bool = False
-    suppress_sync: bool = False
+    def __init__(
+        self,
+        filesystems: tuple[Filesystem, ...],
+        chdir: StrPath | None = None,
+        become_root: bool = False,
+        isolate_network: bool = False,
+        suppress_chown: bool = False,
+        suppress_sync: bool = False,
+    ) -> None:
+        self.filesystems = filesystems
+        self.chdir = None if chdir is None else os.fspath(chdir)
+        self.become_root = become_root
+        self.isolate_network = isolate_network
+        self.suppress_chown = suppress_chown
+        self.suppress_sync = suppress_sync
 
 
 def _filesystem_key(filesystem: Filesystem) -> tuple[tuple[str, ...], bool]:
-    return filesystem.target.parts, isinstance(filesystem, Bind)
+    parts = tuple(part for part in filesystem.target.split("/") if part and part != ".")
+    return parts, isinstance(filesystem, Bind)
 
 
 def enter(sandbox: Sandbox) -> None:
     for filesystem in sandbox.filesystems:
-        if not filesystem.target.is_absolute():
+        if not os.path.isabs(filesystem.target):
             raise ValueError(f"sandbox destination must be absolute: {filesystem.target}")
 
     user_namespace = _acquire_privileges(
@@ -759,28 +827,28 @@ def enter(sandbox: Sandbox) -> None:
     if not user_namespace:
         mount(None, _ROOT, flags=MS_SLAVE | MS_REC)
 
-    mount(Path("tmpfs"), Path("/tmp"), "tmpfs")
+    mount("tmpfs", "/tmp", "tmpfs")
     os.chdir("/tmp")
 
-    Path("newroot").mkdir(mode=0o755)
-    Path("oldroot").mkdir(mode=0o755)
-    mount(Path("newroot"), Path("newroot"), flags=MS_BIND | MS_REC)
+    os.mkdir("newroot", mode=0o755)
+    os.mkdir("oldroot", mode=0o755)
+    mount("newroot", "newroot", flags=MS_BIND | MS_REC)
 
     if _LIBC.pivot_root(b".", b"oldroot") < 0:
-        mount(_ROOT, Path("oldroot"), flags=MS_BIND | MS_REC)
-        mount(Path("."), _ROOT, flags=MS_MOVE)
+        mount(_ROOT, "oldroot", flags=MS_BIND | MS_REC)
+        mount(".", _ROOT, flags=MS_MOVE)
         os.chroot(".")
         os.chdir(".")
-        umount2(Path("oldroot/tmp"), MNT_DETACH)
+        umount2("oldroot/tmp", MNT_DETACH)
 
     for filesystem in sorted(sandbox.filesystems, key=_filesystem_key):
-        filesystem.mount(Path("/oldroot"), Path("/newroot"))
+        filesystem.mount("/oldroot", "/newroot")
 
     os.chdir("newroot")
     if _LIBC.pivot_root(b".", b".") < 0:
         _error("pivot_root")
 
-    umount2(Path("."), MNT_DETACH)
+    umount2(".", MNT_DETACH)
 
     if sandbox.chdir is not None:
         os.chdir(sandbox.chdir)
