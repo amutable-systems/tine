@@ -22,7 +22,7 @@
   },
   "starlark-fmt": {
     "repository": "daandemeyer/buck2",
-    "release": "2026-09-07-14.07.54",
+    "release": "2026-09-07-18.12.49",
     "platforms": {
       "aarch64": {
         "artifact": "starlark_fmt-aarch64-unknown-linux-musl.zst",
@@ -56,36 +56,36 @@
   },
   "ruff": {
     "repository": "astral-sh/ruff",
-    "release": "0.16.6",
+    "release": "0.16.7",
     "platforms": {
       "aarch64": {
         "artifact": "ruff-aarch64-unknown-linux-musl.tar.gz",
-        "sha256": "9b28fc0646a7379c5a25f68b559669c39bc000325bbad5b64b47fcf6a3b582ae",
-        "size": 9592731,
+        "sha256": "dd669efe4ac74ffd5842b26147c36cdd6c93b9cf0d10d5e53c12ec5b44f540bd",
+        "size": 9598106,
         "strip_prefix": "ruff-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "ruff-x86_64-unknown-linux-musl.tar.gz",
-        "sha256": "63740c5a1576dea4e1f2ff3f7427031188d23a11b7a4f78560749b8732a3b724",
-        "size": 10337077,
+        "sha256": "8d28939cf5cabe54a2f8f7cbfab52c643436d1bc70474198181db9e48f504411",
+        "size": 10355951,
         "strip_prefix": "ruff-x86_64-unknown-linux-musl"
       }
     }
   },
   "ty": {
     "repository": "astral-sh/ty",
-    "release": "0.0.78",
+    "release": "0.0.80",
     "platforms": {
       "aarch64": {
         "artifact": "ty-aarch64-unknown-linux-musl.tar.gz",
-        "sha256": "11604480eef76c0588ae4b1b6f75ba284950157a25bfc1cdf57309bb5d22c3eb",
-        "size": 12312009,
+        "sha256": "803db079b5af4ffc39b916a02471c1116719cb14c9fdacaa3af82a7b125769a9",
+        "size": 12623382,
         "strip_prefix": "ty-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "ty-x86_64-unknown-linux-musl.tar.gz",
-        "sha256": "b79ead5b710d0ee19ec9e9def572a557bc447ae13ea0a45d08b7dbf930900401",
-        "size": 13301290,
+        "sha256": "b10905cacc82b7dcabc4143791dcc5b7a107d7710ea7cd2680acc00b420d80f7",
+        "size": 13569095,
         "strip_prefix": "ty-x86_64-unknown-linux-musl"
       }
     }
