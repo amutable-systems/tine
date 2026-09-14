@@ -1,0 +1,78 @@
+"""The shared build cache: Buck2's remote cache API over an S3 bucket."""
+
+load("//box:defs.bzl", "box")
+load("//python:defs.bzl", "box_python_binary", "tine_python_library")
+
+# External dependencies. Production and tests run in the same box.
+box.new(
+    name = "shim.box",
+    packages = [
+        "python3",
+        "python3-cryptography",
+        "python3-grpcio",
+    ],
+    release = "tine//catalog:fedora.rawhide.release",
+)
+
+_MODULES = [
+    "bucket.py",
+    "bundle.py",
+    "reapi.py",
+    "shim.py",
+    "signing.py",
+    "status.py",
+    "store.py",
+    "wire.py",
+]
+
+tine_python_library(
+    name = "lib",
+    srcs = _MODULES,
+    boxes = [":shim.box"],
+    visibility = ["tine//..."],
+)
+
+box_python_binary(
+    name = "shim",
+    box = ":shim.box",
+    main = "shim.py",
+    deps = [":lib"],
+    visibility = ["PUBLIC"],
+)
+
+# A real S3 server for tests, here and for the round trip in tine//tests. Standard library only.
+tine_python_library(
+    name = "seaweed",
+    srcs = ["seaweed.py"],
+    visibility = ["tine//tests/..."],
+)
+
+# Keys and certificates for the tests, and a throwaway CA for a test bucket.
+box_python_binary(
+    name = "test-ca",
+    box = ":shim.box",
+    main = "test_ca.py",
+    deps = [":lib"],
+)
+
+box.python_test(
+    name = "test",
+    box = ":shim.box",
+    env = {"WEED": "$(location //tools:seaweedfs)"},
+    srcs = _MODULES
+    + [
+        "authority_test.py",
+        "bucket_test.py",
+        "bundle_test.py",
+        "mock_bucket.py",
+        "reapi_test.py",
+        "seaweed.py",
+        "seaweed_test.py",
+        "shim_test.py",
+        "signing_test.py",
+        "status_test.py",
+        "store_test.py",
+        "test_ca.py",
+        "wire_test.py",
+    ],
+)

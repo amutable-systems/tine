@@ -123,5 +123,21 @@
         "strip_prefix": "cargo-auditable-x86_64-unknown-linux-musl"
       }
     }
+  },
+  "seaweedfs": {
+    "repository": "seaweedfs/seaweedfs",
+    "release": "4.47",
+    "platforms": {
+      "aarch64": {
+        "artifact": "linux_arm64.tar.gz",
+        "sha256": "ba5c9def9ff98f78becdf309a50a9f906922f6383a7c4c772d01ede3cc012e16",
+        "size": 40359016
+      },
+      "x86_64": {
+        "artifact": "linux_amd64.tar.gz",
+        "sha256": "31fb804858885f9e7f18b6d3b1da09e824baac3e6a55b5a62c3c4c77e6ed6d7d",
+        "size": 45801355
+      }
+    }
   }
 }

@@ -69,6 +69,14 @@ http_tool(
     visibility = ["PUBLIC"],
 )
 
+# S3 server with a plain-HTTP read side, for the remote cache's integration tests. Not packaged in Fedora.
+http_tool(
+    name = "seaweedfs",
+    path = "weed",
+    spec = _pins["seaweedfs"],
+    visibility = ["tine//remote_cache/..."],
+)
+
 # tine's dev environment for importer and its unit tests. Used by every `box_python_test` suite
 # (hermetic), `tine//tools:importer` (relaxed), and anyone entering it as a box.
 # Derived from the main box (lockless transaction, resolved during the build), so dev tooling
