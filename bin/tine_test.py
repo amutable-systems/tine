@@ -82,7 +82,7 @@ def pins(cell: Path, spec: object | None = None) -> Path:
         "buck2": {
             "repository": "example/buck2",
             "release": "2026-01-01",
-            "platforms": {tine._platform(): {"artifact": "buck2.zst", "sha256": "a" * 64}},
+            "platforms": {tine._host_platform(): {"artifact": "buck2.zst", "sha256": "a" * 64}},
         }
     }
     path.write_text(json.dumps(default if spec is None else spec))
@@ -115,12 +115,12 @@ class RepositoryTestCase(unittest.TestCase):
         (self.repo / "uncommitted").write_text("wip")
 
 
-class TestComponents(RepositoryTestCase):
+class TestVersionComponents(RepositoryTestCase):
     def test_release(self) -> None:
         commit = self.commit()
         git("tag", "v1.2.3", cwd=self.repo)
         self.assertEqual(
-            tine.components(self.repo),
+            tine.version_components(self.repo),
             {"base": "1.2.3", "count": 0, "height": 1, "commit": commit},
         )
 
@@ -131,14 +131,14 @@ class TestComponents(RepositoryTestCase):
         self.commit("second")
         commit = self.commit("third")
         self.assertEqual(
-            tine.components(self.repo),
+            tine.version_components(self.repo),
             {"base": "1.2.3", "count": 2, "height": 3, "commit": commit},
         )
 
     def test_no_tag(self) -> None:
         commit = self.commit()
         self.assertEqual(
-            tine.components(self.repo),
+            tine.version_components(self.repo),
             {"base": "0.0.0", "count": 1, "height": 1, "commit": commit},
         )
 
@@ -147,7 +147,7 @@ class TestComponents(RepositoryTestCase):
         commit = self.commit()
         git("tag", "vendor-drop-2024", cwd=self.repo)
         self.assertEqual(
-            tine.components(self.repo),
+            tine.version_components(self.repo),
             {"base": "0.0.0", "count": 1, "height": 1, "commit": commit},
         )
 
@@ -157,7 +157,7 @@ class TestComponents(RepositoryTestCase):
         commit = self.commit("second")
         git("tag", "v2.0.0", cwd=self.repo)
         self.assertEqual(
-            tine.components(self.repo),
+            tine.version_components(self.repo),
             {"base": "2.0.0", "count": 0, "height": 2, "commit": commit},
         )
 
@@ -168,7 +168,7 @@ class TestComponents(RepositoryTestCase):
         git("branch", "v1.2.3", cwd=self.repo)
         commit = self.commit("second")
         self.assertEqual(
-            tine.components(self.repo),
+            tine.version_components(self.repo),
             {"base": "1.2.3", "count": 1, "height": 2, "commit": commit},
         )
 
@@ -178,7 +178,7 @@ class TestComponents(RepositoryTestCase):
         commit = self.commit("second")
         self.dirty()
         self.assertEqual(
-            tine.components(self.repo),
+            tine.version_components(self.repo),
             {"base": "1.2.3", "count": 1, "height": 2, "commit": commit, "dirty": 1},
         )
 
@@ -187,11 +187,11 @@ class TestComponents(RepositoryTestCase):
         # version it renders has to stand still while the work on top of that commit goes on.
         commit = self.commit()
         self.dirty()
-        first = tine.components(self.repo)
+        first = tine.version_components(self.repo)
         (self.repo / "uncommitted").write_text("more")
         (self.repo / "another").write_text("wip")
         git("add", "another", cwd=self.repo)
-        self.assertEqual(tine.components(self.repo), first)
+        self.assertEqual(tine.version_components(self.repo), first)
         self.assertEqual(
             first,
             {"base": "0.0.0", "count": 1, "height": 1, "commit": commit, "dirty": 1},
@@ -203,7 +203,7 @@ class TestComponents(RepositoryTestCase):
         git("config", "status.showUntrackedFiles", "no", cwd=self.repo)
         self.dirty()
         self.assertEqual(
-            tine.components(self.repo),
+            tine.version_components(self.repo),
             {"base": "1.2.3", "count": 0, "height": 1, "commit": commit, "dirty": 1},
         )
 
@@ -211,9 +211,9 @@ class TestComponents(RepositoryTestCase):
         # A version whose base a tag never named counts in the height, so a new tag must not move it.
         self.commit()
         self.commit("second")
-        before = tine.components(self.repo)
+        before = tine.version_components(self.repo)
         git("tag", "v9.9.9", cwd=self.repo)
-        after = tine.components(self.repo)
+        after = tine.version_components(self.repo)
         assert isinstance(before, dict) and isinstance(after, dict)
         self.assertEqual((after["height"], after["count"]), (before["height"], 0))
 
@@ -225,19 +225,19 @@ class TestComponents(RepositoryTestCase):
         git("tag", "v1.2.3", cwd=self.repo)
         with unittest.mock.patch.dict(os.environ, {"GIT_DIR": str(other / ".git")}):
             self.assertEqual(
-                tine.components(self.repo),
+                tine.version_components(self.repo),
                 {"base": "1.2.3", "count": 0, "height": 1, "commit": commit},
             )
 
 
-class TestNoComponents(RepositoryTestCase):
+class TestNoVersionComponents(RepositoryTestCase):
     """A checkout that cannot answer says why, rather than taking the command down with it."""
 
     def test_not_a_repository(self) -> None:
-        self.assertEqual(tine.components(scratch(self)), "not a git checkout")
+        self.assertEqual(tine.version_components(scratch(self)), "not a git checkout")
 
     def test_repository_without_commits(self) -> None:
-        self.assertIn("git rev-parse HEAD", str(tine.components(self.repo)))
+        self.assertIn("git rev-parse HEAD", str(tine.version_components(self.repo)))
 
     def test_shallow_checkout(self) -> None:
         self.commit()
@@ -245,23 +245,25 @@ class TestNoComponents(RepositoryTestCase):
         self.commit("second")
         clone = scratch(self, "tine-test-clone.") / "clone"
         git("clone", "--quiet", "--depth", "1", f"file://{self.repo}", str(clone), cwd=self.repo)
-        self.assertEqual(tine.components(clone), "shallow git checkout")
+        self.assertEqual(tine.version_components(clone), "shallow git checkout")
 
     def test_tag_that_is_not_a_version(self) -> None:
         self.commit()
         git("tag", "v1.2.3+dirty", cwd=self.repo)
-        self.assertEqual(tine.components(self.repo), "tag 'v1.2.3+dirty' is not a valid version")
+        self.assertEqual(tine.version_components(self.repo), "tag 'v1.2.3+dirty' is not a valid version")
 
     def test_reason_is_recorded_in_the_generated_config(self) -> None:
-        self.assertIn("# no version components: not a git checkout", tine.generate(scratch(self), []))
+        self.assertIn(
+            "# no version components: not a git checkout", tine.render_local_config_block(scratch(self), [])
+        )
 
 
-class TestGenerate(RepositoryTestCase):
+class TestRenderLocalConfigBlock(RepositoryTestCase):
     def test_writes_every_component_it_has(self) -> None:
         commit = self.commit()
         git("tag", "v1.2.3", cwd=self.repo)
         self.assertEqual(
-            tine.generate(self.repo, []),
+            tine.render_local_config_block(self.repo, []),
             [
                 tine.BLOCK_BEGIN,
                 tine.BLOCK_NOTE,
@@ -277,22 +279,24 @@ class TestGenerate(RepositoryTestCase):
 
     def test_the_dirty_bit_appears_only_for_an_uncommitted_tree(self) -> None:
         self.commit()
-        self.assertNotIn("version-dirty = 1", tine.generate(self.repo, []))
+        self.assertNotIn("version-dirty = 1", tine.render_local_config_block(self.repo, []))
         self.dirty()
-        self.assertIn("version-dirty = 1", tine.generate(self.repo, []))
+        self.assertIn("version-dirty = 1", tine.render_local_config_block(self.repo, []))
 
     def test_every_line_it_writes_is_buckconfig(self) -> None:
         # A checkout without commits fails `rev-parse` with three lines of git advice; all but the
         # first would land in the file as configuration, and Buck would refuse to parse it.
         (self.repo / ".buckconfig").write_text("")
-        tine.refresh(self.repo, [])
+        tine.refresh_local_buckconfig(self.repo, [])
         for line in (self.repo / tine.LOCAL).read_text().splitlines():
             self.assertTrue(not line or line.startswith(("#", "[", "<")) or "=" in line)
-        self.assertEqual(tine.project_config(self.repo), {"": {}})
+        self.assertEqual(tine.read_project_buckconfig(self.repo), {"": {}})
 
     def test_writes_mount_ignores_after_the_version_components(self) -> None:
         self.commit()
-        lines = tine.generate(self.repo, ["**/.git", "packages/demo/BUCK", "packages/demo/**/BUCK"])
+        lines = tine.render_local_config_block(
+            self.repo, ["**/.git", "packages/demo/BUCK", "packages/demo/**/BUCK"]
+        )
         self.assertEqual(
             lines[-6:],
             [
@@ -307,19 +311,21 @@ class TestGenerate(RepositoryTestCase):
 
     def test_a_single_mount_ignore_needs_no_continuation(self) -> None:
         self.commit()
-        self.assertIn("ignore = packages/demo/BUCK", tine.generate(self.repo, ["packages/demo/BUCK"]))
+        self.assertIn(
+            "ignore = packages/demo/BUCK", tine.render_local_config_block(self.repo, ["packages/demo/BUCK"])
+        )
 
     def test_mount_ignores_read_back_as_one_entry_the_project_does_not_own(self) -> None:
         (self.repo / ".buckconfig").write_text("[project]\nignore = .git\n")
-        tine.refresh(self.repo, [".git", "packages/demo/BUCK", "packages/demo/**/BUCK"])
+        tine.refresh_local_buckconfig(self.repo, [".git", "packages/demo/BUCK", "packages/demo/**/BUCK"])
         self.assertEqual(
-            tine.generated(self.repo / tine.LOCAL)["project"][tine.PROJECT_IGNORE],
+            tine.read_generated_buckconfig(self.repo / tine.LOCAL)["project"][tine.PROJECT_IGNORE],
             ".git, packages/demo/BUCK, packages/demo/**/BUCK",
         )
-        self.assertEqual(tine.project_config(self.repo)["project"][tine.PROJECT_IGNORE], ".git")
+        self.assertEqual(tine.read_project_buckconfig(self.repo)["project"][tine.PROJECT_IGNORE], ".git")
 
 
-class TestMerge(unittest.TestCase):
+class TestMergeGeneratedConfigBlock(unittest.TestCase):
     """The block is this command's; the rest of the file stays the developer's."""
 
     def local(self, content: str | None = None) -> Path:
@@ -329,12 +335,12 @@ class TestMerge(unittest.TestCase):
         return path
 
     def test_a_file_that_does_not_exist_yet(self) -> None:
-        self.assertEqual(tine.merge(self.local(), ["one", "two"]), "one\ntwo\n")
+        self.assertEqual(tine.merge_generated_config_block(self.local(), ["one", "two"]), "one\ntwo\n")
 
     def test_content_that_was_there_first_is_kept_after_the_block(self) -> None:
         path = self.local("[buck2]\nmaterializations = all\n")
         self.assertEqual(
-            tine.merge(path, [tine.BLOCK_BEGIN, tine.BLOCK_END]),
+            tine.merge_generated_config_block(path, [tine.BLOCK_BEGIN, tine.BLOCK_END]),
             f"{tine.BLOCK_BEGIN}\n{tine.BLOCK_END}\n\n[buck2]\nmaterializations = all\n",
         )
 
@@ -342,7 +348,9 @@ class TestMerge(unittest.TestCase):
         path = self.local(
             f"{tine.BLOCK_BEGIN}\n[tine]\nversion-base = 1.0.0\n{tine.BLOCK_END}\n\n[demo]\nkey = mine\n"
         )
-        merged = tine.merge(path, [tine.BLOCK_BEGIN, "[tine]", "version-base = 2.0.0", tine.BLOCK_END])
+        merged = tine.merge_generated_config_block(
+            path, [tine.BLOCK_BEGIN, "[tine]", "version-base = 2.0.0", tine.BLOCK_END]
+        )
         self.assertEqual(merged.count(tine.BLOCK_BEGIN), 1)
         self.assertNotIn("1.0.0", merged)
         self.assertIn("[demo]\nkey = mine\n", merged)
@@ -350,13 +358,13 @@ class TestMerge(unittest.TestCase):
     def test_a_block_missing_its_end_is_reported(self) -> None:
         path = self.local(f"{tine.BLOCK_BEGIN}\n[tine]\nversion-base = 1.0.0\n")
         with self.assertRaisesRegex(SystemExit, "has no .* line"):
-            tine.merge(path, [tine.BLOCK_BEGIN, tine.BLOCK_END])
+            tine.merge_generated_config_block(path, [tine.BLOCK_BEGIN, tine.BLOCK_END])
 
     def test_a_block_missing_its_beginning_is_reported(self) -> None:
         # Keeping it would leave the old block after the new one, where it wins for good.
         path = self.local(f"[tine]\nversion-base = 1.0.0\n{tine.BLOCK_END}\n")
         with self.assertRaisesRegex(SystemExit, "ends without beginning"):
-            tine.merge(path, [tine.BLOCK_BEGIN, tine.BLOCK_END])
+            tine.merge_generated_config_block(path, [tine.BLOCK_BEGIN, tine.BLOCK_END])
 
     def test_the_block_is_not_read_back_as_configuration(self) -> None:
         # Reading our own `disabled` back would make the cell look unexpanded and drop the entry.
@@ -365,7 +373,7 @@ class TestMerge(unittest.TestCase):
         (root / tine.LOCAL).write_text(
             f"{tine.BLOCK_BEGIN}\n[external_cells]\nsub = disabled\n{tine.BLOCK_END}\n"
         )
-        self.assertEqual(tine.project_config(root)["external_cells"], {"sub": "git"})
+        self.assertEqual(tine.read_project_buckconfig(root)["external_cells"], {"sub": "git"})
 
 
 class TestReadLines(unittest.TestCase):
@@ -435,7 +443,7 @@ class TestLocalSettings(unittest.TestCase):
         root = scratch(self)
         (root / tine.LOCAL_SETTINGS).write_text('[buck2]\nbogus = "local"\n')
         with self.assertRaisesRegex(SystemExit, "unsupported keys: bogus"):
-            tine.configured_pin(tine.project_settings(root), tine._platform())
+            tine.buck2_pin_overrides(tine.project_settings(root), tine._host_platform())
 
     def test_section_is_not_a_table(self) -> None:
         root = scratch(self)
@@ -486,7 +494,7 @@ class TestParseBuckconfig(unittest.TestCase):
         root = scratch(self)
         for name, content in files.items():
             (root / name).write_text(content)
-        return tine.project_config(root)
+        return tine.read_project_buckconfig(root)
 
     def test_sections_and_entries(self) -> None:
         config = self.parse({".buckconfig": "[cells]\nroot = .\n# comment\nsub = sub\n"})
@@ -563,7 +571,7 @@ class TestParseBuckconfig(unittest.TestCase):
         (root / ".buckconfig").write_text("[cells]\nroot = .\n")
         (root / ".buckconfig.d" / "10-project.bcfg").write_text("[project]\nname = example\n")
         (root / ".buckconfig.d" / "nested" / "20-cells.bcfg").write_text("[cells]\nsub = sub\n")
-        config = tine.project_config(root)
+        config = tine.read_project_buckconfig(root)
         self.assertEqual(config["project"]["name"], "example")
         self.assertEqual(config["cells"], {"root": ".", "sub": "sub"})
 
@@ -575,7 +583,7 @@ class TestParseBuckconfig(unittest.TestCase):
         (root / ".buckconfig").write_text("[cells]\nroot = .\n")
         (root / "elsewhere.bcfg").write_text("[cells]\nsub = sub\n")
         (root / ".buckconfig.d" / "10-cells.bcfg").symlink_to(root / "elsewhere.bcfg")
-        self.assertEqual(tine.project_config(root)["cells"], {"root": "."})
+        self.assertEqual(tine.read_project_buckconfig(root)["cells"], {"root": "."})
 
     def test_local_overrides_win(self) -> None:
         config = self.parse(
@@ -604,7 +612,7 @@ class MountTestCase(unittest.TestCase):
         """Run `tine mount` and return its stderr."""
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
-            tine.mount(self.root, list(arguments))
+            tine.mount_command(self.root, list(arguments))
         return stderr.getvalue()
 
     def declared(self) -> dict[str, str]:
@@ -925,7 +933,7 @@ class TestNamespaces(MountTestCase):
         buckconfig = (self.root / ".buckconfig").read_bytes()
         digest = tine.mount_digest(mounts, buckconfig)
         assert digest is not None
-        tine.create(self.root, mounts, digest, buckconfig)
+        tine.create_mount_namespace(self.root, mounts, digest, buckconfig)
 
     @override
     def setUp(self) -> None:
@@ -966,7 +974,7 @@ class TestNamespaces(MountTestCase):
     def test_mount_error_names_its_target(self) -> None:
         def mounted() -> str:
             with self.assertRaisesRegex(SystemExit, "mount sub: cannot build it from"):
-                tine.create(
+                tine.create_mount_namespace(
                     self.root,
                     {"sub": "/nonexistent/source"},
                     "digest",
@@ -1007,7 +1015,7 @@ class TestNamespaces(MountTestCase):
         assert digest is not None
 
         def mounted() -> str:
-            tine.create(self.root, mounts, digest, buckconfig)
+            tine.create_mount_namespace(self.root, mounts, digest, buckconfig)
             return (self.root / ".buckconfig").read_text()
 
         self.assertEqual(
@@ -1018,7 +1026,7 @@ class TestNamespaces(MountTestCase):
         self.assertFalse((self.root / tine.PRIVATE_CONFIG).exists())
 
 
-class TestEntrypoint(MountTestCase):
+class TestMountedWrapperEntrypoint(MountTestCase):
     """Select the command to run after entering the namespace."""
 
     def config(self, cell: str) -> dict[str, dict[str, str]]:
@@ -1033,18 +1041,18 @@ class TestEntrypoint(MountTestCase):
     def test_mounted_cell_uses_its_own_command(self) -> None:
         command = self.command()
         mounts = {"sub": str(self.source)}
-        self.assertEqual(tine.entrypoint(self.root, self.config("sub"), mounts), command)
+        self.assertEqual(tine.mounted_wrapper_entrypoint(self.root, self.config("sub"), mounts), command)
 
     def test_unmounted_cell_keeps_current_command(self) -> None:
         self.command()
         mounts = {"other": str(self.source)}
-        entrypoint = tine.entrypoint(self.root, self.config("sub"), mounts)
+        entrypoint = tine.mounted_wrapper_entrypoint(self.root, self.config("sub"), mounts)
         self.assertEqual(entrypoint, TOOL_PATH.absolute())
 
     def test_mounted_cell_requires_a_command(self) -> None:
         # Falling back would combine the outer command with mounted rules.
         with self.assertRaisesRegex(SystemExit, "mounted tine cell has no bin/tine"):
-            tine.entrypoint(self.root, self.config("sub"), {"sub": str(self.source)})
+            tine.mounted_wrapper_entrypoint(self.root, self.config("sub"), {"sub": str(self.source)})
 
     def test_mount_covering_cell_uses_mounted_command(self) -> None:
         # Keep the rules and Buck2 pin from the same checkout.
@@ -1052,27 +1060,29 @@ class TestEntrypoint(MountTestCase):
         path.parent.mkdir(parents=True)
         path.write_text("")
         config = self.config("sub/vendor")
-        self.assertEqual(tine.entrypoint(self.root, config, {"sub": str(self.source)}), path)
+        self.assertEqual(tine.mounted_wrapper_entrypoint(self.root, config, {"sub": str(self.source)}), path)
 
     def test_shared_path_prefix_does_not_cover_cell(self) -> None:
         self.command()
         config = self.config("subsidiary")
         (self.root / "subsidiary").mkdir()
-        entrypoint = tine.entrypoint(self.root, config, {"sub": str(self.source)})
+        entrypoint = tine.mounted_wrapper_entrypoint(self.root, config, {"sub": str(self.source)})
         self.assertEqual(entrypoint, TOOL_PATH.absolute())
 
     def test_project_without_tine_cell_keeps_current_command(self) -> None:
-        entrypoint = tine.entrypoint(self.root, {"cells": {"root": "."}}, {"sub": str(self.source)})
+        entrypoint = tine.mounted_wrapper_entrypoint(
+            self.root, {"cells": {"root": "."}}, {"sub": str(self.source)}
+        )
         self.assertEqual(entrypoint, TOOL_PATH.absolute())
 
     def test_empty_cells_do_not_fall_back_to_repositories(self) -> None:
         self.command()
         config = {"cells": {}, "repositories": {tine.CELL: "sub"}}
-        entrypoint = tine.entrypoint(self.root, config, {"sub": str(self.source)})
+        entrypoint = tine.mounted_wrapper_entrypoint(self.root, config, {"sub": str(self.source)})
         self.assertEqual(entrypoint, TOOL_PATH.absolute())
 
 
-class TestEnter(MountTestCase):
+class TestReexecInMountNamespace(MountTestCase):
     """Choose and enter a namespace without performing real namespace operations."""
 
     @override
@@ -1080,7 +1090,7 @@ class TestEnter(MountTestCase):
         super().setUp()
         self.made: list[object] = []
         created = unittest.mock.patch.object(
-            tine, "create", side_effect=lambda *args: self.made.append(args)
+            tine, "create_mount_namespace", side_effect=lambda *args: self.made.append(args)
         )
         created.start()
         self.addCleanup(created.stop)
@@ -1104,7 +1114,7 @@ class TestEnter(MountTestCase):
 
     def test_no_mounts_need_no_namespace(self) -> None:
         with self.running() as execve:
-            tine.enter(self.root, {}, ["buck", "build"])
+            tine.reexec_in_mount_namespace(self.root, {}, ["buck", "build"])
         self.assertEqual((self.made, execve), ([], []))
 
     def test_buck_child_process_is_already_inside(self) -> None:
@@ -1113,17 +1123,17 @@ class TestEnter(MountTestCase):
             unittest.mock.patch.dict(os.environ, {"BUCK2_BINARY": "/somewhere/buck2"}),
             self.running() as execve,
         ):
-            tine.enter(self.root, {}, ["buck", "build"])
+            tine.reexec_in_mount_namespace(self.root, {}, ["buck", "build"])
         self.assertEqual((self.made, execve), ([], []))
 
     def test_matching_current_namespace_needs_no_handover(self) -> None:
         digest = self.declare_one()
         config = {"buck2": {tine.DAEMON_BUSTER: f"{tine.BUSTER_PREFIX}{digest}"}}
         with (
-            unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.marker(digest)}),
+            unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}),
             self.running() as execve,
         ):
-            tine.enter(self.root, config, ["buck", "build"])
+            tine.reexec_in_mount_namespace(self.root, config, ["buck", "build"])
         self.assertEqual((self.made, execve), ([], []))
 
     def test_stale_marker_does_not_skip_namespace_creation(self) -> None:
@@ -1133,7 +1143,7 @@ class TestEnter(MountTestCase):
             unittest.mock.patch.dict(os.environ, {tine.MARKER: f"{digest} wrong-namespace"}),
             self.running() as execve,
         ):
-            tine.enter(self.root, {}, ["buck", "build"])
+            tine.reexec_in_mount_namespace(self.root, {}, ["buck", "build"])
         self.assertEqual(len(self.made), 1)
         self.assertTrue(execve)
 
@@ -1141,27 +1151,27 @@ class TestEnter(MountTestCase):
         digest = self.declare_one()
         buckconfig = (self.root / ".buckconfig").read_bytes()
         with self.running() as execve:
-            tine.enter(self.root, {}, ["buck", "build"])
+            tine.reexec_in_mount_namespace(self.root, {}, ["buck", "build"])
         self.assertEqual(self.made, [(self.root, {"sub": str(self.source)}, digest, buckconfig)])
         _, argv, environment = execve
         self.assertEqual(argv, [str(TOOL_PATH.absolute()), "buck", "build"])
         assert isinstance(environment, dict)
-        self.assertEqual(environment[tine.MARKER], tine.marker(digest))
+        self.assertEqual(environment[tine.MARKER], tine.mount_namespace_marker(digest))
 
     def test_project_daemon_buster_is_rejected(self) -> None:
         self.declare_one()
         config = {"buck2": {tine.DAEMON_BUSTER: "project-owned"}}
         with self.running() as execve:
             with self.assertRaisesRegex(SystemExit, "daemon_buster is reserved"):
-                tine.enter(self.root, config, ["buck", "build"])
+                tine.reexec_in_mount_namespace(self.root, config, ["buck", "build"])
         self.assertEqual((self.made, execve), ([], []))
 
 
-class TestBuck2(unittest.TestCase):
+class TestBuck2Binary(unittest.TestCase):
     """Resolving the pin, short of fetching anything."""
 
     def pin(self, sha256: str = "a" * 64) -> dict[str, object]:
-        platform = tine._platform()
+        platform = tine._host_platform()
         return {
             "buck2": {
                 "repository": "example/buck2",
@@ -1185,18 +1195,20 @@ class TestBuck2(unittest.TestCase):
     def test_the_cell_declares_the_pin(self) -> None:
         home = self.cache("a" * 64)
         with unittest.mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(home)}):
-            self.assertEqual(tine.buck2({}, self.cell()), home / "tine" / "buck2" / ("a" * 64) / "buck2")
+            self.assertEqual(
+                tine.buck2_binary({}, self.cell()), home / "tine" / "buck2" / ("a" * 64) / "buck2"
+            )
 
     def test_a_project_pin_overrides_the_cell_key_by_key(self) -> None:
-        platform = tine._platform()
+        platform = tine._host_platform()
         home = self.cache("b" * 64)
         config = {"buck2": {"platforms": {platform: {"sha256": "b" * 64}}}}
         with unittest.mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(home)}):
-            binary = tine.buck2(config, self.cell())
+            binary = tine.buck2_binary(config, self.cell())
         self.assertEqual(binary, home / "tine" / "buck2" / ("b" * 64) / "buck2")
 
     def test_the_override_is_read_from_tine_toml(self) -> None:
-        platform = tine._platform()
+        platform = tine._host_platform()
         root = scratch(self)
         (root / tine.CONFIG).write_text(
             f'''[buck2.platforms."{platform}"]
@@ -1204,65 +1216,65 @@ sha256 = "{"b" * 64}"
 '''
         )
         self.assertEqual(
-            tine.configured_pin(tine.project_settings(root), platform),
+            tine.buck2_pin_overrides(tine.project_settings(root), platform),
             {"sha256": "b" * 64},
         )
 
     def test_override_values_have_their_structured_type(self) -> None:
         with self.assertRaisesRegex(SystemExit, "sha256.*must be a non-empty string"):
-            tine.configured_pin(
-                {"buck2": {"platforms": {tine._platform(): {"sha256": 1}}}},
-                tine._platform(),
+            tine.buck2_pin_overrides(
+                {"buck2": {"platforms": {tine._host_platform(): {"sha256": 1}}}},
+                tine._host_platform(),
             )
 
     def test_unknown_override_keys_are_rejected(self) -> None:
         with self.assertRaisesRegex(SystemExit, "unsupported keys: repositroy"):
-            tine.configured_pin({"buck2": {"repositroy": "example/buck2"}}, tine._platform())
+            tine.buck2_pin_overrides({"buck2": {"repositroy": "example/buck2"}}, tine._host_platform())
 
     def test_unknown_override_platforms_are_rejected(self) -> None:
         with self.assertRaisesRegex(SystemExit, "unsupported platforms: Linux-x86-64"):
-            tine.configured_pin(
+            tine.buck2_pin_overrides(
                 {"buck2": {"platforms": {"Linux-x86-64": {"sha256": "a" * 64}}}},
-                tine._platform(),
+                tine._host_platform(),
             )
 
     def test_every_platform_override_is_validated(self) -> None:
-        other = next(platform for platform in tine.PLATFORMS if platform != tine._platform())
+        other = next(platform for platform in tine.PLATFORMS if platform != tine._host_platform())
         with self.assertRaisesRegex(SystemExit, rf"{other}.*unsupported keys: sh256"):
-            tine.configured_pin(
+            tine.buck2_pin_overrides(
                 {"buck2": {"platforms": {other: {"sh256": "a" * 64}}}},
-                tine._platform(),
+                tine._host_platform(),
             )
 
     def test_every_platform_hash_is_validated(self) -> None:
-        other = next(platform for platform in tine.PLATFORMS if platform != tine._platform())
+        other = next(platform for platform in tine.PLATFORMS if platform != tine._host_platform())
         with self.assertRaisesRegex(SystemExit, rf"{other}.*64 lowercase hexadecimal"):
-            tine.configured_pin(
+            tine.buck2_pin_overrides(
                 {"buck2": {"platforms": {other: {"sha256": "abc"}}}},
-                tine._platform(),
+                tine._host_platform(),
             )
 
     def test_an_uncached_pin_is_nothing_to_complete_with(self) -> None:
         with unittest.mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(scratch(self))}):
-            self.assertIsNone(tine.buck2(self.pin(), self.cell(), fetch=False))
+            self.assertIsNone(tine.buck2_binary(self.pin(), self.cell(), fetch=False))
 
     def test_a_cell_declaring_no_buck2(self) -> None:
         with self.assertRaisesRegex(SystemExit, "declares no buck2"):
-            tine.buck2({}, self.cell({"ruff": {}}))
+            tine.buck2_binary({}, self.cell({"ruff": {}}))
 
     def test_a_cell_with_no_tools_json(self) -> None:
         with self.assertRaisesRegex(SystemExit, "cannot read .*tools.json"):
-            tine.buck2({}, scratch(self, "tine-test-cell."))
+            tine.buck2_binary({}, scratch(self, "tine-test-cell."))
 
     def test_a_machine_buck2_is_not_published_for(self) -> None:
         uname = os.uname_result(("Linux", "host", "7.0", "#1", "m68k"))
         with unittest.mock.patch.object(os, "uname", return_value=uname):
             with self.assertRaisesRegex(SystemExit, "unsupported platform: Linux-m68k"):
-                tine.buck2(self.pin(), scratch(self, "tine-test-cell."))
+                tine.buck2_binary(self.pin(), scratch(self, "tine-test-cell."))
 
     def test_a_pin_that_is_not_a_sha256(self) -> None:
         with self.assertRaisesRegex(SystemExit, "64 lowercase hexadecimal"):
-            tine.buck2(self.pin("abc"), self.cell())
+            tine.buck2_binary(self.pin("abc"), self.cell())
 
 
 class TestDownload(unittest.TestCase):
@@ -1282,7 +1294,7 @@ class TestDownload(unittest.TestCase):
         digest = hashlib.sha256(Path(url.removeprefix("file://")).read_bytes()).hexdigest()
         binary = scratch(self) / "cache" / "buck2"
         with contextlib.redirect_stderr(io.StringIO()):
-            fetched = tine._download(url, digest, binary, compressed=True)
+            fetched = tine._download_binary(url, digest, binary, compressed=True)
         self.assertEqual(fetched.read_bytes(), b"binary")
 
     def test_an_artifact_that_is_the_binary_itself(self) -> None:
@@ -1293,7 +1305,7 @@ class TestDownload(unittest.TestCase):
         binary = scratch(self) / "cache" / "tool"
         digest = hashlib.sha256(b"binary").hexdigest()
         with contextlib.redirect_stderr(io.StringIO()):
-            fetched = tine._download(path.as_uri(), digest, binary, compressed=False)
+            fetched = tine._download_binary(path.as_uri(), digest, binary, compressed=False)
         self.assertEqual(fetched.read_bytes(), b"binary")
         self.assertTrue(os.access(fetched, os.X_OK))
 
@@ -1301,7 +1313,7 @@ class TestDownload(unittest.TestCase):
         into = scratch(self) / "cache" / ("a" * 64)
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaisesRegex(SystemExit, "not the pinned"):
-                tine._download(self.artifact(b"binary"), "a" * 64, into / "buck2", compressed=True)
+                tine._download_binary(self.artifact(b"binary"), "a" * 64, into / "buck2", compressed=True)
         # Nothing half-verified is left where the next command would take it for the binary, and
         # nothing at all under the name the pin is cached by.
         self.assertFalse(into.exists())
@@ -1316,7 +1328,7 @@ class TestDownload(unittest.TestCase):
             path.write_bytes(payload)
             with contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaisesRegex(SystemExit, "not a whole zstd stream"):
-                    tine._download(
+                    tine._download_binary(
                         path.as_uri(),
                         hashlib.sha256(payload).hexdigest(),
                         scratch(self) / "buck2",
@@ -1324,7 +1336,7 @@ class TestDownload(unittest.TestCase):
                     )
 
 
-class TestBuck(unittest.TestCase):
+class TestBuckCommand(unittest.TestCase):
     """The verb every keypress in a completing shell reaches."""
 
     @override
@@ -1339,13 +1351,13 @@ class TestBuck(unittest.TestCase):
     @contextlib.contextmanager
     def running(self) -> collections.abc.Iterator[list[object]]:
         execve: list[object] = []
-        with unittest.mock.patch.object(tine, "buck2", return_value=self.binary):
+        with unittest.mock.patch.object(tine, "buck2_binary", return_value=self.binary):
             with unittest.mock.patch.object(os, "execve", side_effect=lambda *a: execve.extend(a)):
                 yield execve
 
     def test_it_configures_then_hands_over(self) -> None:
         with self.running() as execve:
-            tine.buck(["build", "//x"])
+            tine.buck_command(["build", "//x"])
         binary, argv, environment = execve
         self.assertEqual((binary, argv), (self.binary, [str(self.binary), "build", "//x"]))
         assert isinstance(environment, dict)
@@ -1356,7 +1368,7 @@ class TestBuck(unittest.TestCase):
     def test_completing_writes_nothing(self) -> None:
         # A keypress must not race a build that is writing the configuration it is completing from.
         with self.running() as execve:
-            tine.buck(["complete", "--target=//x"])
+            tine.buck_command(["complete", "--target=//x"])
         self.assertTrue(execve)
         self.assertFalse((self.root / tine.LOCAL).exists())
 
@@ -1375,29 +1387,29 @@ class TestBuck(unittest.TestCase):
         (checkout / "BUCK").touch()
 
         with self.running():
-            tine.buck(["complete", "--target=tine//"])
+            tine.buck_command(["complete", "--target=tine//"])
         self.assertFalse((checkout / tine.LOCAL).exists())
 
         with self.running():
-            tine.buck(["build", "tine//..."])
+            tine.buck_command(["build", "tine//..."])
         self.assertEqual(
-            tine.generated(checkout / tine.LOCAL)["project"][tine.PROJECT_IGNORE],
+            tine.read_generated_buckconfig(checkout / tine.LOCAL)["project"][tine.PROJECT_IGNORE],
             ".git, ignored.generated",
         )
-        self.assertNotIn("project", tine.generated(self.root / tine.LOCAL))
+        self.assertNotIn("project", tine.read_generated_buckconfig(self.root / tine.LOCAL))
 
         (checkout / "ignored.generated").unlink()
         with self.running():
-            tine.buck(["build", "tine//..."])
-        self.assertNotIn("project", tine.generated(checkout / tine.LOCAL))
-        self.assertEqual(tine.project_config(checkout)["project"][tine.PROJECT_IGNORE], ".git")
+            tine.buck_command(["build", "tine//..."])
+        self.assertNotIn("project", tine.read_generated_buckconfig(checkout / tine.LOCAL))
+        self.assertEqual(tine.read_project_buckconfig(checkout)["project"][tine.PROJECT_IGNORE], ".git")
 
     def test_tine_as_root_is_refreshed_once(self) -> None:
         for cell in (".", str(self.root)):
             with self.subTest(cell=cell):
                 (self.root / ".buckconfig").write_text(f"[cells]\ntine = {cell}\n")
-                with self.running(), unittest.mock.patch.object(tine, "refresh") as refresh:
-                    tine.buck(["build", "tine//..."])
+                with self.running(), unittest.mock.patch.object(tine, "refresh_local_buckconfig") as refresh:
+                    tine.buck_command(["build", "tine//..."])
                 refresh.assert_called_once_with(self.root, [])
 
     def test_a_run_without_a_home_gets_one(self) -> None:
@@ -1405,7 +1417,7 @@ class TestBuck(unittest.TestCase):
         environment.pop("HOME", None)
         with unittest.mock.patch.dict(os.environ, environment, clear=True):
             with self.running() as execve:
-                tine.buck(["build", "//x"])
+                tine.buck_command(["build", "//x"])
             self.assertEqual(os.environ["HOME"], str(self.root / tine.HOME))
         home = execve[2]
         assert isinstance(home, dict)
@@ -1416,7 +1428,7 @@ class TestBuck(unittest.TestCase):
         home = scratch(self, "tine-home.")
         with unittest.mock.patch.dict(os.environ, {"HOME": str(home)}):
             with self.running():
-                tine.buck(["build", "//x"])
+                tine.buck_command(["build", "//x"])
             self.assertEqual(os.environ["HOME"], str(home))
         self.assertFalse((self.root / tine.HOME).exists())
 
@@ -1453,19 +1465,19 @@ defer_write_actions = true
 """
 
 
-class TestProjectBuckconfig(unittest.TestCase):
+class TestRenderProjectBuckconfig(unittest.TestCase):
     """What a project's configuration takes from the cell's own, and what it decides for itself."""
 
     def written(self, root: Path | None = None) -> str:
         source = scratch(self) / ".buckconfig"
         source.write_text(CELL_BUCKCONFIG)
-        return tine.project_buckconfig(source, overrides(root or scratch(self)))
+        return tine.render_project_buckconfig(source, overrides(root or scratch(self)))
 
     def config(self, cell: str = "tine") -> dict[str, dict[str, str]]:
         root = scratch(self, "tine-test-project.")
         configure_cells(root, cell)
         (root / ".buckconfig").write_text(self.written(root))
-        return tine.project_config(root)
+        return tine.read_project_buckconfig(root)
 
     def test_the_cell_is_a_path_in_the_project_rather_than_its_root(self) -> None:
         cells = self.config("vendor/tine")["cells"]
@@ -1517,8 +1529,8 @@ class TestInit(unittest.TestCase):
 
     def init(self, *arguments: str) -> dict[str, dict[str, str]]:
         with contextlib.redirect_stderr(io.StringIO()):
-            tine.init(self.into, list(arguments))
-        return tine.project_config(self.into)
+            tine.init_command(self.into, list(arguments))
+        return tine.read_project_buckconfig(self.into)
 
     def test_it_writes_a_project_buck_can_be_run_in(self) -> None:
         self.assertEqual(self.init("tine")["cells"]["tine"], "tine")
@@ -1539,7 +1551,7 @@ class TestInit(unittest.TestCase):
         self.assertIn(f"/{tine.HOME}\n", gitignore)
 
     def test_the_checkout_it_is_part_of_is_the_one_it_writes(self) -> None:
-        with unittest.mock.patch.object(tine, "cell_root", return_value=self.checkout):
+        with unittest.mock.patch.object(tine, "wrapper_cell_root", return_value=self.checkout):
             self.assertEqual(self.init()["cells"]["tine"], "tine")
 
     def test_a_checkout_outside_the_project(self) -> None:
@@ -1606,7 +1618,7 @@ class TestInit(unittest.TestCase):
         self.assertFalse((self.into / ".buckconfig").exists())
 
 
-class TestExclude(RepositoryTestCase):
+class TestGitExcludes(RepositoryTestCase):
     """What a `.gitignore` this command may not write says, said where only the checkout reads it."""
 
     @override
@@ -1617,7 +1629,7 @@ class TestExclude(RepositoryTestCase):
 
     def exclude(self, entries: str = tine.GITIGNORE) -> str:
         with contextlib.redirect_stderr(io.StringIO()):
-            tine.exclude(self.checkout, entries)
+            tine.update_git_excludes(self.checkout, entries)
         return self.path.read_text()
 
     def test_what_the_file_already_says_is_kept(self) -> None:
@@ -1641,12 +1653,12 @@ class TestExclude(RepositoryTestCase):
         worktree = scratch(self) / "tree"
         git("worktree", "add", "--quiet", str(worktree), "-b", "other", cwd=self.checkout)
         with contextlib.redirect_stderr(io.StringIO()):
-            tine.exclude(worktree, "/buck-out\n")
+            tine.update_git_excludes(worktree, "/buck-out\n")
         self.assertIn("/buck-out\n", self.path.read_text())
 
     def test_a_directory_that_is_not_a_checkout(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
-            tine.exclude(scratch(self), tine.GITIGNORE)
+            tine.update_git_excludes(scratch(self), tine.GITIGNORE)
 
 
 class TestProjectRoot(unittest.TestCase):
@@ -1690,7 +1702,7 @@ class TestProjectRoot(unittest.TestCase):
             tine.project_root(scratch(self))
 
 
-class TestCompletion(unittest.TestCase):
+class TestRewriteCompletionScript(unittest.TestCase):
     """The rewriting of Buck2's script, against the anchors this reaches into it for."""
 
     # What the real script says where each rewrite lands; the rest of it is passed through.
@@ -1727,7 +1739,10 @@ compdef __buck2_fix buck buck2
 """
 
     def scripts(self) -> dict[str, str]:
-        return {shell: tine.completion(getattr(self, shell.upper()), shell) for shell in tine.SHELLS}
+        return {
+            shell: tine.rewrite_completion_script(getattr(self, shell.upper()), shell)
+            for shell in tine.SHELLS
+        }
 
     def test_every_verb_is_completed_by_every_shell(self) -> None:
         # Generated from VERBS, so a verb added there cannot be missed by a shell.
@@ -1755,7 +1770,7 @@ compdef __buck2_fix buck buck2
     def test_zsh_autoloads_this_command_rather_than_buck2(self) -> None:
         # `_tine` is the name a shell autoloads the file under, so it has to be the completer that
         # knows this command's verbs; Buck2's own entry point cannot stay where it sits either.
-        script = tine.completion(self.ZSH, "zsh")
+        script = tine.rewrite_completion_script(self.ZSH, "zsh")
         self.assertEqual(script.count('if [ "$funcstack[1]" = "_tine" ]; then'), 1)
         self.assertIn('if [ "$funcstack[1]" = "_tine" ]; then\n    _tine "$@"', script)
         self.assertIn("_tine() {\n    local context state state_descr line", script)
@@ -1770,18 +1785,18 @@ compdef __buck2_fix buck buck2
         )
         self.assertIn(
             r"-d 'report the project\'s health: \\fast'",
-            tine.completion(self.FISH, "fish", configured),
+            tine.rewrite_completion_script(self.FISH, "fish", configured),
         )
         self.assertIn(
             r"'report:report the project'\''s health\: \\fast'",
-            tine.completion(self.ZSH, "zsh", configured),
+            tine.rewrite_completion_script(self.ZSH, "zsh", configured),
         )
 
     def test_an_anchor_that_is_no_longer_there_is_reported(self) -> None:
         # Rewriting nothing would emit a script that silently completes nothing.
         for shell in tine.SHELLS:
             with self.assertRaisesRegex(SystemExit, "the pin moved under it"):
-                tine.completion("# @generated by buck2\n", shell)
+                tine.rewrite_completion_script("# @generated by buck2\n", shell)
 
     def test_project_commands_are_completed_by_every_shell(self) -> None:
         configured = tine.validate_commands(
@@ -1793,12 +1808,14 @@ compdef __buck2_fix buck buck2
             }
         )
         for shell, script in {
-            shell: tine.completion(getattr(self, shell.upper()), shell, configured) for shell in tine.SHELLS
+            shell: tine.rewrite_completion_script(getattr(self, shell.upper()), shell, configured)
+            for shell in tine.SHELLS
         }.items():
             self.assertIn("smoke", script, shell)
         for shell in ("fish", "zsh"):
             self.assertIn(
-                "run the smoke tests", tine.completion(getattr(self, shell.upper()), shell, configured)
+                "run the smoke tests",
+                tine.rewrite_completion_script(getattr(self, shell.upper()), shell, configured),
             )
 
 
@@ -2121,7 +2138,7 @@ class TestMain(unittest.TestCase):
         self.assertIn("usage: tine init", printed.getvalue())
 
     def test_box_quietly_runs_the_root_box_target(self) -> None:
-        with unittest.mock.patch.object(tine, "buck") as buck:
+        with unittest.mock.patch.object(tine, "buck_command") as buck:
             tine.main(["box", "--", "pytest", "-q"])
         buck.assert_called_once_with(["-v", "0", "run", "//:box", "--", "pytest", "-q"])
 
@@ -2166,7 +2183,7 @@ class TestParseBuckCommand(unittest.TestCase):
         )
 
 
-class TestMountIgnores(unittest.TestCase):
+class TestProjectIgnores(unittest.TestCase):
     """Mounted checkout build files and generated paths are hidden from project discovery."""
 
     @override
@@ -2180,7 +2197,7 @@ class TestMountIgnores(unittest.TestCase):
         return checkout
 
     def ignores(self, config: dict[str, dict[str, str]], mounts: dict[str, str]) -> list[str]:
-        return tine.mount_ignores(self.root, config, mounts)
+        return tine.collect_project_ignores(self.root, config, mounts)
 
     def test_mount_build_files_are_added_to_project_ignores(self) -> None:
         self.assertEqual(

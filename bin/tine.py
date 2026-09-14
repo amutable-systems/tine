@@ -93,7 +93,7 @@ def is_version(value: str) -> bool:
     return bool(value) and all(c.isascii() and (c.isalnum() or c in "._~-") for c in value)
 
 
-def round_trips(value: str) -> bool:
+def buckconfig_value_round_trips(value: str) -> bool:
     """Return whether buckconfig preserves a value.
 
     A trailing backslash swallows the next line, a newline splits one entry in two, and space around a
@@ -199,7 +199,7 @@ def project_settings(root: Path) -> dict[str, dict[str, object]]:
     return merged
 
 
-def _split(path: Path) -> tuple[list[str], list[str]]:
+def _split_generated_block(path: Path) -> tuple[list[str], list[str]]:
     """What a file holds besides the block this writes into it, and what that block holds.
 
     Keeping the generated block separate prevents a later command from treating generated values as
@@ -226,7 +226,7 @@ def _split(path: Path) -> tuple[list[str], list[str]]:
     return kept, generated
 
 
-def _logical(lines: list[str]) -> list[str]:
+def _logical_buckconfig_lines(lines: list[str]) -> list[str]:
     """Buckconfig lines as entries: continuations joined, comments and blanks dropped."""
     logical: list[str] = []
     # Buck2 continues a comment too, and what follows one belongs to it, not to the entry before.
@@ -250,11 +250,11 @@ def parse_buckconfig(
 ) -> dict[str, dict[str, str]]:
     """A buckconfig file's sections, following the includes Buck2 would follow."""
     config = {} if config is None else config
-    _parse(path, config, "")
+    _parse_buckconfig_file(path, config, "")
     return config
 
 
-def _parse(path: Path, config: dict[str, dict[str, str]], section: str) -> str:
+def _parse_buckconfig_file(path: Path, config: dict[str, dict[str, str]], section: str) -> str:
     """A file read into the section it was reached from, reporting back the one it ends in.
 
     Buck2 continues an include wherever the included file left off.
@@ -263,10 +263,14 @@ def _parse(path: Path, config: dict[str, dict[str, str]], section: str) -> str:
         return section
 
     config.setdefault(section, {})
-    return _fill(_logical(_split(path)[0]), config, section, path.parent)
+    return _parse_buckconfig_lines(
+        _logical_buckconfig_lines(_split_generated_block(path)[0]), config, section, path.parent
+    )
 
 
-def _fill(lines: list[str], config: dict[str, dict[str, str]], section: str, directory: Path) -> str:
+def _parse_buckconfig_lines(
+    lines: list[str], config: dict[str, dict[str, str]], section: str, directory: Path
+) -> str:
     for line in lines:
         if line.startswith("["):
             if (marker := section_marker(line)) is not None:
@@ -276,7 +280,7 @@ def _fill(lines: list[str], config: dict[str, dict[str, str]], section: str, dir
             # `<file:path>`, or `<?file:path>` where it need not exist; Buck2 ignores the rest.
             include = line[1 : line.index(">")].removeprefix("?")
             if include.startswith("file:"):
-                section = _parse(directory / include.removeprefix("file:"), config, section)
+                section = _parse_buckconfig_file(directory / include.removeprefix("file:"), config, section)
         elif "=" in line:
             key, _, value = line.partition("=")
             if key.strip():
@@ -284,14 +288,16 @@ def _fill(lines: list[str], config: dict[str, dict[str, str]], section: str, dir
     return section
 
 
-def generated(path: Path) -> dict[str, dict[str, str]]:
+def read_generated_buckconfig(path: Path) -> dict[str, dict[str, str]]:
     """What the block this owns says, as against what the project configures for itself."""
     config: dict[str, dict[str, str]] = {}
-    _fill(_logical(_split(path)[1]), config, "", path.parent)
+    _parse_buckconfig_lines(
+        _logical_buckconfig_lines(_split_generated_block(path)[1]), config, "", path.parent
+    )
     return config
 
 
-def project_config(root: Path) -> dict[str, dict[str, str]]:
+def read_project_buckconfig(root: Path) -> dict[str, dict[str, str]]:
     """Read the root cell's project-owned layered configuration.
 
     Buck2 loads all of `.buckconfig.d` in name order, followed by `.buckconfig` and then
@@ -305,17 +311,17 @@ def project_config(root: Path) -> dict[str, dict[str, str]]:
     return config
 
 
-def named(argument: Path) -> Path:
+def resolve_mount_target(argument: Path) -> Path:
     """Resolve a mount target's parent while preserving its final component.
 
-    This keeps a target removable if its final component later becomes a symlink. `mountable` rejects
-    symlink targets before mounting them.
+    This keeps a target removable if its final component later becomes a symlink.
+    `validate_mount_declaration` rejects symlink targets before mounting them.
     """
     path = argument.expanduser()
     return resolved(path.parent) / path.name
 
 
-def relative(root: Path, path: Path) -> str:
+def relative_mount_target(root: Path, path: Path) -> str:
     try:
         target = path.relative_to(root)
     except ValueError:
@@ -366,7 +372,7 @@ def write_mounts(root: Path, mounts: dict[str, str]) -> None:
     write_if_changed(path, render_mounts(mounts))
 
 
-def mountable(
+def validate_mount_declaration(
     root: Path,
     target: str,
     source: str,
@@ -399,7 +405,7 @@ def mountable(
         fail(f"mount {target}: source {source} must be outside the project{drop}")
 
 
-def overlaps(first: str, second: str) -> bool:
+def mount_targets_overlap(first: str, second: str) -> bool:
     return Path(first).is_relative_to(second) or Path(second).is_relative_to(first)
 
 
@@ -411,9 +417,9 @@ def declared_mounts(root: Path) -> dict[str, str]:
     """
     mounts: dict[str, str] = {}
     for target, source in sorted(local_mounts(root).items()):
-        mountable(root, target, source, declared=True)
+        validate_mount_declaration(root, target, source, declared=True)
         for other in mounts:
-            if overlaps(target, other):
+            if mount_targets_overlap(target, other):
                 fail(f"mount {target}: overlaps mount {other}")
         mounts[target] = source
     return mounts
@@ -498,7 +504,7 @@ def git_ignored_paths(directory: Path) -> list[str]:
         path = Path(value)
         if path.is_absolute() or ".." in path.parts:
             fail(f"git returned an invalid ignored path for {directory}: {value!r}")
-        if "," in value or not round_trips(value):
+        if "," in value or not buckconfig_value_round_trips(value):
             fail(f"gitignored path cannot be represented in Buck project.ignore: {value!r}")
         ignored.append(value)
     paths = set(ignored)
@@ -509,7 +515,7 @@ def git_ignored_paths(directory: Path) -> list[str]:
     )
 
 
-def components(root: Path) -> dict[str, object] | str:
+def version_components(root: Path) -> dict[str, object] | str:
     """What a version is derived from, keyed as the configuration spells it, or why there is none.
 
     `height` is what a version no tag named a base for counts its distance in, a new tag resetting
@@ -551,9 +557,9 @@ def components(root: Path) -> dict[str, object] | str:
     return derived
 
 
-def generate(root: Path, ignores: list[str]) -> list[str]:
+def render_local_config_block(root: Path, ignores: list[str]) -> list[str]:
     lines = [BLOCK_BEGIN, BLOCK_NOTE]
-    derived = components(root)
+    derived = version_components(root)
     if isinstance(derived, str):
         lines.append(f"# no version components: {derived}")
     else:
@@ -568,27 +574,27 @@ def generate(root: Path, ignores: list[str]) -> list[str]:
     return lines + [BLOCK_END]
 
 
-def merge(path: Path, block: list[str]) -> str:
-    kept = _split(path)[0]
+def merge_generated_config_block(path: Path, block: list[str]) -> str:
+    kept = _split_generated_block(path)[0]
     while kept and not kept[0].strip():
         kept.pop(0)
     return "\n".join(block + ([""] + kept if kept else [])) + "\n"
 
 
-def refresh(root: Path, ignores: list[str]) -> None:
+def refresh_local_buckconfig(root: Path, ignores: list[str]) -> None:
     """Refresh the version data and mount ignores Buck consumes from its local configuration."""
     local = root / LOCAL
-    write_if_changed(local, merge(local, generate(root, ignores)))
+    write_if_changed(local, merge_generated_config_block(local, render_local_config_block(root, ignores)))
 
 
-def _platform() -> str:
+def _host_platform() -> str:
     system, _, _, _, machine = os.uname()
     if (platform := f"{system}-{machine}") not in PLATFORMS:
         fail(f"unsupported platform: {platform}")
     return platform
 
 
-def _decompress(archive: Path, binary: Path) -> None:
+def _decompress_zstd(archive: Path, binary: Path) -> None:
     """Unpack a zstd-compressed release artifact, without `zstd` where python can do it itself."""
     try:
         from compression import zstd
@@ -616,7 +622,7 @@ def _unzstd(archive: Path, binary: Path) -> None:
         fail(f"zstd could not unpack {archive}")
 
 
-def _download(url: str, sha256: str, binary: Path, *, compressed: bool) -> Path:
+def _download_binary(url: str, sha256: str, binary: Path, *, compressed: bool) -> Path:
     import hashlib
     import tempfile
     import urllib.request
@@ -638,7 +644,7 @@ def _download(url: str, sha256: str, binary: Path, *, compressed: bool) -> Path:
                 fail(f"{url} has SHA-256 {digest.hexdigest()}, not the pinned {sha256}")
             unpacked = Path(directory) / binary.name
             if compressed:
-                _decompress(fetched, unpacked)
+                _decompress_zstd(fetched, unpacked)
             else:
                 fetched.replace(unpacked)
             unpacked.chmod(0o755)
@@ -649,7 +655,7 @@ def _download(url: str, sha256: str, binary: Path, *, compressed: bool) -> Path:
     return binary
 
 
-def cell_root() -> Path:
+def wrapper_cell_root() -> Path:
     """The checkout this command is part of, which is the cell whose rules a project builds.
 
     Resolved, since putting the command on `PATH` means a symlink to it.
@@ -677,7 +683,7 @@ def declared_pin(cell: Path, tool: str, platform: str) -> dict[str, str]:
         fail(f"{path} declares no {tool} for {platform}: {error}")
 
 
-def configured_pin(config: Mapping[str, object], platform: str) -> dict[str, str]:
+def buck2_pin_overrides(config: Mapping[str, object], platform: str) -> dict[str, str]:
     """Validate Buck2 overrides and select the fields for the current platform."""
     table = object_table(config.get(BUCK2, {}), f"[{BUCK2}] in {SETTINGS}")
     if extra := sorted(set(table) - {"platforms", "release", "repository"}):
@@ -720,7 +726,7 @@ def configured_pin(config: Mapping[str, object], platform: str) -> dict[str, str
     return overrides
 
 
-def _pinned(
+def _pinned_binary(
     pin: Mapping[str, str], tool: str, platform: str, source: str, *, compressed: bool, fetch: bool
 ) -> Path | None:
     """A pinned binary, fetched and verified the first time it is asked for.
@@ -744,18 +750,18 @@ def _pinned(
     if not fetch:
         return None
     url = f"https://github.com/{repository}/releases/download/{release}/{artifact}"
-    return _download(url, sha256, binary, compressed=compressed)
+    return _download_binary(url, sha256, binary, compressed=compressed)
 
 
-def buck2(config: Mapping[str, object], cell: Path, *, fetch: bool = True) -> Path | None:
+def buck2_binary(config: Mapping[str, object], cell: Path, *, fetch: bool = True) -> Path | None:
     """The pinned Buck2 binary. The pin is this cell's, overridable key by key in `[buck2]`."""
-    platform = _platform()
-    pin = declared_pin(cell, BUCK2, platform) | configured_pin(config, platform)
+    platform = _host_platform()
+    pin = declared_pin(cell, BUCK2, platform) | buck2_pin_overrides(config, platform)
     source = f"{cell / PINS} and [{BUCK2}] in {SETTINGS}"
-    return _pinned(pin, BUCK2, platform, source, compressed=True, fetch=fetch)
+    return _pinned_binary(pin, BUCK2, platform, source, compressed=True, fetch=fetch)
 
 
-def marker(digest: str) -> str:
+def mount_namespace_marker(digest: str) -> str:
     """Build the environment marker for a mount digest and namespace.
 
     Include the namespace to distinguish a marker inherited from the current build from a stale or
@@ -776,7 +782,7 @@ def constrained_config(buckconfig: bytes, digest: str, mounts: dict[str, str]) -
     return buckconfig + gap + (constraint + table).encode()
 
 
-def create(root: Path, mounts: dict[str, str], digest: str, buckconfig: bytes) -> None:
+def create_mount_namespace(root: Path, mounts: dict[str, str], digest: str, buckconfig: bytes) -> None:
     """Create a mount namespace, constrain its daemon and apply every bind mount.
 
     Set it up in this process so the re-executed command inherits it. The user namespace must come first
@@ -814,7 +820,7 @@ def create(root: Path, mounts: dict[str, str], digest: str, buckconfig: bytes) -
             fail(f"mount {target}: cannot build it from {source}: {error}")
 
     # The kernel applies a bind to a symlink's destination, which for a symlinked root config is a path
-    # outside the project; `mountable` refuses a declared target for the same reason.
+    # outside the project; `validate_mount_declaration` refuses a declared target for the same reason.
     original = root / ".buckconfig"
     if resolved(original) != original:
         fail(f"{original} is a symlink, so the daemon constraint cannot be bound over it")
@@ -833,7 +839,7 @@ def cells_of(config: dict[str, dict[str, str]]) -> dict[str, str]:
 def configured_mount_targets(root: Path) -> set[str]:
     """Existing project directories registered as cell roots."""
     targets: set[str] = set()
-    for value in cells_of(project_config(root)).values():
+    for value in cells_of(read_project_buckconfig(root)).values():
         path = Path(value)
         if path == Path() or path.is_absolute() or ".." in path.parts or path.is_relative_to(HOME):
             continue
@@ -880,7 +886,9 @@ def mount_targets(root: Path) -> set[str]:
     return configured_mount_targets(root) | graph_mount_targets(root)
 
 
-def entrypoint(root: Path, config: dict[str, dict[str, str]], mounts: dict[str, str]) -> Path:
+def mounted_wrapper_entrypoint(
+    root: Path, config: dict[str, dict[str, str]], mounts: dict[str, str]
+) -> Path:
     """Choose the `tine` entry point to run inside the mount namespace.
 
     If a mount covers the tine cell, use that checkout's command so its rules and Buck2 pin stay together.
@@ -898,7 +906,7 @@ def entrypoint(root: Path, config: dict[str, dict[str, str]], mounts: dict[str, 
     return command
 
 
-def enter(root: Path, config: dict[str, dict[str, str]], argv: list[str]) -> None:
+def reexec_in_mount_namespace(root: Path, config: dict[str, dict[str, str]], argv: list[str]) -> None:
     """Run this command in the namespace containing the declared mounts.
 
     Every client gets an equivalent namespace. Buck's daemon constraint reuses a daemon with the same
@@ -913,7 +921,7 @@ def enter(root: Path, config: dict[str, dict[str, str]], argv: list[str]) -> Non
     buster = config.get("buck2", {}).get(DAEMON_BUSTER)
     if buster and buster.startswith(BUSTER_PREFIX):
         digest = buster.removeprefix(BUSTER_PREFIX)
-        if is_hex(digest, 16) and os.environ.get(MARKER) == marker(digest):
+        if is_hex(digest, 16) and os.environ.get(MARKER) == mount_namespace_marker(digest):
             return
     if buster is not None:
         fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
@@ -926,16 +934,16 @@ def enter(root: Path, config: dict[str, dict[str, str]], argv: list[str]) -> Non
     assert digest is not None
 
     working = cwd()
-    create(root, mounts, digest, buckconfig)
+    create_mount_namespace(root, mounts, digest, buckconfig)
     # Resolve both paths after mounting so paths below a target use the mounted tree.
-    command = entrypoint(root, config, mounts)
+    command = mounted_wrapper_entrypoint(root, config, mounts)
 
     try:
         os.chdir(working)
     except OSError as error:
         fail(f"cannot return to {working}: {error}")
     try:
-        os.execve(command, [str(command), *argv], os.environ | {MARKER: marker(digest)})
+        os.execve(command, [str(command), *argv], os.environ | {MARKER: mount_namespace_marker(digest)})
     except OSError as error:
         fail(f"cannot run {command}: {error}")
 
@@ -964,7 +972,7 @@ class ProjectCommand:
     cwd: Path | None = None
 
 
-def command_name(name: str, source: str) -> None:
+def validate_command_name(name: str, source: str) -> None:
     """Require one safe command and completion-script word."""
     if (
         not name
@@ -982,7 +990,7 @@ def validate_commands(value: object, source: str = SETTINGS) -> dict[str, Projec
     table = object_table(value, f"[{COMMANDS}] in {source}")
     commands: dict[str, ProjectCommand] = {}
     for name, value in table.items():
-        command_name(name, source)
+        validate_command_name(name, source)
 
         definition = object_table(value, f"[{COMMANDS}.{name}] in {source}")
         if extra := sorted(set(definition) - {"cwd", "description", "script", "steps"}):
@@ -1045,7 +1053,7 @@ def project_commands(directory: Path) -> tuple[Path, dict[str, ProjectCommand]] 
     return root, validate_commands(project_settings(root).get(COMMANDS, {}))
 
 
-def commands(configured: dict[str, ProjectCommand]) -> dict[str, str]:
+def command_descriptions(configured: dict[str, ProjectCommand]) -> dict[str, str]:
     """Built-in commands followed by validated project commands."""
     return VERBS | {name: configured[name].description for name in sorted(configured)}
 
@@ -1116,14 +1124,14 @@ def run_project_command(
         fail(f"cannot run command {name} step {len(steps)}: {error}")
 
 
-def _patch(script: str, old: str, new: str) -> str:
+def _replace_completion_fragment(script: str, old: str, new: str) -> str:
     """Replace what Buck2's completion script says, rather than emit one that completes nothing."""
     if old not in script:
         fail(f"buck2's completion script has no {old!r} to rewrite; the pin moved under it")
     return script.replace(old, new)
 
 
-def _buck2_completion(binary: Path, shell: str) -> str:
+def _buck2_completion_script(binary: Path, shell: str) -> str:
     import subprocess
 
     try:
@@ -1135,7 +1143,9 @@ def _buck2_completion(binary: Path, shell: str) -> str:
     return proc.stdout
 
 
-def completion(script: str, shell: str, configured: dict[str, ProjectCommand] | None = None) -> str:
+def rewrite_completion_script(
+    script: str, shell: str, configured: dict[str, ProjectCommand] | None = None
+) -> str:
     """Buck2's own completion script, rewritten to complete `tine buck` instead.
 
     Its arguments arrive one word further along than the script expects, so the helper that finds
@@ -1150,9 +1160,9 @@ def completion(script: str, shell: str, configured: dict[str, ProjectCommand] | 
         count=1,
         flags=re.M,
     )
-    available = commands(configured or {})
+    available = command_descriptions(configured or {})
     if shell == "fish":
-        return _fish(script, available)
+        return _rewrite_fish_completion(script, available)
     # bash and zsh spell buck2 into function names, the subcommand state machine and the
     # registration alike, so rename wholesale; a few help strings now say tine where they mean Buck2.
     script = script.replace("buck2", "tine")
@@ -1160,7 +1170,7 @@ def completion(script: str, shell: str, configured: dict[str, ProjectCommand] | 
     # the completer that knows this command's own verbs, with Buck2's reached through it.
     script = re.sub(r"\b_tine\b", "_tine_buck2", script)
     # An array, the command it names now being two words; the hook itself is Buck2's own.
-    script = _patch(
+    script = _replace_completion_fragment(
         script,
         '_BUCK_COMPLETE_BIN="${_BUCK_COMPLETE_BIN:-tine}"',
         "[[ -n ${_BUCK_COMPLETE_BIN[*]} ]] || _BUCK_COMPLETE_BIN=(tine buck)",
@@ -1172,43 +1182,44 @@ def completion(script: str, shell: str, configured: dict[str, ProjectCommand] | 
     else:
         # A shell reads the commands a file completes off its first line, and `buck` there would
         # bind a real buck2 installation's completion to this script.
-        script = _patch(script, "#compdef tine buck", "#compdef tine")
-        script = _patch(script, "\ncompdef __tine_fix buck tine\n", "\n")
+        script = _replace_completion_fragment(script, "#compdef tine buck", "#compdef tine")
+        script = _replace_completion_fragment(script, "\ncompdef __tine_fix buck tine\n", "\n")
         # Paired with that registration, and this file registers itself at the end instead.
-        script = _patch(script, "\ncompdef -d tine\n", "\n")
+        script = _replace_completion_fragment(script, "\ncompdef -d tine\n", "\n")
         # Buck2's entry point runs where it sits, which is before the completer that dispatches into
         # it is defined; the same idiom goes to the end of the file instead.
-        script = _patch(
+        script = _replace_completion_fragment(
             script,
             '\nif [ "$funcstack[1]" = "_tine_buck2" ]; then\n    _tine_buck2 "$@"\n'
             "else\n    compdef _tine_buck2 tine\nfi\n",
             "\n",
         )
         described = "\n".join(
-            f"        {zsh_quoted(name, description)}" for name, description in available.items()
+            f"        {quote_zsh_completion_entry(name, description)}"
+            for name, description in available.items()
         )
         own = _ZSH.replace(VERBS_MARKER, described)
     return script + own
 
 
-def quoted(text: str) -> str:
+def quote_fish_description(text: str) -> str:
     """What fish reads back as `text` inside the single quotes a description is written in."""
     return text.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def zsh_quoted(name: str, description: str) -> str:
+def quote_zsh_completion_entry(name: str, description: str) -> str:
     """Quote one `_describe` entry as a zsh array word."""
     description = description.replace("\\", "\\\\").replace(":", "\\:")
     return "'" + f"{name}:{description}".replace("'", "'\\''") + "'"
 
 
-def _fish(script: str, available: dict[str, str]) -> str:
+def _rewrite_fish_completion(script: str, available: dict[str, str]) -> str:
     script = re.sub(r"^complete -c buck2 ", "complete -c tine ", script, flags=re.M)
     script = script.replace("__fish_buck2", "__fish_tine").replace("__buck2", "__tine")
     script = re.sub(r"^complete -c buck -w buck2\n", "", script, flags=re.M)
 
     # Everything clap generated hangs off this one helper, so shifting it past `buck` shifts the lot.
-    script = _patch(
+    script = _replace_completion_fragment(
         script,
         """    set -l cmd (commandline -opc)
     set -e cmd[1]
@@ -1222,16 +1233,18 @@ def _fish(script: str, available: dict[str, str]) -> str:
     argparse -s (__fish_tine_global_optspecs)""",
     )
     # The hand-written half tokenizes the line itself, so it needs the same word skipped.
-    script = _patch(
+    script = _replace_completion_fragment(
         script,
         """    set -l subcommand (__tine_subcommand $cmd)""",
         """    test "$cmd[2]" = buck
     or return 1
     set -l subcommand (__tine_subcommand $cmd[2..])""",
     )
-    script = _patch(script, '    buck2 complete --target="$cur"', '    tine buck complete --target="$cur"')
+    script = _replace_completion_fragment(
+        script, '    buck2 complete --target="$cur"', '    tine buck complete --target="$cur"'
+    )
     verbs = "\n".join(
-        f"complete -c tine -n __fish_use_subcommand -f -a {verb} -d '{quoted(description)}'"
+        f"complete -c tine -n __fish_use_subcommand -f -a {verb} -d '{quote_fish_description(description)}'"
         for verb, description in available.items()
     )
     return script + _FISH.replace(VERBS_MARKER, verbs)
@@ -1345,16 +1358,16 @@ def buckconfig_overrides(settings: dict[str, dict[str, object]], source: Path) -
             fail(f"{description} has an invalid section name")
         config[section] = string_table(values, description)
         for key, value in config[section].items():
-            if not re.fullmatch(r"[\w.-]+", key) or not round_trips(value) or "\0" in value:
+            if not re.fullmatch(r"[\w.-]+", key) or not buckconfig_value_round_trips(value) or "\0" in value:
                 fail(f"{description} {key!r} cannot be written to .buckconfig as it stands")
     return config
 
 
-def project_buckconfig(source: Path, overrides: dict[str, dict[str, str]]) -> str:
+def render_project_buckconfig(source: Path, overrides: dict[str, dict[str, str]]) -> str:
     """Generate consuming-project defaults with explicit project overrides."""
     # The defaults are required; parse_buckconfig intentionally tolerates absent config layers.
     config: dict[str, dict[str, str]] = {}
-    _fill(_logical(read_lines(source)), config, "", source.parent)
+    _parse_buckconfig_lines(_logical_buckconfig_lines(read_lines(source)), config, "", source.parent)
     cells_of(config).pop(CELL, None)
     config.setdefault("cells", {}).setdefault("root", ".")
     config.setdefault("parser", {})[DETECTOR] = (
@@ -1373,7 +1386,7 @@ def project_buckconfig(source: Path, overrides: dict[str, dict[str, str]]) -> st
     return "\n".join(lines) + "\n"
 
 
-def exclude(directory: Path, entries: str) -> None:
+def update_git_excludes(directory: Path, entries: str) -> None:
     """Keep what a build leaves behind out of git's way where `.gitignore` is not ours to write.
 
     `.git/info/exclude` is committed nowhere, so a project that has a `.gitignore` of its own gets
@@ -1398,7 +1411,7 @@ def exclude(directory: Path, entries: str) -> None:
     print(f"tine: excluded {', '.join(missing)} in {path}", file=sys.stderr)
 
 
-def init(directory: Path, arguments: list[str]) -> None:
+def init_command(directory: Path, arguments: list[str]) -> None:
     """Write the configuration a project needs to build against a checkout of this cell.
 
     Shadows Buck2's own `init`, which writes an empty prelude project rather than this cell.
@@ -1419,14 +1432,14 @@ def init(directory: Path, arguments: list[str]) -> None:
         fail(f"{directory / '.buckconfig'} already exists")
 
     # Against the project rather than the working directory, which differ where a path was passed.
-    checkout = (directory / Path(args.cell).expanduser()).absolute() if args.cell else cell_root()
+    checkout = (directory / Path(args.cell).expanduser()).absolute() if args.cell else wrapper_cell_root()
     try:
         path = checkout.relative_to(directory.absolute())
     except ValueError:
         fail(f"{checkout} is not in {directory}, so it cannot be a cell of this project")
     if not (checkout / PINS).is_file():
         fail(f"{checkout} is no checkout of the {CELL} cell: it has no {PINS}")
-    if not round_trips(str(path)):
+    if not buckconfig_value_round_trips(str(path)):
         fail(f"{path} cannot be written to .buckconfig as it stands")
 
     overrides = buckconfig_overrides(project_settings(directory), directory / CONFIG)
@@ -1451,15 +1464,17 @@ def init(directory: Path, arguments: list[str]) -> None:
     # should come after it.
     if (directory / ".gitignore").exists():
         print("tine: .gitignore exists, left alone", file=sys.stderr)
-        exclude(directory, GITIGNORE)
+        update_git_excludes(directory, GITIGNORE)
     else:
         write_if_changed(directory / ".gitignore", GITIGNORE)
         print("tine: wrote .gitignore", file=sys.stderr)
-    write_if_changed(directory / ".buckconfig", project_buckconfig(checkout / ".buckconfig", overrides))
+    write_if_changed(
+        directory / ".buckconfig", render_project_buckconfig(checkout / ".buckconfig", overrides)
+    )
     print("tine: wrote .buckconfig", file=sys.stderr)
 
 
-def mount(root: Path, arguments: list[str]) -> None:
+def mount_command(root: Path, arguments: list[str]) -> None:
     """Manage project paths backed by directories outside the project.
 
     Mount declarations are machine-local and remain outside the namespace they configure.
@@ -1491,12 +1506,12 @@ def mount(root: Path, arguments: list[str]) -> None:
             print("tine: no mount targets", file=sys.stderr)
         return
 
-    target = relative(root, named(Path(args.target)))
+    target = relative_mount_target(root, resolve_mount_target(Path(args.target)))
     source = None
     if args.verb == "add":
         source = resolved(Path(args.source))
         # Validate before writing so this command cannot create an unusable declaration.
-        mountable(root, target, str(source), allow_missing_target=True)
+        validate_mount_declaration(root, target, str(source), allow_missing_target=True)
         if target not in configured_mount_targets(root) and target not in graph_mount_targets(root):
             fail(f"mount {target}: not a valid target; `tine mount list` lists valid targets")
 
@@ -1507,17 +1522,17 @@ def mount(root: Path, arguments: list[str]) -> None:
         message = f"{target} is no longer mounted"
     else:
         assert source is not None
-        if DAEMON_BUSTER in project_config(root).get("buck2", {}):
+        if DAEMON_BUSTER in read_project_buckconfig(root).get("buck2", {}):
             fail(f"[buck2] {DAEMON_BUSTER} is reserved while mounts are declared")
         for other in declared:
-            if target != other and overlaps(target, other):
+            if target != other and mount_targets_overlap(target, other):
                 fail(f"mount {target}: overlaps mount {other}")
         if not (root / target).exists():
             try:
                 (root / target).mkdir()
             except OSError as error:
                 fail(f"mount {target}: cannot create its directory: {error}")
-        mountable(root, target, str(source))
+        validate_mount_declaration(root, target, str(source))
         declared[target] = str(source)
         message = f"{target} is built from {source}"
     # Preserve other entries without validation so a stale declaration can still be removed.
@@ -1555,7 +1570,9 @@ def glob_literal(value: str) -> str:
     return "".join("\\" + char if char in "\\*?{[" else char for char in value)
 
 
-def mount_ignores(root: Path, config: dict[str, dict[str, str]], mounts: dict[str, str]) -> list[str]:
+def collect_project_ignores(
+    root: Path, config: dict[str, dict[str, str]], mounts: dict[str, str]
+) -> list[str]:
     """The project ignores, including Git-ignored paths and mounted checkouts' build files.
 
     glob() stops at an upstream BUCK file before applying its exclusions. Buck applies project
@@ -1595,25 +1612,27 @@ def mount_ignores(root: Path, config: dict[str, dict[str, str]], mounts: dict[st
     return ignores if added else []
 
 
-def buck(argv: list[str]) -> None:
+def buck_command(argv: list[str]) -> None:
     root = project_root(cwd())
     ensure_home(root)
-    config = project_config(root)
+    config = read_project_buckconfig(root)
     settings = project_settings(root)
 
     # A keypress in a completing shell must neither download nor rewrite shared configuration: it
     # completes nothing until another command has fetched the binary, and must not race a build writing it.
     command = parse_buck_command(argv)
-    # Enter first so cell_root() reads the mounted checkout's pin.
-    enter(root, config, ["buck", *argv])
-    binary = buck2(settings, cell_root(), fetch=command.subcommand != "complete")
+    # Enter first so wrapper_cell_root() reads the mounted checkout's pin.
+    reexec_in_mount_namespace(root, config, ["buck", *argv])
+    binary = buck2_binary(settings, wrapper_cell_root(), fetch=command.subcommand != "complete")
     if binary is None:
         return
     if command.subcommand != "complete":
-        refresh(root, mount_ignores(root, config, declared_mounts(root)))
+        refresh_local_buckconfig(root, collect_project_ignores(root, config, declared_mounts(root)))
         if (cell := cells_of(config).get(CELL)) is not None and (checkout := root / cell) != root:
             # Buck resolves ignores within each cell, including in the daemon's file watcher.
-            refresh(checkout, mount_ignores(checkout, project_config(checkout), {}))
+            refresh_local_buckconfig(
+                checkout, collect_project_ignores(checkout, read_project_buckconfig(checkout), {})
+            )
     # BUCK2_BINARY so a tool Buck runs can nest a Buck2 command without coming through here again:
     # another refresh mid-build would invalidate the configuration under it.
     environment = {"BUCK2_ARG0": "tine buck", "BUCK2_BINARY": str(binary)}
@@ -1624,7 +1643,7 @@ def buck(argv: list[str]) -> None:
 
 
 def usage(configured: dict[str, ProjectCommand]) -> str:
-    available = commands(configured)
+    available = command_descriptions(configured)
     width = max(12, *(len(name) + 2 for name in available))
     return "usage: tine <command> [arguments]\n\n" + "".join(
         f"    {name:<{width}}{description}\n" for name, description in available.items()
@@ -1650,14 +1669,14 @@ def main(argv: list[str]) -> None:
             _, configured = project
 
     if name == "buck":
-        buck(rest)
+        buck_command(rest)
     elif name == "box":
-        buck(["-v", "0", "run", "//:box", *rest])
+        buck_command(["-v", "0", "run", "//:box", *rest])
     elif name == "mount":
-        mount(project_root(cwd()), rest)
+        mount_command(project_root(cwd()), rest)
     elif name == "init":
         # Before the project root is resolved, because writing one is what this is for.
-        init(cwd(), rest)
+        init_command(cwd(), rest)
     elif name == "completion":
         if len(rest) != 1 or rest[0] not in SHELLS:
             fail(f"completion takes one of {', '.join(SHELLS)}")
@@ -1667,13 +1686,15 @@ def main(argv: list[str]) -> None:
             reason = str(error).removeprefix("tine: ")
             fail(f"{reason}; the script comes out of the Buck2 a project pins")
         ensure_home(root)
-        config = project_config(root)
+        config = read_project_buckconfig(root)
         settings = project_settings(root)
         configured = validate_commands(settings.get(COMMANDS, {}), str(root / CONFIG))
-        enter(root, config, argv)
-        binary = buck2(settings, cell_root())
+        reexec_in_mount_namespace(root, config, argv)
+        binary = buck2_binary(settings, wrapper_cell_root())
         assert binary is not None
-        print(completion(_buck2_completion(binary, rest[0]), rest[0], configured), end="")
+        print(
+            rewrite_completion_script(_buck2_completion_script(binary, rest[0]), rest[0], configured), end=""
+        )
     elif name in (*HELP, None):
         print(usage(configured), end="")
     elif project is not None and name in configured:
