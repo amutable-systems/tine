@@ -2,7 +2,7 @@
 
 load("@prelude//:rules.bzl", "python_bootstrap_binary", "python_bootstrap_library")
 load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapSources")
-load("//box:runtime.bzl", "BoxInfo")
+load("//box:runtime.bzl", "BoxInfo", "box_run")
 
 _TYPECHECK_LABEL = "python-typecheck"
 
@@ -116,3 +116,40 @@ def tine_python_binary(
     """Declare a flat bootstrap binary and the ty check over its entry point."""
     python_bootstrap_binary(name = name, main = main, deps = deps, **kwargs)
     ty_check(name = name + "-ty", srcs = [main], deps = deps, boxes = boxes)
+
+def _box_python_binary_impl(ctx: AnalysisContext) -> list[Provider]:
+    tree = ctx.actions.symlinked_dir("tree", flat_tree([ctx.attrs.main], ctx.attrs.deps))
+    command = cmd_args(
+        box_run(ctx.attrs.box[BoxInfo], relaxed = True),
+        "python3",
+        "-B",
+        tree.project(ctx.attrs.main.short_path),
+    )
+    return [DefaultInfo(default_output = tree), RunInfo(args = command)]
+
+_box_python_binary = rule(
+    doc = """A flat Python tree run by a box's own interpreter, host-integrated.
+
+    For a tool whose third-party imports come from the box's packages: the bootstrap interpreter a
+    `tine_python_binary` runs under has the standard library and nothing else. Relaxed, so the tool
+    sees the host's network, environment and files, which is what a long-running service on the
+    developer's machine needs.
+    """,
+    impl = _box_python_binary_impl,
+    attrs = {
+        "box": attrs.exec_dep(providers = [BoxInfo], doc = "box whose interpreter and packages run it"),
+        "deps": attrs.list(attrs.dep(providers = [PythonBootstrapSources]), default = []),
+        "main": attrs.source(doc = "the entry point"),
+    },
+)
+
+def box_python_binary(
+    name: str,
+    box: str,
+    main: str,
+    deps: list[str] | Select | None = None,
+    **kwargs,
+) -> None:
+    """Declare a box-hosted Python command and the ty check over its entry point, in that box."""
+    _box_python_binary(name = name, box = box, main = main, deps = deps, **kwargs)
+    ty_check(name = name + "-ty", srcs = [main], deps = deps, boxes = [box])
