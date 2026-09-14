@@ -1,6 +1,16 @@
 """The command a checkout builds through."""
 
 load("//box:test.bzl", "box_python_test")
+load("//python:defs.bzl", "tine_python_library")
+
+# How the launcher reads the cache settings and talks to a running shim, for the round trip in
+# tests/, which judges a build by the shim's own counters.
+tine_python_library(
+    name = "cache_shim",
+    srcs = ["cache_shim.py"],
+    visibility = ["tine//tests/..."],
+    deps = ["//:util"],
+)
 
 box_python_test(
     name = "test",

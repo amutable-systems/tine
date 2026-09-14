@@ -74,7 +74,10 @@ http_tool(
     name = "seaweedfs",
     path = "weed",
     spec = _pins["seaweedfs"],
-    visibility = ["tine//remote_cache/..."],
+    visibility = [
+        "tine//remote_cache/...",
+        "tine//tests/...",
+    ],
 )
 
 # tine's dev environment for importer and its unit tests. Used by every `box_python_test` suite
