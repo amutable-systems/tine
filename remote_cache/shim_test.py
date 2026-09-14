@@ -327,6 +327,17 @@ class TestActionCache(ShimCase):
             self.get_action_result(reapi.GetActionResultRequest(action_digest=action))
         self.assertEqual(status_of(caught.exception), grpc.StatusCode.NOT_FOUND)
 
+    def test_a_blob_rewritten_on_disk_is_a_miss_and_is_dropped(self) -> None:
+        """A hit is claimed only for bytes that still hash to their names, whatever the files say."""
+        action, result = self.result_with_a_tree()
+        digest = result.file_digests[0]
+        (self.store.root / "blobs" / digest.hash[:2] / digest.hash).write_bytes(b"x" * digest.size_bytes)
+        with self.assertRaises(grpc.RpcError) as caught:
+            self.get_action_result(reapi.GetActionResultRequest(action_digest=action))
+        self.assertEqual(status_of(caught.exception), grpc.StatusCode.NOT_FOUND)
+        self.assertEqual(self.store.has_blobs([digest]), [False])
+        self.assertEqual(self.counts.report()["incomplete"], 1)
+
 
 def one_file_result(digest: reapi.Digest) -> reapi.ActionResult:
     """A result with one output file, built from wire primitives: the shim never writes one."""
@@ -531,7 +542,11 @@ class TestProven(unittest.TestCase):
 
 
 class TestSignedFetch(BucketCase):
-    """A reader holding only the authority, against a bucket an operator can rewrite."""
+    """A reader holding only the authority, against a bucket an operator can rewrite.
+
+    And against a store that every build on the machine can write: what the store holds is served
+    under the same rule as what the bucket holds.
+    """
 
     @override
     def setUp(self) -> None:
@@ -542,7 +557,11 @@ class TestSignedFetch(BucketCase):
         certificate = self.served.root / "leaf.crt"
         certificate.write_text(self.issued(self.leaf_key))
         self.signer = signing.Signer(key_file, certificate)
-        self.start_shim(signer=self.signer, verifier=self.reader_trust())
+        # As `configured_trust` sets a builder up: its certificate admitted into its own store.
+        self.builder_store = self.a_store()
+        builder_trust = self.trust(self.builder_store)
+        builder_trust.admit(self.signer)
+        self.start_shim(signer=self.signer, verifier=builder_trust, store=self.builder_store)
         shim.publish_certificate(self.a_bucket(), self.signer)
         self.action = self.publish(b"one action", b"the output")
 
@@ -553,23 +572,92 @@ class TestSignedFetch(BucketCase):
             "builder", key, test_ca.name("shim CA"), self.ca_key, valid_from=valid_from, valid_to=valid_to
         )
 
-    def reader_trust(self) -> signing.Authority:
-        return signing.Authority([self.ca], self.a_bucket().reader.get)
+    def trust(
+        self,
+        remembered: signing.Certificates | None = None,
+        fetch: Callable[[str], bytes | None] | None = None,
+    ) -> signing.Authority:
+        return signing.Authority([self.ca], fetch or self.a_bucket().reader.get, remembered)
 
     def rewrite_pointers(self, rewrite: Callable[[str, bytes], bytes]) -> None:
         """Every pointer replaced by what the operator makes of its verified payload."""
         for name in self.served.keys("ac"):
             path = self.served.root / "ac" / name
-            path.write_bytes(rewrite(name, self.reader_trust().unwrap(name, path.read_bytes())))
+            path.write_bytes(rewrite(name, self.trust().unwrap(name, path.read_bytes())))
 
     def refused(self) -> None:
-        self.start_shim(verifier=self.reader_trust())
+        self.start_shim(verifier=self.trust())
         self.assertEqual(self.lookup(self.action), grpc.StatusCode.NOT_FOUND)
         self.assertEqual(self.counts.report()["pointers refused"], 1)
 
     def test_a_reader_holding_only_the_authority_gets_the_result(self) -> None:
-        self.start_shim(verifier=self.reader_trust())
+        self.start_shim(verifier=self.trust())
         self.assertIsNone(self.lookup(self.action))
+
+    def test_a_reader_refuses_what_buck_uploads(self) -> None:
+        """It could never serve them back, so storing them would only crowd out what it can."""
+        self.start_shim(verifier=self.trust())
+        self.assertFalse(self.get_capabilities().update_enabled)
+        digest = reapi.Digest.for_bytes(b"built here")
+        for attempt in (
+            lambda: self.upload(b"built here"),
+            lambda: self.stream_up(b"built here"),
+            lambda: self.update_action_result(
+                reapi.UpdateActionResultRequest(action_digest=digest, action_result=one_file_result(digest))
+            ),
+        ):
+            with self.assertRaises(grpc.RpcError) as caught:
+                attempt()
+            self.assertEqual(status_of(caught.exception), grpc.StatusCode.PERMISSION_DENIED)
+        self.assertEqual(self.counts.report()["uploads refused"], 3)
+        self.assertEqual(self.store.counts(), (1, 0))  # the empty blob and nothing else
+
+    def test_a_pointer_in_the_store_is_verified_like_one_from_the_bucket(self) -> None:
+        """A row written by anything but a verified fetch is refused, dropped and looked up afresh."""
+        self.start_shim(verifier=self.trust())
+        self.assertIsNone(self.lookup(self.action))
+        forged = reapi.Digest.for_bytes(b"what an attacker built")
+        (bundle_name,) = self.served.keys("bundle")
+        pointer = shim.Pointer(bundle=bundle_name, result=one_file_result(forged).raw)
+        self.store.put_result(self.action, shim.ac_pack(pointer))
+        self.assertIsNone(self.lookup(self.action))
+        self.assertEqual(self.counts.report()["pointers refused"], 1)
+        self.assertEqual(self.served.counts[f"ac/{self.action.hash}"], 2)
+        served = self.get_action_result(reapi.GetActionResultRequest(action_digest=self.action))
+        self.assertEqual(served.file_digests, [reapi.Digest.for_bytes(b"the output")])
+
+    def test_a_builders_own_results_verify_after_a_restart_with_the_bucket_gone(self) -> None:
+        """The store keeps the certificates it took, so what it holds needs no bucket to be served."""
+        asked = sum(self.served.counts.values())
+        self.start_shim(
+            verifier=self.trust(self.builder_store, fetch=lambda _: None), store=self.builder_store
+        )
+        self.assertIsNone(self.lookup(self.action))
+        self.assertEqual(sum(self.served.counts.values()), asked)
+
+    def test_a_leaf_that_runs_out_expires_what_the_store_holds(self) -> None:
+        """A local entry lives exactly as long as a bucket entry would: while its leaf is valid."""
+        trust = self.trust()
+        self.start_shim(verifier=trust)
+        self.assertIsNone(self.lookup(self.action))
+        trust.clock = lambda: datetime.datetime.now(datetime.UTC) + 400 * test_ca.DAY
+        self.assertEqual(self.lookup(self.action), grpc.StatusCode.NOT_FOUND)
+        self.assertEqual(self.counts.report()["pointers refused"], 2)  # the store's copy, then the bucket's
+
+    def test_a_bucket_that_cannot_say_whether_a_kept_pointer_is_current_is_a_miss(self) -> None:
+        """Verifying what the store holds can need the bucket, and that read fails like any other.
+
+        The leaf is fetched again once the remembered one runs out. A bucket that will not answer
+        leaves this unknown rather than refused, so the pointer stays and the build rebuilds.
+        """
+        trust = self.trust()
+        self.start_shim(verifier=trust)
+        self.assertIsNone(self.lookup(self.action))
+        trust.clock = lambda: datetime.datetime.now(datetime.UTC) + 400 * test_ca.DAY
+        self.served.broken.add(signing.certificate_key(self.signer.id))
+        self.assertEqual(self.lookup(self.action), grpc.StatusCode.NOT_FOUND)
+        self.assertEqual(self.counts.report()["bucket errors"], 2)  # the store's copy, then the bucket's
+        self.assertIsNotNone(self.store.result(self.action))
 
     def test_a_result_signed_by_a_stranger_is_refused(self) -> None:
         """Bucket write access alone has to be worth nothing, own CA and own leaf included."""
@@ -643,9 +731,11 @@ class TestConfiguredTrust(unittest.TestCase):
         self.published = signing.certificate_key(signing.key_id(leaf_key.public_key()))
 
     def configured(self, *arguments: str) -> tuple[signing.Signer | None, signing.Authority | None]:
-        args = shim.parser().parse_args([*arguments, "--store", str(self.root / "store")])
+        store = store_module.Store(Path(tempfile.mkdtemp(dir=self.root)), max_bytes=1)
+        self.addCleanup(store.close)
+        args = shim.parser().parse_args([*arguments, "--store", str(store.root)])
         self.bucket = shim.configured_bucket(args)
-        return shim.configured_trust(args, self.bucket)
+        return shim.configured_trust(args, self.bucket, store)
 
     def in_bucket(self) -> str | None:
         """The certificate the bucket holds for this test's leaf key, if any."""

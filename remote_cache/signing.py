@@ -18,7 +18,7 @@ import struct
 import threading
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import cast
+from typing import Protocol, cast
 
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
@@ -223,6 +223,34 @@ AUTHORITY_POLICY = (
 )
 
 
+class Certificates(Protocol):
+    """Where leaf certificates that passed the chain check are kept between lookups.
+
+    The shim's store keeps them on disk, beside the pointers they signed for: a pointer kept locally
+    is verified again on every hit, and after a restart that has to work with the bucket unreachable.
+    """
+
+    def certificate(self, named: bytes) -> str | None: ...
+
+    def put_certificate(self, named: bytes, pem: str) -> None: ...
+
+
+class Remembered:
+    """Certificates kept in memory, for an authority given nowhere better."""
+
+    def __init__(self) -> None:
+        self._known: dict[bytes, str] = {}
+        self._lock = threading.Lock()
+
+    def certificate(self, named: bytes) -> str | None:
+        with self._lock:
+            return self._known.get(named)
+
+    def put_certificate(self, named: bytes, pem: str) -> None:
+        with self._lock:
+            self._known[named] = pem
+
+
 class Authority:
     """What decides which results a shim will serve: certificates under a CA.
 
@@ -245,6 +273,7 @@ class Authority:
         self,
         authorities: Iterable[str],
         fetch: Callable[[str], bytes | None],
+        remembered: Certificates | None = None,
         clock: Callable[[], datetime.datetime] | None = None,
     ) -> None:
         self.clock = clock or (lambda: datetime.datetime.now(datetime.UTC))
@@ -267,8 +296,7 @@ class Authority:
             raise ValueError("an authority with no current certificates would trust nothing")
         self.store = Store(self.authorities)
         self.fetch = fetch
-        self._known: dict[bytes, x509.Certificate] = {}
-        self._lock = threading.Lock()
+        self.remembered = remembered or Remembered()
 
     def describe(self) -> str:
         named = ", ".join(key_id(one.public_key()).hex() for one in self.authorities)
@@ -296,11 +324,10 @@ class Authority:
         would leave a bad certificate in the bucket for every reader to refuse. Remembered once
         accepted, so the builder's own reads never go and fetch it.
         """
-        if signer.certificate is None:
+        if signer.certificate is None or signer.certificate_pem is None:
             raise ValueError(f"signing key {signer.id.hex()} has no certificate to publish")
         self.check(signer.certificate, signer.id)
-        with self._lock:
-            self._known[signer.id] = signer.certificate
+        self.remembered.put_certificate(signer.id, signer.certificate_pem)
 
     def key_for(self, named: bytes) -> PublicKeyTypes | None:
         """The key that id names, if it is one we would act on right now.
@@ -316,20 +343,18 @@ class Authority:
         request per lookup until its results leave the bucket, which is the price of not caching a
         refusal.
         """
-        with self._lock:
-            remembered = self._known.get(named)
+        remembered = self.remembered.certificate(named)
         if remembered is not None:
             try:
-                return self.check(remembered, named)
+                return self.check(load_certificate(remembered), named)
             except ValueError as error:
                 log.info("%s; asking for a newer one", error)
         material = self.fetch(certificate_key(named))
         if material is None:
             return None
-        leaf = load_certificate(material.decode(errors="replace"))
-        key = self.check(leaf, named)
-        with self._lock:
-            self._known[named] = leaf
+        pem = material.decode(errors="replace")
+        key = self.check(load_certificate(pem), named)
+        self.remembered.put_certificate(named, pem)
         return key
 
     def check(self, leaf: x509.Certificate, named: bytes) -> PublicKeyTypes:

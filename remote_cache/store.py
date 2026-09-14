@@ -11,7 +11,12 @@ Blobs are kept one per file rather than as the bundles the bucket holds, because
 of every request: Buck2 uploads, asks for and reads blobs by digest, never by bundle, and a bundle
 only comes into being when a result is published. It also stores a blob once however many bundles
 carry it, evicts at the granularity Buck2 reads at, and serves a ranged read straight from a file.
-Everything else is a row: results are a few hundred bytes and provenance is two hashes.
+Everything else is a row: pointers are a few hundred bytes and provenance is two hashes.
+
+Nothing here is trusted for having been written by us. The directory is shared between every build
+on the machine and outlives all of them, so a pointer is kept as the signed bytes the bucket held and
+is verified again on every hit, the leaf certificates that takes are kept beside it, and a blob is
+hashed against its name on every read. What the store adds is speed, never trust.
 """
 
 import fcntl
@@ -84,12 +89,20 @@ CREATE INDEX IF NOT EXISTS blob_seen ON blob (seen);
 
 CREATE TABLE IF NOT EXISTS result (
     action TEXT PRIMARY KEY,
-    -- Which bundle backs it, so an incomplete result can be made whole rather than missed.
-    bundle TEXT,
-    proto BLOB NOT NULL,
+    -- The `ac/` object as the bucket holds it, signature included. Verified on every hit, so a row
+    -- written by anything but a verified fetch is refused, not served.
+    pointer BLOB NOT NULL,
     seen INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS result_seen ON result (seen);
+
+-- Leaf certificates that passed the chain check, under the key id the bucket files them by. Not
+-- under the row bound: there is one per leaf a configured authority ever issued.
+CREATE TABLE IF NOT EXISTS certificate (
+    id TEXT PRIMARY KEY,
+    pem TEXT NOT NULL,
+    seen INTEGER NOT NULL
+);
 """
 
 
@@ -237,12 +250,23 @@ class Store:
         self._evict_rows()
 
     def blob(self, digest: reapi.Digest) -> bytes | None:
+        """The bytes filed under this digest, if they still hash to it.
+
+        The file is checked on every read, not only when written: the directory is shared and
+        outlives the process, and a pointer verified at hit time proves which digests a result
+        names, not that the file under a digest still holds those bytes. One that does not is
+        dropped, so the next request fetches it again from its bundle.
+        """
         if not signing.is_sha256_hex(digest.hash):
             return None
         path = self._path(digest.hash)
         try:
             data = path.read_bytes()
         except FileNotFoundError:
+            return None
+        if (found := hashlib.sha256(data).hexdigest()) != digest.hash:
+            log.error("blob %s on disk hashes to %s: dropped", digest.hash[:12], found[:12])
+            self._forget([digest.hash])
             return None
         # By hand, because the filesystem's own atime is not to be relied on for this: `relatime`
         # records a read at most once a day, and `noatime`, usual in containers, never. One
@@ -265,7 +289,7 @@ class Store:
 
     def drop_blob(self, digest: reapi.Digest) -> None:
         """Forget a blob's bytes. Where it came from is kept: that is how it can be asked for again."""
-        self._forget([(digest.hash, digest.size_bytes)])
+        self._forget([digest.hash])
 
     def remember(self, digest: reapi.Digest, bundle: str) -> None:
         """Record which bundle a blob arrived in, whether or not its bytes are still here."""
@@ -290,29 +314,44 @@ class Store:
             rows = self._db.execute("SELECT hash FROM blob WHERE bundle = ?", (bundle,)).fetchall()
         return {one for (one,) in rows}
 
-    # Results.
+    # Results: the pointer bytes as the bucket holds them, which the shim verifies before serving.
 
-    def put_result(
-        self, action: reapi.Digest, result: reapi.ActionResult, bundle: str | None = None
-    ) -> None:
+    def put_result(self, action: reapi.Digest, pointer: bytes) -> None:
         with self._lock:
             self._db.execute(
-                "INSERT INTO result (action, bundle, proto, seen) VALUES (?, ?, ?, ?)"
-                " ON CONFLICT (action) DO UPDATE SET proto = ?, bundle = COALESCE(?, bundle), seen = ?",
-                (action.hash, bundle, result.raw, _now(), result.raw, bundle, _now()),
+                "INSERT INTO result (action, pointer, seen) VALUES (?, ?, ?)"
+                " ON CONFLICT (action) DO UPDATE SET pointer = ?, seen = ?",
+                (action.hash, pointer, _now(), pointer, _now()),
             )
             self._db.commit()
         self._evict_rows()
 
-    def result(self, action: reapi.Digest) -> reapi.ActionResult | None:
+    def result(self, action: reapi.Digest) -> bytes | None:
         with self._lock:
-            row = self._db.execute("SELECT proto FROM result WHERE action = ?", (action.hash,)).fetchone()
-        return reapi.ActionResult.parse(cast(bytes, row[0])) if row else None
+            row = self._db.execute("SELECT pointer FROM result WHERE action = ?", (action.hash,)).fetchone()
+        return cast(bytes, row[0]) if row else None
 
-    def result_bundle(self, action: reapi.Digest) -> str | None:
+    def drop_result(self, action: reapi.Digest) -> None:
+        """Forget a pointer that failed verification: the bucket's copy is looked up afresh."""
         with self._lock:
-            row = self._db.execute("SELECT bundle FROM result WHERE action = ?", (action.hash,)).fetchone()
-        return cast("str | None", row[0]) if row else None
+            self._db.execute("DELETE FROM result WHERE action = ?", (action.hash,))
+            self._db.commit()
+
+    # Certificates, the shape `signing.Certificates` asks for.
+
+    def put_certificate(self, named: bytes, pem: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO certificate (id, pem, seen) VALUES (?, ?, ?)"
+                " ON CONFLICT (id) DO UPDATE SET pem = ?, seen = ?",
+                (named.hex(), pem, _now(), pem, _now()),
+            )
+            self._db.commit()
+
+    def certificate(self, named: bytes) -> str | None:
+        with self._lock:
+            row = self._db.execute("SELECT pem FROM certificate WHERE id = ?", (named.hex(),)).fetchone()
+        return cast(str, row[0]) if row else None
 
     def counts(self) -> tuple[int, int]:
         with self._lock:
@@ -322,7 +361,7 @@ class Store:
 
     # Eviction.
 
-    def _forget(self, blobs: Iterable[tuple[str, int]]) -> None:
+    def _forget(self, hashes: Iterable[str]) -> None:
         """Drop the bytes and keep the row, dated from now.
 
         The row's age is what decides when it too is forgotten, and what it has to outlive is the
@@ -332,12 +371,15 @@ class Store:
         """
         freed = 0
         with self._lock:
-            for one, size in blobs:
+            for one in hashes:
                 self._path(one).unlink(missing_ok=True)
-                changed = self._db.execute(
-                    "UPDATE blob SET present = 0, seen = ? WHERE hash = ? AND present = 1", (_now(), one)
-                )
-                freed += size * changed.rowcount
+                row = self._db.execute(
+                    "SELECT size FROM blob WHERE hash = ? AND present = 1", (one,)
+                ).fetchone()
+                if row is None:
+                    continue
+                self._db.execute("UPDATE blob SET present = 0, seen = ? WHERE hash = ?", (_now(), one))
+                freed += cast(int, row[0])
             self._db.commit()
             self.held -= freed
 
@@ -367,7 +409,7 @@ class Store:
         for _, one, size in ages:
             if freed >= over:
                 break
-            going.append((one, size))
+            going.append(one)
             freed += size
         if going:
             self._forget(going)

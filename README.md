@@ -141,6 +141,8 @@ User guides:
 - [Maintaining packages](docs/importer.md): importing and updating packages from upstream distributions,
   local modifications, branch curation
 - [Development boxes](docs/box.md): pinned interactive development environments
+- [Shared build cache](docs/remote-cache.md): configuring it, the keys, the bucket, and reading the shim's
+  counters
 
 Design:
 
@@ -148,9 +150,8 @@ Design:
 - [Package import machinery](docs/packages.md): branch layout, metadata, consistency checks, rebuild
   strategy
 - [Self-hosting approaches](docs/self-host-approaches.md): future design for the BuildRequires cycle
-- [Shared build cache](docs/remote-cache.md): set up for a developer, a build runner, and the bucket
 - [Shared build cache design](docs/remote-cache-design.md): threat model, bucket layout, signatures and
-  keys of tine's own cache
+  keys
 
 ## Development
 
@@ -159,6 +160,7 @@ Design:
 ```sh
 tine buck <arguments>    # run the pinned Buck2, which every other command configures
 tine mount <verb>        # manage external directories mounted over project paths
+tine cache-status        # report on the shim serving the shared build cache
 tine init [<path>]       # write the configuration a project needs, for the checkout this command is in
 tine completion <shell>  # print the completion script for bash, fish or zsh
 ```

@@ -211,9 +211,26 @@ def referenced(
     return digests
 
 
+def accepts_uploads(signer: signing.Signer | None, verifier: signing.Authority | None) -> bool:
+    """Whether Buck may store results and blobs here.
+
+    Refusing unsigned uploads from a reader keeps a build from filling the store with junk and evicting
+    legit content. Advertised as `update_enabled` to Buck2.
+    """
+    return verifier is None or signer is not None
+
+
+NOT_ACCEPTING = "a reader must not store uploads from Buck with a configured authority"
+
+
 class Capabilities:
+    def __init__(self, accepting: bool) -> None:
+        self.accepting = accepting
+
     def get(self, request: reapi.Empty, context: grpc.ServicerContext) -> reapi.ServerCapabilities:
-        return reapi.ServerCapabilities(max_batch_total_size_bytes=MAX_BATCH_SIZE)
+        return reapi.ServerCapabilities(
+            max_batch_total_size_bytes=MAX_BATCH_SIZE, update_enabled=self.accepting
+        )
 
 
 class ActionCache:
@@ -236,6 +253,7 @@ class ActionCache:
         self.counts = local.counts
         self.signer = signer
         self.verifier = verifier
+        self.accepting = accepts_uploads(signer, verifier)
         # One lock per bundle being uploaded, so two results that share a bundle do not both send
         # it. Keyed by name and never cleaned up, which costs a lock object per distinct bundle a
         # shim ever publishes: a few dozen per build.
@@ -253,14 +271,21 @@ class ActionCache:
         if action is None or not signing.is_sha256_hex(action.hash):
             abort(context, grpc.StatusCode.INVALID_ARGUMENT, "no action digest")
         self.counts.add("lookups")
-        result = self.store.result(action)
-        if result is None and self.bucket is not None:
-            result = self._fetch(action)
-        if result is None:
+        found = self._kept(action)
+        if found is None and self.bucket is not None:
+            found = self._fetch(action)
+        if found is None:
             log.info("AC miss %s", action.hash[:12])
             abort(context, grpc.StatusCode.NOT_FOUND, "no result for this action")
+        _, result = found
         blobs = referenced(self.local.blob, result)
-        if blobs is None or not self.local.ensure(blobs):
+        # Present, then read: `ensure` fetches what is missing bundle by bundle, and reading is
+        # what proves the bytes on disk still hash to their names.
+        if (
+            blobs is None
+            or not self.local.ensure(blobs)
+            or any(self.store.blob(one) is None for one in blobs)
+        ):
             # A result we cannot back is a miss, never a hit that fails later: that is the whole
             # reason Buck2's "expired in the RE CAS" error stays out of reach.
             log.info("AC incomplete %s", action.hash[:12])
@@ -276,12 +301,19 @@ class ActionCache:
         action, result = request.action_digest, request.action_result
         if action is None or result is None or not signing.is_sha256_hex(action.hash):
             abort(context, grpc.StatusCode.INVALID_ARGUMENT, "no action digest or no result")
-        self.store.put_result(action, result)
+        if not self.accepting:
+            self.counts.add("uploads refused")
+            abort(context, grpc.StatusCode.PERMISSION_DENIED, NOT_ACCEPTING)
+        prepared = self._prepare(action, result)
+        if prepared is None:
+            return result
+        payload, bundle_name, blobs = prepared
+        self.store.put_result(action, payload)
         log.info("AC put %s", action.hash[:12])
         if self.bucket is not None and self.bucket.writer is not None:
             published = False
             try:
-                self._publish(action, result, self.bucket.writer)
+                self._publish(action, payload, bundle_name, blobs, self.bucket.writer)
                 published = True
             finally:
                 # Counted whatever went wrong, and the error still goes to Buck2, which logs a
@@ -291,7 +323,46 @@ class ActionCache:
                     self.counts.add("publish failures")
         return result
 
-    def _fetch(self, action: reapi.Digest) -> reapi.ActionResult | None:
+    def _trusted(self, action: reapi.Digest, stored: bytes) -> tuple[Pointer, reapi.ActionResult]:
+        """The pointer and result these bytes hold, if this shim may serve them, or a `ValueError`.
+
+        One rule for bytes from the bucket and bytes from the store: the store is written by every
+        build on the machine and outlives them all, so it is trusted no further than the bucket.
+        Once keys are configured, nothing unsigned passes. Without keys, unsigned bytes pass
+        through, and signed ones are still refused rather than taken as a shortcut: that way
+        forgetting the keys cannot quietly turn signing off.
+        """
+        if self.verifier is not None:
+            stored = self.verifier.unwrap(action.hash, stored)
+        elif stored.startswith(signing.MAGIC):
+            raise ValueError("signed, but this cache was given no trusted keys")
+        pointer = ac_unpack(stored)
+        return pointer, reapi.ActionResult.parse(pointer.result)
+
+    def _kept(self, action: reapi.Digest) -> tuple[Pointer, reapi.ActionResult] | None:
+        """What the store holds for this action, verified as if it had just come from the bucket."""
+        stored = self.store.result(action)
+        if stored is None:
+            return None
+        try:
+            return self._trusted(action, stored)
+        except urllib.error.URLError as error:
+            # Verifying what the store holds can still need the bucket: the leaf certificate it was
+            # signed under is fetched when the remembered one has run out. An unreachable bucket
+            # says nothing about this pointer, so it stays where it is and this is a miss, the same
+            # as any other read the bucket could not answer.
+            log.error("AC %s cannot be verified: %s", action.hash[:12], error)
+            self.counts.add("bucket errors")
+            return None
+        except ValueError as error:
+            # Written by something other than a verified fetch, or signed by a leaf that has since
+            # run out. Dropped, so that the bucket's copy is looked up instead.
+            log.error("AC %s in the store refused: %s", action.hash[:12], error)
+            self.counts.add("pointers refused")
+            self.store.drop_result(action)
+            return None
+
+    def _fetch(self, action: reapi.Digest) -> tuple[Pointer, reapi.ActionResult] | None:
         """Read a result and everything it names, or nothing, which leaves this a cache miss.
 
         Fetching the bundle *is* the existence check. Nothing is remembered about what the bucket
@@ -304,30 +375,20 @@ class ActionCache:
             if stored is None:
                 self.counts.add("misses")
                 return None
-            # Nothing below this line is reached for an object we cannot say who wrote, once keys
-            # are configured. Without them the bytes pass through, which is what a bucket nobody
-            # signs into looks like. A signed bucket read by a shim with no keys is a miss rather
-            # than a shortcut: that way forgetting the keys cannot quietly turn signing off.
-            if self.verifier is not None:
-                stored = self.verifier.unwrap(action.hash, stored)
-            elif stored.startswith(signing.MAGIC):
-                raise ValueError("signed, but this cache was given no trusted keys")
-            pointer = ac_unpack(stored)
-            result = reapi.ActionResult.parse(pointer.result)
+            pointer, result = self._trusted(action, stored)
             # Another pointer to the same bundle, usually: the same outputs under an action digest
             # that differs only in configuration. The pointer is signed and every blob it names is
             # content-addressed and already proven, so there is nothing left for the bundle to
-            # prove, and a hit stays at one request rather than one more download of the largest
-            # object in the bucket.
+            # prove, and a hit stays at one request rather than re-downloading the same bundle.
             local = referenced(self.store.blob, result)
             if local is not None and all(self.store.has_blobs(local)):
-                self.store.put_result(action, result, bundle=pointer.bundle)
+                self.store.put_result(action, stored)
                 # The blobs may have come from this machine's own build and know no bundle yet;
                 # the signed pointer says which one has them, and that is what an eviction needs.
                 for digest in local:
                     self.store.remember(digest, pointer.bundle)
                 log.info("AC from bucket %s, %d blobs already here", action.hash[:12], len(local))
-                return result
+                return pointer, result
         except urllib.error.URLError as error:
             # A broken endpoint. Loud, and still a miss: the build rebuilds rather than failing on
             # something the bucket did.
@@ -350,14 +411,14 @@ class ActionCache:
             self.local.refuse(pointer.bundle)
             return None
         self.local.admit(members, pointer.bundle)
-        self.store.put_result(action, result, bundle=pointer.bundle)
+        self.store.put_result(action, stored)
         log.info(
             "AC from bucket %s, bundle %s, %d blobs",
             action.hash[:12],
             pointer.bundle[:12],
             len(blobs),
         )
-        return result
+        return pointer, result
 
     @staticmethod
     def _proven(
@@ -384,33 +445,44 @@ class ActionCache:
             raise ValueError(f"bundle {pointer.bundle[:12]} has contents that make {derived[:12]}")
         return blobs
 
-    def _publish(self, action: reapi.Digest, result: reapi.ActionResult, writer: Writer) -> None:
+    def _prepare(
+        self, action: reapi.Digest, result: reapi.ActionResult
+    ) -> tuple[bytes, str, list[reapi.Digest]] | None:
+        """The pointer for a result Buck handed over, and the blobs it names, or None with the reason logged.
+
+        Signed if this shim signs. The same bytes go into the store and, on a builder, into the
+        bucket: what is served back later is verified like anything else, so the store has to hold
+        the form that passes.
+        """
+        blobs = referenced(self.store.blob, result)
+        if blobs is None or not all(self.store.has_blobs(blobs)):
+            log.error("not storing %s: its outputs were not all uploaded", action.hash[:12])
+            return None
+        bundle_name = bundle.bundle_name(blobs)
+        payload = ac_pack(Pointer(bundle=bundle_name, result=result.raw))
+        if self.signer is not None:
+            # Before anything is kept: a signer that has run out of certificate has nothing to point
+            # at a bundle with, and an unsigned pointer is one this shim would refuse to serve.
+            try:
+                payload = self.signer.wrap(action.hash, payload)
+            except ValueError as error:
+                log.error("not storing %s: %s", action.hash[:12], error)
+                return None
+        return payload, bundle_name, blobs
+
+    def _publish(
+        self,
+        action: reapi.Digest,
+        payload: bytes,
+        bundle_name: str,
+        blobs: list[reapi.Digest],
+        writer: Writer,
+    ) -> None:
         """Write one bundle holding every blob the result names, then the pointer to it.
 
         Bundle first, always: a pointer published ahead of its contents is the one ordering that can
         be observed as a broken hit.
         """
-        blobs = referenced(self.local.blob, result)
-        if blobs is None:
-            log.error("not publishing %s: its outputs cannot be resolved", action.hash[:12])
-            return
-        members = {}
-        for digest in blobs:
-            blob = self.store.blob(digest)
-            if blob is None:
-                log.error("not publishing %s: %s was never uploaded", action.hash[:12], digest)
-                return
-            members[digest.hash] = blob
-        bundle_name = bundle.bundle_name(blobs)
-        payload = ac_pack(Pointer(bundle=bundle_name, result=result.raw))
-        if self.signer is not None:
-            # Before the bundle goes up, not after: a signer that has run out of certificate has
-            # nothing to point at it with.
-            try:
-                payload = self.signer.wrap(action.hash, payload)
-            except ValueError as error:
-                log.error("not publishing %s: %s", action.hash[:12], error)
-                return
         key = f"bundle/{bundle_name}"
         # A bundle is named by what is in it, so one that is already there is already right. Asking
         # costs one request and saves re-sending every byte, which is what makes the indirection
@@ -429,11 +501,17 @@ class ActionCache:
             # newest pointer, so one age rule can cover both.
             shared = bundle_name not in self.local.tainted and writer.refresh(key)
             if not shared:
+                members = {}
+                for digest in blobs:
+                    data = self.store.blob(digest)
+                    if data is None:
+                        log.error("not publishing %s: %s is gone from the store", action.hash[:12], digest)
+                        return
+                    members[digest.hash] = data
                 writer.put(key, bundle.pack(members))
                 self.local.tainted.discard(bundle_name)
         writer.put(f"ac/{action.hash}", payload)
-        # Now that it has one, the result remembers which bundle backs it, and so does every blob.
-        self.store.put_result(action, result, bundle=bundle_name)
+        # Now that it is there, every blob remembers which bundle it can be fetched from again.
         for digest in blobs:
             self.store.remember(digest, bundle_name)
         self.counts.add("published")
@@ -444,14 +522,15 @@ class ActionCache:
             action.hash[:12],
             "shared" if shared else "new",
             bundle_name[:12],
-            len(members),
+            len(blobs),
         )
 
 
 class ContentAddressableStorage:
-    def __init__(self, local: Local) -> None:
+    def __init__(self, local: Local, accepting: bool) -> None:
         self.local = local
         self.store = local.store
+        self.accepting = accepting
 
     def find_missing(
         self, request: reapi.FindMissingBlobsRequest, context: grpc.ServicerContext
@@ -465,6 +544,9 @@ class ContentAddressableStorage:
     def batch_update(
         self, request: reapi.BatchUpdateBlobsRequest, context: grpc.ServicerContext
     ) -> reapi.BatchUpdateBlobsResponse:
+        if not self.accepting:
+            self.local.counts.add("uploads refused")
+            abort(context, grpc.StatusCode.PERMISSION_DENIED, NOT_ACCEPTING)
         answers = []
         for entry in request.blobs:
             status = reapi.Status(code=reapi.OK)
@@ -516,9 +598,10 @@ def resource_digest(resource: str) -> reapi.Digest:
 
 
 class ByteStream:
-    def __init__(self, local: Local) -> None:
+    def __init__(self, local: Local, accepting: bool) -> None:
         self.local = local
         self.store = local.store
+        self.accepting = accepting
 
     def read(
         self, request: reapi.ReadRequest, context: grpc.ServicerContext
@@ -540,6 +623,9 @@ class ByteStream:
     def write(
         self, requests: Iterator[reapi.WriteRequest], context: grpc.ServicerContext
     ) -> reapi.WriteResponse:
+        if not self.accepting:
+            self.local.counts.add("uploads refused")
+            abort(context, grpc.StatusCode.PERMISSION_DENIED, NOT_ACCEPTING)
         digest = None
         chunks: list[bytes] = []
         for request in requests:
@@ -586,8 +672,8 @@ def handlers(
     means the method names Buck2 calls are visible rather than buried.
     """
     action_cache = ActionCache(local, signer, verifier)
-    cas = ContentAddressableStorage(local)
-    stream = ByteStream(local)
+    cas = ContentAddressableStorage(local, action_cache.accepting)
+    stream = ByteStream(local, action_cache.accepting)
 
     # The casts are load-bearing: grpc ships no type information, and without them the checker
     # cannot see that these are handlers.
@@ -605,7 +691,10 @@ def handlers(
         return cast(grpc.GenericRpcHandler, grpc.method_handlers_generic_handler(service, methods))
 
     return (
-        generic(reapi.CAPABILITIES, {"GetCapabilities": unary(Capabilities().get, reapi.Empty.parse)}),
+        generic(
+            reapi.CAPABILITIES,
+            {"GetCapabilities": unary(Capabilities(action_cache.accepting).get, reapi.Empty.parse)},
+        ),
         generic(
             reapi.ACTION_CACHE,
             {
@@ -824,7 +913,7 @@ def configured_bucket(args: argparse.Namespace) -> Bucket | None:
 
 
 def configured_trust(
-    args: argparse.Namespace, bucket: Bucket | None
+    args: argparse.Namespace, bucket: Bucket | None, store: Store
 ) -> tuple[signing.Signer | None, signing.Authority | None]:
     """Who this signs as and whose results it will serve, and the rules about how they go together.
 
@@ -832,6 +921,9 @@ def configured_trust(
     bucket operator is the adversary the signature exists for, and a reader that quietly took
     unsigned objects because nobody gave it keys would be trusting exactly that operator.
     Forgetting the keys has to fail at startup, never downgrade.
+
+    The store keeps the leaf certificates the authority accepts, so that what it holds can be
+    verified after a restart without asking the bucket.
     """
     signer = None
     trust = None
@@ -847,7 +939,7 @@ def configured_trust(
             if bucket is None:
                 sys.exit("--authority needs a bucket: leaf certificates are fetched from it")
             trust = signing.Authority(
-                (one.read_text(encoding="utf-8") for one in args.authority), bucket.reader.get
+                (one.read_text(encoding="utf-8") for one in args.authority), bucket.reader.get, store
             )
     except (ValueError, OSError, UnsupportedAlgorithm) as error:
         sys.exit(str(error))
@@ -971,7 +1063,6 @@ def main() -> None:
         print(json.dumps(running, indent=2, sort_keys=True))
         return
     bucket = configured_bucket(args)
-    signer, verifier = configured_trust(args, bucket)
     try:
         store = Store(args.store, max_bytes=args.store_size * 1_000_000, max_rows=args.index_rows)
     except RuntimeError as error:
@@ -979,6 +1070,7 @@ def main() -> None:
         # than a traceback: sharing one shim is the intended arrangement, starting two is not.
         sys.exit(str(error))
     with closing(store):
+        signer, verifier = configured_trust(args, bucket, store)
         serve(
             args.port,
             args.workers,

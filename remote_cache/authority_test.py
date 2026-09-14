@@ -156,7 +156,7 @@ class TestClock(ChainCase):
 
     def moving(self, offset: datetime.timedelta) -> signing.Authority:
         return signing.Authority(
-            [self.ca], self.store.get, lambda: datetime.datetime.now(datetime.UTC) + offset
+            [self.ca], self.store.get, clock=lambda: datetime.datetime.now(datetime.UTC) + offset
         )
 
     def test_a_leaf_that_expires_while_we_run_is_refused_until_renewed(self) -> None:

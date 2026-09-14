@@ -72,6 +72,16 @@ class TestBlobs(StoreCase):
         self.store.put_blob(digest, body)
         self.assertEqual(self.store.held, held)
 
+    def test_a_file_that_no_longer_hashes_to_its_name_is_dropped_on_read(self) -> None:
+        """The directory is shared and outlives the process, so the name proves nothing about the bytes."""
+        digest, body = blob(b"honest")
+        self.store.put_blob(digest, body, bundle=BUNDLE)
+        (self.root / "blobs" / digest.hash[:2] / digest.hash).write_bytes(b"a lie!")
+        self.assertIsNone(self.store.blob(digest))
+        self.assertEqual(self.store.has_blobs([digest]), [False])
+        self.assertEqual(self.store.held, 0)
+        self.assertEqual(self.store.bundle_of(digest), BUNDLE)
+
 
 class TestPersistence(StoreCase):
     def test_what_was_stored_is_there_after_a_restart(self) -> None:
@@ -79,13 +89,17 @@ class TestPersistence(StoreCase):
         digest, body = blob(b"outlives the process")
         self.store.put_blob(digest, body, bundle=BUNDLE)
         action = reapi.Digest(hash="a" * 64, size_bytes=1)
-        self.store.put_result(action, reapi.ActionResult.parse(b""), bundle=BUNDLE)
+        self.store.put_result(action, b"the pointer, as the bucket holds it")
+        self.store.put_certificate(b"\x01\x02", "-----BEGIN CERTIFICATE-----")
 
         again = self.restart()
         self.assertEqual(again.blob(digest), body)
         self.assertEqual(again.bundle_of(digest), BUNDLE)
-        self.assertIsNotNone(again.result(action))
-        self.assertEqual(again.result_bundle(action), BUNDLE)
+        self.assertEqual(again.result(action), b"the pointer, as the bucket holds it")
+        self.assertEqual(again.certificate(b"\x01\x02"), "-----BEGIN CERTIFICATE-----")
+        self.assertIsNone(again.certificate(b"\x03"))
+        again.drop_result(action)
+        self.assertIsNone(again.result(action))
 
     def test_a_blob_deleted_behind_its_back_is_noticed_at_startup(self) -> None:
         """A kill between the file and the row, or a directory emptied by hand."""
@@ -237,7 +251,7 @@ class TestRowBound(StoreCase):
         """Losing one costs a bucket request, which is the cheapest thing here to lose."""
         for index in range(self.MAX_ROWS * 2):
             action = reapi.Digest(hash=f"{index:064x}", size_bytes=1)
-            self.store.put_result(action, reapi.ActionResult.parse(b""), bundle=BUNDLE)
+            self.store.put_result(action, b"")
         self.assertLessEqual(self.store.counts()[1], self.MAX_ROWS)
 
 
