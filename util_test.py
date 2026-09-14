@@ -3,6 +3,7 @@
 buck test tine//:test
 """
 
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +15,26 @@ def scratch(case: unittest.TestCase) -> Path:
     tmp = tempfile.TemporaryDirectory(prefix="util-test.")
     case.addCleanup(tmp.cleanup)
     return Path(tmp.name)
+
+
+class TestAtomicTextWriter(unittest.TestCase):
+    def test_keeps_the_mode_of_an_existing_file(self) -> None:
+        path = scratch(self) / "generated"
+        path.write_text("one\n")
+        path.chmod(0o600)
+        util.atomic_write_text(path, "two\n")
+        self.assertEqual(path.read_text(), "two\n")
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    def test_a_failed_write_leaves_no_trace(self) -> None:
+        root = scratch(self)
+        path = root / "generated"
+        path.write_text("one\n")
+        with self.assertRaises(RuntimeError), util.atomic_text_writer(path) as stream:
+            stream.write("two\n")
+            raise RuntimeError
+        self.assertEqual(path.read_text(), "one\n")
+        self.assertEqual([p.name for p in root.iterdir()], ["generated"])
 
 
 class TestWriteIfChanged(unittest.TestCase):
