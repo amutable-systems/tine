@@ -45,6 +45,9 @@ CAP_SETFCAP = 31
 CLONE_NEWNET = 0x40000000
 CLONE_NEWNS = 0x00020000
 CLONE_NEWUSER = 0x10000000
+IFF_UP = 0x1
+SIOCGIFFLAGS = 0x8913
+SIOCSIFFLAGS = 0x8914
 LINUX_CAPABILITY_U32S_3 = 2
 LINUX_CAPABILITY_VERSION_3 = 0x20080522
 MNT_DETACH = 2
@@ -795,6 +798,19 @@ def _filesystem_key(filesystem: Filesystem) -> tuple[tuple[str, ...], bool]:
     return parts, isinstance(filesystem, Bind)
 
 
+def _loopback_up() -> None:
+    """Bring `lo` up in a fresh network namespace."""
+    import fcntl
+    import socket
+    import struct
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        # struct ifreq: the name, the flags, and padding the kernel does not read for these two.
+        request = struct.pack("16sH22x", b"lo", 0)
+        flags = struct.unpack_from("16sH", fcntl.ioctl(probe, SIOCGIFFLAGS, request))[1]
+        fcntl.ioctl(probe, SIOCSIFFLAGS, struct.pack("16sH22x", b"lo", flags | IFF_UP))
+
+
 def enter(sandbox: Sandbox) -> None:
     for filesystem in sandbox.filesystems:
         if not os.path.isabs(filesystem.target):
@@ -823,6 +839,8 @@ def enter(sandbox: Sandbox) -> None:
                 "tine cannot create the sandbox mount namespace; check the host's namespace policy",
             ) from error
         raise
+    if namespaces & CLONE_NEWNET:
+        _loopback_up()
 
     if not user_namespace:
         mount(None, _ROOT, flags=MS_SLAVE | MS_REC)
