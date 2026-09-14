@@ -239,30 +239,20 @@ def remove_path(path: Path, with_parents: bool = False) -> None:
 
 
 @contextmanager
-def atomic_text_writer(path: Path, *, mode: int | None = None) -> Iterator[TextIO]:
+def atomic_text_writer(path: Path) -> Iterator[TextIO]:
     """Yield a UTF-8 stream and atomically replace its destination on success."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    destination_mode = mode
-    if destination_mode is None:
-        destination_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
-    temporary: Path | None = None
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    temporary = Path(name)
     try:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-            newline="\n",
-        ) as stream:
-            temporary = Path(stream.name)
-            yield cast(TextIO, stream)
-        temporary.chmod(destination_mode)
+        with open(fd, "w", encoding="utf-8", newline="\n") as stream:
+            yield stream
+        temporary.chmod(mode)
         temporary.replace(path)
     finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+        # A successful replace already moved it away.
+        temporary.unlink(missing_ok=True)
 
 
 @contextmanager
@@ -281,9 +271,9 @@ def text_destination(path: Path) -> Iterator[TextIO]:
         yield stream
 
 
-def atomic_write_text(path: Path, content: str, *, mode: int | None = None) -> None:
+def atomic_write_text(path: Path, content: str) -> None:
     """Atomically replace a path with UTF-8 text."""
-    with atomic_text_writer(path, mode=mode) as stream:
+    with atomic_text_writer(path) as stream:
         stream.write(content)
 
 
