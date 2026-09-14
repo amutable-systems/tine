@@ -24,6 +24,7 @@ import unittest.mock
 from pathlib import Path
 from typing import cast, override
 
+import cache_shim
 import tine
 
 TOOL_PATH = Path(__file__).parent / "tine"
@@ -339,6 +340,31 @@ class TestRenderLocalConfigBlock(RepositoryTestCase):
         )
         self.assertEqual(tine.read_project_buckconfig(self.repo)["project"][tine.PROJECT_IGNORE], ".git")
 
+    def cache(self) -> cache_shim.CacheSettings:
+        table = {"cache": {"read_url": "https://cache.example", "unsigned": True}}
+        cache = cache_shim.settings(table, self.repo, tine.SETTINGS)
+        assert cache is not None
+        return cache
+
+    def test_a_configured_cache_is_where_buck_reads_its_address(self) -> None:
+        self.commit()
+        cache = self.cache()
+        lines = tine.render_local_config_block(self.repo, [], cache)
+        self.assertIn(f"[{tine.RE_CLIENT}]", lines)
+        self.assertIn(f"address = 127.0.0.1:{cache.port}", lines)
+        # Buck defaults this to true, and the shim serves plaintext on the loopback.
+        self.assertIn("tls = false", lines)
+        self.assertNotIn(f"[{tine.RE_CLIENT}]", tine.render_local_config_block(self.repo, []))
+
+    def test_the_address_reads_back_out_of_the_block(self) -> None:
+        self.commit()
+        cache = self.cache()
+        tine.refresh_local_buckconfig(self.repo, [], cache)
+        generated = tine.read_generated_buckconfig(self.repo / tine.LOCAL)
+        self.assertEqual(generated[tine.RE_CLIENT]["address"], f"127.0.0.1:{cache.port}")
+        # The project's own view of its configuration excludes what tine wrote there.
+        self.assertNotIn(tine.RE_CLIENT, tine.read_project_buckconfig(self.repo))
+
 
 class TestMergeGeneratedConfigBlock(unittest.TestCase):
     """The block is this command's; the rest of the file stays the developer's."""
@@ -477,6 +503,16 @@ class TestLocalSettings(unittest.TestCase):
         (root / tine.LOCAL_SETTINGS).write_text('[commands.check]\nsteps = [["make"]]\n')
         with self.assertRaisesRegex(SystemExit, "must start with buck, not make"):
             tine.validate_commands(tine.project_settings(root).get("commands", {}))
+
+    def test_cache_keys_describing_the_machine_are_refused_when_committed(self) -> None:
+        """A branch must not move the store or weaken trust for whoever checks it out."""
+        for key in sorted(cache_shim.LOCAL_ONLY):
+            committed = f'[cache]\nread_url = "https://cache.example"\n{key} = true\n'
+            with self.subTest(key=key), self.assertRaisesRegex(SystemExit, f"sets {key}, which belong in"):
+                self.settings(committed=committed)
+        local = '[cache]\ndir = "store"\ns3_insecure = true\nunsigned = true\n'
+        settings = self.settings(committed='[cache]\nread_url = "https://cache.example"\n', local=local)
+        self.assertEqual(sorted(settings["cache"]), ["dir", "read_url", "s3_insecure", "unsigned"])
 
 
 class TestBuckconfigOverrides(unittest.TestCase):
@@ -1877,9 +1913,88 @@ class TestBuckCommand(unittest.TestCase):
     @contextlib.contextmanager
     def running(self) -> collections.abc.Iterator[list[object]]:
         execve: list[object] = []
-        with unittest.mock.patch.object(tine, "buck2_binary", return_value=self.binary):
-            with unittest.mock.patch.object(os, "execve", side_effect=lambda *a: execve.extend(a)):
-                yield execve
+        self.killed: list[object] = []
+        self.served: list[object] = []
+        with contextlib.ExitStack() as patches:
+            patch = unittest.mock.patch.object
+            patches.enter_context(patch(tine, "kill_daemon", side_effect=lambda *a: self.killed.append(a)))
+            patches.enter_context(patch(cache_shim, "ensure", side_effect=lambda *a: self.served.append(a)))
+            patches.enter_context(patch(tine, "buck2_binary", return_value=self.binary))
+            patches.enter_context(patch(os, "execve", side_effect=lambda *a: execve.extend(a)))
+            yield execve
+
+    def configure_cache(self) -> cache_shim.CacheSettings:
+        (self.root / tine.CONFIG).write_text('[cache]\nread_url = "https://cache.example"\n')
+        (self.root / tine.LOCAL_SETTINGS).write_text("[cache]\nunsigned = true\n")
+        cache = cache_shim.settings(tine.project_settings(self.root), self.root, tine.SETTINGS)
+        assert cache is not None
+        return cache
+
+    def test_no_cache_configured_starts_no_shim(self) -> None:
+        with self.running():
+            tine.buck_command(["build", "//..."])
+        self.assertEqual(self.served, [])
+        self.assertEqual(self.killed, [])
+
+    def test_a_subcommand_that_runs_no_action_starts_nothing(self) -> None:
+        """`tine buck kill` starting a cache that then idles for fifteen minutes reads as a fault."""
+        self.configure_cache()
+        inert = (
+            ["complete", "--target", "//"],
+            ["kill"],
+            ["killall"],
+            ["status"],
+            ["clean"],
+            ["log", "what-ran"],
+        )
+        for argv in inert:
+            with self.subTest(argv=argv), self.running():
+                tine.buck_command(argv)
+                self.assertEqual(self.served, [])
+
+    def test_a_configured_cache_reaches_the_generated_block(self) -> None:
+        cache = self.configure_cache()
+        with self.running():
+            tine.buck_command(["build", "//..."])
+            self.assertEqual(len(self.served), 1, "the shim buck is about to talk to has to exist")
+            self.assertEqual(len(self.killed), 1, "a daemon predating the address has to go")
+            self.killed.clear()
+            tine.buck_command(["build", "//..."])
+            self.assertEqual(self.killed, [], "an unchanged address is no reason to kill anything")
+        self.assertEqual(
+            tine.read_generated_buckconfig(self.root / tine.LOCAL)[tine.RE_CLIENT], tine.cache_client(cache)
+        )
+
+    def test_starting_the_shim_takes_the_address_out_first(self) -> None:
+        """Buck fails outright on a cache that does not answer, so the Buck starting it must know none."""
+        cache = self.configure_cache()
+        tine.refresh_local_buckconfig(self.root, [], cache)
+        with self.running():
+            buck = tine.before_shim(
+                self.root, tine.read_project_buckconfig(self.root), tine.project_settings(self.root), "x"
+            )
+        self.assertEqual(buck, [str(self.binary), tine.FLAG_ISOLATION, "x"])
+        self.assertEqual(self.killed, [(self.binary, "x")])
+        self.assertNotIn(tine.RE_CLIENT, tine.read_generated_buckconfig(self.root / tine.LOCAL))
+        # With no daemon that could have read an address, none is replaced.
+        with self.running():
+            tine.before_shim(
+                self.root, tine.read_project_buckconfig(self.root), tine.project_settings(self.root), None
+            )
+        self.assertEqual(self.killed, [])
+
+    def test_a_project_may_not_name_the_cache_address_itself(self) -> None:
+        self.configure_cache()
+        (self.root / tine.LOCAL).write_text(f"[{tine.RE_CLIENT}]\naddress = 127.0.0.1:1\n")
+        with self.running(), self.assertRaisesRegex(SystemExit, f"\\[{tine.RE_CLIENT}\\] is reserved"):
+            tine.buck_command(["build", "//..."])
+
+    def test_a_project_naming_it_with_no_cache_configured_is_its_own_business(self) -> None:
+        (self.root / tine.LOCAL).write_text(f"[{tine.RE_CLIENT}]\naddress = 127.0.0.1:1\n")
+        with self.running() as execve:
+            tine.buck_command(["build", "//..."])
+        self.assertTrue(execve)
+        self.assertEqual(self.killed, [])
 
     def test_it_configures_then_hands_over(self) -> None:
         with self.running() as execve:
@@ -1978,7 +2093,7 @@ class TestBuckCommand(unittest.TestCase):
                     unittest.mock.patch.object(tine, "refresh_local_buckconfig") as refresh,
                 ):
                     tine.buck_command(["build", "tine//..."])
-                refresh.assert_called_once_with(self.root, list(tine.VCS_IGNORES))
+                refresh.assert_called_once_with(self.root, list(tine.VCS_IGNORES), None)
 
     def test_a_run_without_a_home_gets_one(self) -> None:
         environment = dict(os.environ)
@@ -2973,7 +3088,8 @@ steps = [["buck", "test", "//..."]]
             contextlib.redirect_stdout(printed),
         ):
             tine.main(["help"])
-        self.assertIn("    check       build and test the image\n", printed.getvalue())
+        # Padded to the longest name, so match the columns rather than one of their widths.
+        self.assertRegex(printed.getvalue(), r"\n    check +build and test the image\n")
 
 
 class TestMain(unittest.TestCase):

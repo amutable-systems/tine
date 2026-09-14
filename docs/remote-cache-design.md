@@ -8,6 +8,8 @@ that existing implementations such as [bazel-remote](https://github.com/buchgr/b
 being robust against data corruption, reading with plain HTTP/public buckets, and functioning with dumb
 bucket expiry rules.
 
+[remote-cache.md](remote-cache.md) documents how to configure and run it.
+
 ## Threat model
 
 **The bucket operator is not trusted.** The storage provider, whatever fronts it, and anyone who ever
@@ -21,6 +23,13 @@ can rebuild and compare.
 
 **A developer machine is not trusted.** They only get read access and no trusted signing certificate, and
 thus cannot poison the cache.
+
+**The local store is trusted no further than the bucket.** Every build machine (of the same user) reaches
+its shim, and the store directory is shared, so both are ways for one build to influence the next one. A
+shim with an authority therefore serves no unsigned result. Pointers and blobs in the store are verified
+exactly as from the bucket. A shim without a signing key also refuses what Buck uploads, since it could
+never serve it back. So a store may be shared between checkouts and kept across jobs without becoming a
+second, unchecked cache.
 
 **Pull requests are safe only on a hermetic builder.** The action digest covers the command and every
 declared input, so a branch that changes any of them builds under a different key and cannot overwrite
@@ -57,7 +66,7 @@ Terms, as RE-API and this document use them:
 Read path:
 
 - Buck2 computes the action digest `d` and asks the shim for its result.
-- Shim has the result locally: return it.
+- Shim has the pointer locally: verify it as below, return the result. Failure: drop it, carry on.
 - Shim `GET`s the pointer `ac/<d>`. Missing: cache miss. Otherwise verify the builder's signature over `d`
   and the pointer's content, and that the signing certificate (`GET keys/<key id>` when unknown) chains
   to the configured authority. Failure: miss, logged.
@@ -92,26 +101,8 @@ systems (directory index lookups and `readdir` over hundreds of thousands of ent
 
 `<set digest>` is the hash of the **sorted set of member digests**, not of the container bytes; so two
 actions with identical outputs share one bundle, a result naming one output under two paths shares it
-too, and the container encoding can change without renaming anything.
-
-Whatever fronts the bucket may cache `bundle/` freely: those objects are immutable, and a bundle is named by
-its content. It must not cache `ac/` or `keys/`: they are rewritten in place, and it must not cache a 404
-for anything.
-
-This was checked with [Cloudflare R2](https://www.cloudflare.com/products/r2/): its `r2.dev` domain caches
-none of these. It is also rate-limited and documented as not for production, so a big deployment needs a
-custom domain with caching left off for those two prefixes.
-
-The domain should serve every object as `application/octet-stream` with `X-Content-Type-Options:
-nosniff`. The shim never looks at a content type, but whoever holds the write key can store HTML under
-any key with a content type of their choosing, and a public read domain that serves it as such is a place
-to host phishing pages. That is the one thing bucket write access buys that is not about the cache.
-
-Whether the bucket is public is the deployment's choice. A cached result is the bytes anyone gets by
-building the repository locally and contains the pieces of a built image, so the bucket should be private
-exactly if the repository and its published images are both private.
-
-A public bucket needs only a base URL on the read side (developer machines). A private one needs a read
+too, and the container encoding can change without renaming anything. Requirements are documented in
+the [user doc's bucket setup](remote-cache.md#the-bucket). A private bucket needs a read
 token, and against R2 that means SigV4-signed GETs, since its S3 endpoint has no bearer-token mode. This
 is not currently implemented, but can easily be done when needed: reads are done in `Reader.get(key)` in
 `bucket.py`, which can be extended.
@@ -133,8 +124,11 @@ action digests, so anything shared would need its own signing rule.
 | Serve their own certificate and results | the certificate must chain to an authority given out of band |
 | Replay an older pointer under its own action | nothing, and nothing needs to: see below |
 | Replay a pointer signed by a key since retired | that key's certificate must be valid now |
-| Copy a pointer from a bucket sharing the CA | nothing: one authority is one bucket, below |
+| Copy a pointer from a bucket sharing the CA | nothing: [one CA per bucket](remote-cache.md#the-keys) |
 | Delete anything | nothing. It just costs a rebuild |
+| Write a pointer into the local store | it is verified like one from the bucket, on every hit |
+| Rewrite a blob file in the local store | it is hashed against its name on every read |
+| Upload a result to a reader's shim | refused: without a signing key it could never be served |
 
 The replay row is not a gap. An action digest covers the command and every input, so an older result filed
 under it is a result of *the same action*, and serving it is what a cache is for. What replay does buy an
@@ -181,16 +175,9 @@ as old as its newest pointer. The probe and the upload are under one lock per bu
 that finish together often share a bundle, and a publisher that assumed another would finish could write
 its pointer first.
 
-**Expiry** is the bucket's own age rule. Requirements:
-
- - `ac/` and `bundle/` share one lifetime, since a bundle is never older than its newest pointer; a
-   bundle lifetime shorter than the pointer's would result in dangling pointers. A pointer whose bundle
-   has gone anyway is still only a miss, but it breaks the cache's effectiveness.
- - `keys/` may share that lifetime only if it is at least the leaf's validity: the certificate is
-   written when a builder starts and needed until it expires.
-
-The builder gets told the lifetime, so that it stops signing before a result would outlive its
-certificate.
+**Expiry** is the bucket's own age rule, whose requirements are in the [user doc's bucket
+setup](remote-cache.md#the-bucket). The builder gets told the lifetime (`object_lifetime`), so that it
+stops signing before a result would outlive its certificate.
 
 ## Bundle container format
 
@@ -215,16 +202,20 @@ later build than the one that looked up the **Result**. The S3 bucket stores **B
 local has to hold the unpacked bundle members and remember which bundle each came from: the bucket only
 knows whole bundles under set digests and cannot answer "give me this blob" at all.
 
-That is a directory, passed to the shim by `tine`. On a developer machine that is
-`$XDG_CACHE_HOME/tine/cache`, `~/.cache/tine/cache` by default, where it is fine to lose and also will
-only grow up to 1 GB. A builder gets a dedicated long-lived directory outside any per-job scratch space,
-so that the next job does not start cold.
+That is a directory, passed to the shim by `tine`, see the [local store user
+documentation](remote-cache.md#the-local-store).
 
 Output bytes are files. Bounded by size and evicted least recently used. Losing one costs a bundle fetch.
 
-Everything else is a row in SQLite: results, and which bundle carried an output. They are bounded by
+Everything else is a row in SQLite: pointers, and which bundle carried an output. They are bounded by
 count and outlive the bytes they describe, so an evicted output can be fetched again from its bundle when
 Buck2 asks for it by digest.
+
+The store holds nothing it would not accept from the bucket. A pointer is kept as the signed bytes the
+bucket held and is verified on every hit, the leaf certificates are stored, and a blob is verified on
+every read just like one from the bucket. A row that fails is dropped and the bucket asked instead. So a
+local entry lives exactly as long as a bucket entry would, while its leaf is valid, and a reader cannot
+write to the store if it configures an authority.
 
 One process holds the store at a time, and the store is disposable.
 
@@ -256,79 +247,44 @@ constant, not a format change.
 
 Two startup checks keep a misconfiguration from becoming a silent downgrade:
 
-- A builder is given the same `--authority` certificates as a reader, and refuses to start when its own
-  leaf certificate does not chain to one of them, or when it has a signing key and no `--authority` at all.
+- A builder is given the same `authority` certificates as a reader, and refuses to start when its own
+  leaf certificate does not chain to one of them, or when it has a signing key and no `authority` at all.
   Either would fill a cache nobody can read.
 - A reader refuses to start without an authority. Forgotten keys must never turn into trusting the bucket
-  operator. (Note: there is an explicit `--unsigned` option for local testing).
+  operator. (Note: there is an explicit `unsigned` setting for local testing).
 
 ## The keys
 
 Two keys per builder. The **CA key** lives in the build server's TPM and never leaves it; it signs the
-leaf certificate, once per rotation. The **leaf key** is an ordinary Ed25519 key file on the same machine;
-it signs every pointer. There is no flat list of trusted keys: a reader is given CA certificates
-(`--authority`) and nothing else.
-
-**Use a separate CA per bucket.** A reader accepts any leaf its CA has ever issued, so a CA shared between
-a staging and a production bucket would let whoever writes both copy pointers from one to the other. The
-CA issues leaf certificates for its one bucket and nothing else.
+leaf certificate, once per rotation. The **leaf key** is an ordinary Ed25519 key file on the same
+machine; it signs every pointer. There is no flat list of trusted keys: a reader is given CA certificates
+(`authority`) and nothing else. Provisioning and rotating them is described in the [user doc's keys
+section](remote-cache.md#the-keys).
 
 **Why two levels.** TPM signing is too slow for hundreds of results per build, and a TPM has no Ed25519.
 A leaf key on disk is acceptable because the machine is already trusted to sign releases, and unlike the
 CA key the leaf expires. Ed25519 because it is small, fast, and one algorithm means one code path.
 
 **Distribution.** The builder publishes its leaf certificate to `keys/<key id>` at startup. A reader
-fetches an unknown key id once, validates the chain and remembers it, so rotating the leaf changes nothing
-on any reader. A remembered certificate that has expired is fetched once more before a pointer is refused:
-a renewed certificate keeps the key and so the key id, and the bucket may hold a newer one.
+fetches an unknown key id once, validates the chain and keeps it in its store, so rotating the leaf changes
+nothing on any reader, and what the store holds can be verified with the bucket unreachable. A kept
+certificate that has expired is fetched once more before a pointer is refused: a renewed certificate keeps
+the key and so the key id, and the bucket may hold a newer one.
 
 **What a reader checks on a leaf**: it chains to a configured CA, it is valid now by the reader's own clock
 (on every use, not once when fetched), it is not itself a CA, it has `KeyUsage digitalSignature`, and it
 holds the key it was filed under. The key id only selects the certificate; the signature is always checked
 against the key inside it.
 
-**Provisioning a leaf**: an Ed25519 key made on the builder and readable by the shim alone; a certificate
-from the bucket's CA with `BasicConstraints CA:FALSE` and `KeyUsage digitalSignature`; `notBefore`
-backdated by a day, for readers whose clock lags; a validity of the rotation period plus the bucket's
-object lifetime; a builder restart.
-
 **Lifetimes.** Only the reader's clock bounds a stolen leaf key: a signing time in the payload would be
 chosen by whoever holds the key, so none is recorded. A pointer is read for as long as the bucket keeps
 it, so the leaf must outlive the last pointer signed under it by the object lifetime: that is the
-validity rule above, and the builder refuses to sign once less than the object lifetime is left on its
-certificate. A stolen leaf stays good until its `notAfter`; the answer is rotating the CA.
-
-**Rotating the CA**: add the new certificate to every reader's `--authority`, switch the builder to a leaf
-under it, remove the old certificate once nothing signed under it is left in the bucket. Readers accept
-several authorities for this. An expired authority is dropped with a warning at startup; none left is a
-startup error.
+validity rule when [provisioning a leaf](remote-cache.md#the-keys), and the builder refuses to sign once
+less than the object lifetime is left on its certificate. A stolen leaf stays good until its `notAfter`;
+the answer is rotating the CA.
 
 **Not here**: no revocation list and no transparency log, rotating the CA is the revocation; no
 intermediate CAs, a leaf must be issued directly by a configured authority.
-
-## Error reporting
-
-Buck2 reports every kind of failure as a cache miss, and a failed upload as a warning it then ignores. So a
-reader with the wrong authority, a bucket gone private and a builder whose uploads fail all look like a
-slow build. The shim logs each event with its reason, and counts them by kind; `--status` prints the
-counters of the shim serving a store, with its address, bucket, trust and store sizes, as JSON.
-
-When a build is slower than it should be, read the counters of the machine's shim first:
-
-- **`misses` high, `hits` near zero**: the bucket has nothing for this build. Check the builder's
-  `published` counter, and that both build the same configuration.
-- **`pointers refused`**: signatures do not check out. Check the reader's `--authority`, then the log for
-  the key id and the reason.
-- **`bundles refused`**: a bundle did not match its result. Read the log; the builder re-uploads that
-  bundle on its next publish.
-- **`bucket errors`**: the bucket answered badly or not at all. The log has the HTTP status: network,
-  permissions, or the read token.
-- **`bundles gone`**: pointers whose bundle has expired. Check the bucket's age rules if it keeps happening.
-- **`incomplete`**: a result whose outputs could not all be had. Usually `bundles gone` in disguise.
-- **`publish failures`** on a builder: uploads fail and Buck2 only warned. Check the write key and the log.
-
-A shim that does not answer `--status` is not running; the build tool starts one on the next build.
-
 
 ## What Buck2 asks for
 
@@ -356,10 +312,18 @@ Buck2 also stores one extra empty result per cache to check it may write at all
 (`buck2_execute_impl/src/executors/empty_action_result.rs`), under a digest built from a compiled-in
 command and the platform properties. One per platform.
 
+Buck2 fails an action outright when the cache it was configured with does not answer, rather than
+treating it as a miss. So `tine buck` brings the shim up through a Buck that knows no cache address, and
+only then writes the address and replaces the daemon.
+
 ## Running it
 
-One shim per user, started by the build tool before a build if nothing is serving that user's store yet,
+One shim per user, started by `tine buck` before a build if nothing is serving that user's store yet,
 and exiting on its own after being idle for 15 minutes. The store, the status socket and the port are all
 per user for the same reason: a second user's shim must not find the first's port taken and the first's
 store locked. A CI runner that is new for every job either keeps the local store on a persistent
 volume/directory, or pays the bundle fetches every time.
+
+The shim runs in its own box, `tine//remote_cache:shim.box`, which carries the grpc and cryptography
+packages it needs, entered host-integrated so that it sees the store, the key files and the network. Its
+unit tests run in that box too, and drive a pinned SeaweedFS for the S3-and-HTTP interop.

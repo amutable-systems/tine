@@ -9,8 +9,12 @@ box_python_test(
     deps = [
         "//:util",
         "//box:isolation",
+        # For the status socket the launcher and the shim have to agree on.
+        "//remote_cache:lib",
     ],
     srcs = [
+        "cache_shim.py",
+        "cache_shim_test.py",
         "tine",
         "tine.py",
         "tine_test.py",

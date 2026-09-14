@@ -1,155 +1,156 @@
 # The shared build cache
 
 Buck can take an action's result over its [remote execution
-API](https://buck2.build/docs/users/remote_execution/) instead of running it locally.
-[bazel-remote](https://github.com/buchgr/bazel-remote) and similar projects can use an S3 bucket as a
-storage backend to implement a shared cache for Buck. Then a developer machine or an isolated CI build
-can download all the expensive package/Go/Rust etc. builds from the cache instead of having to re-do them
-on their own machine, and only build the inputs that were actually changed locally. Which actions are
-cached at all is decided in the graph, not here: see [reproducibility and
-caching](design.md#reproducibility-and-caching).
+API](https://buck2.build/docs/users/remote_execution/) instead of running it locally. Then a developer
+machine or an isolated CI build can download all the expensive package/Go/Rust etc. builds from the cache
+instead of having to re-do them on their own machine, and only build the inputs that were actually
+changed locally. Which actions are cached at all is decided in the graph, not here: see [reproducibility
+and caching](design.md#reproducibility-and-caching).
 
-Every party runs a local `bazel-remote` instance:
+Tine implements such a cache over an S3 bucket, with unique properties: not trusting the cloud provider,
+being robust against data corruption, reading with plain HTTP/public buckets, and functioning with dumb
+bucket expiry rules. See the [design document](remote-cache-design.md) about how this is achieved.
+
+Every party runs a local cache shim:
 
 ```mermaid
 flowchart LR
     subgraph dev["developer machine"]
-        dev_buck[buck] -->|gRPC| dev_shim["bazel-remote<br>~/.cache"]
+        dev_buck[buck] -->|gRPC| dev_shim["shim<br>~/.cache"]
     end
     subgraph runner["trusted infra builder"]
-        run_buck[buck] -->|gRPC| run_shim["bazel-remote<br>/var/cache"]
+        run_buck[buck] -->|gRPC| run_shim["shim<br>/var/cache"]
     end
-    bucket[("bucket<br>ac/ cas.v2/")]
-    dev_shim -->|"S3, public or read-only key"| bucket
+    bucket[("bucket<br>ac/ bundle/ keys/")]
+    dev_shim -->|"HTTP, public or read-only key"| bucket
     run_shim -->|"S3, read-write key"| bucket
 ```
 
-## Developer setup
+## Configuration
 
-**Note**: This is provisional. Once this settles, we'll integrate this into `bin/tine`.
+A project switches the cache on with a `[cache]` table in `tine.toml`, or in `tine.local.toml` for one
+machine. Paths are relative to the project root. A key set in both takes its value from `tine.local.toml`.
+Some keys are refused in `tine.toml`: `dir` as it's machine specific, and `unsigned`/`s3_insecure` as a
+checked out branch must not weaken a configured cache.
 
-### bazel-remote setup
+| key | role | description |
+|---|---|---|
+| `read_url` | all | base URL the bucket is read from over plain HTTP, e.g. a bucket's public domain |
+| `authority` | all | CA certificate files (PEM) whose leaves may sign results |
+| `s3_bucket`, `s3_endpoint` | builder | results get uploaded to this bucket |
+| `s3_key_file` | builder | S3 write token: `<id> <secret>` |
+| `signing_key`, `signing_certificate` | builder | the leaf key and certificate, see [The keys](#the-keys) |
+| `object_lifetime` | builder | the bucket's age rule in days, which nothing signed may outlive |
+| `dir` | optional | the local store, `~/.cache/tine/cache` by default |
+| `store_size` | optional | MB of output bytes the store keeps before evicting |
+| `port` | optional | the loopback port the shim serves on, derived from `dir` by default |
+| `enabled` | optional | `false` switches the cache off without removing the rest |
+| `unsigned` | local testing | `true` to trust whoever writes the bucket, instead of `authority` |
+| `s3_insecure` | local testing | talk plain HTTP to the S3 endpoint |
 
-Fetch a [release binary](https://github.com/buchgr/bazel-remote/releases). Start it with the
-read-only key:
+`tine buck` then starts the shim before a build if nothing serves the store yet, and registers itself
+with it. The shim exits after 15 minutes of idleness, but never while a build that registered is still
+running: a single action can take much longer than that, and the lookup after it still has to be
+answered. `tine cache-status` shows what serves the store and what it has been doing; the shim's log is
+under `~/.cache/tine/cache-shim/`.
 
-```sh
-bazel-remote --dir ~/.cache/bazel-remote --max_size 20 \
-    --grpc_address 127.0.0.1:9092 --disable_grpc_ac_deps_check --num_uploaders 0 \
-    --s3.endpoint <host> --s3.bucket <bucket> --s3.region <region> \
-    --s3.auth_method access_key --s3.access_key_id <id> --s3.secret_access_key <secret>
-```
+A daemon reads the cache address when it starts. After changing `port` or `dir`, a daemon in another
+isolation dir still holds the old one. Run `tine buck --isolation-dir <dir> kill` to adjust.
 
-Against a [public bucket](#a-public-bucket) there is no key to configure:
+## The keys
 
-```sh
---s3.signature_type anonymous --s3.access_key_id unused --s3.secret_access_key unused
-```
+Two keys per builder. The **CA key** ideally lives in the build server's TPM or a HSM and never leaves
+it; it signs the leaf certificate, once per rotation. The **leaf key** is an ordinary Ed25519 key file on
+the same machine; it signs the cache entries. There is no list of trusted keys: a reader is given CA
+certificates (`authority`) and nothing else. See the [keys section in the
+design](remote-cache-design.md#the-keys) for details.
 
-`anonymous` is what stops the request being signed. The key and secret still have to be present and
-non-empty.
+**Use a separate CA per bucket.** A reader accepts any leaf its CA has ever issued, so a CA shared between
+a staging and a production bucket would let whoever writes both copy pointers from one to the other. The
+CA issues leaf certificates for its one bucket and nothing else.
 
-| flag | why |
-|------|-----|
-| `--num_uploaders 0` | disable uploads; they would fail with a read-only key |
-| `--disable_grpc_ac_deps_check` | expensive, and the reason for no bucket expiry; see [Expiry](#expiry) |
-| `--max_size` | soft limit of the `--dir` size, a non-zero value in GiB |
-| `--s3.region` | cloud-provider specific |
+**Provisioning a leaf**: an Ed25519 key made on the builder and readable only by the shim; a certificate
+from the bucket's CA with `BasicConstraints CA:FALSE` and `KeyUsage digitalSignature`; set validity to
+the rotation period plus the bucket's object lifetime. Then restart the builder. The builder publishes
+the certificate to the bucket itself, and readers pick it up from there: rotating the leaf changes
+nothing on any reader.
 
-`--max_size` is a target the local `--dir` is kept under by evicting the least recently used
-entries, so a too small value costs extra bucket requests. Eviction is asynchronous, so the
-directory can overshoot on a burst of writes; set `--max_size_hard_limit` if that matters.
+**Rotating the CA**: add the new certificate to every builder and reader `authority`, switch the builder
+to a leaf under it, remove the old certificate once nothing signed under it is left in the bucket.
+Readers accept several authorities for these transition periods. An expired authority is dropped with a
+warning at startup. It is a startup error if no valid authorities exist. Rotating the CA is also the
+revocation: a stolen leaf key otherwise stays valid until its `notAfter`.
 
-Do not pass `--storage_mode`. The default `zstd` is what stores and transfers compressed blobs, and it
-decides the object layout, so every party has to agree on it.
+## The bucket
 
-### tine setup in a consuming project
+It contains three prefixes: `ac/` for the signed pointers, `bundle/` for the outputs, `keys/` for the
+builders' certificates. Readers need the base URL, builders a key that may write.
 
-In `.buckconfig.local`, **below** the `# @end generated by tine` marker:
+Set an expiry age appropriate for the turnover of your project, over `ac/` and `bundle/` only. The
+builder needs to know that age (`object_lifetime`), so that it stops signing before a result would
+outlive its certificate. Leave `keys/` out of the rule: a builder publishes its certificate there when
+its shim starts and not again, so an age rule deletes it out from under pointers that are still good, and
+every reader refuses them from then on. Certificates are a few hundred bytes and expire by their own
+`notAfter`.
 
-```ini
-[buck2_re_client]
-address = 127.0.0.1:9092
-tls = false
-```
+Whatever fronts the bucket may cache `bundle/` freely: those objects are immutable, and a bundle is named by
+its content. It must not cache `ac/` or `keys/`: they are rewritten in place, and it must not cache a 404
+for anything.
 
-Then `bin/tine buck kill`, as the address is only read when the daemon starts.
+This was checked with [Cloudflare R2](https://www.cloudflare.com/products/r2/): its `r2.dev` domain caches
+none of these. It is also rate-limited and documented as not for production, so a big deployment needs a
+custom domain with caching left off for those two prefixes.
 
-Check it works: `Cache hits` in the build summary stops being 0%.
+The domain should serve every object as `application/octet-stream` with `X-Content-Type-Options:
+nosniff`. The shim never looks at a content type, but whoever holds the write key can store HTML under
+any key with a content type of their choosing, and a public read domain that serves it as such is a place
+to host phishing pages. That is the one thing bucket write access buys that is not about the cache.
 
-To turn it off, delete the `[buck2_re_client]` section and `bin/tine buck kill`.
+Whether the bucket is public is the deployment's choice. A cached result is the bytes anyone gets by
+building the repository locally and contains the pieces of a built image, so the bucket should be private
+exactly if the repository and its published images are both private.
 
-## Build runner setup
+A public bucket needs only a base URL on the read side (developer machines). Private buckets with read
+tokens are not supported yet.
 
-Same `[buck2_re_client]` config, and the same command with two differences: a read-write key, and no
-`--num_uploaders 0`.
+## The local store
 
-Uploads are queued, and the build never waits for one. It is also never told when one fails: a full queue
-logs "too many uploads queued" and drops the blob, and a rejected write is one more line in the log. A key
-without write permission looks exactly like that -- the build still succeeds, and the only symptom is
-"S3 UPLOAD bucket key Access Denied." Watch that log if the cache stops filling.
+A directory, passed to the shim by `tine`. On a developer machine that is `$XDG_CACHE_HOME/tine/cache` by
+default. A builder gets a dedicated long-lived directory outside any per-job scratch space (`dir`), so
+that the next job does not start cold.
 
-Give `--dir` persistent storage, so that it gets shared between build jobs. It also decides how much of
-the bucket a build has to ask about: bazel-remote answers buck's "which of these blobs do you have?" from
-the local directory where it can, and every miss is an S3 request.
+The directory is kept below `store_size` (1 GB by default), with evicting least recently used items
+first. A builder should configure a bigger size to avoid re-fetches from S3.
 
-## Bucket setup
+Everything in it is checked again when served, so it can be shared between checkouts and kept across
+jobs. A reader cannot upload, since it could never be served back with `authority`. A shim without an
+authority (`unsigned`) does accept uploads.
 
-Create a bucket, then one read-write key per builder, and one read-only key to hand to developers if the
-bucket cannot be [public](#a-public-bucket). Consider egress costs when deciding the provider, as
-developers and build jobs will regularly download gigabytes.
+A build that fails with Buck2's "expired in the RE CAS" error asked for an output the store had evicted
+whose bundle has since left the bucket; `tine buck clean` recovers.
 
-Objects are `ac/` for action results and `cas.v2/` for their outputs. If the bucket contains other data,
-consider setting `--s3.prefix`.
+## Error reporting
 
-`bazel-remote` sends each blob as a single request rather than a multipart upload, so the largest cacheable
-artifact is whatever the endpoint's single-upload limit is, commonly 5 GiB.
+Buck2 reports every kind of failure as a cache miss, and a failed upload as a warning it then ignores. So a
+reader with the wrong authority, a bucket gone private and a builder whose uploads fail all look like a
+slow build. The shim logs each event with its reason, and counts them by kind; `tine cache-status` prints
+the counters of the shim serving the store, with its address, bucket and trust.
 
-**Warnings**:
+When a build is slower than it should be, read the counters of the machine's shim first:
 
- - whoever holds the write key can upload poisoned artifacts. A client should check a
-   fetched blob against the digest it asked for, but released bazel-remote compares only its size. A
-   [fix for that](https://github.com/buchgr/bazel-remote/pull/922) is open upstream, not released yet.
+- **`misses` high, `hits` near zero**: the bucket has nothing for this build. Check the builder's
+  `published` counter, and that both build the same configuration.
+- **`pointers refused`**: signatures do not check out, in the bucket or in the local store. Check the
+  reader's `authority`, then the log for the key id and the reason.
+- **`uploads refused`**: Buck offered results to a reader, which refuses them. A reader tells Buck that
+  it takes no uploads, so if Buck tries anyway, that's a bug or attack. The build is
+  unaffected.
+- **`bundles refused`**: a bundle did not match its result. Read the log; the builder re-uploads that
+  bundle on its next publish.
+- **`bucket errors`**: the bucket answered badly or not at all. The log has the HTTP status: network,
+  permissions, or the read token.
+- **`bundles gone`**: pointers whose bundle has expired. Check the bucket's age rules if it keeps happening.
+- **`incomplete`**: a result whose outputs could not all be had. Usually `bundles gone` in disguise.
+- **`publish failures`** on a builder: uploads fail and Buck2 only warned. Check the write key and the log.
 
- - the S3 backend sends a blob without first asking whether the bucket already has it, which leads
-   to redundant uploads. A [fix](https://github.com/buchgr/bazel-remote/pull/923) was sent upstream as
-   well.
-
-### Expiry
-
-**Set no expiry rule.** An action result and the blobs it names are separate objects that age
-independently, so an age-based rule expires some of a result's blobs and leaves the result behind. Buck
-then takes the cache hit, cannot fetch the bytes, and fails the action with "Internal error: Failed to
-download trees" instead of running it.
-
-Nothing catches it in between, because nothing validates a result against its blobs any more: doing so
-costs one request per file in its output tree, which is why the shims disable it with
-`--disable_grpc_ac_deps_check`, and there is no server in front of the bucket to do it for them.
-Making those checks cheap enough to leave on is
-[bazel-remote#919](https://github.com/buchgr/bazel-remote/issues/919); the other fix is in buck, which
-could fall back to running an action whose result it cannot download, ideally as an option so existing
-behaviour is unchanged. Until one of them lands, expiring blobs breaks builds.
-
-Emptying the bucket completely is safe: every lookup misses and every action runs. If you do it, delete
-`ac/` before `cas.v2/`, so the window in between holds orphaned blobs rather than orphaned results, and
-have everyone drop their local `--dir` too: it can hold a result whose blobs it has evicted and used to
-fetch from the bucket.
-
-### A public bucket
-
-For an open project you can make the bucket public-read instead and publish the endpoint instead of
-handing out read keys. Reading is anonymous, writing still needs a key, and nothing else changes.
-
-What matters is that the storage actually serves **unsigned S3 requests**; a bucket policy granting
-`s3:GetObject` to everyone is the usual way to say so. Caveats:
-
-- **Cloudflare R2 has no anonymous S3 API.** Its
-  [public access](https://developers.cloudflare.com/r2/buckets/public-buckets/) is an `r2.dev` subdomain
-  or a custom domain, and both serve objects over plain HTTP rather than the S3 endpoint, so neither is
-  reachable this way. Should that change, publish a custom domain and not the `r2.dev` one: reading a
-  graph is tens of thousands of requests in a couple of minutes, which hits the `r2.dev` rate-limiting.
-- **A plain-HTTP endpoint does not fit `--http_proxy.url` either**, which is the obvious thing to reach
-  for once the S3 API is closed to you. That client asks for `<url>/cas.v2/<hash>`, and the object is at
-  `cas.v2/<hh>/<hash>`, so every request misses. Serving a public bucket that way needs an URL rewrite
-  service in front of it that inserts the two hash digits; the stored bytes are already the format that
-  client expects.
+A shim that `tine cache-status` finds not running is started by the next build.
