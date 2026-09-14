@@ -149,6 +149,8 @@ Design:
   strategy
 - [Self-hosting approaches](docs/self-host-approaches.md): future design for the BuildRequires cycle
 - [Shared build cache](docs/remote-cache.md): set up for a developer, a build runner, and the bucket
+- [Shared build cache design](docs/remote-cache-design.md): threat model, bucket layout, signatures and
+  keys of tine's own cache
 
 ## Development
 

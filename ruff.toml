@@ -16,6 +16,7 @@ src = [
     "package",
     "package_system/pacman",
     "package_system/rpm",
+    "remote_cache",
     "rootfs",
 ]
 lint.select = [
@@ -27,3 +28,8 @@ lint.select = [
     "B",    # flake8-bugbear
     "ANN",  # flake8-annotations
 ]
+
+lint.per-file-ignores = {
+    # protobuf messages hex strings cannot be wrapped
+    "remote_cache/reapi_test.py" = ["E501"],
+}
