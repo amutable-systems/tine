@@ -164,3 +164,5 @@ group build             -- "${buck[@]}" build tine//...
 # here as well.
 group image-tests       -- "${buck[@]}" test tine//... --include image
 group secureboot-pkcs11 -- secureboot_pkcs11
+# The shared cache with a real Buck on both ends; in its own isolation dir.
+group remote-cache      -- "${buck[@]}" run tine//tests:cache-roundtrip
