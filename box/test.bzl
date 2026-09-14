@@ -11,7 +11,7 @@ def _box_python_test_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # -B keeps __pycache__ out of the tree; discover's top-level dir defaults to the start dir.
     command = cmd_args(
-        box_run(box = ctx.attrs.box[BoxInfo]),
+        box_run(box = ctx.attrs.box[BoxInfo], setenv = ctx.attrs.env),
         "python3",
         "-B",
         "-m",
@@ -53,6 +53,12 @@ _box_python_test = rule(
             attrs.dep(providers = [PythonBootstrapSources]),
             default = [],
             doc = "sources from other packages",
+        ),
+        "env": attrs.dict(
+            attrs.string(),
+            attrs.arg(),
+            default = {},
+            doc = "environment for the tests; a value may name an artifact with `$(location //target)`",
         ),
         "labels": attrs.list(attrs.string(), default = [], doc = "passed to the test runner, for `buck test` filtering"),
         "srcs": attrs.list(attrs.source(), doc = "the tests and the sources they exercise"),

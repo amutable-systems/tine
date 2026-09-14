@@ -19,14 +19,15 @@ def box_run(
     relaxed: bool = False,
     name: str | None = None,
     ro_binds: dict[str, str] = {},
-    setenv: dict[str, str] = {},
+    setenv: dict[str, typing.Any] = {},
 ) -> RunInfo:
     """Enter a box, optionally running a command or interactive relaxed leaf.
 
     name marks a relaxed entry as that development box, in the prompt and in `TINE_BOX`.
     ro_binds maps a host path to where it appears inside, for the rare action that must reach host
-    state; setenv adds to the sandbox's otherwise fixed environment. Both are for non-hermetic
-    actions such as signing against an externally held key, never for build inputs.
+    state; setenv adds to the sandbox's otherwise fixed environment, each value a string or an
+    argument such as an artifact's path. Both are for non-hermetic actions such as signing against
+    an externally held key, never for build inputs.
     """
     run = cmd_args(
         box.sandbox[RunInfo],
@@ -52,7 +53,7 @@ def box_run(
                 fail("box_run: ro_binds path cannot contain ':', got {!r}".format(path))
         run.add("--ro-bind", "{}:{}".format(source, destination))
     for variable in sorted(setenv):
-        run.add("--setenv", "{}={}".format(variable, setenv[variable]))
+        run.add("--setenv", cmd_args(variable, setenv[variable], delimiter = "="))
     run.add("--")
     if isinstance(exe, Dependency):
         info = exe[DefaultInfo]
