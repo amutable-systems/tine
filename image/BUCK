@@ -79,6 +79,8 @@ box_python_test(
         "layer_test.py",
         "manifest.py",
         "manifest_test.py",
+        "publish.py",
+        "publish_test.py",
         "substitute.py",
         "substitute_test.py",
         "uki.py",
@@ -95,6 +97,15 @@ box_python_test(
         "//package:installer",
         "//rootfs:rootfs",
     ],
+)
+
+# This writes the listing of what a release publishes. It gives each file's kind, image and
+# verity root hash.
+tine_python_binary(
+    name = "publish",
+    main = "publish.py",
+    deps = ["//:specs"],
+    visibility = ["PUBLIC"],
 )
 
 tine_python_binary(
