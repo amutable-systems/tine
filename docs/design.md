@@ -84,8 +84,13 @@ the command rather than silently falling back to the checked-in directory.
 
 For example, `tine mount` can make `/work/lib` appear at `vendor/lib` inside a project. Tine sets up the
 bind mounts in a private mount namespace before starting the Buck client, so uncommitted source edits
-are visible without changing Buck's project-relative paths. If a mount covers the tine cell, the wrapper
-re-executes that checkout's `bin/tine`, keeping its command, rules, and Buck2 pin together.
+are visible without changing Buck's project-relative paths.
+
+Before running Buck, Tine selects the configured tine cell's `bin/tine`, whether or not any mounts were
+needed. If its path differs from the current wrapper after resolving symlinks, Tine re-executes it so
+the command, rules, and Buck2 pin come from the same checkout. After creating mounts, Tine always
+re-executes: a mount may have replaced the wrapper at the same path. A configured cell without
+`bin/tine` is an error, not a reason to keep running another checkout's wrapper.
 
 #### Matching clients and daemons
 
@@ -140,9 +145,9 @@ describe the replacement instead. Calculate the label after mounting, using the 
 through `vendor/lib`. The digest includes the target path, source path, and mounted directory's inode.
 It omits the device number because btrfs can assign a new one each time a subvolume is mounted.
 
-When Tine restarts itself to use the mounted checkout's wrapper, it keeps using the saved list of mounted
-paths. It does not reread declarations that another command may already have changed. Git ignores are
-read through the mounted paths too, so they describe the checkout the build will use.
+Re-executing inside an existing mount namespace preserves both the namespace and its saved list of
+mounted paths. Tine does not reread declarations that another command may already have changed. Git
+ignores are read through the mounted paths too, so they describe the checkout the build will use.
 
 #### Git metadata in mounted checkouts
 
@@ -187,12 +192,12 @@ is explained under [Use bind mounts for out-of-tree content](#use-bind-mounts-fo
 
 For a consuming project, an ordinary `tine buck` command regenerates the entire project `.buckconfig`
 from the selected tine checkout's `.buckconfig`, applying `[buckconfig.*]` overrides from `tine.toml`
-and `tine.local.toml`. Mount setup and wrapper handover happen first, so a mounted checkout supplies
+and `tine.local.toml`. Mount setup and wrapper selection happen first, so the same checkout supplies
 both the wrapper and its defaults. Direct edits to the generated defaults are discarded; project
 settings belong in TOML instead.
 
 Cell selection uses the effective configuration, including `.buckconfig.local`. A local cell override
-can select different defaults without being copied into the generated `.buckconfig`.
+can select a different wrapper and defaults without being copied into the generated `.buckconfig`.
 If TOML does not declare the tine cell, existing cell registrations in `.buckconfig` are retained while
 other defaults are regenerated. This also supports consuming projects that declare their cells only
 in native Buck configuration.
@@ -211,15 +216,17 @@ its own label budget; see "Image versioning" in [images.md](images.md).
 Generated settings go into a file rather than command-line flags because the daemon's file watcher
 reads its ignores from configuration files at startup, without command-line overrides. A file also
 avoids the 128 KiB limit on a single argument, and `buck2 complete` accepts no configuration flags.
-Target completion uses the cached Buck2 without downloading or rewriting shared configuration. Tine
+Target completion and `tine completion` select the configured wrapper without refreshing shared
+configuration. Target completion uses the selected checkout's cached Buck2 without downloading. Tine
 rewrites Buck2's completion script so target queries run through `tine buck` too.
 
 The selected tine checkout pins Buck2 in `tools/tools.json`. Projects can override the pin in the
 `[buck2]` table of `tine.toml` or `tine.local.toml`, with per-platform fields under
 `[buck2.platforms.<platform>]`.
 
-Tine exports the pinned binary's path as `BUCK2_BINARY`. A nested command inherits the current mounts and
-skips refreshing shared configuration underneath the build that started it.
+Tine exports the pinned binary's path as `BUCK2_BINARY`. A nested Buck command still selects the
+configured wrapper, but inherits the current mounts and skips refreshing shared configuration
+underneath the build that started it.
 
 ### Component model
 

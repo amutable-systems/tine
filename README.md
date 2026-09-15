@@ -85,8 +85,10 @@ updates only its generated block in `.buckconfig.local`, preserving text outside
 [configuration design](docs/design.md#shared-configuration-and-nested-commands) explains the refresh order
 and standalone behavior.
 
-The entry point is that checkout's [`bin/tine`](bin/tine). Move to a newer tine with `git submodule update`
-or the equivalent change in your pinned `git clone`.
+The entry point is [`bin/tine`](bin/tine). For Buck commands and completion, an existing `tine` on `PATH`
+automatically hands over to the configured tine cell's `bin/tine`, even without a mount. There is no need
+to change `PATH` when selecting another checkout. Move to a newer tine with `git submodule update` or the
+equivalent change in your pinned `git clone`.
 
 The `toolchains` cell Buck2 looks a toolchain up in is an alias to the tine cell, whose root package
 declares the bootstrap interpreter one: Buck2 forbids a nested cell inside an external cell, so a

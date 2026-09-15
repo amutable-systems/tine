@@ -928,45 +928,40 @@ def mount_targets(root: Path) -> set[str]:
     return configured_mount_targets(root) | graph_mount_targets(root)
 
 
-def mounted_wrapper_entrypoint(
-    root: Path, config: dict[str, dict[str, str]], mounts: dict[str, str]
-) -> Path:
-    """Choose the `tine` entry point to run inside the mount namespace.
-
-    If a mount covers the tine cell, use that checkout's command so its rules and Buck2 pin stay together.
-    Fail if the mounted cell has no command instead of falling back to the outer checkout.
-    """
+def configured_wrapper_entrypoint(root: Path, config: dict[str, dict[str, str]]) -> Path:
+    """Keep the wrapper, rules and Buck2 pin in the configured tine checkout."""
     cell = cells_of(config).get(CELL)
     if cell is None:
         return COMMAND_PATH.absolute()
-    path = Path(cell).as_posix()
-    if not any(path == target or path.startswith(f"{target}/") for target in mounts):
-        return COMMAND_PATH.absolute()
     command = root / cell / COMMAND
     if not command.is_file():
-        fail(f"mounted {CELL} cell has no {COMMAND}")
+        fail(f"{root / cell}: {CELL} cell has no {COMMAND}")
     return command
 
 
-def reexec_in_mount_namespace(
+def reexec_configured_wrapper(
     root: Path, config: dict[str, dict[str, str]], mounts: dict[str, str], argv: list[str]
 ) -> None:
-    """Run this command in the namespace containing the declared mounts.
+    """Hand over to the configured wrapper after entering any new mounts.
 
-    Every client gets an equivalent namespace. Buck's daemon constraint reuses a daemon with the same
-    mounts or replaces one with different mounts under Buck's own lifecycle lock.
+    Mounting can replace this checkout without changing its path, so always reload after mounting.
+    Otherwise resolve symlinks like the launcher does to avoid handing over to ourselves.
     """
-    working = cwd()
-    digest = create_mount_namespace(root, mounts)
-    # Resolve both paths after mounting so paths below a target use the mounted tree.
-    command = mounted_wrapper_entrypoint(root, config, mounts)
+    environment = dict(os.environ)
+    if mounts:
+        working = cwd()
+        digest = create_mount_namespace(root, mounts)
+        environment[MARKER] = mount_namespace_marker(digest)
+        try:
+            os.chdir(working)
+        except OSError as error:
+            fail(f"cannot return to {working}: {error}")
+    command = configured_wrapper_entrypoint(root, config)
+    if not mounts and command.resolve() == COMMAND_PATH.resolve():
+        return
 
     try:
-        os.chdir(working)
-    except OSError as error:
-        fail(f"cannot return to {working}: {error}")
-    try:
-        os.execve(command, [str(command), *argv], os.environ | {MARKER: mount_namespace_marker(digest)})
+        os.execve(command, [str(command), *argv], environment)
     except OSError as error:
         fail(f"cannot run {command}: {error}")
 
@@ -1695,15 +1690,12 @@ def collect_project_ignores(
 def prepare_buck(
     root: Path, settings: dict[str, dict[str, object]], argv: list[str], *, refresh_config: bool = True
 ) -> tuple[dict[str, dict[str, str]], list[str]]:
-    """Enter the mount namespace before refreshing defaults from its visible checkout."""
+    """Select mounts and the wrapper before refreshing defaults from its checkout."""
     mounts = namespace_mount_targets(root)
     nested = bool(os.environ.get("BUCK2_BINARY"))
     overrides = buckconfig_overrides(settings, root / CONFIG)
-    if mounts is None and not nested:
-        declared = declared_mounts(root)
-        if declared:
-            reexec_in_mount_namespace(root, read_project_buckconfig(root, overrides), declared, argv)
-        mounts = []
+    declared = declared_mounts(root) if mounts is None and not nested else {}
+    reexec_configured_wrapper(root, read_project_buckconfig(root, overrides), declared, argv)
     if refresh_config and not nested:
         refresh_project_buckconfig(root, overrides)
     config = read_project_buckconfig(root)
@@ -1721,7 +1713,7 @@ def buck_command(argv: list[str]) -> None:
     config, mounts = prepare_buck(
         root, settings, ["buck", *argv], refresh_config=command.subcommand != "complete"
     )
-    # Enter first so wrapper_cell_root() reads the mounted checkout's pin.
+    # Hand over first so wrapper_cell_root() reads the configured checkout's pin.
     binary = buck2_binary(settings, wrapper_cell_root(), fetch=command.subcommand != "complete")
     if binary is None:
         return
