@@ -1931,12 +1931,13 @@ class TestBuckCommand(unittest.TestCase):
         git("init", "--quiet", "--initial-branch=main", cwd=checkout)
         (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = vendor/tine\n")
         (checkout / ".buckconfig").write_text("[cells]\ntine = .\n")
-        (checkout / ".gitignore").write_text("*.generated\n!kept.generated\n")
+        (checkout / ".gitignore").write_text("*.generated\n!kept.generated\nBUCK\nBUCK.v2\n")
         (checkout / "ignored.generated").touch()
         (checkout / "kept.generated").touch()
         (checkout / "tracked.generated").touch()
         git("add", "--force", "tracked.generated", cwd=checkout)
         (checkout / "BUCK").touch()
+        (checkout / "BUCK.v2").touch()
 
         with self.running():
             tine.buck_command(["complete", "--target=tine//"])
@@ -3107,6 +3108,52 @@ class TestProjectIgnores(unittest.TestCase):
                     tine.collect_project_ignores(root, tine.read_project_buckconfig(root), [], {}),
                     ["custom", *tine.VCS_IGNORES],
                 )
+
+    def test_gitignored_build_files_remain_visible(self) -> None:
+        for ignore_file in (".gitignore", ".git/info/exclude"):
+            with self.subTest(ignore_file=ignore_file):
+                self.root = self.checkout()
+                (self.root / ignore_file).write_text("BUCK\nBUCK.v2\n*.generated\n/output\n")
+                for relative in (
+                    "BUCK",
+                    "BUCK.v2",
+                    "nested/BUCK",
+                    "nested/BUCK.v2",
+                    "ignored.generated",
+                    "output/BUCK",
+                ):
+                    path = self.root / relative
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.touch()
+
+                for mounts in ([], ["packages/project"]):
+                    with self.subTest(mounts=mounts):
+                        expected = [*tine.VCS_IGNORES, "ignored.generated", "output"]
+                        if mounts:
+                            expected += ["packages/project/BUCK", "packages/project/**/BUCK"]
+                        self.assertEqual(self.ignores({"cells": {"root": "."}}, mounts), expected)
+
+    def test_project_ignores_can_hide_build_files(self) -> None:
+        self.assertEqual(
+            self.ignores({"project": {tine.PROJECT_IGNORE: "BUCK, **/BUCK.v2"}}, []),
+            ["BUCK", "**/BUCK.v2", *tine.VCS_IGNORES],
+        )
+
+    def test_gitignored_source_mount_build_files_remain_hidden(self) -> None:
+        checkout = self.checkout("packages/project")
+        (checkout / ".gitignore").write_text("BUCK\nBUCK.v2\n")
+        (checkout / "BUCK").touch()
+        (checkout / "BUCK.v2").touch()
+
+        self.assertEqual(
+            self.ignores({}, ["packages/project"]),
+            [
+                *tine.VCS_IGNORES,
+                "packages/project/BUCK",
+                "packages/project/**/BUCK",
+                "packages/project/BUCK.v2",
+            ],
+        )
 
     def test_a_local_project_ignore_cannot_override_root_gitignores(self) -> None:
         self.root = self.checkout()
