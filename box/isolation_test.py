@@ -190,7 +190,7 @@ class TestMountContexts(unittest.TestCase):
             with ExitStack() as stack:
                 stack.callback(os.umask, os.umask(0))
                 stack.enter_context(mock.patch.object(isolation, "mount"))
-                isolation.Overlay((lower,), upper, work, target).mount()
+                isolation.Overlay((lower,), upper, work, target, lazy_unmount=True).mount()
 
             self.assertEqual(target.parent.stat().st_mode & 0o777, 0o755)
             self.assertEqual(target.stat().st_mode & 0o777, 0o755)
@@ -226,7 +226,8 @@ class TestMountContexts(unittest.TestCase):
                 isolation.Bind(lower, target),
                 isolation.Tmpfs(target),
                 isolation.Devices(target),
-                isolation.Overlay((lower,), upper, work, target),
+                # Strict, so that unwinding covers both unmount flavours.
+                isolation.Overlay((lower,), upper, work, target, lazy_unmount=False),
             ]
             for mount in mounts:
                 for fail in (False, True):

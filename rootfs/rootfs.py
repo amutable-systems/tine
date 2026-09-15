@@ -254,7 +254,12 @@ def rootfs(
             if upperdir is not None:
                 # Enter before registering the unmount so capture runs after it.
                 stack.enter_context(capture_on_exit(upper))
-            stack.enter_context(Overlay(tuple(components), upper, work, target))
+            # capture() rewrites the upperdir, which overlayfs must no longer own by then, so a
+            # captured upper needs a strict unmount. An ephemeral one is read by nobody: detach it
+            # like every other mount and let the kernel finish in the background.
+            stack.enter_context(
+                Overlay(tuple(components), upper, work, target, lazy_unmount=upperdir is None)
+            )
         elif bind is not None:
             if capture_bind:
                 # Enter before registering the unmount so capture runs after it.
