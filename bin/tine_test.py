@@ -75,6 +75,14 @@ def overrides(root: Path) -> dict[str, dict[str, str]]:
     return tine.buckconfig_overrides(tine.project_settings(root), root / tine.CONFIG)
 
 
+def wrapper_command(cell: Path) -> Path:
+    """Stand in for a checkout's executable when handover is mocked."""
+    command = cell / tine.COMMAND
+    command.parent.mkdir(parents=True, exist_ok=True)
+    command.touch()
+    return command
+
+
 def scratch(case: unittest.TestCase, prefix: str = "tine-test.") -> Path:
     tmp = tempfile.TemporaryDirectory(prefix=prefix)
     case.addCleanup(tmp.cleanup)
@@ -1247,7 +1255,10 @@ class TestNamespaces(MountTestCase):
     def test_defaults_come_from_the_mounted_cell(self) -> None:
         def mounted() -> str:
             digest = tine.create_mount_namespace(self.root, {"sub": str(self.source)})
-            with unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}):
+            with (
+                unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}),
+                unittest.mock.patch.object(tine, "COMMAND_PATH", self.root / cell / tine.COMMAND),
+            ):
                 config, targets = tine.prepare_buck(
                     self.root, tine.project_settings(self.root), ["buck", "build"]
                 )
@@ -1260,6 +1271,7 @@ class TestNamespaces(MountTestCase):
                 source = self.source / Path(cell).relative_to("sub")
                 source.mkdir(exist_ok=True)
                 (source / ".buckconfig").write_text(CELL_BUCKCONFIG)
+                wrapper_command(source)
                 configure_cells(self.root, cell)
                 self.assertEqual(self.answer(mounted), cell)
 
@@ -1267,9 +1279,7 @@ class TestNamespaces(MountTestCase):
         configure_cells(self.root, "missing")
         (self.root / tine.LOCAL).write_text("[cells]\ntine = sub\n")
         (self.source / ".buckconfig").write_text(CELL_BUCKCONFIG)
-        command = self.source / tine.COMMAND
-        command.parent.mkdir()
-        command.touch()
+        wrapper_command(self.source)
         declare(self.root, {"sub": str(self.source)})
 
         def mounted() -> str:
@@ -1280,7 +1290,10 @@ class TestNamespaces(MountTestCase):
                 tine.prepare_buck(self.root, tine.project_settings(self.root), ["buck", "build"])
             selected, _, environment = handover.call_args.args
             self.assertEqual(selected, self.root / "sub" / tine.COMMAND)
-            with unittest.mock.patch.dict(os.environ, environment):
+            with (
+                unittest.mock.patch.dict(os.environ, environment),
+                unittest.mock.patch.object(tine, "COMMAND_PATH", selected),
+            ):
                 config, targets = tine.prepare_buck(
                     self.root, tine.project_settings(self.root), ["buck", "build"]
                 )
@@ -1386,6 +1399,7 @@ class TestNamespaces(MountTestCase):
         source = parent / "checkout"
         (source / "generated").mkdir()
         (source / ".buckconfig").write_text(CELL_BUCKCONFIG)
+        wrapper_command(source)
         # The checkout's private config belongs to another project, not this invocation.
         private = source / tine.PRIVATE_CONFIG
         private.parent.mkdir(parents=True)
@@ -1397,6 +1411,7 @@ class TestNamespaces(MountTestCase):
             with (
                 contextlib.chdir(self.root),
                 unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}),
+                unittest.mock.patch.object(tine, "COMMAND_PATH", self.root / "sub" / tine.COMMAND),
                 unittest.mock.patch.object(tine, "buck2_binary", return_value=self.root / "buck2"),
                 unittest.mock.patch.object(
                     tine, "namespace_gitdirs", wraps=tine.namespace_gitdirs
@@ -1441,64 +1456,41 @@ class TestNamespaces(MountTestCase):
         self.assertEqual(self.answer(mounted), "clean")
 
 
-class TestMountedWrapperEntrypoint(MountTestCase):
-    """Select the command to run after entering the namespace."""
+class TestConfiguredWrapperEntrypoint(MountTestCase):
+    """The configured tine cell supplies the command, mounted or not."""
 
     def config(self, cell: str) -> dict[str, dict[str, str]]:
         return {"cells": {"root": ".", tine.CELL: cell}}
 
-    def command(self) -> Path:
-        path = self.root / "sub" / tine.COMMAND
-        path.parent.mkdir(parents=True)
-        path.write_text("")
-        return path
+    def test_configured_cell_uses_its_own_command(self) -> None:
+        for cell in (".", "sub", "sub/vendor", str(self.source)):
+            with self.subTest(cell=cell):
+                command = wrapper_command(self.root / cell)
+                self.assertEqual(tine.configured_wrapper_entrypoint(self.root, self.config(cell)), command)
 
-    def test_mounted_cell_uses_its_own_command(self) -> None:
-        command = self.command()
-        mounts = {"sub": str(self.source)}
-        self.assertEqual(tine.mounted_wrapper_entrypoint(self.root, self.config("sub"), mounts), command)
+    def test_configured_cell_requires_a_command(self) -> None:
+        # Falling back would combine one checkout's command with another's rules.
+        with self.assertRaisesRegex(SystemExit, "tine cell has no bin/tine"):
+            tine.configured_wrapper_entrypoint(self.root, self.config("sub"))
 
-    def test_unmounted_cell_keeps_current_command(self) -> None:
-        self.command()
-        mounts = {"other": str(self.source)}
-        entrypoint = tine.mounted_wrapper_entrypoint(self.root, self.config("sub"), mounts)
-        self.assertEqual(entrypoint, TOOL_PATH.absolute())
-
-    def test_mounted_cell_requires_a_command(self) -> None:
-        # Falling back would combine the outer command with mounted rules.
-        with self.assertRaisesRegex(SystemExit, "mounted tine cell has no bin/tine"):
-            tine.mounted_wrapper_entrypoint(self.root, self.config("sub"), {"sub": str(self.source)})
-
-    def test_mount_covering_cell_uses_mounted_command(self) -> None:
-        # Keep the rules and Buck2 pin from the same checkout.
-        path = self.root / "sub" / "vendor" / tine.COMMAND
-        path.parent.mkdir(parents=True)
-        path.write_text("")
-        config = self.config("sub/vendor")
-        self.assertEqual(tine.mounted_wrapper_entrypoint(self.root, config, {"sub": str(self.source)}), path)
-
-    def test_shared_path_prefix_does_not_cover_cell(self) -> None:
-        self.command()
-        config = self.config("subsidiary")
-        (self.root / "subsidiary").mkdir()
-        entrypoint = tine.mounted_wrapper_entrypoint(self.root, config, {"sub": str(self.source)})
-        self.assertEqual(entrypoint, TOOL_PATH.absolute())
+    def test_legacy_repositories_select_the_command(self) -> None:
+        command = wrapper_command(self.root / "sub")
+        config = {"repositories": {tine.CELL: "sub"}}
+        self.assertEqual(tine.configured_wrapper_entrypoint(self.root, config), command)
 
     def test_project_without_tine_cell_keeps_current_command(self) -> None:
-        entrypoint = tine.mounted_wrapper_entrypoint(
-            self.root, {"cells": {"root": "."}}, {"sub": str(self.source)}
-        )
+        entrypoint = tine.configured_wrapper_entrypoint(self.root, {"cells": {"root": "."}})
         self.assertEqual(entrypoint, TOOL_PATH.absolute())
 
     def test_empty_cells_do_not_fall_back_to_repositories(self) -> None:
-        self.command()
+        wrapper_command(self.root / "sub")
         config = {"cells": {}, "repositories": {tine.CELL: "sub"}}
-        entrypoint = tine.mounted_wrapper_entrypoint(self.root, config, {"sub": str(self.source)})
+        entrypoint = tine.configured_wrapper_entrypoint(self.root, config)
         self.assertEqual(entrypoint, TOOL_PATH.absolute())
 
 
-class TestReexecInMountNamespace(MountTestCase):
-    """Choose and enter a namespace without performing real namespace operations."""
+class TestReexecConfiguredWrapper(MountTestCase):
+    """Select the wrapper without performing real namespace operations."""
 
     @override
     def setUp(self) -> None:
@@ -1538,6 +1530,110 @@ class TestReexecInMountNamespace(MountTestCase):
             _, mounts = tine.prepare_buck(self.root, {}, ["buck", "build"])
         self.assertEqual(mounts, [])
         self.assertEqual((self.made, execve), ([], []))
+
+    def test_unmounted_handover_precedes_reading_defaults_and_pins(self) -> None:
+        command = wrapper_command(self.root / "sub")
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = missing\n")
+        configure_cells(self.root, "sub")
+        before = (self.root / ".buckconfig").read_bytes()
+        arguments = ["buck", "build", "tine//...", "--", "an argument"]
+        with (
+            contextlib.chdir(self.root),
+            unittest.mock.patch.object(os, "execve", side_effect=SystemExit("handover")) as execve,
+            unittest.mock.patch.object(tine, "buck2_binary", side_effect=AssertionError("read outer pin")),
+            self.assertRaisesRegex(SystemExit, "handover"),
+        ):
+            tine.main(arguments)
+        execve.assert_called_once_with(command, [str(command), *arguments], dict(os.environ))
+        self.assertEqual(self.made, [])
+        self.assertEqual((self.root / ".buckconfig").read_bytes(), before)
+        self.assertFalse((self.root / tine.LOCAL).exists())
+
+    def test_local_cell_override_selects_the_unmounted_wrapper(self) -> None:
+        configure_cells(self.root, "missing")
+        command = wrapper_command(self.root / "sub")
+        (self.root / tine.LOCAL).write_text("[cells]\ntine = sub\n")
+        with (
+            unittest.mock.patch.object(os, "execve", side_effect=SystemExit("handover")) as execve,
+            self.assertRaisesRegex(SystemExit, "handover"),
+        ):
+            tine.prepare_buck(self.root, tine.project_settings(self.root), ["buck", "build"])
+        self.assertEqual(execve.call_args.args[0], command)
+
+    def test_same_wrapper_and_its_symlinks_need_no_handover(self) -> None:
+        command = wrapper_command(self.root / "sub")
+        (self.root / "alias").symlink_to("sub", target_is_directory=True)
+        for cell in ("sub", "./sub", str(self.root / "sub"), "alias"):
+            with self.subTest(cell=cell):
+                (self.root / ".buckconfig").write_text(f"[cells]\nroot = .\ntine = {cell}\n")
+                with unittest.mock.patch.object(tine, "COMMAND_PATH", command), self.running() as execve:
+                    tine.prepare_buck(self.root, {}, ["buck", "build"], refresh_config=False)
+                self.assertEqual((self.made, execve), ([], []))
+
+    def test_nested_and_mounted_invocations_still_select_the_wrapper(self) -> None:
+        command = wrapper_command(self.root / "sub")
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = sub\n")
+        for environment, targets in (
+            ({"BUCK2_BINARY": "/somewhere/buck2"}, None),
+            ({tine.MARKER: tine.mount_namespace_marker("a" * 16)}, ["sub"]),
+        ):
+            with (
+                self.subTest(environment=environment),
+                unittest.mock.patch.dict(os.environ, environment),
+                unittest.mock.patch.object(tine, "namespace_mount_targets", return_value=targets),
+                unittest.mock.patch.object(
+                    tine, "declared_mounts", side_effect=AssertionError("reread mounts")
+                ),
+                unittest.mock.patch.object(os, "execve", side_effect=SystemExit("handover")) as execve,
+            ):
+                with self.assertRaisesRegex(SystemExit, "handover"):
+                    self.prepare()
+                execve.assert_called_once_with(command, [str(command), "buck", "build"], dict(os.environ))
+        self.assertEqual(self.made, [])
+
+    def test_completion_uses_the_configured_wrapper(self) -> None:
+        command = wrapper_command(self.root / "sub")
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = sub\n")
+        for arguments in (["buck", "complete", "--target=tine//"], ["completion", "bash"]):
+            with (
+                self.subTest(arguments=arguments),
+                contextlib.chdir(self.root),
+                unittest.mock.patch.object(os, "execve", side_effect=SystemExit("handover")) as execve,
+                self.assertRaisesRegex(SystemExit, "handover"),
+            ):
+                tine.main(arguments)
+            self.assertEqual(execve.call_args.args[:2], (command, [str(command), *arguments]))
+        self.assertEqual(self.made, [])
+
+    def test_mounts_reload_the_same_wrapper_path_once(self) -> None:
+        self.declare_one()
+        command = wrapper_command(self.root / "sub")
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = sub\n")
+        with (
+            unittest.mock.patch.object(tine, "COMMAND_PATH", command),
+            unittest.mock.patch.object(os, "execve", side_effect=SystemExit("handover")) as execve,
+            self.assertRaisesRegex(SystemExit, "handover"),
+        ):
+            self.prepare()
+        self.assertEqual(self.made, [(self.root, {"sub": str(self.source)})])
+        self.assertEqual(execve.call_args.args[0], command)
+        with (
+            unittest.mock.patch.object(tine, "namespace_mount_targets", return_value=["sub"]),
+            unittest.mock.patch.object(tine, "COMMAND_PATH", command),
+            self.running() as handover,
+        ):
+            tine.prepare_buck(self.root, {}, ["buck", "build"], refresh_config=False)
+        self.assertEqual(handover, [])
+        self.assertEqual(len(self.made), 1)
+
+    def test_failed_handover_names_the_selected_wrapper(self) -> None:
+        command = wrapper_command(self.root / "sub")
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = sub\n")
+        with (
+            unittest.mock.patch.object(os, "execve", side_effect=PermissionError("not executable")),
+            self.assertRaisesRegex(SystemExit, f"cannot run {re.escape(str(command))}: not executable"),
+        ):
+            self.prepare()
 
     def test_buck_child_process_is_already_inside(self) -> None:
         self.declare_one()
@@ -1813,7 +1909,10 @@ class TestBuckCommand(unittest.TestCase):
                     else tine.render_project_buckconfig(defaults, {"cells": {"tine": cell}})
                 )
                 before = config.stat()
-                with self.running() as execve:
+                with (
+                    self.running() as execve,
+                    unittest.mock.patch.object(tine, "COMMAND_PATH", wrapper_command(self.root / cell)),
+                ):
                     tine.buck_command(["complete", "--target=//x"])
                 self.assertTrue(execve)
                 self.assertFalse((self.root / tine.LOCAL).exists())
@@ -1828,6 +1927,7 @@ class TestBuckCommand(unittest.TestCase):
         isolate_git(self)
         checkout = self.root / "vendor" / "tine"
         checkout.mkdir(parents=True)
+        self.enterContext(unittest.mock.patch.object(tine, "COMMAND_PATH", wrapper_command(checkout)))
         git("init", "--quiet", "--initial-branch=main", cwd=checkout)
         (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = vendor/tine\n")
         (checkout / ".buckconfig").write_text("[cells]\ntine = .\n")
@@ -1866,7 +1966,11 @@ class TestBuckCommand(unittest.TestCase):
         for cell in (".", str(self.root)):
             with self.subTest(cell=cell):
                 (self.root / ".buckconfig").write_text(f"[cells]\ntine = {cell}\n")
-                with self.running(), unittest.mock.patch.object(tine, "refresh_local_buckconfig") as refresh:
+                with (
+                    self.running(),
+                    unittest.mock.patch.object(tine, "COMMAND_PATH", wrapper_command(self.root)),
+                    unittest.mock.patch.object(tine, "refresh_local_buckconfig") as refresh,
+                ):
                     tine.buck_command(["build", "tine//..."])
                 refresh.assert_called_once_with(self.root, list(tine.VCS_IGNORES))
 
@@ -1982,6 +2086,7 @@ class TestRefreshProjectBuckconfig(unittest.TestCase):
         self.root = scratch(self)
         self.cell = self.root / "vendor" / "tine"
         self.cell.mkdir(parents=True)
+        self.enterContext(unittest.mock.patch.object(tine, "COMMAND_PATH", wrapper_command(self.cell)))
         self.source = self.cell / ".buckconfig"
         self.source.write_text(CELL_BUCKCONFIG)
         self.path = self.root / ".buckconfig"
@@ -2092,10 +2197,10 @@ class TestRefreshProjectBuckconfig(unittest.TestCase):
         self.source.write_text(self.updated)
         with (
             unittest.mock.patch.object(tine, "namespace_mount_targets", return_value=["vendor/tine"]),
-            unittest.mock.patch.object(tine, "reexec_in_mount_namespace") as enter,
+            unittest.mock.patch.object(os, "execve") as handover,
         ):
             tine.prepare_buck(self.root, tine.project_settings(self.root), ["buck", "build"])
-        enter.assert_not_called()
+        handover.assert_not_called()
         self.assertEqual(self.config()["buck2"], {"materializations": "deferred"})
 
     def test_handover_precedes_reading_defaults(self) -> None:
@@ -2104,7 +2209,7 @@ class TestRefreshProjectBuckconfig(unittest.TestCase):
         before = self.path.read_bytes()
         with (
             unittest.mock.patch.object(
-                tine, "reexec_in_mount_namespace", side_effect=SystemExit("handed over")
+                tine, "reexec_configured_wrapper", side_effect=SystemExit("handed over")
             ),
             self.assertRaisesRegex(SystemExit, "handed over"),
         ):
