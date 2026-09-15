@@ -612,6 +612,8 @@ class _Mount:
 
 
 class Bind(_Mount):
+    # A bind mount clones its source recursively, and submounts inherited across a user namespace are
+    # locked, so an individual unmount of one fails with EINVAL. Unmounting only works lazily.
     _unmount_flags = MNT_DETACH
 
     def __init__(
@@ -737,11 +739,15 @@ class Overlay(_Mount):
         upperdir: StrPath,
         workdir: StrPath,
         target: StrPath,
+        *,
+        # Set to False if you need to access upperdir right after unmounting
+        lazy_unmount: bool,
     ) -> None:
         super().__init__(target)
         self.lowerdirs = tuple(os.fspath(path) for path in lowerdirs)
         self.upperdir = os.fspath(upperdir)
         self.workdir = os.fspath(workdir)
+        self._unmount_flags = MNT_DETACH if lazy_unmount else 0
 
     @override
     def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> str:
