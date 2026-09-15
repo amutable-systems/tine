@@ -478,7 +478,9 @@ def _git(*args: str, directory: Path) -> str:
         fail(f"git {' '.join(args)} returned non-UTF-8 output: {error}")
 
 
-def git_ignored_paths(directory: Path, *, gitdir: str | None = None) -> list[str]:
+def git_ignored_paths(
+    directory: Path, *, gitdir: str | None = None, excludes: tuple[str, ...] = ()
+) -> list[str]:
     """Return minimal untracked roots matched by checkout-local Git ignores."""
     if not (directory / ".git").exists():
         return []
@@ -494,6 +496,7 @@ def git_ignored_paths(directory: Path, *, gitdir: str | None = None) -> list[str
         "--ignored",
         "--directory",
         "--exclude-standard",
+        *(f"--exclude={pattern}" for pattern in excludes),
         "-z",
         "--",
         directory=directory,
@@ -1669,7 +1672,12 @@ def collect_project_ignores(
     patterns = [entry.strip() for entry in config.get("project", {}).get(PROJECT_IGNORE, "").split(",")]
     # Git's ignored-path listing does not include VCS metadata.
     patterns = [entry for entry in patterns if entry] + list(VCS_IGNORES)
-    patterns += [glob_literal(path) for path in git_ignored_paths(root, gitdir=gitdirs.get(root))]
+    # Local build definitions may be kept out of Git. Exempt them in Git's query, as --directory can
+    # otherwise collapse a directory containing only ignored build files before we see its contents.
+    patterns += [
+        glob_literal(path)
+        for path in git_ignored_paths(root, gitdir=gitdirs.get(root), excludes=("!BUCK", "!BUCK.v2"))
+    ]
 
     cell_roots = [Path(value) for value in cells_of(config).values()]
     for target in sorted(mounts):
