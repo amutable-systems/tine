@@ -1,0 +1,5 @@
+# Zed needs a Python manifest here to route these files to their own ty instance.
+
+[tool.tine.ty]
+# libdnf5 and createrepo_c come from the driver's runtime environment.
+box = "tine//catalog:fedora.rawhide.box"

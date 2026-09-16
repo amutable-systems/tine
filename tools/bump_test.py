@@ -98,7 +98,7 @@ class ReleasePin(unittest.TestCase):
     """The release path with GitHub stubbed out, so only tine's own decisions are under test.
 
     A release pin is chosen by two things: which asset in the release succeeds the pinned one, and
-    (for CPython alone) the minor that pyproject.toml pins the interpreter to.
+    (for CPython alone) the minor that the ty configuration pins the interpreter to.
     """
 
     @override
@@ -106,8 +106,8 @@ class ReleasePin(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
-        self.ty_config = self.root / "pyproject.toml"
-        self.ty_config.write_text('[tool.ty.environment]\npython-version = "3.14"\n')
+        self.ty_config = self.root / "ty.toml"
+        self.ty_config.write_text('[environment]\npython-version = "3.14"\n')
         self.data = self.root / "tools.json"
 
     @staticmethod
@@ -148,9 +148,14 @@ class ReleasePin(unittest.TestCase):
         self.assertEqual(bump._python_minor(self.ty_config), "3.14")
 
     def test_fails_on_a_ty_config_pinning_no_python(self) -> None:
-        self.ty_config.write_text('[tool.ty.rules]\nall = "error"\n')
-        with self.assertRaisesRegex(ValueError, "environment table in .*pyproject.toml"):
+        self.ty_config.write_text('[rules]\nall = "error"\n')
+        with self.assertRaisesRegex(ValueError, "environment table in .*ty.toml"):
             bump._python_minor(self.ty_config)
+
+    def test_reads_pyproject_configuration_for_consuming_projects(self) -> None:
+        path = self.root / "pyproject.toml"
+        path.write_text('[tool.ty.environment]\npython-version = "3.13"\n')
+        self.assertEqual(bump._python_minor(path), "3.13")
 
     def test_fails_on_a_cpython_pin_with_no_ty_config(self) -> None:
         """Only CPython needs one, so the option is optional and the demand is the pin's."""

@@ -10,6 +10,9 @@
       "binary": {
         "path": "tools/ty",
         "arguments": ["server"]
+      },
+      "settings": {
+        "configurationFile": "${TINE_TY_CONFIG}"
       }
     }
   },

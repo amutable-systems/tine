@@ -1,0 +1,5 @@
+# Zed needs a Python manifest here to route these files to their own ty instance.
+
+[tool.tine.ty]
+# artifacts.py imports the box's pefile module.
+box = "tine//catalog:fedora.rawhide.box"
