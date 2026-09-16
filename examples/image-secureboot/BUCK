@@ -39,13 +39,32 @@ image.pkcs11_signing_key(
     section = "pcr-signing",
 )
 
-image.generate_signing_key(name = "signing.generated")
+# "signing" rather than "verity" or "secure-boot", as this key signs both.
+image.generate_signing_key(name = "signing")
 
-image.generate_signing_key(name = "pcr-signing.generated")
+image.generate_signing_key(name = "pcr-signing")
 
-_SIGNING = ":signing.token" if SIGN_WITH_TOKEN else ":signing.generated"
+# The two certificates this image reads back must say which key they belong to, and neither may fall
+# back to ukify's own name for a Secure Boot key.
+[
+    box.sh_test(
+        name = "generated-key-name-test." + name,
+        args = ["$(location :{}[cert])".format(name), "tine.generated." + name],
+        box = "@tine//tools:dev.box",
+        script = """
+subject=$(openssl x509 -noout -subject -in "$1")
+if ! echo "$subject" | grep -qF "CN=$2"; then
+    echo "ERROR: $1 is named $subject, expected CN=$2" >&2
+    exit 1
+fi
+""",
+    )
+    for name in ["signing", "pcr-signing"]
+]
 
-_PCR_SIGNING = ":pcr-signing.token" if SIGN_WITH_TOKEN else ":pcr-signing.generated"
+_SIGNING = ":signing.token" if SIGN_WITH_TOKEN else ":signing"
+
+_PCR_SIGNING = ":pcr-signing.token" if SIGN_WITH_TOKEN else ":pcr-signing"
 
 # Declaring the initrd instead of letting the disk image declare one is what makes it configurable:
 # its packages, its operations, and how the cpio the UKI carries is compressed.

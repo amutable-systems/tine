@@ -86,13 +86,13 @@ token one and name one of them, as `examples/image-secureboot` does:
 
 ```Starlark
 image.pkcs11_signing_key(name = "secureboot.token", section = "secure-boot-signing")
-image.generate_signing_key(name = "secureboot.generated")
+image.generate_signing_key(name = "secureboot")
 
 SIGN_WITH_TOKEN = read_config("secure-boot-signing", "token") != None
 
 image.bootable_disk(
     name = "image",
-    secure_boot_key = ":secureboot.token" if SIGN_WITH_TOKEN else ":secureboot.generated",
+    secure_boot_key = ":secureboot.token" if SIGN_WITH_TOKEN else ":secureboot",
     ...
 )
 ```
