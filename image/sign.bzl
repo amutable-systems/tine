@@ -22,6 +22,9 @@ _KEYUTIL = "/usr/lib/systemd/systemd-keyutil"
 # then always reads as the label was written.
 _LABEL_PATTERN = "^[A-Za-z0-9._-]+$"
 
+# Prefix of a generated certificate's common name, before the generate_signing_key name=.
+_GENERATED_CN_PREFIX = "tine.generated."
+
 # Host paths are pasted into a PKCS#11 URI as pin-source= and into P11_KIT_SERVER_ADDRESS. Both are
 # attribute lists, so a delimiter in a path truncates the value there, and '%' reads as an escape;
 # ':' separates a systemd key source from its argument. All of them fail as a wrong path at signing
@@ -134,6 +137,8 @@ def _signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
             box_run(box = ctx.attrs.box[BoxInfo]),
             "ukify",
             "genkey",
+            "--secureboot-certificate-common-name",
+            _GENERATED_CN_PREFIX + ctx.label.name,
             cmd_args(key.as_output(), format = "--secureboot-private-key={}"),
             cmd_args(certificate.as_output(), format = "--secureboot-certificate={}"),
         ),
@@ -163,6 +168,9 @@ generate_signing_key = rule(
     `ukify genkey` produces the pair per workspace into buck-out, so nothing secret is committed, and
     anyone who wants one by hand can run `ukify genkey` directly. `:<name>[cert]` and `:<name>[key]`
     are the PEM artifacts.
+
+    The certificate is named `tine.generated.<name>`, to signify that it is not an official
+    production key.
     """,
 )
 
