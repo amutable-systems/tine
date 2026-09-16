@@ -99,6 +99,21 @@ tine_python_binary(
     deps = ["//:util"],
 )
 
+box.python_test(
+    name = "dev-test",
+    box = ":dev.box",
+    srcs = [
+        "dev.py",
+        "dev_test.py",
+    ],
+    env = {
+        "TY_TEST_BINARY": "$(location_exec :ty)",
+        "TY_TEST_BOX": "$(location_exec tine//catalog:fedora.rawhide.box)",
+        "TY_TEST_PYTHON": "$(location_exec :python3)",
+    },
+    deps = ["//:util"],
+)
+
 tine_python_binary(
     name = "catalog",
     main = "catalog.py",
@@ -234,11 +249,18 @@ command_alias(
 )
 
 command_alias(
-    name = "ty-box",
+    name = "ty-config",
+    args = ["ty-config"],
+    exe = ":dev",
+    visibility = ["PUBLIC"],
+)
+
+command_alias(
+    name = "ty-editor",
     args = [
         "ty",
-        "--box",
-        "$(location_exec tine//catalog:fedora.rawhide.box)",
+        "--python",
+        "$(location_exec :python3)",
         "--ty",
         "$(location_exec :ty)",
     ],

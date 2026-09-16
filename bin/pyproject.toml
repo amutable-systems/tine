@@ -1,0 +1,5 @@
+# Zed needs a Python manifest here to route these files to their own ty instance.
+
+[tool.ty.environment]
+# The launcher runs on the host before it can fetch the pinned Python.
+python-version = "3.12"

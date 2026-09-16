@@ -14,7 +14,7 @@ python_bootstrap_toolchain(
 
 export_file(
     name = "ty-config",
-    src = "pyproject.toml",
+    src = "ty.toml",
     visibility = ["PUBLIC"],
 )
 

@@ -1803,9 +1803,9 @@ class TestDownload(unittest.TestCase):
 
     def artifact(self, content: bytes) -> str:
         path = scratch(self) / "buck2.zst"
-        from compression import zstd
-
-        path.write_bytes(zstd.compress(content))
+        path.write_bytes(
+            subprocess.run(["zstd", "--stdout"], input=content, stdout=subprocess.PIPE, check=True).stdout
+        )
         return path.as_uri()
 
     def test_a_download_that_matches_its_pin(self) -> None:
@@ -1814,9 +1814,14 @@ class TestDownload(unittest.TestCase):
         url = self.artifact(b"binary")
         digest = hashlib.sha256(Path(url.removeprefix("file://")).read_bytes()).hexdigest()
         binary = scratch(self) / "cache" / "buck2"
-        with contextlib.redirect_stderr(io.StringIO()):
-            fetched = tine._download_binary(url, digest, binary, compressed=True)
-        self.assertEqual(fetched.read_bytes(), b"binary")
+        for version in ((3, 12), (3, 14)):
+            with (
+                self.subTest(version=version),
+                unittest.mock.patch.object(sys, "version_info", version),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                fetched = tine._download_binary(url, digest, binary, compressed=True)
+                self.assertEqual(fetched.read_bytes(), b"binary")
 
     def test_an_artifact_that_is_the_binary_itself(self) -> None:
         import hashlib
@@ -1841,10 +1846,10 @@ class TestDownload(unittest.TestCase):
 
     def test_an_artifact_that_is_not_what_the_pin_says_it_is(self) -> None:
         import hashlib
-        from compression import zstd
 
         # Wrong magic, and a stream that ends early: a pin can match either.
-        for payload in (b"not zstd", zstd.compress(b"binary")[:-4]):
+        compressed = Path(self.artifact(b"binary").removeprefix("file://")).read_bytes()
+        for payload in (b"not zstd", compressed[:-4]):
             path = scratch(self) / "buck2.zst"
             path.write_bytes(payload)
             with contextlib.redirect_stderr(io.StringIO()):

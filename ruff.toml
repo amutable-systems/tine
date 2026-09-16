@@ -1,6 +1,5 @@
 # Tooling for the in-tree Python drivers.
 
-[tool.ruff]
 target-version = "py314"
 line-length = 109
 extend-exclude = ["buck-out"]
@@ -28,9 +27,3 @@ lint.select = [
     "B",    # flake8-bugbear
     "ANN",  # flake8-annotations
 ]
-
-[tool.ty.environment]
-python-version = "3.14"
-
-[tool.ty.rules]
-all = "error"

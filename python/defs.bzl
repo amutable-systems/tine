@@ -25,10 +25,16 @@ def _ty_check_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # A dep's sources are here to resolve imports, not to be checked: each is checked by its own
     # target, in the environment that target declares.
-    # ty takes its settings from a `pyproject.toml` it discovers, where its --config-file wants a
-    # bare ty.toml; the check runs in a tree of its own, so the project's has to be laid out in it.
+    # The isolated tree needs its own configuration so ty never discovers settings from a parent.
     contents = flat_tree(ctx.attrs.srcs, ctx.attrs.deps)
-    contents["pyproject.toml"] = ctx.attrs._config
+    config = ctx.attrs._config
+    if ctx.attrs.pyproject != None:
+        config = ctx.actions.declare_output("ty.toml")
+        ctx.actions.run(
+            cmd_args(ctx.attrs._config_tool[RunInfo], "--base", ctx.attrs._config, "--pyproject", ctx.attrs.pyproject, "--output", config.as_output()),
+            category = "ty_config",
+        )
+    contents["ty.toml"] = config
     tree = ctx.actions.symlinked_dir("tree", contents)
 
     # ty reports through its exit status alone, so stamp the output buck tracks once it is happy.
@@ -73,8 +79,10 @@ _ty_check = rule(
         "boxes": attrs.list(attrs.exec_dep(providers = [BoxInfo]), default = []),
         "deps": attrs.list(attrs.dep(providers = [PythonBootstrapSources]), default = []),
         "labels": attrs.list(attrs.string(), default = []),
+        "pyproject": attrs.option(attrs.source(), default = None),
         "srcs": attrs.list(attrs.source()),
         "_config": attrs.source(default = "tine//:ty-config"),
+        "_config_tool": attrs.exec_dep(default = "tine//tools:ty-config", providers = [RunInfo]),
         "_python": attrs.exec_dep(default = "tine//tools:python3"),
         "_ty": attrs.exec_dep(default = "tine//tools:ty", providers = [RunInfo]),
     },
@@ -91,7 +99,8 @@ def ty_check(
     The boxes hang off the check rather than the driver, which would otherwise depend on a box its
     own drivers build.
     """
-    _ty_check(name = name, boxes = boxes, deps = deps, labels = [_TYPECHECK_LABEL], srcs = srcs)
+    manifests = glob(["pyproject.toml"])
+    _ty_check(name = name, boxes = boxes, deps = deps, labels = [_TYPECHECK_LABEL], pyproject = manifests[0] if manifests else None, srcs = srcs)
 
 def tine_python_library(
     name: str,

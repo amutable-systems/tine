@@ -603,6 +603,9 @@ def _host_platform() -> str:
 
 def _decompress_zstd(archive: Path, binary: Path) -> None:
     """Unpack a zstd-compressed release artifact, without `zstd` where python can do it itself."""
+    if sys.version_info < (3, 14):
+        _unzstd(archive, binary)
+        return
     try:
         from compression import zstd
     except ImportError:
