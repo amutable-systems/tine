@@ -159,13 +159,8 @@ group verify-catalog    -- "${buck[@]}" run tine//tools:verify-catalog
 # Everything the cell declares, rather than the handful of targets someone remembered to name here:
 # every example image over both package systems, the boxes, and the source-build demos.
 group build             -- "${buck[@]}" build tine//...
-# Everything `check` left out: the boot smokes, which take minutes each, and the assertions about
-# what the images above produced. Adding one is declaring it, not naming it here as well.
+# Everything `check` left out: the boot smokes over both package systems, which take minutes each,
+# and the assertions about what the images above produced. Adding one is declaring it, not naming it
+# here as well.
 group image-tests       -- "${buck[@]}" test tine//... --include image
 group secureboot-pkcs11 -- secureboot_pkcs11
-# The same example images over the second native package system, through the distribution aliases.
-# `:layered-install` installs over an existing package database, the path with the least in common
-# with a fresh install.
-group arch-images       -- "${buck[@]}" build tine//examples/image:demo.arch tine//examples/image:layered-install.arch
-group arch-boot-image   -- "${buck[@]}" build tine//examples/image:boot-demo.arch
-group arch-boot-smoke   -- "${buck[@]}" run tine//examples/image:boot-demo-vm-smoke.arch
