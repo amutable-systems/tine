@@ -21,17 +21,18 @@ cargo.package(
 )
 ```
 
-- The project's own `Cargo.lock` is picked out of `srcs`; nothing declares it separately. A dynamic
+- The project's own `Cargo.lock` is picked out of `src`; nothing declares it separately. A dynamic
   action reads it once it has been built and declares the fetches it names from there, so the lock can be
   a source file or an artifact another target produced, and the rule takes the same shape either way.
-- `srcs` defaults to `glob(["<name>/**"], exclude = ["<name>/target/**"])`: the checkout is expected in a
-  directory named after the target. Pass `srcs` explicitly when it is called something else. Nothing needs
-  to be added inside the checkout, i.e. a pristine project clone works.
+- `src` defaults to `<name>`: the checkout is expected in a directory named after the target. Pass `src`
+  explicitly when it is called something else. Nothing needs to be added inside the checkout, i.e. a
+  pristine project clone works.
 - Use [`git.fetch()`](git.md) for a project that is not committed to this repository, and pass its work
-  tree as the sole `srcs` entry.
-- At most one of the sources may be a `Cargo.lock`, and its directory is the workspace cargo builds in, so
-  a project vendoring another project's lock has to narrow `srcs`. A project that resolves nothing has no
-  lock to commit; then its sole `Cargo.toml` marks the root instead.
+  tree as `src`.
+- The outermost `Cargo.lock` in `src` marks the workspace cargo builds in; a lock below it, such as a
+  vendored project's, is never cargo's and is left alone. Two locks side by side name no single
+  workspace, so narrow `src` then. A project that resolves nothing has no lock to commit; then its sole
+  `Cargo.toml` marks the root instead.
 - `binaries` names what to take out of `target/release`, and at least one is required: a crate that
   produces no binary has nothing an image could install. These are cargo binary names, which need not
   match the package. Each becomes a sub-target (`:hello[hello-cli]`), and together they are the target's
@@ -102,13 +103,10 @@ How the crates are pinned, fetched and vendored is described under "Rust source 
 - **The checkout must live in the consuming repository.** A Buck package can only glob its own cell, so a
   project registered as a separate workspace cell would have to carry a build file.
 - **A checkout's own `.cargo/config.toml` is refused.** Cargo would read it ahead of the configuration the
-  build writes; keep it out of `srcs`.
-- **A local `cargo build` inside the checkout needs two things kept apart from Buck.** `target/` must stay
-  out of `srcs`, which the default glob already handles: everything in `srcs` is an action input, so a
-  build tree there would invalidate the cached build and be copied into the sandbox. It must also be added
-  to the `ignore` list in the cell's `.buckconfig` `[project]` section, next to `**/.git` and `**/buck-out`,
-  so that the Buck daemon's file watcher does not track it. Without that entry every local cargo run leaves
-  the daemon thousands of file change events to process before it can answer the next command.
+  build writes; keep it out of `src`.
+- **A local `cargo build` inside the checkout needs `target/` in `.gitignore`**, which `tine init` writes.
+  What Git ignores, Buck ignores; anything else in `src` is an input, so the build tree would be hashed
+  and every file cargo writes there would rerun the build.
 - **A cold daemon wants the network even when every crate is already cached**, because Buck asks the
   registry for sizes the lock does not record.
 - **Two projects sharing a crate download it twice.** Each project owns its downloads, and content-based

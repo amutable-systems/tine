@@ -182,7 +182,7 @@ class TestGitSources(unittest.TestCase):
 class TestLockDriver(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        tmp = tempfile.TemporaryDirectory(prefix="cargo-lock-test.")
+        tmp = tempfile.TemporaryDirectory(prefix="cargo-lock-test.", dir="/var/tmp")
         self.addCleanup(tmp.cleanup)
         self.checkout = Path(tmp.name) / "checkout"
         self.checkout.mkdir()
@@ -192,11 +192,11 @@ class TestLockDriver(unittest.TestCase):
         (self.checkout / "Cargo.lock").write_text(LOCK, encoding="utf-8")
 
         self.assertEqual(
-            lock.resolve_workspace("hello", {"generated": str(self.checkout)}),
+            lock.resolve_workspace("hello", self.checkout),
             {
                 "crates": lock.crate_downloads("hello", _lock(LOCK)),
                 "git": {},
-                "root": "generated",
+                "root": "",
             },
         )
 
@@ -204,21 +204,70 @@ class TestLockDriver(unittest.TestCase):
         (self.checkout / "Cargo.toml").write_text(DEPLESS_MANIFEST, encoding="utf-8")
 
         self.assertEqual(
-            lock.resolve_workspace("nodeps", {"generated": str(self.checkout)}),
-            {"crates": [], "git": {}, "root": "generated"},
+            lock.resolve_workspace("nodeps", self.checkout),
+            {"crates": [], "git": {}, "root": ""},
         )
 
-    def test_rejects_several_locks_across_directory_artifacts(self) -> None:
-        other = self.checkout.parent / "other"
-        other.mkdir()
-        (self.checkout / "Cargo.lock").write_text(LOCK, encoding="utf-8")
-        (other / "Cargo.lock").write_text(LOCK, encoding="utf-8")
+    def test_finds_a_nested_workspace(self) -> None:
+        nested = self.checkout / "nested"
+        nested.mkdir()
+        (nested / "Cargo.toml").write_text(MANIFEST, encoding="utf-8")
+        (nested / "Cargo.lock").write_text(LOCK, encoding="utf-8")
 
-        with self.assertRaisesRegex(SystemExit, "srcs hold several Cargo.lock files"):
-            lock.resolve_workspace(
-                "hello",
-                {"first": str(self.checkout), "second": str(other)},
+        self.assertEqual(
+            lock.resolve_workspace("hello", self.checkout),
+            {"crates": lock.crate_downloads("hello", _lock(LOCK)), "git": {}, "root": "nested"},
+        )
+
+    def test_rejects_locks_side_by_side(self) -> None:
+        for name in ("one", "other"):
+            (self.checkout / name).mkdir()
+            (self.checkout / name / "Cargo.lock").write_text(LOCK, encoding="utf-8")
+
+        with self.assertRaisesRegex(SystemExit, "src holds several Cargo.lock files"):
+            lock.resolve_workspace("hello", self.checkout)
+
+    def test_does_not_follow_directory_symlinks(self) -> None:
+        (self.checkout / "Cargo.toml").write_text(DEPLESS_MANIFEST, encoding="utf-8")
+        (self.checkout / "cycle").symlink_to(".")
+        (self.checkout / "dangling").symlink_to("missing")
+
+        self.assertEqual(
+            lock.resolve_workspace("nodeps", self.checkout),
+            {"crates": [], "git": {}, "root": ""},
+        )
+
+    def test_locks_below_the_outermost_are_left_alone(self) -> None:
+        for directory in (self.checkout, self.checkout / "Vendored/other"):
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / "Cargo.toml").write_text(DEPLESS_MANIFEST, encoding="utf-8")
+            (directory / "Cargo.lock").write_text(
+                'version = 3\n\n[[package]]\nname = "nodeps"\nversion = "0.1.0"\n', encoding="utf-8"
             )
+
+        self.assertEqual(
+            lock.resolve_workspace("nodeps", self.checkout),
+            {"crates": [], "git": {}, "root": ""},
+        )
+
+    def test_workspace_discovery_skips_build_output_and_vcs_state(self) -> None:
+        (self.checkout / "Cargo.toml").write_text(DEPLESS_MANIFEST, encoding="utf-8")
+        for name in ("target", ".git", ".jj", ".hg", ".svn"):
+            directory = self.checkout / name
+            directory.mkdir()
+            (directory / "Cargo.toml").write_text("not a manifest", encoding="utf-8")
+            (directory / "Cargo.lock").write_text("not a lock", encoding="utf-8")
+
+        self.assertEqual(
+            lock.resolve_workspace("nodeps", self.checkout),
+            {"crates": [], "git": {}, "root": ""},
+        )
+
+    def test_rejects_individual_files_and_missing_inputs(self) -> None:
+        (self.checkout / "Cargo.toml").write_text(DEPLESS_MANIFEST, encoding="utf-8")
+        for source in (self.checkout / "Cargo.toml", self.checkout / "missing"):
+            with self.subTest(source=source), self.assertRaisesRegex(SystemExit, "src must be a directory"):
+                lock.resolve_workspace("hello", source)
 
 
 class TestBuild(unittest.TestCase):

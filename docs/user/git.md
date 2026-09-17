@@ -23,7 +23,7 @@ cargo.package(
     name = "hello",
     binaries = ["hello-cli"],
     box = ":rust.box",
-    srcs = [":hello.git"],
+    src = ":hello.git",
 )
 ```
 

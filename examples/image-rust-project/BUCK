@@ -21,22 +21,13 @@ box.new(
     release = "tine//catalog:fedora.rawhide.release",
 )
 
-# Products use git.fetch() for projects they build but do not vendor. This example's `hello/` directory
-# overrides the fetch, avoiding network access during the test. Both paths give cargo.package() the same
-# opaque directory artifact and exercise its workspace discovery.
-git.fetch(
-    name = "hello.git",
-    repo = "https://github.com/example/hello",
-    rev = "1c9e0f4b0f7d2a5e8b3c6d1a4f7b2e5c8d0a3f6b",
-)
-
-# A fetched project needs no build file of its own. Its Cargo.lock both pins the crates and marks the
-# workspace root, even though neither it nor Cargo.toml is visible until the checkout action runs.
+# A checked-out project needs no build file of its own: the sources default to the directory named
+# after the target. Its Cargo.lock both pins the crates and marks the workspace root, even though
+# neither it nor Cargo.toml is visible until the source tree has been built.
 cargo.package(
     name = "hello",
     binaries = ["hello-cli"],
     box = ":rust.box",
-    srcs = [":hello.git"],
 )
 
 # A project with no dependencies at all, which therefore commits no Cargo.lock.
@@ -44,6 +35,31 @@ cargo.package(
     name = "nodeps",
     binaries = ["nodeps"],
     box = ":rust.box",
+)
+
+# Products use git.fetch() for projects they build but do not vendor. The local checkout must override
+# this fetch, so its revision is deliberately a placeholder. An override is built from the live
+# directory, so its results stay out of the shared cache.
+git.fetch(
+    name = "nodeps.git",
+    repo = "https://github.com/example/nodeps",
+    rev = "1111111111111111111111111111111111111111",
+)
+
+cargo.package(
+    name = "renamed",
+    binaries = ["nodeps"],
+    box = ":rust.box",
+    src = ":nodeps.git",
+)
+
+cargo.package(
+    name = "incremental",
+    binaries = ["nodeps"],
+    box = ":rust.box",
+    # Exercise persistent output even when the checkout is not mounted in dev mode.
+    dev = True,
+    src = "nodeps",
 )
 
 box.sh_test(
@@ -54,7 +70,8 @@ box.sh_test(
     # $(exe) goes through RunInfo: a single binary is run as the target, any binary as its sub-target.
     args = [
         "$(exe :nodeps)",
-        "$(exe :nodeps[nodeps])",
+        "$(exe :renamed[nodeps])",
+        "$(exe :incremental)",
     ],
 )
 

@@ -76,7 +76,7 @@ git --git-dir="$git_dir" config --bool core.bare true""",
                 },
             ),
         ),
-        allow_cache_upload = not incremental,
+        allow_cache_upload = not incremental and not src.is_source,
         category = "cargo_build",
         no_outputs_cleanup = incremental,
     )
@@ -98,9 +98,7 @@ _cargo_build = dynamic_actions(
 )
 
 def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
-    # Symlinked, not copied: the build driver copies the tree into its scratch space anyway, because
-    # cargo needs it writable, and copying twice buys nothing.
-    src = ctx.actions.symlinked_dir(_PRIVATE + "/src", {source.short_path: source for source in ctx.attrs.srcs})
+    src = project.digested(ctx.actions, _PRIVATE + "/src", ctx.attrs.src) if ctx.attrs.copy else ctx.attrs.src
     reserved = [name for name in ctx.attrs.binaries if name == _PRIVATE or name.startswith(_PRIVATE + "/")]
     if reserved:
         fail("cargo_package {}: binaries may not be named {}".format(ctx.label.name, reserved))
@@ -121,11 +119,12 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
                 {
                     "name": ctx.label.name,
                     "out": resolved.as_output(),
-                    "sources": {source.short_path: source for source in ctx.attrs.srcs},
+                    "src": src,
                 },
             ),
         ),
-        allow_cache_upload = True,
+        # A live checkout may expose ignored files; fetched trees contain only declared inputs.
+        allow_cache_upload = not src.is_source,
         category = "cargo_lock",
     )
 
@@ -155,8 +154,9 @@ _cargo_package = rule(
     attrs = {
         "binaries": attrs.list(attrs.string(), doc = "binaries to take out of the build"),
         "box": attrs.exec_dep(providers = [BoxInfo], doc = "box carrying the Rust toolchain"),
+        "copy": attrs.bool(doc = "src is a directory of this package, built from the copy Buck digested"),
         "incremental": attrs.bool(doc = "keep cargo's build directory across dev-mode rebuilds"),
-        "srcs": attrs.list(attrs.source(), doc = "the project's source tree, Cargo.lock included"),
+        "src": attrs.source(allow_directory = True, doc = "the project's source directory, Cargo.lock included"),
         "_auditable": attrs.exec_dep(providers = [RunInfo], default = "tine//tools:cargo-auditable"),
         "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//cargo:build"),
         "_fetch": attrs.exec_dep(providers = [RunInfo], default = "prelude//git/tools:git_fetch"),
@@ -168,22 +168,23 @@ _cargo_package = rule(
 def cargo_package(
     name: str,
     binaries: list[str],
-    srcs: list[str] | None = None,
+    src: str | None = None,
     dev: bool | None = None,
     **kwargs,
 ) -> None:
     """Build a checked-out Rust project against the crates its Cargo.lock pins.
 
-    The sources default to the checkout named after the target, minus whatever a cargo build run
-    inside it left behind. A lock among them pins every fetch the build needs, and is read once it
-    has been built, so a project whose tree arrives from a fetch needs nothing committed here.
+    The source defaults to the checkout named after the target. Its Cargo.lock pins every fetch
+    the build needs and is read once the source has been built, so a project whose tree arrives
+    from a fetch needs nothing committed here.
     """
     if not binaries:
         fail("cargo_package {}: declare the binaries to take out of the build".format(name))
     _cargo_package(
         name = name,
         binaries = binaries,
-        incremental = project.is_dev(name, override = dev),
-        srcs = srcs if srcs != None else glob([name + "/**"], exclude = [name + "/target/**"]),
+        copy = project.is_directory(src),
+        incremental = project.is_dev(name, source = src, override = dev),
+        src = src if src != None else name,
         **kwargs,
     )
