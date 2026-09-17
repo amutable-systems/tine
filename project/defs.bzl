@@ -10,7 +10,7 @@ def _project_path(package: str, name: str, *, cell: str) -> str:
     root = read_root_config("cells", cell, "")
     return "/".join([part.strip("/") for part in (root, package, name) if part and part != "."])
 
-def _is_label(source: str) -> bool:
+def is_label(source: str) -> bool:
     """Whether `source` is a target label rather than a directory of this package."""
     return ":" in source
 
@@ -19,7 +19,7 @@ def _source_path(source: str) -> str:
     cell = get_cell_name()
     package = package_name()
     target = source
-    if _is_label(source):
+    if is_label(source):
         path, _, target = source.rpartition(":")
         if "//" in path:
             cell, package = path.split("//", 1)
@@ -45,12 +45,16 @@ def is_dev(
         return project_path in configured
     return _source_path(source) in configured
 
-def populated(directory: str) -> bool:
-    """Whether `directory` in this package contains a file, or is mounted for dev mode."""
+def has_files(directory: str) -> bool:
+    """Whether `directory` in this package contains a file that Buck does not ignore."""
 
     # A glob() pattern matches a file that starts with a dot, or a file in a directory that starts with
     # a dot, only if the pattern itself contains that dot.
-    return bool(glob([directory + "/**", directory + "/**/.*", directory + "/**/.*/**"])) or is_dev(directory)
+    return bool(glob([directory + "/**", directory + "/**/.*", directory + "/**/.*/**"]))
+
+def populated(directory: str) -> bool:
+    """Whether `directory` in this package contains a file, or is mounted for dev mode."""
+    return has_files(directory) or is_dev(directory)
 
 def kept_dir(actions: AnalysisActions, name: str) -> Artifact:
     """Declare a directory output that an action keeps across reruns, or that holds a binary."""
@@ -104,7 +108,7 @@ def source(src: str) -> str:
     A label is returned unchanged. A directory of this package is replaced by a target that copies the
     files Buck digested.
     """
-    if _is_label(src):
+    if is_label(src):
         return src
     name = src + ".src"
 
@@ -115,7 +119,9 @@ def source(src: str) -> str:
 
 project = struct(
     copy_source = copy_source,
+    has_files = has_files,
     is_dev = is_dev,
+    is_label = is_label,
     kept_dir = kept_dir,
     populated = populated,
     source = source,
