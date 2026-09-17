@@ -102,6 +102,8 @@ How the crates are pinned, fetched and vendored is described under "Rust source 
   one without committing the lock is refused, naming the table it found.
 - **The checkout must live in the consuming repository.** A Buck package can only glob its own cell, so a
   project registered as a separate workspace cell would have to carry a build file.
+- **A build cannot `rename(2)` a directory of its sources.** It builds on an overlay of them, where that
+  fails with `EXDEV`, as it does in a container. `mv` works, since it copies instead.
 - **A checkout's own `.cargo/config.toml` is refused.** Cargo would read it ahead of the configuration the
   build writes; keep it out of `src`.
 - **A local `cargo build` inside the checkout needs `target/` in `.gitignore`**, which `tine init` writes.

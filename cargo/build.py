@@ -10,14 +10,17 @@ SBOM learns what went into it.
 """
 
 import os
-import shutil
 import subprocess
 import tomllib
+from contextlib import nullcontext
 from pathlib import Path
 from typing import TypedDict
 
 import specs
 import util
+
+import rootfs
+from isolation import Bind
 
 
 class GitSource(TypedDict):
@@ -86,7 +89,7 @@ def _reject_local_config(build: Path, workspace: Path) -> None:
             if found.exists():
                 util.fail(
                     f"cargo-build: {found.relative_to(build)} would override the vendored source "
-                    "configuration; keep it out of srcs"
+                    "configuration; keep it out of src"
                 )
         if directory == build:
             return
@@ -111,25 +114,23 @@ def _cargo_config(vendor: Path, git: dict[str, GitSource]) -> str:
     return "\n".join(sections)
 
 
-def main(argv: list[str] | None = None) -> None:
-    spec = specs.parse(Spec, "cargo-build", argv)
-
+def build_cargo(spec: Spec, scratch: Path = Path("/var/tmp")) -> None:
+    """Build a Cargo workspace with disposable source writes and an optional persistent target."""
+    # Cargo resolves its environment paths from the workspace given as its cwd.
+    scratch = scratch.absolute()
     # Cargo needs somewhere to write, and the build inputs are read-only artifacts. The sandbox
     # backs /var/tmp with the action's scratch space, which Buck clears before each execution, so
     # fixed names neither collide with a preserved failed tree nor accumulate across builds.
-    build = Path("/var/tmp/build")
-    cargo_home = Path("/var/tmp/cargo")
+    build = scratch / "build"
+    cargo_home = scratch / "cargo"
+    target = scratch / "target"
 
     # Cargo's build directory is the exception: for an incremental build buck keeps the previous one, so
     # a rebuild redoes only what changed. Cargo decides that from the modification times of the sources,
-    # which the copy below preserves. Otherwise it goes in the scratch space.
-    # Cargo runs with the workspace as its cwd, so every path handed to it must be absolute.
-    target = Path(spec["target"]).absolute() if spec["target"] is not None else Path("/var/tmp/target")
-
-    shutil.copytree(spec["src"], build)
-
-    workspace = build / spec["root"]
-    _reject_local_config(build, workspace)
+    # which the source overlay preserves. Keep writable access before protecting the project.
+    persistent = Path(spec["target"]) if spec["target"] is not None else None
+    if persistent is not None:
+        persistent.mkdir(parents=True, exist_ok=True)
 
     cargo_home.mkdir(parents=True)
     (cargo_home / "config.toml").write_text(
@@ -137,31 +138,43 @@ def main(argv: list[str] | None = None) -> None:
         encoding="utf-8",
     )
 
-    # A project that resolves nothing carries no lock for --locked to hold cargo to. The empty
-    # vendored source and the unshared network are what keep such a build from resolving anything.
-    locked = ["--locked"]
-    if not (workspace / "Cargo.lock").exists():
-        _reject_unlocked_dependencies(workspace)
-        locked = []
-    # Cargo refuses every git transfer under --offline, the file:// repositories included. That
-    # flag is just belt-and-suspenders though: the action always runs in an unshared network
-    # namespace, so cargo can never reach out to the actual internet.
-    offline = [] if spec["git"] else ["--offline"]
-    subprocess.run(
-        [
-            Path(spec["auditable"]).absolute(),
-            "auditable",
-            "build",
-            "--release",
-            *locked,
-            *offline,
-        ],
-        check=True,
-        cwd=workspace,
-        env=os.environ | {"CARGO_HOME": str(cargo_home), "CARGO_TARGET_DIR": str(target)},
-    )
+    with Bind(persistent, target) if persistent is not None else nullcontext():
+        # A build outside a chroot can follow source symlinks back into other project inputs.
+        project = Path.cwd()
+        with Bind(project, project, readonly=True), rootfs.source_overlay(Path(spec["src"]), build):
+            workspace = build / spec["root"]
+            _reject_local_config(build, workspace)
 
-    util.take_binaries(target / "release", spec["binaries"], tool="cargo-build", where="target/release")
+            # A project that resolves nothing carries no lock for --locked to hold cargo to. The empty
+            # vendored source and the unshared network are what keep such a build from resolving anything.
+            locked = ["--locked"]
+            if not (workspace / "Cargo.lock").exists():
+                _reject_unlocked_dependencies(workspace)
+                locked = []
+            # Cargo refuses every git transfer under --offline, the file:// repositories included. That
+            # flag is just belt-and-suspenders though: the action always runs in an unshared network
+            # namespace, so cargo can never reach out to the actual internet.
+            offline = [] if spec["git"] else ["--offline"]
+            subprocess.run(
+                [
+                    Path(spec["auditable"]).absolute(),
+                    "auditable",
+                    "build",
+                    "--release",
+                    *locked,
+                    *offline,
+                ],
+                check=True,
+                cwd=workspace,
+                env=os.environ | {"CARGO_HOME": str(cargo_home), "CARGO_TARGET_DIR": str(target)},
+            )
+
+        # Outputs must be writable again, while the persistent target is still mounted.
+        util.take_binaries(target / "release", spec["binaries"], tool="cargo-build", where="target/release")
+
+
+def main(argv: list[str] | None = None) -> None:
+    build_cargo(specs.parse(Spec, "cargo-build", argv))
 
 
 if __name__ == "__main__":
