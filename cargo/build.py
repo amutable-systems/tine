@@ -90,7 +90,7 @@ def _reject_local_config(build: Path, workspace: Path) -> None:
             if found.exists():
                 util.fail(
                     f"cargo-build: {found.relative_to(build)} would override the vendored source "
-                    "configuration; keep it out of srcs"
+                    "configuration; keep it out of src"
                 )
         if directory == build:
             return
@@ -130,7 +130,9 @@ def main(argv: list[str] | None = None) -> None:
     # Cargo runs with the workspace as its cwd, so every path handed to it must be absolute.
     target = Path(spec["target"]).absolute() if spec["target"] is not None else Path("/var/tmp/target")
 
-    shutil.copytree(spec["src"], build)
+    # Keep symlinks as symlinks. A tree can link a directory to its own parent, and following that link
+    # copies the directory into itself until the path is too long.
+    shutil.copytree(spec["src"], build, symlinks=True)
 
     workspace = build / spec["root"]
     _reject_local_config(build, workspace)
