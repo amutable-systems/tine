@@ -926,8 +926,8 @@ A consuming repository can build a Rust project it has checked out instead of pa
 nothing added to it, and the single `Cargo.lock` in it identifies the workspace root. An action discovers
 that lock after the sources have been built, so the checkout may itself be a fetched directory artifact; a
 dynamic action then reads the resolved lock and declares what the build fetches. A project without
-dependencies commits a lock too, because the build passes `--locked`. The declaration contract is in
-[cargo.md](../user/cargo.md).
+dependencies commits a lock too: the build passes `--locked`, and cargo cannot write a missing lock into the
+read-only sources. The declaration contract is in [cargo.md](../user/cargo.md).
 
 A lock entry's `checksum` is the SHA-256 of its crates.io tarball and `static.crates.io` serves that
 tarball under a URL derived from name and version, so each registry crate becomes one hash-verified
@@ -962,15 +962,27 @@ The unit of caching is the project: any change to its sources reruns one action 
 Splitting that into one action per crate would require the crate dependency graph rather than just the
 lock, and is deliberately not attempted.
 
-The rerun is made cheap instead for a `tine mount`ed checkout, for a developer working on that part:
-Cargo's build directory then is a declared output that buck is told not to clear before rerunning the
-action, so cargo finds the previous one and recompiles only what changed, exactly as it does in a working
-copy. Nothing else survives: the source tree is copied afresh from the action's inputs on every run, with
-the modification times cargo compares them by. A build that finds no previous directory remains the
+The rerun is made cheap instead for a `tine mount`ed checkout, for a developer working on that part: Cargo's
+build directory then is a declared output that buck is told not to clear before rerunning the action, so
+cargo finds the previous one and recompiles only what changed, exactly as it does in a working copy. Buck
+keeps the binaries directory of a mounted build as well as its build directory, so the driver replaces the
+binaries of the last run instead of adding to them. A build that finds no previous directory remains the
 reference, which is what CI and any `buck clean` produce.
 
-Fetched or committed sources declare no build directory and build in scratch space: there is no edit
-cycle to speed up, and the large intermediate build artifacts are not uploaded to a shared cache.
+Every cargo build, mounted or not, runs in the action's scratch space, which the sandbox mounts at
+`/var/tmp`, outside the project. The driver bind-mounts the source tree at a fixed path there. Cargo searches
+every parent directory of the workspace for configuration and for a workspace manifest, and none of those
+parents is in the consuming repository. The project is read-only while the driver runs, and so is the bind of
+the source tree. Cargo's documentation says that a build script should write only into `OUT_DIR`, because two
+builds that share a dependency can run its build script at the same time. A write into the sources therefore
+fails the build instead of being discarded on an overlay, as `rpm.package()` must. The project's sources and
+its vendored crates.io dependencies are read-only. Cargo checks a git dependency out into its home directory
+in the scratch space, which is writable. The declared output directories are mounted writable in the scratch
+space.
+
+Fetched or committed sources declare no build directory, and cargo keeps its build directory in scratch
+space: there is no edit cycle to speed up, and the large intermediate build artifacts are not uploaded to a
+shared cache.
 
 ### Go source builds
 
