@@ -14,13 +14,16 @@ SBOM learns what went into it.
 """
 
 import os
-import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import TypedDict
 
 import specs
 import util
+
+import rootfs
+from isolation import Bind
 
 
 class GitSource(TypedDict):
@@ -49,11 +52,11 @@ class Spec(TypedDict):
     vendor: str
 
 
-def _reject_local_config(build: Path, workspace: Path) -> None:
+def _reject_local_config(source: Path, workspace: Path) -> None:
     """Refuse a checkout's own cargo configuration, which would outrank the one this driver writes.
 
     Cargo merges configuration from the working directory upward and reads `$CARGO_HOME` last, so a
-    file in the project wins: it can redirect the crates-io source away from the vendored tree, or
+    file in the checkout wins: it can redirect the crates-io source away from the vendored tree, or
     move the directory the declared binaries are taken from.
     """
     directory = workspace
@@ -62,10 +65,10 @@ def _reject_local_config(build: Path, workspace: Path) -> None:
             found = directory / ".cargo" / name
             if found.exists():
                 util.fail(
-                    f"cargo-build: {found.relative_to(build)} would override the vendored source "
+                    f"cargo-build: {found.relative_to(source)} would override the vendored source "
                     "configuration; keep it out of src"
                 )
-        if directory == build:
+        if directory == source:
             return
         directory = directory.parent
 
@@ -102,57 +105,65 @@ def _take_binaries(built: Path, names: list[str], into: Path) -> None:
         util.clone_file(built / name, into / name)
 
 
-def main(argv: list[str] | None = None) -> None:
-    spec = specs.parse(Spec, "cargo-build", argv)
+def build_cargo(spec: Spec) -> None:
+    """Build a Cargo workspace on a read-only bind mount of its sources, in a read-only project."""
+    # The sandbox points TMPDIR at /var/tmp, which it backs with the action's scratch space. Buck
+    # clears the scratch space before each run, so none of these paths exists yet.
+    scratch = Path(tempfile.gettempdir())
+    build = scratch / "build"
+    cargo_home = scratch / "cargo"
+    target = scratch / "target"
+    out = scratch / "bin"
 
-    # Cargo needs somewhere to write, and the build inputs are read-only artifacts. The sandbox
-    # backs /var/tmp with the action's scratch space, which Buck clears before each execution, so
-    # fixed names neither collide with a preserved failed tree nor accumulate across builds.
-    build = Path("/var/tmp/build")
-    cargo_home = Path("/var/tmp/cargo")
-
-    # Cargo's build directory is the exception: for an incremental build buck keeps the previous one, so
-    # a rebuild redoes only what changed. Cargo decides that from the modification times of the sources,
-    # which the copy below preserves. Otherwise it goes in the scratch space.
-    # Cargo runs with the workspace as its cwd, so every path handed to it must be absolute.
-    target = Path(spec["target"]).absolute() if spec["target"] is not None else Path("/var/tmp/target")
-
-    # Keep symlinks as symlinks. A tree can link a directory to its own parent, and following that link
-    # copies the directory into itself until the path is too long.
-    shutil.copytree(spec["src"], build, symlinks=True)
-
-    workspace = build / spec["root"]
-    _reject_local_config(build, workspace)
-
-    out = Path(spec["bin"])
-    out.mkdir(parents=True, exist_ok=True)
-    util.remove_previous_binaries(out)
-
-    cargo_home.mkdir(parents=True)
+    # Cargo resolves a relative path in a config.toml against the directory that contains the file.
+    # Cargo also runs in the workspace, not in the project. Every project path that this driver passes
+    # to cargo is therefore absolute.
+    cargo_home.mkdir()
     (cargo_home / "config.toml").write_text(
         _cargo_config(Path(spec["vendor"]).absolute(), spec["git"]),
         encoding="utf-8",
     )
 
-    # Cargo refuses every git transfer under --offline, the file:// repositories included. That
-    # flag is just belt-and-suspenders though: the action always runs in an unshared network
-    # namespace, so cargo can never reach out to the actual internet.
-    offline = [] if spec["git"] else ["--offline"]
-    subprocess.run(
-        [
-            Path(spec["auditable"]).absolute(),
-            "auditable",
-            "build",
-            "--release",
-            "--locked",
-            *offline,
-        ],
-        check=True,
-        cwd=workspace,
-        env=os.environ | {"CARGO_HOME": str(cargo_home), "CARGO_TARGET_DIR": str(target)},
-    )
+    outputs = {Path(spec["bin"]): out}
+    if spec["target"] is not None:
+        # For an incremental build buck keeps cargo's previous build directory, so a rebuild redoes
+        # only what changed. Cargo decides that from the modification times of the sources.
+        outputs[Path(spec["target"])] = target
+    with rootfs.readonly_project(Path.cwd(), outputs):
+        util.remove_previous_binaries(out)
 
-    _take_binaries(target / "release", spec["binaries"], out)
+        # Cargo reads `.cargo/config.toml` and a `Cargo.toml` with a `[workspace]` table in every parent
+        # directory of the workspace. Inside the project, those parents belong to the consuming
+        # repository, and their files would change the build. The parents of the bind mount are
+        # directories of the sandbox. The bind is read-only, because it is a bind of a directory in the
+        # read-only project.
+        with Bind(Path(spec["src"]), build):
+            workspace = build / spec["root"]
+            _reject_local_config(build, workspace)
+
+            # Cargo refuses every git transfer under --offline, the file:// repositories included. That
+            # flag is just belt-and-suspenders though: the action always runs in an unshared network
+            # namespace, so cargo can never reach out to the actual internet.
+            offline = [] if spec["git"] else ["--offline"]
+            subprocess.run(
+                [
+                    Path(spec["auditable"]).absolute(),
+                    "auditable",
+                    "build",
+                    "--release",
+                    "--locked",
+                    *offline,
+                ],
+                check=True,
+                cwd=workspace,
+                env=os.environ | {"CARGO_HOME": str(cargo_home), "CARGO_TARGET_DIR": str(target)},
+            )
+
+        _take_binaries(target / "release", spec["binaries"], out)
+
+
+def main(argv: list[str] | None = None) -> None:
+    build_cargo(specs.parse(Spec, "cargo-build", argv))
 
 
 if __name__ == "__main__":

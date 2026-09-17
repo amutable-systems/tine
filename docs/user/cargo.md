@@ -107,7 +107,14 @@ How the crates are pinned, fetched and vendored is described under "Rust source 
 - **The checkout must live in the consuming repository.** A Buck package can only glob its own cell, so a
   project registered as a separate workspace cell would have to carry a build file.
 - **A checkout's own `.cargo/config.toml` is refused.** Cargo would read it ahead of the configuration the
-  build writes; keep it out of `src`.
+  build writes; keep it out of `src`. A `.cargo/config.toml` or a workspace `Cargo.toml` elsewhere in the
+  consuming repository does not affect the build.
+- **A build script cannot write beside its sources.** The build mounts the sources read-only, so a
+  `build.rs` that writes outside `OUT_DIR` fails with a read-only file system error (`EROFS`). Cargo's
+  documentation says that a build script should write only into `OUT_DIR`. The vendored crates.io
+  dependencies are read-only too, so update or patch a dependency whose build script writes into its
+  sources. A git dependency is checked out into a writable directory, so its build script can write
+  beside its sources.
 - **A local `cargo build` inside the checkout needs `target/` in `.gitignore`**. `tine init` writes it when
   it creates the `.gitignore`. If your project already had a `.gitignore`, add `target/` yourself. Buck
   reads every file that Git does not ignore as a source. While Git does not ignore `target/`,

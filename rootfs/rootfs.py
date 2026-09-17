@@ -261,10 +261,11 @@ def _apivfs(stack: ExitStack, target: Path) -> None:
     if "BUCK_SCRATCH_PATH" not in os.environ:
         stack.enter_context(Tmpfs(target / "var/tmp"))
     else:
-        # In a run action, TMPDIR is the scratch directory that the sandbox mounts. The scratch
-        # directory is inside the project but stays writable when `readonly_project()` makes the
-        # project read-only. The backing directory gets a unique name, because one action can mount
-        # several roots.
+        # In a run action, the sandbox mounts the action's scratch directory at /var/tmp, and TMPDIR
+        # points there. Buck creates the scratch directory in buck-out, inside the project. /var/tmp
+        # is a separate mount, so it stays writable when `readonly_project()` makes the project
+        # read-only. The backing directory gets a unique name, because one action can mount several
+        # roots.
         backing = Path(
             stack.enter_context(tempfile.TemporaryDirectory(prefix="var-tmp.", ignore_cleanup_errors=True))
         )

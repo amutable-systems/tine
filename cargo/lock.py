@@ -107,7 +107,8 @@ def resolve_workspace(target: str, source: Path) -> dict[str, Any]:
                 f"cargo_package {target}: src holds no Cargo.toml; by default the checkout is expected "
                 f"in the {target}/ directory, pass `src` when it lives elsewhere"
             )
-        # The build passes --locked, and cargo refuses to create a missing lock under --locked.
+        # Cargo refuses to create a missing lock under --locked. The build cannot drop --locked, because
+        # cargo would then write the lock into the sources, which are read-only during the build.
         fail(
             f"cargo_package {target}: src holds no Cargo.lock; commit the lock that cargo writes, "
             "or fetch a revision that contains one"
