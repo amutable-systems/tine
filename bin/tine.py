@@ -1576,7 +1576,10 @@ def init_command(directory: Path, arguments: list[str]) -> None:
         print("tine: .gitignore exists, left alone", file=sys.stderr)
         update_git_excludes(directory, GITIGNORE)
     else:
-        write_if_changed(directory / ".gitignore", GITIGNORE)
+        # Cargo's build output, which Buck would otherwise read as a source. Only in a file the project
+        # sees and commits: excluded per clone, it would silently hide new files in a source directory
+        # that happens to have this name.
+        write_if_changed(directory / ".gitignore", GITIGNORE + "target/\n")
         print("tine: wrote .gitignore", file=sys.stderr)
     write_if_changed(
         directory / ".buckconfig", render_project_buckconfig(checkout / ".buckconfig", overrides)

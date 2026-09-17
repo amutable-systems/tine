@@ -2529,6 +2529,7 @@ class TestInit(unittest.TestCase):
         )
         gitignore = (self.into / ".gitignore").read_text()
         self.assertIn("/buck-out\n", gitignore)
+        self.assertIn("target/\n", gitignore)
         self.assertIn(f"/{tine.LOCAL}\n", gitignore)
         # The name an interrupted write leaves behind, which is nobody's to commit either.
         self.assertIn(f"/{tine.LOCAL}.*.tmp\n", gitignore)
@@ -2594,6 +2595,8 @@ class TestInit(unittest.TestCase):
         excluded = (self.into / ".git" / "info" / "exclude").read_text()
         for entry in tine.GITIGNORE.split():
             self.assertIn(f"{entry}\n", excluded)
+        # An exclude nobody reads must not hide a source directory that happens to have this name.
+        self.assertNotIn("target/", excluded)
 
     def test_it_takes_one_path(self) -> None:
         # `--help` is argparse's to answer, and neither it nor a second path writes a project.
