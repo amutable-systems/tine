@@ -3,9 +3,9 @@
     "files": [
       {
         "out": "multilib.db",
-        "sha256": "68f72c86f1bdcdf3b3a2a7c16fcbe03c3cbae65c4fdc990ef863be4a3d54775c",
-        "size": 84687,
-        "url": "https://archive.archlinux.org/repos/2026/09/12/multilib/os/x86_64/multilib.db"
+        "sha256": "c20c8c21c941302ff2fb82e12b58d0146a9dc2ba7b1cb9411e2371307a6ec5ba",
+        "size": 84706,
+        "url": "https://archive.archlinux.org/repos/2026/09/16/multilib/os/x86_64/multilib.db"
       }
     ],
     "inline": {}
@@ -25,6 +25,7 @@
     "0b0457ed2fcf5aef39423838d2217bb8e41b8948d5ddbb7f4686329ce931eb43": {"location":"lib32-mesa-utils-9.0.0-4-x86_64.pkg.tar.zst","size":86697},
     "0cfe5c7053842f9efbf0538396c9e303e16480135b4c232fc13057739d707b25": {"location":"lib32-lcms2-2.17-1-x86_64.pkg.tar.zst","size":161183},
     "0d2e75d99503602b0b339a32ada558d969eb9647d29be5464d7a037c49308394": {"location":"lib32-lm_sensors-1:3.6.2-2-x86_64.pkg.tar.zst","size":23343},
+    "0dd59383007e5fe8325766f48f73ca7ce773408661f588b608c7772e44bcd51b": {"location":"lib32-libgcrypt-1.12.4-1-x86_64.pkg.tar.zst","size":521574},
     "0f29da15eaecaaad854c236db9f6fe0b1c76b2f6791236a2aff2372c55793138": {"location":"lib32-libndp-1.9-1-x86_64.pkg.tar.zst","size":11799},
     "0f568950f143352cc7c930185f6acef1c43fd301e52adf345ac7c1e3349db8ad": {"location":"lib32-libxxf86vm-1.1.7-1-x86_64.pkg.tar.zst","size":9783},
     "103903840e56b174da3c029c7484862a0dabe90704dda5170a0e6494c42c5f09": {"location":"lib32-clang-22.1.8-1-x86_64.pkg.tar.zst","size":28617656},
@@ -95,7 +96,6 @@
     "6c0f3f02571f77d0eb1f96973e86ed014ba2511e853a129b5d030b899b3c5b19": {"location":"lib32-libvorbis-1.3.7-4-x86_64.pkg.tar.zst","size":177476},
     "6c6ec3937f36fe421c2891290b565560b0eeb8b6e1d43a3e4b7f6fe2ae97339a": {"location":"lib32-vulkan-virtio-1:26.2.2-1-x86_64.pkg.tar.zst","size":527584},
     "6cc85b950852419929994e7832f36cd4fa900023b9fa6127ae945bfa74f60c1a": {"location":"lib32-libxinerama-1.1.6-1-x86_64.pkg.tar.zst","size":5875},
-    "6d58fbce0347b88dffc763a3fa0fbf258a470b22ca9d7018f8285e663f5186d3": {"location":"lib32-libgcrypt-1.12.3-1-x86_64.pkg.tar.zst","size":521457},
     "6f7363af722edea18273e8389f811279778dc287e88a2becc575a39823c3d253": {"location":"lib32-vulkan-panfrost-1:26.2.2-1-x86_64.pkg.tar.zst","size":2343725},
     "6fc1319143654e362eede062e8f1b38dc0a00e21a6401f0e6bf8c977769c3830": {"location":"lib32-pipewire-v4l2-1:1.6.8-1-x86_64.pkg.tar.zst","size":39196},
     "6ff4debc5a14350b4ab4fc06e4a8445c2692e15072a02281006ff024fe6074fa": {"location":"lib32-mesa-demos-9.0.0-4-x86_64.pkg.tar.zst","size":1834290},
@@ -146,7 +146,6 @@
     "bed31e16e7484c3d136448a946ebbddf8c19bd48510b44d68926af89e53197ed": {"location":"lib32-alsa-plugins-1.2.12-1-x86_64.pkg.tar.zst","size":65341},
     "c11dc78df1f0dffedaa87ea6ff0ca2da46e82673d9ef2524fc9aec7a2c03a57f": {"location":"lib32-renderdoc-1.45-1-x86_64.pkg.tar.zst","size":7697516},
     "c29aea78d888f816f45c0876ae41ee29afb07f56f20e383fd66782849791760a": {"location":"lib32-xz-5.8.4-1-x86_64.pkg.tar.zst","size":111295},
-    "c2a4d3c40f818de268c47fbc3835ffd980ccff6498dcf6341b4b58010c737c8f": {"location":"lib32-libldap-2.6.13-1-x86_64.pkg.tar.zst","size":163948},
     "c6097061a5c2bdabc6a3e86a905e72cecb42fed9b74e9012bd5271ee7ad9b35e": {"location":"lib32-freeglut-3.8.0-2-x86_64.pkg.tar.zst","size":97331},
     "c65621bff636002fa60d135f32e9d253d9d01db51569c2267cb55e9fc57b4e38": {"location":"lib32-libusb-1.0.30-1-x86_64.pkg.tar.zst","size":62155},
     "c902d504c1225c54f33954255c41256707f277de84193688b4f9c24c4f8a8318": {"location":"umu-launcher-1.4.4-1-x86_64.pkg.tar.zst","size":390841},
@@ -190,6 +189,7 @@
     "f68235c5a3d9f0e3da162680124f34bae2aa6cb0347bb98509c9fb65d004dc44": {"location":"lib32-primus-20151110-7-x86_64.pkg.tar.zst","size":62598},
     "f6b4678a0c04a1ee3ce6a1cfb94bb05aed822256ee8ac6c53071c57c5406bb59": {"location":"lib32-libxv-1.0.13-1-x86_64.pkg.tar.zst","size":9787},
     "f8458c44363069d7ab14da014e097708cf2de7b4f92c5de6c4e51ee4023093f3": {"location":"lib32-cairo-1.18.4-1-x86_64.pkg.tar.zst","size":606115},
+    "f9765cde5006bcbc902eeae08c7bbe6f3feff59485d7058f1a0c134db9d17896": {"location":"lib32-libldap-2.7.1-1-x86_64.pkg.tar.zst","size":171119},
     "fb0d062ed50c6607f2c90fbff4a432251ce00b1ceb5621e5277d1ada6d1828b7": {"location":"lib32-ncurses-6.6-2-x86_64.pkg.tar.zst","size":226234},
     "ff1fbffa0a2fb289f903f6b480506ef3dd35f222bdcc1b655f94d134d39ad3b4": {"location":"lib32-zlib-ng-2.3.3-1-x86_64.pkg.tar.zst","size":95749}
   }
