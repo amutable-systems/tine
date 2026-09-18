@@ -141,6 +141,8 @@ User guides:
 - [Maintaining packages](docs/user/importer.md): importing and updating packages from upstream
   distributions, local modifications, branch curation
 - [Development boxes](docs/user/box.md): pinned interactive development environments
+- [Signing with external keys](docs/user/signing-pkcs11.md): Secure Boot, PCR policy and verity signing
+  over PKCS#11, with the keys outside the build
 - [Shared build cache](docs/user/remote-cache.md): configuring it, the keys, the bucket, and reading the
   shim's counters
 
