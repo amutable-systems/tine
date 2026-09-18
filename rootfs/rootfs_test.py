@@ -106,6 +106,21 @@ class TestSourceOverlay(unittest.TestCase):
         self.assertFalse(target.is_mount())
         self.assertFalse((self.source / "0").exists())
 
+    def test_buildroot_scratch_is_backed_where_tmpdir_points(self) -> None:
+        lower = self.scratch / "lower"
+        for name in ("dev", "proc", "run", "tmp", "var/tmp"):
+            (lower / name).mkdir(parents=True)
+        # Buck names its scratch directory by a project path, which a driver may have turned read-only.
+        scratch = {"BUCK_SCRATCH_PATH": "/nonexistent/project/scratch"}
+        with (
+            mock.patch.dict(os.environ, scratch),
+            rootfs.rootfs(self.scratch / "target", lowers=[lower], apivfs=True) as tree,
+        ):
+            (tree / "var/tmp/staged").write_text("staged", encoding="utf-8")
+            backing = next(self.scratch.glob("var-tmp.*"))
+            self.assertEqual((backing / "staged").read_text(encoding="utf-8"), "staged")
+            self.assertEqual(backing.stat().st_mode & 0o7777, 0o1777)
+
     def test_rootfs_paths_can_contain_overlay_option_separators(self) -> None:
         for name in ("we:ird", "com,ma", "back\\slash"):
             with self.subTest(name=name):

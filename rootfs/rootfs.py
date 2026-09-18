@@ -217,13 +217,13 @@ def _apivfs(stack: ExitStack, target: Path) -> None:
     # on a box, and `buck test`), and a tmpfs is all that is available.
     stack.enter_context(Tmpfs(target / "tmp"))
 
-    staging = os.environ.get("BUCK_SCRATCH_PATH")
-    if staging is None:
+    if "BUCK_SCRATCH_PATH" not in os.environ:
         stack.enter_context(Tmpfs(target / "var/tmp"))
     else:
-        Path(staging).mkdir(parents=True, exist_ok=True)
-        # A unique name per call: one action can mount several roots.
-        backing = Path(tempfile.mkdtemp(dir=staging, prefix="var-tmp."))
+        # The sandbox mounts that scratch directory where its TMPDIR points, which stays writable
+        # while the project it physically lives in may be read-only. A unique name per call: one
+        # action can mount several roots.
+        backing = Path(tempfile.mkdtemp(prefix="var-tmp."))
         backing.chmod(0o1777)  # what a tmpfs mounted on /var/tmp defaults to
         stack.enter_context(Bind(backing, target / "var/tmp"))
 
