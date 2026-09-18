@@ -4,22 +4,6 @@ How to declare, build, and run OS images. This is the user guide. The architectu
 provider vocabulary, the delta layer model, and disk composition internals) is documented in
 [architecture.md](../design/architecture.md).
 
-## Host requirements
-
-The host contract is intentionally small:
-
-- the pinned Buck2 binary and its bundled prelude;
-- the pinned bootstrap Python used to run the minimal extractor and development tools;
-- unprivileged user namespaces and the filesystem/kernel facilities required by mkosi-sandbox/overlayfs,
-  which `tine mount` also needs;
-- `/dev/kvm` only when running a VM target.
-
-The bootstrap is [`bin/tine`](../bin/tine), which needs a `/usr/bin/python3` of 3.9 or newer, `git` for
-the version components it derives, and, unless that python is 3.14 or newer, `zstd`.
-It verifies the pinned Buck binary against the SHA-256 in `tools/tools.json`, or in the
-`.buckconfig.local` a developer pins their own Buck2 in, and caches it under
-`${XDG_CACHE_HOME:-$HOME/.cache}/tine/buck2/<sha256>`; cached invocations work offline.
-
 ## Restrictions
 
 File permissions in built images are normalized: 0755 for directories and executables, 0644 for files.
