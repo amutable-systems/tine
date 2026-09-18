@@ -10,8 +10,8 @@ the implementation is authoritative and this document should be corrected.
 Anything specific to one native package system belongs to that system's own section. The rest of this
 document describes machinery that does not know which system it is driving, and names none.
 
-User-facing guides live alongside this document: [images.md](images.md) covers building and running
-images, and [importer.md](importer.md) covers maintaining packages with the importer.
+User-facing guides live in [docs/user](../user): [images.md](../user/images.md) covers building and
+running images, and [importer.md](../user/importer.md) covers maintaining packages with the importer.
 
 ## Purpose and scope
 
@@ -211,7 +211,7 @@ Configured ignores are merged with VCS metadata exclusions and Git ignores; a pr
 `[project] ignore` in `.buckconfig.local` is rejected because it would replace the generated list.
 The version components live under `[tine]` as `version-base`, `version-count`, `version-height`,
 `version-commit`, and, for uncommitted work, `version-dirty`. Each image renders those components against
-its own label budget; see "Image versioning" in [images.md](images.md).
+its own label budget; see "Image versioning" in [images.md](../user/images.md).
 
 Generated settings go into a file rather than command-line flags because the daemon's file watcher
 reads its ignores from configuration files at startup, without command-line overrides. A file also
@@ -485,7 +485,7 @@ The second-stage install is authoritative for package metadata, ownership behavi
 unprivileged sandbox, and scriptlets.
 
 The host contract is intentionally small; its short list of requirements is documented in
-[images.md](images.md).
+[images.md](../user/images.md).
 
 ### Execution isolation and target roots
 
@@ -769,7 +769,7 @@ then reads the resolved lock and declares what the build fetches. A project that
 no lock, because cargo will not create one under `--locked` and there would be nothing in it to pin; its
 sole manifest identifies the root, `--locked` is dropped, and the empty vendored source plus the unshared
 network are what keep the build from resolving anything. The declaration contract is in
-[cargo.md](cargo.md).
+[cargo.md](../user/cargo.md).
 
 A lock entry's `checksum` is the SHA-256 of its crates.io tarball and `static.crates.io` serves that
 tarball under a URL derived from name and version, so each registry crate becomes one hash-verified
@@ -846,7 +846,7 @@ additional build requirements. The driver resolves each selection with `go list`
 
 No auditable wrapper exists in this path because go itself embeds the module list in every binary it
 links. syft catalogs these as `pkg:golang` components in the image SBOM. The declaration contract is in
-[go.md](go.md).
+[go.md](../user/go.md).
 
 A local `go build` inside the checkout leaves no build tree behind: go's cache lives outside it, so there
 is no `target/` equivalent for the glob and the daemon's watcher to exclude. It does drop the binary it
@@ -987,7 +987,7 @@ Package installation and image tooling remain separate concerns:
 
 A project can therefore expose locally built packages without adding them to its OS release, or a package
 manager may instead attach a branch's generated local-packages universe; worked examples of both
-declarations are in [images.md](images.md).
+declarations are in [images.md](../user/images.md).
 
 Each install operation then computes the runtime closure of its requested packages at analysis time over
 the imported Requires/Provides metadata, builds exactly the locally built packages in that closure, and
@@ -1000,9 +1000,9 @@ pulls in are built; the universe target itself never forces a package build.
 Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
 needed. The catalog of terminal rules (`image.archive`, `image.directory`, `image.uki`, `image.repart`,
 `image.bootable`, `image.sysext`, and `image.vm`) and the `image.rootfs_archive`, `image.sysext_image`, and
-`image.bootable_disk` composition rules are documented in [images.md](images.md). All of them, with the
-operation helpers and conventional partition layouts, are members of the `image` struct exported from
-`tine//image:defs.bzl`; that facade is the public API, and the modules behind it are implementation
+`image.bootable_disk` composition rules are documented in [images.md](../user/images.md). All of them,
+with the operation helpers and conventional partition layouts, are members of the `image` struct exported
+from `tine//image:defs.bzl`; that facade is the public API, and the modules behind it are implementation
 structure. Every public facade a consuming project loads from exports one namespace struct the same way:
 `box`, `cargo`, `go`, `git`, `package`, `package_system/rpm`, `package_system/deb`,
 `package_system/pacman`, `distribution`, and `tests`. Every rule resolves its drivers through one
@@ -1048,7 +1048,7 @@ destination `image.ImageInfo.box`, while standalone conversion and VM rules sele
 `image.directory` is an independent terminal view and is never an input to repart.
 
 Partition layouts are always explicit inputs; neither `image.repart` nor `image.bootable_disk` chooses one
-implicitly. The reusable conventional layouts are listed in [images.md](images.md).
+implicitly. The reusable conventional layouts are listed in [images.md](../user/images.md).
 
 Partition labels may contain `{image_id}` and `{version}` placeholders. `image.format_partition_labels()`
 renders them — `image.bootable_disk()` calls it with its own image identity, raw `image.repart()` users
@@ -1439,7 +1439,7 @@ the daemon under its native lifecycle lock.
 ## Operating the current system
 
 Host requirements, the wrapper commands, and representative smoke builds are documented in
-[images.md](images.md).
+[images.md](../user/images.md).
 
 ## Current limitations
 
@@ -1527,7 +1527,8 @@ package against them as it is selected, a box using its predecessor. What remain
 A later release pipeline needs repository composition, package-group metadata, source/debuginfo publication
 policy, provenance/attestations, and signing. Secure Boot signing should use deterministic RSA PKCS#1 v1.5
 without timestamps. Development keys are declared, cacheable inputs; production builds sign with a key held
-outside the build, addressed by URI over a PKCS#11 socket, see [signing-pkcs11.md](signing-pkcs11.md).
+outside the build, addressed by URI over a PKCS#11 socket, see
+[signing-pkcs11.md](../user/signing-pkcs11.md).
 
 ### Image hardening and formats
 

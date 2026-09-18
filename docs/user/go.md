@@ -96,7 +96,7 @@ The box is a build environment. It never becomes part of an image, and the toolc
 ## Properties and limits
 
 How the modules are pinned, fetched and verified is described under "Go source builds" in
-[design.md](design.md).
+[architecture.md](../design/architecture.md).
 
 - **A project is one cache unit, and reruns are incremental for a `tine mount`.** Any change to its sources
   reruns the build action for the whole project, but go's build cache survives between runs, so it recompiles

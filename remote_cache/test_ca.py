@@ -8,8 +8,8 @@ As a program, it makes a throwaway CA and a leaf certificate under it, for a tes
     buck run tine//remote_cache:test-ca -- <directory>
 
 Writes `ca.pem`, `leaf.key` and `leaf.pem` into the directory: what a `[cache]` table takes as
-`authority`, `signing_key` and `signing_certificate`. The shape is the shipped one (docs/remote-cache.md,
-"The keys"), so a test meets exactly the checks a deployment does.
+`authority`, `signing_key` and `signing_certificate`. The shape is the shipped one
+(docs/user/remote-cache.md, "The keys"), so a test meets exactly the checks a deployment does.
 """
 
 import argparse

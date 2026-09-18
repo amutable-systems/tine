@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """RPM monorepo import and maintenance machinery.
 
-See docs/packages.md for the design.
+See docs/design/packages.md for the design.
 
 Dependencies: git, rpm, rpm-build (rpmspec). Everything else happens over REST.
 `srpm` additionally needs dist-git-client to fetch sources.
@@ -1787,7 +1787,7 @@ def check_commit(c: str) -> list[str]:
 
 
 def release_bump_error(ref: str, rel: str) -> str | None:
-    """Verify ref's Release: bump according to docs/importer.md rules"""
+    """Verify ref's Release: bump according to docs/user/importer.md rules"""
 
     now = re.search(r"^Release:\s*(\S+)", spec_at(ref, rel), re.M)
     if now is None:

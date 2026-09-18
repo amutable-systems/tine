@@ -7,7 +7,7 @@ load(":tools.json", _pins = "value")
 
 _RELEASE = "tine//catalog:fedora.rawhide.release"
 
-# Every pinned tool is declared in ./tools.json and refreshed by `bump` (see docs/images.md). Buck
+# Every pinned tool is declared in ./tools.json and refreshed by `bump` (see docs/user/images.md). Buck
 # fetches and verifies all but one: `bin/tine` fetches Buck2 itself.
 
 # Relocatable bootstrap Python; 3.14 provides stdlib zstd for RPM payloads.
@@ -190,7 +190,7 @@ command_alias(
     exe = ":dev",
 )
 
-# The rpm importer (see docs/importer.md): its verbs need the pinned rpm toolchain plus the
+# The rpm importer (see docs/user/importer.md): its verbs need the pinned rpm toolchain plus the
 # host's git identity, network, and cwd, so it runs through the dev box's relaxed entry.
 command_alias(
     name = "importer",

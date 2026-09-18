@@ -8,7 +8,7 @@ that existing implementations such as [bazel-remote](https://github.com/buchgr/b
 being robust against data corruption, reading with plain HTTP/public buckets, and functioning with dumb
 bucket expiry rules.
 
-[remote-cache.md](remote-cache.md) documents how to configure and run it.
+[remote-cache.md](../user/remote-cache.md) documents how to configure and run it.
 
 ## Threat model
 
@@ -102,7 +102,7 @@ systems (directory index lookups and `readdir` over hundreds of thousands of ent
 `<set digest>` is the hash of the **sorted set of member digests**, not of the container bytes; so two
 actions with identical outputs share one bundle, a result naming one output under two paths shares it
 too, and the container encoding can change without renaming anything. Requirements are documented in
-the [user doc's bucket setup](remote-cache.md#the-bucket). A private bucket needs a read
+the [user doc's bucket setup](../user/remote-cache.md#the-bucket). A private bucket needs a read
 token, and against R2 that means SigV4-signed GETs, since its S3 endpoint has no bearer-token mode. This
 is not currently implemented, but can easily be done when needed: reads are done in `Reader.get(key)` in
 `bucket.py`, which can be extended.
@@ -124,7 +124,7 @@ action digests, so anything shared would need its own signing rule.
 | Serve their own certificate and results | the certificate must chain to an authority given out of band |
 | Replay an older pointer under its own action | nothing, and nothing needs to: see below |
 | Replay a pointer signed by a key since retired | that key's certificate must be valid now |
-| Copy a pointer from a bucket sharing the CA | nothing: [one CA per bucket](remote-cache.md#the-keys) |
+| Copy a pointer from a bucket sharing the CA | nothing: [one CA per bucket](../user/remote-cache.md#the-keys) |
 | Delete anything | nothing. It just costs a rebuild |
 | Write a pointer into the local store | it is verified like one from the bucket, on every hit |
 | Rewrite a blob file in the local store | it is hashed against its name on every read |
@@ -176,8 +176,8 @@ that finish together often share a bundle, and a publisher that assumed another 
 its pointer first.
 
 **Expiry** is the bucket's own age rule, whose requirements are in the [user doc's bucket
-setup](remote-cache.md#the-bucket). The builder gets told the lifetime (`object_lifetime`), so that it
-stops signing before a result would outlive its certificate.
+setup](../user/remote-cache.md#the-bucket). The builder gets told the lifetime (`object_lifetime`), so
+that it stops signing before a result would outlive its certificate.
 
 ## Bundle container format
 
@@ -203,7 +203,7 @@ local has to hold the unpacked bundle members and remember which bundle each cam
 knows whole bundles under set digests and cannot answer "give me this blob" at all.
 
 That is a directory, passed to the shim by `tine`, see the [local store user
-documentation](remote-cache.md#the-local-store).
+documentation](../user/remote-cache.md#the-local-store).
 
 Output bytes are files. Bounded by size and evicted least recently used. Losing one costs a bundle fetch.
 
@@ -259,7 +259,7 @@ Two keys per builder. The **CA key** lives in the build server's TPM and never l
 leaf certificate, once per rotation. The **leaf key** is an ordinary Ed25519 key file on the same
 machine; it signs every pointer. There is no flat list of trusted keys: a reader is given CA certificates
 (`authority`) and nothing else. Provisioning and rotating them is described in the [user doc's keys
-section](remote-cache.md#the-keys).
+section](../user/remote-cache.md#the-keys).
 
 **Why two levels.** TPM signing is too slow for hundreds of results per build, and a TPM has no Ed25519.
 A leaf key on disk is acceptable because the machine is already trusted to sign releases, and unlike the
@@ -279,9 +279,9 @@ against the key inside it.
 **Lifetimes.** Only the reader's clock bounds a stolen leaf key: a signing time in the payload would be
 chosen by whoever holds the key, so none is recorded. A pointer is read for as long as the bucket keeps
 it, so the leaf must outlive the last pointer signed under it by the object lifetime: that is the
-validity rule when [provisioning a leaf](remote-cache.md#the-keys), and the builder refuses to sign once
-less than the object lifetime is left on its certificate. A stolen leaf stays good until its `notAfter`;
-the answer is rotating the CA.
+validity rule when [provisioning a leaf](../user/remote-cache.md#the-keys), and the builder refuses to
+sign once less than the object lifetime is left on its certificate. A stolen leaf stays good until its
+`notAfter`; the answer is rotating the CA.
 
 **Not here**: no revocation list and no transparency log, rotating the CA is the revocation; no
 intermediate CAs, a leaf must be issued directly by a configured authority.

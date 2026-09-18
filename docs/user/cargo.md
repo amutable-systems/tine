@@ -83,7 +83,7 @@ itself verifies that the repository holds the commit the lock names.
 ## Properties and limits
 
 How the crates are pinned, fetched and vendored is described under "Rust source builds" in
-[design.md](design.md).
+[architecture.md](../design/architecture.md).
 
 - **A project is one cache unit, and reruns are incremental for a `tine mount`.** Any change to its sources
   reruns a single action for the whole project, but cargo's build directory survives between runs, so that

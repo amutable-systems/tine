@@ -5,7 +5,7 @@ distribution dist-gits (currently Fedora or CentOS) and maintains local package 
 in the OS.git monorepo that vendors this `tine` cell, under `packages/`_distro_`/`_branch_`/`_srcpkg_ (for
 example `packages/fedora/f44/glibc`), with pristine imports on the separate `upstream-rpm` branch. The branch
 and metadata layout, the design principles, and the rebuild strategy behind all of this are documented in
-[packages.md](packages.md).
+[packages.md](../design/packages.md).
 
 Run the tool as `tine buck run tine//tools:importer -- <verb> …`: that executes it in the
 `tine//tools:dev.box` environment (host identity, network, and cwd; the box's pinned rpm/git
@@ -71,10 +71,11 @@ Operations on the `main` branch to maintain the downstream packages:
      * The common rule is: "append `.1` for a modification of a previously unmodified package" and
        "increase last component for a modified one"
  - Packages using `%autorelease` need no manual bump; the release value is derived from the imported
-   metadata and the local commit count (see the `srpm` operation details in [packages.md](packages.md)).
+   metadata and the local commit count (see the `srpm` operation details in
+   [packages.md](../design/packages.md)).
  - Builds use a downstream-specific `%dist` tag: `aos` (this documentation's placeholder, see
-   [packages.md](packages.md)) appended to the upstream dist tag, e.g. `.fc44aos`; the rationale is
-   recorded in the design principles in [packages.md](packages.md).
+   [packages.md](../design/packages.md)) appended to the upstream dist tag, e.g. `.fc44aos`; the rationale is
+   recorded in the design principles in [packages.md](../design/packages.md).
 
 ## Making local package modifications
 
@@ -93,10 +94,10 @@ The workflow for changing a package downstream, like adding a patch or tweaking 
     enforces this and the Release/`%changelog` conventions.
 
 The canonical `srcpkg.json` comes from the buck build (the post-build recompute in the PR, see "Operation
-details" in [packages.md](packages.md)). A `mockbuild`-based recompute of the same change likely has
-changes in the `/usr/lib/.build-id/…` file lists: the GNU build-id is a content hash of each built binary,
-and mock's buildroot resolves the live distro repos instead of buck's pinned snapshot, so the binaries are
-not bit-identical between the two.
+details" in [packages.md](../design/packages.md)). A `mockbuild`-based recompute of the same change
+likely has changes in the `/usr/lib/.build-id/…` file lists: the GNU build-id is a content hash of each
+built binary, and mock's buildroot resolves the live distro repos instead of buck's pinned snapshot, so
+the binaries are not bit-identical between the two.
 
 ## Changing import source
 
@@ -117,7 +118,7 @@ generated branch `BUCK`'s `rpm_branch(...)` call (`regenerate_buck`); never hand
 
 The `buildroot_only_packages` property lists packages that exist *only* in the distribution's build
 ecosystem (koji's buildroot repo) and are *never* shipped in the compose, so the seed cannot provide them
-when the BuildRequires cycle-breaking drops an edge (background in [packages.md](packages.md)):
+when the BuildRequires cycle-breaking drops an edge (background in [packages.md](../design/packages.md)):
 
 ```json
 { "buildroot_only_packages": ["glibc32"] }
@@ -142,9 +143,9 @@ our packages; it is always resolved from the seed instead:
 { "seed_only_packages": ["gcc"] }
 ```
 
-The list is intentionally empty for now. See [packages.md](packages.md) for what listing a package
-changes, and [self-host-approaches.md](self-host-approaches.md) for the analyzed candidates and their
-trade-offs.
+The list is intentionally empty for now. See [packages.md](../design/packages.md) for what listing a
+package changes, and [self-host-approaches.md](../design/self-host-approaches.md) for the analyzed
+candidates and their trade-offs.
 
 ### Per-package rpmbuild options
 

@@ -5,11 +5,11 @@ API](https://buck2.build/docs/users/remote_execution/) instead of running it loc
 machine or an isolated CI build can download all the expensive package/Go/Rust etc. builds from the cache
 instead of having to re-do them on their own machine, and only build the inputs that were actually
 changed locally. Which actions are cached at all is decided in the graph, not here: see [reproducibility
-and caching](design.md#reproducibility-and-caching).
+and caching](../design/architecture.md#reproducibility-and-caching).
 
 Tine implements such a cache over an S3 bucket, with unique properties: not trusting the cloud provider,
 being robust against data corruption, reading with plain HTTP/public buckets, and functioning with dumb
-bucket expiry rules. See the [design document](remote-cache-design.md) about how this is achieved.
+bucket expiry rules. See the [design document](../design/remote-cache.md) about how this is achieved.
 
 Every party runs a local cache shim:
 
@@ -64,7 +64,7 @@ Two keys per builder. The **CA key** ideally lives in the build server's TPM or 
 it; it signs the leaf certificate, once per rotation. The **leaf key** is an ordinary Ed25519 key file on
 the same machine; it signs the cache entries. There is no list of trusted keys: a reader is given CA
 certificates (`authority`) and nothing else. See the [keys section in the
-design](remote-cache-design.md#the-keys) for details.
+design](../design/remote-cache.md#the-keys) for details.
 
 **Use a separate CA per bucket.** A reader accepts any leaf its CA has ever issued, so a CA shared between
 a staging and a production bucket would let whoever writes both copy pointers from one to the other. The

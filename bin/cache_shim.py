@@ -1,7 +1,7 @@
 """Manage the shim serving the shared build cache.
 
 Buck speaks its remote cache API to a shim on this machine, and the shim talks to the bucket; see
-docs/remote-cache.md. This reads the `[cache]` settings, starts the shim through Buck when nothing
+docs/user/remote-cache.md. This reads the `[cache]` settings, starts the shim through Buck when nothing
 serves the configured store yet, and asks a running one what it is doing. The shim itself is
 `tine//remote_cache:shim`, and it runs in a box, so Buck is what builds and starts it.
 """

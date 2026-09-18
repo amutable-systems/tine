@@ -41,7 +41,7 @@ tine mount remove packages/hello/hello                 # use the pinned commit a
 
 A mount is also what makes a `cargo.package()` or `go.package()` build incremental: then its build
 directory survives between runs, and an edit recompiles just what changed. See
-[Rust source builds](design.md#rust-source-builds).
+[Rust source builds](../design/architecture.md#rust-source-builds).
 
 The override has a few constraints:
 

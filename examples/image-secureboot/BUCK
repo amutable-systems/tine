@@ -2,7 +2,7 @@
 
 Without configuration, the signing keys are generated at build time and live only in buck-out, so
 nothing secret is committed. Configure a section per key and the same image signs through PKCS#11
-tokens instead; see docs/signing-pkcs11.md. Real OS images should follow this shape: one definition
+tokens instead; see docs/user/signing-pkcs11.md. Real OS images should follow this shape: one definition
 serves both, and nothing downstream of the keys knows which it got, since every key publishes its
 certificate whether it is held in the graph or by a token.
 

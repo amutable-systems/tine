@@ -1,7 +1,7 @@
 """A build cache for Buck2.
 
 Serves the cache half of the Bazel Remote Execution API: action results and the blobs they name.
-See docs/design.md.
+See docs/design/architecture.md.
 
 Buck2 calls nine methods. It never asks to execute anything, so there is no Execution service.
 """

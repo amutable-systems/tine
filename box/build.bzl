@@ -222,7 +222,7 @@ def _box_alias_impl(ctx: AnalysisContext) -> list[Provider]:
     return ctx.attrs.actual.providers + [relaxed]
 
 # The box's public name. An indirection to build the box only once, regardless of the caller's target
-# configuration; see "Box bootstrap" in docs/design.md.
+# configuration; see "Box bootstrap" in docs/design/architecture.md.
 _box_alias = rule(
     impl = _box_alias_impl,
     attrs = {

@@ -116,7 +116,7 @@ existing extra-packages overlay and repo-priority machinery. Round 2 is the publ
   is an extra deliberate build, not a free byproduct of operations (contrast B's
   publish-over-publish diffs).
 - Purity gap in round 2: providers-only overlay leaves non-BR'd transitive members (notably glibc)
-  seed-supplied. This is a (changeable) decision, not inherent to this approach, see design.md's
+  seed-supplied. This is a (changeable) decision, not inherent to this approach, see architecture.md's
   two-stage section.
 - **Cannot express "bootstrap once, then sources-only"**: a pure graph has no memory, so the
   initial bootstrap is not an event that happens once — `P.stage1` permanently means "build
