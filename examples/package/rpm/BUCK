@@ -11,7 +11,7 @@ git.checkout(name = "hello.source")
 # The archive path runs %prep and emits both binary and source RPMs. It exists separately from the
 # source-tree fixture to check release and dev compression through real RPM headers.
 rpm.package(
-    name = "archive",
+    name = "hello-archive",
     package = "hello",
     spec = "hello/hello.spec",
     buildroot = _BUILDROOT,
@@ -21,17 +21,17 @@ rpm.package(
 )
 
 box.sh_test(
-    name = "archive-test",
+    name = "hello-archive-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
     script = 'python3 "$@"',
-    args = ["$(source archive_check.py)", "$(location :archive)"],
+    args = ["$(source hello_archive_check.py)", "$(location :hello-archive)"],
 )
 
 # The explicit override keeps this source-tree fixture in dev mode without depending on the
 # user's root config.
 rpm.package(
-    name = "hello",
+    name = "hello-dev",
     package = "hello",
     spec = "hello/hello.spec",
     buildroot = _BUILDROOT,
@@ -45,12 +45,12 @@ rpm.package(
 )
 
 box.sh_test(
-    name = "hello-test",
+    name = "hello-dev-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
     script = 'python3 "$@"',
     args = [
-        "$(source hello_check.py)",
-        "$(location :hello)",
+        "$(source hello_dev_check.py)",
+        "$(location :hello-dev)",
     ],
 )
