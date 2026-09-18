@@ -88,16 +88,6 @@ automatically hands over to the configured tine cell's `bin/tine`, even without 
 to change `PATH` when selecting another checkout. Move to a newer tine with `git submodule update` or the
 equivalent change in your pinned `git clone`.
 
-The `toolchains` cell Buck2 looks a toolchain up in is an alias to the tine cell, whose root package
-declares the bootstrap interpreter one: Buck2 forbids a nested cell inside an external cell, so a
-`toolchains/` directory in this repository would be a copy every consuming project needs of its own. A
-project that wants toolchains beyond that one can still declare the cell itself, dropping the alias and
-forwarding what it does not declare:
-
-```Starlark
-toolchain_alias(name = "python_bootstrap", actual = "tine//:python_bootstrap", visibility = ["PUBLIC"])
-```
-
 Buck reads the checkout in place, so a branch or an uncommitted edit is active immediately.
 
 To develop tine against a different checkout, mount it over the checkout registered by the project:
