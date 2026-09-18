@@ -73,6 +73,19 @@ The package source tree lives in the OS.git repository (which consumes this `tin
 It is intentionally not part of the reusable `tine` cell: package policy and imported source data change
 independently of build machinery.
 
+Buck2 looks every rule's toolchain up in a cell named `toolchains`. Tine declares the only one it needs,
+the bootstrap Python interpreter, in this cell's root package and aliases `toolchains` to `tine`;
+`tine init` writes that alias into the consuming project's generated `.buckconfig`, so no project
+declares a toolchain of its own. The obvious shape, a `toolchains/` cell in this repository, is
+impossible: Buck2 forbids a nested cell inside an external cell, so every project consuming tine as one
+needed a copy of that directory. An alias resolves through an external cell where a nested cell cannot
+exist. A project that does need toolchains beyond the bootstrap one declares the cell itself, dropping
+the alias and forwarding what it does not declare:
+
+```Starlark
+toolchain_alias(name = "python_bootstrap", actual = "tine//:python_bootstrap", visibility = ["PUBLIC"])
+```
+
 ### Building with out-of-tree checkouts
 
 A cell root must be project-relative, so Buck cannot point a cell directly at an external directory.
