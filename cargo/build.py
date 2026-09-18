@@ -12,7 +12,7 @@ SBOM learns what went into it.
 import os
 import subprocess
 import tomllib
-from contextlib import nullcontext
+from contextlib import ExitStack
 from pathlib import Path
 from typing import TypedDict
 
@@ -20,7 +20,6 @@ import specs
 import util
 
 import rootfs
-from isolation import Bind
 
 
 class GitSource(TypedDict):
@@ -33,8 +32,10 @@ class GitSource(TypedDict):
 class Spec(TypedDict):
     # The cargo-auditable wrapper cargo builds through.
     auditable: str
-    # Declared binary name -> the output to write it to.
-    binaries: dict[str, str]
+    # The binaries to take out of the build.
+    binaries: list[str]
+    # The output directory holding them.
+    bin: str
     # Locked commit -> the git source to replace with its fetched repository.
     git: dict[str, GitSource]
     # Where the workspace sits inside `src`, empty when the project is its own root.
@@ -124,13 +125,7 @@ def build_cargo(spec: Spec, scratch: Path = Path("/var/tmp")) -> None:
     build = scratch / "build"
     cargo_home = scratch / "cargo"
     target = scratch / "target"
-
-    # Cargo's build directory is the exception: for an incremental build buck keeps the previous one, so
-    # a rebuild redoes only what changed. Cargo decides that from the modification times of the sources,
-    # which the source overlay preserves. Keep writable access before protecting the project.
-    persistent = Path(spec["target"]) if spec["target"] is not None else None
-    if persistent is not None:
-        persistent.mkdir(parents=True, exist_ok=True)
+    binaries = scratch / "bin"
 
     cargo_home.mkdir(parents=True)
     (cargo_home / "config.toml").write_text(
@@ -138,10 +133,16 @@ def build_cargo(spec: Spec, scratch: Path = Path("/var/tmp")) -> None:
         encoding="utf-8",
     )
 
-    with Bind(persistent, target) if persistent is not None else nullcontext():
-        # A build outside a chroot can follow source symlinks back into other project inputs.
-        project = Path.cwd()
-        with Bind(project, project, readonly=True), rootfs.source_overlay(Path(spec["src"]), build):
+    with ExitStack() as stack:
+        outputs = {Path(spec["bin"]): binaries}
+        if spec["target"] is not None:
+            # For an incremental build buck keeps cargo's previous build directory, so a rebuild redoes
+            # only what changed. Cargo decides that from the modification times of the sources, which
+            # the source overlay preserves.
+            outputs[Path(spec["target"])] = target
+        stack.enter_context(rootfs.readonly_project(outputs))
+
+        with rootfs.source_overlay(Path(spec["src"]), build):
             workspace = build / spec["root"]
             _reject_local_config(build, workspace)
 
@@ -169,8 +170,15 @@ def build_cargo(spec: Spec, scratch: Path = Path("/var/tmp")) -> None:
                 env=os.environ | {"CARGO_HOME": str(cargo_home), "CARGO_TARGET_DIR": str(target)},
             )
 
-        # Outputs must be writable again, while the persistent target is still mounted.
-        util.take_binaries(target / "release", spec["binaries"], tool="cargo-build", where="target/release")
+        # Buck keeps every output of an incremental action, a binary no longer declared included.
+        for previous in binaries.iterdir():
+            previous.unlink()
+        util.take_binaries(
+            target / "release",
+            {name: str(binaries / name) for name in spec["binaries"]},
+            tool="cargo-build",
+            where="target/release",
+        )
 
 
 def main(argv: list[str] | None = None) -> None:

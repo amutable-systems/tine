@@ -43,13 +43,18 @@ class TestBuildCargo(unittest.TestCase):
             scratch.mkdir()
             spec = build.Spec(
                 auditable="cargo-auditable",
-                binaries={"example": f"example-{iteration}"},
+                bin=f"bin-{iteration}",
+                binaries=["example"],
                 git={},
                 root="nested",
                 src="checkout",
                 target="incremental" if persistent else None,
                 vendor="vendor",
             )
+
+            stale = self.project / spec["bin"] / "undeclared"
+            stale.parent.mkdir()
+            stale.touch()
 
             def run(
                 command: list[str | Path],
@@ -71,9 +76,11 @@ class TestBuildCargo(unittest.TestCase):
                 self.assertFalse((cwd / "generated").exists())
                 (cwd / "link").write_text("changed", encoding="utf-8")
                 (cwd / "generated").touch()
-                with self.assertRaises(OSError) as caught:
-                    (cwd / "outside").write_text("changed", encoding="utf-8")
-                self.assertEqual(caught.exception.errno, errno.EROFS)
+                # Through a source symlink, and relative to the project the driver stands in.
+                for path in (cwd / "outside", Path("outside")):
+                    with self.assertRaises(OSError) as caught:
+                        path.write_text("changed", encoding="utf-8")
+                    self.assertEqual(caught.exception.errno, errno.EROFS)
 
                 target = Path(env["CARGO_TARGET_DIR"])
                 target.mkdir(parents=True, exist_ok=True)
@@ -107,10 +114,11 @@ class TestBuildCargo(unittest.TestCase):
             self.assertFalse((self.source / "generated").exists())
             self.assertEqual(list((scratch / "build").iterdir()), [])
             self.assertEqual(list(scratch.glob("source.*")), [])
-            output = self.project / spec["binaries"]["example"]
+            output = self.project / spec["bin"] / "example"
             if fail:
                 self.assertFalse(output.exists())
             else:
+                self.assertFalse(stale.exists())
                 self.assertEqual(output.read_text(encoding="utf-8"), "built")
                 self.assertEqual(output.stat().st_mode & 0o777, 0o755)
             if persistent:

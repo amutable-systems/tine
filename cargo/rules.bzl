@@ -7,13 +7,14 @@ load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
 
 _PRIVATE = "__tine"
 
-# All machinery lives under one deliberately private output name. The public output namespace then
-# belongs to binaries, including names such as `git` that internals must not claim.
+# Every output lives under one deliberately private name. A binary is reached through its sub-target,
+# never by its path.
 
 def _cargo_build_impl(
     actions: AnalysisActions,
     auditable: cmd_args,
-    binaries: dict[str, OutputArtifact],
+    bin: OutputArtifact,
+    binaries: list[str],
     build: RunInfo,
     fetch: RunInfo,
     incremental: bool,
@@ -67,6 +68,7 @@ git --git-dir="$git_dir" config --bool core.bare true""",
                 _PRIVATE + "/cargo-build.spec.json",
                 {
                     "auditable": auditable,
+                    "bin": bin,
                     "binaries": binaries,
                     "git": repositories,
                     "root": workspace["root"],
@@ -86,7 +88,8 @@ _cargo_build = dynamic_actions(
     impl = _cargo_build_impl,
     attrs = {
         "auditable": dynattrs.value(cmd_args),
-        "binaries": dynattrs.dict(str, dynattrs.output()),
+        "bin": dynattrs.output(),
+        "binaries": dynattrs.value(list[str]),
         "build": dynattrs.value(RunInfo),
         "fetch": dynattrs.value(RunInfo),
         "incremental": dynattrs.value(bool),
@@ -98,11 +101,15 @@ _cargo_build = dynamic_actions(
 )
 
 def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
+    for name in ctx.attrs.binaries:
+        if not name or name in [".", ".."] or "/" in name or "\\" in name:
+            fail("cargo_package {}: invalid binary name {}".format(ctx.label.name, repr(name)))
     src = project.digested(ctx.actions, _PRIVATE + "/src", ctx.attrs.src) if ctx.attrs.copy else ctx.attrs.src
-    reserved = [name for name in ctx.attrs.binaries if name == _PRIVATE or name.startswith(_PRIVATE + "/")]
-    if reserved:
-        fail("cargo_package {}: binaries may not be named {}".format(ctx.label.name, reserved))
-    outputs = {name: ctx.actions.declare_output(name) for name in ctx.attrs.binaries}
+
+    # One directory rather than a file per binary, so the build gets it as a single writable mount
+    # while the project holding every input stays read-only.
+    bin = ctx.actions.declare_output(_PRIVATE + "/bin", dir = True)
+    outputs = {name: bin.project(name) for name in ctx.attrs.binaries}
 
     # Cargo's own build directory. An action's outputs are the only place it may leave state behind,
     # and buck clears them before rerunning it unless told not to. A declared output is also uploaded to
@@ -131,7 +138,8 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
     ctx.actions.dynamic_output_new(
         _cargo_build(
             auditable = executable(ctx.attrs._auditable),
-            binaries = {name: out.as_output() for name, out in outputs.items()},
+            bin = bin.as_output(),
+            binaries = ctx.attrs.binaries,
             build = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
             fetch = ctx.attrs._fetch[RunInfo],
             incremental = ctx.attrs.incremental,

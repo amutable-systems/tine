@@ -27,7 +27,6 @@ tine_python_binary(
     deps = [
         "//:specs",
         "//:util",
-        "//box:isolation",
         "//rootfs:rootfs",
     ],
 )
@@ -42,5 +41,5 @@ box_python_test(
         "lock.py",
         "vendor.py",
     ],
-    deps = ["//:specs", "//:util", "//box:isolation", "//rootfs:rootfs"],
+    deps = ["//:specs", "//:util", "//rootfs:rootfs"],
 )

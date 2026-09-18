@@ -822,9 +822,10 @@ lock, and is deliberately not attempted.
 The rerun is made cheap instead for a `tine mount`ed checkout, for a developer working on that part:
 Cargo's build directory then is a declared output that buck is told not to clear before rerunning the
 action, so cargo finds the previous one and recompiles only what changed, exactly as it does in a working
-copy. Nothing else survives: the source tree is mounted over with a volatile overlay on every run, with
-the modification times cargo compares them by. A build that finds no previous directory remains the
-reference, which is what CI and any `buck2 clean` produce.
+copy. Nothing else survives: a volatile overlay over the source tree takes whatever the build writes into
+it, and shows cargo the modification times it compares the sources by. The project holding every input is
+read-only meanwhile, and the declared outputs are mounted in scratch space beside it. A build that finds
+no previous directory remains the reference, which is what CI and any `buck2 clean` produce.
 
 Fetched or committed sources declare no build directory and build in scratch space: there is no edit
 cycle to speed up, and the large intermediate build artifacts are not uploaded to a shared cache.

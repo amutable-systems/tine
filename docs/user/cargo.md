@@ -36,8 +36,7 @@ cargo.package(
 - `binaries` names what to take out of `target/release`, and at least one is required: a crate that
   produces no binary has nothing an image could install. These are cargo binary names, which need not
   match the package. Each becomes a sub-target (`:hello[hello-cli]`), and together they are the target's
-  default outputs. A name that the build does not produce fails the action; only the private name
-  `__tine` is reserved by the rule.
+  default outputs. A name that the build does not produce fails the action.
 - `box` is the build environment, declared by the consumer because only the consumer knows what its
   projects link against.
 
