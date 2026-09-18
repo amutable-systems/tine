@@ -6,12 +6,12 @@ load("//project:defs.bzl", "project")
 
 _PRIVATE = "__tine"
 
-# All machinery lives under one deliberately private output name. The public output namespace then
-# belongs to binaries, including names such as `src` that internals must not claim.
+# Every output lives under one deliberately private name. A binary is reached through its sub-target,
+# never by its path.
 
 def _go_build_impl(
     actions: AnalysisActions,
-    binaries: dict[str, OutputArtifact],
+    bin: OutputArtifact,
     build: RunInfo,
     cgo: bool | None,
     cgo_cflags: list[str],
@@ -59,7 +59,7 @@ def _go_build_impl(
                 actions,
                 _PRIVATE + "/go-build.spec.json",
                 {
-                    "binaries": binaries,
+                    "bin": bin,
                     "cgo": cgo,
                     "cgo_cflags": cgo_cflags,
                     "gocache": gocache,
@@ -81,7 +81,7 @@ def _go_build_impl(
 _go_build = dynamic_actions(
     impl = _go_build_impl,
     attrs = {
-        "binaries": dynattrs.dict(str, dynattrs.output()),
+        "bin": dynattrs.output(),
         "build": dynattrs.value(RunInfo),
         "cgo": dynattrs.value(bool | None),
         "cgo_cflags": dynattrs.value(list[str]),
@@ -104,11 +104,13 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
     packages = ctx.attrs.packages or {ctx.label.name: "./..."}
     names = packages.keys()
     for name in names:
-        if name == _PRIVATE or name.startswith(_PRIVATE + "/"):
-            fail("go_package: reserved output name {}".format(name))
         if not name or name in [".", ".."] or "/" in name or "\\" in name:
             fail("go_package: invalid output name {}".format(repr(name)))
-    outputs = {name: ctx.actions.declare_output(name) for name in names}
+
+    # One directory rather than a file per binary, so the build gets it as a single writable mount
+    # while the project holding every input stays read-only.
+    bin = ctx.actions.declare_output(_PRIVATE + "/bin", dir = True)
+    outputs = {name: bin.project(name) for name in names}
 
     # go's own build cache. An action's outputs are the only place it may leave state behind, and buck
     # clears them before rerunning it unless told not to. A declared output is also uploaded to the
@@ -138,7 +140,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
 
     ctx.actions.dynamic_output_new(
         _go_build(
-            binaries = {name: out.as_output() for name, out in outputs.items()},
+            bin = bin.as_output(),
             build = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
             cgo = ctx.attrs.cgo,
             cgo_cflags = ctx.attrs.cgo_cflags,

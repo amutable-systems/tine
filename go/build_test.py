@@ -5,12 +5,111 @@
 Exercise writable source views, package selection, and build commands. The box carries no Go toolchain.
 """
 
+import errno
+import os
 import subprocess
+import tempfile
 import unittest
+from contextlib import chdir
 from pathlib import Path
+from typing import override
 from unittest.mock import patch
 
 import build
+
+
+class TestBuildGo(unittest.TestCase):
+    @override
+    def setUp(self) -> None:
+        self.scratch = Path(
+            self.enterContext(tempfile.TemporaryDirectory(prefix="go-build-test.", dir="/var/tmp"))
+        )
+        self.project = self.scratch / "project"
+        self.source = self.project / "checkout"
+        self.source.mkdir(parents=True)
+        (self.source / "main.go").write_text("original", encoding="utf-8")
+        (self.project / "outside").write_text("outside", encoding="utf-8")
+        (self.source / "outside").symlink_to(self.project / "outside")
+
+    def test_source_writes_are_disposable(self) -> None:
+        self.check_build(persistent=False)
+
+    def test_incremental_outputs_survive_success_and_failure(self) -> None:
+        self.check_build(persistent=True)
+
+    def check_build(self, *, persistent: bool) -> None:
+        for iteration, fail in enumerate((False, True, False)):
+            scratch = self.scratch / str(iteration)
+            scratch.mkdir()
+            spec = build.Spec(
+                bin=f"bin-{iteration}",
+                cgo=None,
+                cgo_cflags=[],
+                gocache="gocache" if persistent else None,
+                linker_flags=[],
+                module_cache_dir=None,
+                packages={"example": "."},
+                root="",
+                src="checkout",
+                tags=[],
+            )
+            stale = self.project / spec["bin"] / "undeclared"
+            stale.parent.mkdir()
+            stale.touch()
+
+            def run(
+                command: list[str],
+                *,
+                check: bool,
+                cwd: Path,
+                env: dict[str, str],
+                index: int = iteration,
+                fails: bool = fail,
+            ) -> None:
+                self.assertTrue(check)
+                (cwd / "main.go").write_text("changed", encoding="utf-8")
+                # Through a source symlink, and relative to the project the driver stands in.
+                for path in (cwd / "outside", Path("outside")):
+                    with self.assertRaises(OSError) as caught:
+                        path.write_text("changed", encoding="utf-8")
+                    self.assertEqual(caught.exception.errno, errno.EROFS)
+
+                state = Path(env["GOCACHE"]) / "state"
+                self.assertEqual(
+                    state.read_text() if state.exists() else "0", str(index if persistent else 0)
+                )
+                state.write_text(str(index + 1), encoding="utf-8")
+                if fails:
+                    raise subprocess.CalledProcessError(1, command)
+                binary = Path(command[command.index("-o") + 1])
+                binary.write_text("built", encoding="utf-8")
+                binary.chmod(0o755)
+
+            with (
+                chdir(self.project),
+                patch.object(build, "_package", return_value="example.com/example"),
+                patch.object(build.subprocess, "run", side_effect=run),
+                patch.dict(os.environ, {"TMPDIR": str(scratch)}),
+                patch.object(tempfile, "tempdir", None),
+            ):
+                if fail:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        build.build_go(spec, scratch)
+                else:
+                    build.build_go(spec, scratch)
+
+            self.assertEqual((self.source / "main.go").read_text(encoding="utf-8"), "original")
+            self.assertEqual(list((scratch / "build").iterdir()), [])
+            output = self.project / spec["bin"] / "example"
+            if fail:
+                self.assertFalse(output.exists())
+            else:
+                self.assertFalse(stale.exists())
+                self.assertEqual(output.read_text(encoding="utf-8"), "built")
+                self.assertEqual(output.stat().st_mode & 0o777, 0o755)
+            if persistent:
+                self.assertEqual((self.project / "gocache/state").read_text(), str(iteration + 1))
+            (self.project / "outside").write_text("writable again", encoding="utf-8")
 
 
 class TestBuildCommand(unittest.TestCase):

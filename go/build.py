@@ -16,12 +16,11 @@ import specs
 import util
 
 import rootfs
-from isolation import Bind
 
 
 class Spec(TypedDict):
-    # Declared binary name -> the output to write it to.
-    binaries: dict[str, str]
+    # The output directory holding one binary per package.
+    bin: str
     # Whether to force cgo on or off, or None to leave the box toolchain's default alone.
     cgo: bool | None
     # Extra flags for the C compiler of a cgo build, on top of the -O2 -g always passed.
@@ -85,16 +84,18 @@ def _build_command(binary: Path, package: str, linker_flags: list[str]) -> list[
     return cmd + [package]
 
 
-def main(argv: list[str] | None = None) -> None:
-    spec = specs.parse(Spec, "go-build", argv)
-
+def build_go(spec: Spec, scratch: Path = Path("/var/tmp")) -> None:
+    """Build a Go module with disposable source writes and an optional persistent build cache."""
+    # go resolves its environment paths from the workspace given as its cwd.
+    scratch = scratch.absolute()
     # The sandbox backs /var/tmp with the action's scratch space. OverlayFS preserves upstream
     # symlinks, including dangling fixtures, and copies only files the build actually writes.
-    build = Path("/var/tmp/build")
-    binaries = Path("/var/tmp/binaries")
+    build = scratch / "build"
+    binaries = scratch / "binaries"
     binaries.mkdir()
+    out = scratch / "bin"
 
-    gocache = Path("/var/tmp/gocache")
+    gocache = scratch / "gocache"
     gocache.mkdir()
 
     if spec["module_cache_dir"] is None:
@@ -122,7 +123,7 @@ def main(argv: list[str] | None = None) -> None:
         "GOCACHE": str(gocache),
         "GOENV": "off",
         "GOFLAGS": " ".join(flags),
-        "GOMODCACHE": "/var/tmp/modules",
+        "GOMODCACHE": str(scratch / "modules"),
         "GOPROXY": proxy,
         # The committed go.sum is the sole trust anchor here: with -mod=readonly a module it does
         # not pin is a build failure rather than something to look up, and a database is not
@@ -141,25 +142,35 @@ def main(argv: list[str] | None = None) -> None:
         env["CGO_ENABLED"] = "1" if spec["cgo"] else "0"
 
     with ExitStack() as stack:
+        outputs = {Path(spec["bin"]): out}
         if spec["gocache"] is not None:
-            cache = Path(spec["gocache"])
-            cache.mkdir(parents=True, exist_ok=True)
-            # Retain writable access before the project is mounted read-only for the build.
-            stack.enter_context(Bind(cache, gocache))
-        # A build outside a chroot can follow source symlinks back into other project inputs.
-        project = Path.cwd()
-        stack.enter_context(Bind(project, project, readonly=True))
-        workspace = stack.enter_context(rootfs.source_overlay(Path(spec["src"]), build)) / spec["root"]
-        for name, selector in spec["packages"].items():
-            package = _package(selector, workspace, env)
-            subprocess.run(
-                _build_command(binaries / name, package, spec["linker_flags"]),
-                check=True,
-                cwd=workspace,
-                env=env,
-            )
+            outputs[Path(spec["gocache"])] = gocache
+        stack.enter_context(rootfs.readonly_project(outputs))
 
-    util.take_binaries(binaries, spec["binaries"], tool="go-build", where="the go build output")
+        with rootfs.source_overlay(Path(spec["src"]), build) as tree:
+            workspace = tree / spec["root"]
+            for name, selector in spec["packages"].items():
+                package = _package(selector, workspace, env)
+                subprocess.run(
+                    _build_command(binaries / name, package, spec["linker_flags"]),
+                    check=True,
+                    cwd=workspace,
+                    env=env,
+                )
+
+        # Buck keeps every output of an incremental action, a binary no longer declared included.
+        for previous in out.iterdir():
+            previous.unlink()
+        util.take_binaries(
+            binaries,
+            {name: str(out / name) for name in spec["packages"]},
+            tool="go-build",
+            where="the go build output",
+        )
+
+
+def main(argv: list[str] | None = None) -> None:
+    build_go(specs.parse(Spec, "go-build", argv))
 
 
 if __name__ == "__main__":
