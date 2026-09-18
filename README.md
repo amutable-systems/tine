@@ -81,9 +81,7 @@ bootstrap file: Tine needs it to locate the project before it can refresh the de
 would leave a fresh clone unable to run `tine buck` without recreating that file first.
 
 Use `tine.local.toml` or `.buckconfig.local` for machine-local overrides, and keep both untracked. Tine
-updates only its generated block in `.buckconfig.local`, preserving text outside that block. The
-[configuration design](docs/design/architecture.md#shared-configuration-and-nested-commands) explains the
-refresh order and standalone behavior.
+updates only its generated block in `.buckconfig.local`, preserving text outside that block.
 
 The entry point is [`bin/tine`](bin/tine). For Buck commands and completion, an existing `tine` on `PATH`
 automatically hands over to the configured tine cell's `bin/tine`, even without a mount. There is no need
@@ -117,9 +115,7 @@ checkout, including uncommitted edits; selecting a different tine checkout also 
 rules, and pinned Buck2.
 
 Mount changes take effect on the next `tine buck`. Switching mounts can interrupt builds already using a
-different checkout. Mounting requires unprivileged user namespaces, which some distributions disable. The
-[architecture document](docs/design/architecture.md#building-with-out-of-tree-checkouts) explains how
-mounts and daemon reuse work.
+different checkout. Mounting requires unprivileged user namespaces, which some distributions disable.
 
 A consuming OS monorepo ("OS.git" in these docs) additionally holds package sources under
 `packages/<distro>/<branch>/<package>`, imported and updated from upstream dist-gits (Fedora, or CentOS
