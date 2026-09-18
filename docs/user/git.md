@@ -45,6 +45,7 @@ directory survives between runs, and an edit recompiles just what changed. See
 
 The override has a few constraints:
 
+- Only `git_fetch()` targets can be mounted, anything else is rejected.
 - The directory must contain at least one file. An empty mount point or uninitialized submodule falls back
   to the remote fetch.
 - Every file not excluded by `.gitignore` or `[project] ignore` is a build input. Tine merges both, plus
