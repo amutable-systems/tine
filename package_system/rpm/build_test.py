@@ -1,6 +1,7 @@
 """Tests for the RPM build driver."""
 
 import contextlib
+import errno
 import os
 import shutil
 import subprocess
@@ -23,6 +24,9 @@ class BuildRpm(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.scratch)
         self.spec_file = self.scratch / "example.spec"
         self.spec_file.write_text("Name: example\n")
+        # Where Buck would run the driver: the declared outputs live in it, scratch does not.
+        self.project = self.scratch / "project"
+        self.project.mkdir()
         self.auxiliary = self.scratch / "auxiliary"
         self.auxiliary.write_text("packaging input\n")
 
@@ -32,6 +36,7 @@ class BuildRpm(unittest.TestCase):
         *,
         build_dir: Path | None = None,
         spec_file: Path | None = None,
+        subpackages: list[str] | None = None,
     ) -> build.Spec:
         """Return a complete driver spec for one test build."""
         return build.Spec(
@@ -42,8 +47,9 @@ class BuildRpm(unittest.TestCase):
             dist=".test",
             source_date_epoch=1234567890,
             release="7",
-            out=str(self.scratch / "out"),
-            subpackages={},
+            out=str(self.project / "out"),
+            subpackages=subpackages or [],
+            subpackages_out=str(self.project / "subpackages-out"),
             in_place_rpmbuild_options=["--define", "local_option yes"],
             rpmbuild_options=["--define", "common_option yes"],
             source_tree=str(source_tree) if source_tree is not None else None,
@@ -57,11 +63,17 @@ class BuildRpm(unittest.TestCase):
         completed = subprocess.CompletedProcess[str]([], 0)
 
         def run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            # The project is read-only while rpmbuild runs, for a relative path as well.
+            for path in (self.project / "probe", Path("probe")):
+                with self.assertRaises(OSError) as caught:
+                    path.touch()
+                self.assertEqual(caught.exception.errno, errno.EROFS)
             if inspect is not None:
                 inspect(topdir)
             return completed
 
         with (
+            contextlib.chdir(self.project),
             mock.patch.object(build.rootfs, "rootfs", return_value=contextlib.nullcontext()) as mounted,
             mock.patch.object(build.subprocess, "run", side_effect=run) as process,
             # Patch the module wrapper first so TemporaryDirectory still uses the real rmtree.
@@ -70,6 +82,7 @@ class BuildRpm(unittest.TestCase):
         ):
             self.assertEqual(build.build_rpm(spec, topdir), 0)
         remove.assert_called_once_with(topdir)
+        (self.project / "probe").touch()
         command = cast(list[str], process.call_args.args[0])
         cwd = cast(Path | None, process.call_args.kwargs["cwd"])
         environment = cast(dict[str, str], process.call_args.kwargs["env"])
@@ -170,15 +183,30 @@ class BuildRpm(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, "RPM spec does not exist: .*missing.spec"):
                     build.build_rpm(spec, topdir)
 
+    def test_packages_cross_into_the_mounted_outputs(self) -> None:
+        def produce(topdir: Path) -> None:
+            built = topdir / "RPMS/x86_64"
+            built.mkdir(parents=True)
+            (built / "example-1-7.test.x86_64.rpm").write_text("package\n")
+
+        self.invoke(self.specification(subpackages=["example"]), produce)
+
+        out = self.project / "out"
+        self.assertEqual((out / "example-1-7.test.x86_64.rpm").read_text(), "package\n")
+        self.assertEqual((self.project / "subpackages-out/example.rpm").read_text(), "package\n")
+
     def test_dev_source_keeps_build_state_and_uses_the_incremental_profile(self) -> None:
         source = self.scratch / "checkout"
         source.mkdir()
         build_dir = self.scratch / "incremental"
         build_dir.mkdir()
         (build_dir / "cached-object").write_text("keep\n")
-        out = self.scratch / "out"
+        out = self.project / "out"
         out.mkdir()
         (out / "stale.rpm").write_text("old\n")
+        subpackages = self.project / "subpackages-out"
+        subpackages.mkdir()
+        (subpackages / "stale.rpm").write_text("old\n")
 
         command, _cwd, _environment, topdir, binds = self.invoke(
             self.specification(source, build_dir=build_dir)
@@ -193,9 +221,10 @@ class BuildRpm(unittest.TestCase):
         self.assertIn("_vpath_builddir /build/BUILD", command)
         self.assertIn("local_option yes", command)
         self.assertLess(command.index("debug_package %{nil}"), command.index("local_option yes"))
-        self.assertEqual(binds, [(topdir, "/build"), (build_dir.absolute(), "/build/BUILD")])
+        self.assertEqual(binds, [(topdir, "/build")])
         self.assertEqual((build_dir / "cached-object").read_text(), "keep\n")
         self.assertFalse((out / "stale.rpm").exists())
+        self.assertFalse((subpackages / "stale.rpm").exists())
 
     def test_dev_archive_uses_the_incremental_profile(self) -> None:
         build_dir = self.scratch / "incremental"
@@ -212,7 +241,7 @@ class BuildRpm(unittest.TestCase):
         self.assertIn("_vpath_builddir /build/BUILD", command)
         self.assertNotIn("local_option yes", command)
         self.assertIsNone(cwd)
-        self.assertEqual(binds, [(topdir, "/build"), (build_dir.absolute(), "/build/BUILD")])
+        self.assertEqual(binds, [(topdir, "/build")])
 
     def test_source_overlay_is_disposable_even_after_failure(self) -> None:
         self.check_source_overlay(persistent=False)

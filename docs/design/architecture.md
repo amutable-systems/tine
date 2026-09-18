@@ -648,7 +648,9 @@ An `rpm_package` action:
 
 1. obtains the shared base root from its `BuildrootInfo`;
 2. resolves and installs its BuildRequires delta, preferring RPMs from `buildroot_deps` over upstream;
-3. overlays the base and delta, stages its spec/sources in Buck action scratch, and runs `rpmbuild -ba`;
+3. overlays the base and delta, stages its spec/sources in Buck action scratch, and runs `rpmbuild -ba`,
+   or `rpmbuild -bb --build-in-place` on a volatile overlay of a source tree that holds anything. The
+   project holding every input is read-only meanwhile, as for a [Rust source build](#rust-source-builds);
 4. freezes `%autorelease`, `_buildhost`, the dist tag, and the per-package source date epoch;
 5. collects binary RPMs and the source RPM into one output directory, carrying its package-system identity
    in `LocalPackageInfo`;

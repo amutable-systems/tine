@@ -86,8 +86,10 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     if spec_file == None:
         fail("rpm_package: a regular build requires a spec file")
 
-    # Declare addressable outputs for every binary subpackage.
-    sub_outputs = {s: ctx.actions.declare_output(s + ".rpm") for s in ctx.attrs.subpackages}
+    # Addressable outputs for every binary subpackage. One directory rather than a file each, so the
+    # build gets it as a single writable mount while the project holding every input stays read-only.
+    subpackages = ctx.actions.declare_output(_PRIVATE + "/subpackages", dir = True)
+    sub_outputs = {s: subpackages.project(s + ".rpm") for s in ctx.attrs.subpackages}
 
     build = cmd_args(
         box_run(box = package_manager.box[BoxInfo], exe = system.build),
@@ -107,7 +109,8 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
                 "source_tree": source_tree,
                 "sources": ctx.attrs.srcs if in_place_spec == None else [],
                 "spec_file": spec_file,
-                "subpackages": {name: out.as_output() for name, out in sub_outputs.items()},
+                "subpackages": ctx.attrs.subpackages,
+                "subpackages_out": subpackages.as_output(),
             },
         ),
     )
