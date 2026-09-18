@@ -1,9 +1,12 @@
 """RPM package-build examples and their end-to-end assertions."""
 
 load("@tine//box:defs.bzl", "box")
+load("@tine//git:defs.bzl", "git")
 load("@tine//package_system/rpm:defs.bzl", "rpm")
 
 _BUILDROOT = "tine//catalog:fedora.rawhide.buildroot"
+
+git.checkout(name = "hello.source")
 
 # The archive path runs %prep and emits both binary and source RPMs. It exists separately from the
 # source-tree fixture to check release and dev compression through real RPM headers.
@@ -37,6 +40,7 @@ rpm.package(
     in_place_spec = "rpm/hello.spec",
     release = "1",
     source_date_epoch = 1754006400,
+    source_tree = ":hello.source",
     subpackages = ["hello"],
 )
 
