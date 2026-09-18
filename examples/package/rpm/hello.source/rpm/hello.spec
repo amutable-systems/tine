@@ -10,6 +10,7 @@ Source1: packaging-marker
 An integration fixture for Tine's source-tree RPM package build path.
 
 %build
+mkdir -p %{_vpath_builddir}
 lto=disabled
 %if 0%{?_lto_cflags:1}
 lto=enabled
