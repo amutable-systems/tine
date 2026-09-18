@@ -162,5 +162,6 @@ def install_packages(
                 "package_manager": package_manager,
             },
         ).artifact("root")
-        return ctx.actions.assert_short_path(root, short_path = "root")
+        # A promise is resolved before the anon target is analysed, so its path kind is asserted here.
+        return ctx.actions.assert_short_path(ctx.actions.assert_has_content_based_path(root), short_path = "root")
     return _install_actions(ctx, package_manager, install, stack, extra_packages)
