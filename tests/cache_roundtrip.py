@@ -5,16 +5,17 @@
 Everything the shim does on its own is unit-tested in remote_cache/. What only a real build shows is
 that `tine buck` starts and shares the shim, that Buck's client and the shim agree on the protocol,
 and that a result one build published is a hit for a machine holding nothing but the bucket. So this
-stands up a SeaweedFS bucket, points a `tine.local.toml` at it, builds the Go example cold as a
+stands up a SeaweedFS bucket, points a `tine.local.toml` at it, builds the examples cold as a
 builder, then cleans, stops the shim, drops its store, and builds again as a reader, whose shim tells
 Buck it takes no uploads: Buck has to believe that rather than try and be refused.
 
-The Go example because its module fetch and its build are separate cached actions, so a hit carries
-a directory of modules as well as a binary. A dedicated isolation dir, so the developer's own build
-state is neither cleaned nor served by a cache-configured daemon.
+One example per supported component type (see SERVED), each checked through `what-ran`.
+
+Runs in a dedicated isolation dir, to avoid messing up the developer's own build state.
 """
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -33,12 +34,22 @@ from util import buck_output, fail, nested_buck
 
 import seaweed
 
-TARGETS = ("tine//examples/image-go-project:hello", "tine//examples/image-go-project:nodeps")
+# What a warm build has to take from the cache, and through which actions.
+SERVED = {
+    "tine//examples/image-go-project:hello": ("go_fetch", "go_build"),
+    "tine//examples/image-go-project:nodeps": ("go_build",),
+    "tine//examples/image-rust-project:hello": ("cargo_build",),
+    "tine//examples/package/rpm:hello-tree": ("rpmbuild",),
+}
+# `<target> (<configuration>) (<category>)`, as `what-ran` names an action.
+ACTION = re.compile(r"(?P<target>\S+) \(\S+\) \((?P<category>\w+)\)")
 ISOLATION = "cache-roundtrip"
 BUCKET = "tine-cache"
 # `tine.LOCAL_SETTINGS`, which this cannot import without dragging the whole launcher in.
 LOCAL_SETTINGS = "tine.local.toml"
-# Counters a healthy round trip never touches.
+# Counters a healthy round trip never touches. A reader advertises that it takes no uploads and Buck
+# honours that, so not even its write probe arrives; a refusal means a Buck that stopped reading the
+# capability, and a developer who would now see an upload warning per build.
 QUIET = (
     "bucket errors",
     "bundles gone",
@@ -47,6 +58,7 @@ QUIET = (
     "incomplete",
     "pointers refused",
     "publish failures",
+    "uploads refused",
 )
 
 
@@ -116,16 +128,35 @@ class RoundTrip:
             fail(f"tine buck {' '.join(arguments)} exited with {proc.returncode}")
         return proc.stdout
 
-    def build(self) -> int:
-        """Build the targets, returning how many commands Buck took from the cache."""
-        output = self.tine("build", *TARGETS)
-        found = re.search(r"Commands: \d+ \(cached: (\d+),", output)
-        if found is None:
-            fail("Buck reported no command summary")
-        return int(found[1])
+    def build(self) -> None:
+        """Build every target named in SERVED."""
+        self.tine("build", *SERVED)
 
-    def report(self) -> dict[str, int]:
-        """The shim's counters."""
+    def executors(self) -> dict[tuple[str, str], str]:
+        """Where each action of the last build came from, by target and category."""
+        found: dict[tuple[str, str], str] = {}
+        for line in self.tine("log", "what-ran", "--format", "json").splitlines():
+            if not line.startswith("{"):
+                continue  # the launcher's own notes
+            record = json.loads(line)
+            if action := ACTION.fullmatch(cast(str, record["identity"])):
+                found[(action["target"], action["category"])] = cast(str, record["reproducer"]["executor"])
+        return found
+
+    def check_served(self, expected: str) -> None:
+        """Fail unless every action of SERVED came from `expected` in the last build."""
+        ran = self.executors()
+        wrong = [
+            f"{target} ({category}) from {ran.get((target, category), 'nowhere')}"
+            for target, categories in SERVED.items()
+            for category in categories
+            if ran.get((target, category)) != expected
+        ]
+        if wrong:
+            fail(f"expected {expected} for each of: {', '.join(wrong)}")
+
+    def report(self) -> None:
+        """Print the shim's counters and fail on the ones a healthy round trip never touches."""
         report = cache_shim.ask(self.cache.dir)
         if report is None:
             fail(f"nothing serves {self.cache.dir} after a build that needed it")
@@ -133,7 +164,6 @@ class RoundTrip:
         print(f"shim counters: {counts}", file=sys.stderr, flush=True)
         if noisy := [f"{what} {counts[what]}" for what in QUIET if counts.get(what)]:
             fail(f"the shim reports trouble: {', '.join(noisy)}; see {cache_shim.log_path(self.cache)}")
-        return counts
 
     def stop_shim(self) -> None:
         """Stop the shim and wait until it is gone, so the next build starts one with an empty store."""
@@ -178,34 +208,19 @@ def main() -> None:
         stack.callback(run.teardown)
 
         print("=== cold build: nothing in the bucket", file=sys.stderr)
-        if (cached := run.build()) != 0:
-            fail(f"a cold build took {cached} commands from a cache that was empty")
-        cold = run.report()
-        if not cold.get("published"):
-            fail(f"the cold build published nothing: {cold}")
+        run.build()
+        run.check_served("Local")
+        run.report()
 
         print("=== warm build: a cleaned checkout, a reader shim, an empty store", file=sys.stderr)
         run.tine("clean")
         run.stop_shim()
         shutil.rmtree(run.cache.dir)
         run.settle(run.reader)
-        cached = run.build()
-        warm = run.report()
-        # A reader advertises that it takes no uploads, and Buck honours that: not even its write
-        # probe arrives. A refusal here means a Buck that no longer reads the capability, and a
-        # developer who would now see an upload warning per build.
-        if warm.get("uploads refused"):
-            fail(f"Buck offered uploads to a reader that advertised taking none: {warm}")
-
-        # Buck and the shim have to agree on every hit, and each hit has to be something the cold
-        # build published. Not an exact count against what was published: it includes Buck's
-        # own write probe.
-        hits = warm.get("hits", 0)
-        if not hits or hits != cached:
-            fail(f"Buck took {cached} commands from the cache where the shim counted {warm}")
-        if hits > cold["published"]:
-            fail(f"{hits} hits out of a bucket that was published {cold['published']} results")
-        print(f"=== {hits} results published cold and served warm out of the bucket", file=sys.stderr)
+        run.build()
+        run.check_served("Cache")
+        run.report()
+        print("=== every result named in SERVED came back out of the bucket", file=sys.stderr)
 
 
 if __name__ == "__main__":
