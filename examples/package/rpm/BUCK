@@ -54,3 +54,29 @@ box.sh_test(
         "$(location :hello-dev)",
     ],
 )
+
+# The same checkout built for release from an in-tree dist-git rather than in dev mode.
+# This is the only one that gets into the shared cache.
+rpm.package(
+    name = "hello-tree",
+    package = "hello",
+    spec = "hello/hello.spec",
+    buildroot = _BUILDROOT,
+    build_requires = ["gcc"],
+    in_place_spec = "rpm/hello.spec",
+    release = "1",
+    source_date_epoch = 1754006400,
+    source_tree = ":hello.source",
+    subpackages = ["hello"],
+)
+
+box.sh_test(
+    name = "hello-tree-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = 'python3 "$@"',
+    args = [
+        "$(source hello_tree_check.py)",
+        "$(location :hello-tree)",
+    ],
+)
