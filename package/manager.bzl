@@ -23,7 +23,8 @@ _REMOTE_REPOSITORY_PRIORITY = 99
 
 def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     system = ctx.attrs.package_system[PackageSystemInfo]
-    repo = ctx.actions.declare_output("repo", dir = True)
+    # Every consumer of a promised artifact would have to assert a content-based path; keep the plain one.
+    repo = ctx.actions.declare_output("repo", dir = True, has_content_based_path = False)
     index = cmd_args(
         box_run(box = ctx.attrs.box[BoxInfo], exe = system.index),
         spec_args(

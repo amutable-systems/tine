@@ -107,7 +107,9 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
             suffix = system.package_suffix,
             name = "bootstrap.closure",
         )
-        stage1 = ctx.actions.declare_output("stage1", dir = True)
+        # A root tree: relocating it to a content-based path copies file by file, which breaks its
+        # hardlinks and resets its timestamps.
+        stage1 = ctx.actions.declare_output("stage1", dir = True, has_content_based_path = False)
         ctx.actions.run(
             cmd_args(
                 system.extract[RunInfo],
@@ -139,7 +141,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     )
 
     # Use the predecessor or bootstrapped root to produce the fully installed box.
-    stage2 = ctx.actions.declare_output("stage2", dir = True)
+    stage2 = ctx.actions.declare_output("stage2", dir = True, has_content_based_path = False)
     ctx.actions.run(
         cmd_args(
             box_run(

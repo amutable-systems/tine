@@ -32,7 +32,9 @@ def _go_build_impl(
     # across reruns, so a dependency bump downloads only what is missing from it.
     module_cache = None
     if module["sum"] != None:
-        module_cache = actions.declare_output(_PRIVATE + "/module-cache", dir = True)
+        # Buck restores a kept content-based output by copying it back before each run: in full, and with
+        # fresh timestamps, which defeats the incremental build it is kept for.
+        module_cache = actions.declare_output(_PRIVATE + "/module-cache", dir = True, has_content_based_path = False)
         actions.run(
             cmd_args(
                 fetch,
@@ -109,13 +111,17 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # One directory rather than a file per binary, so the build gets it as a single writable mount
     # while the project holding every input stays read-only.
-    bin = ctx.actions.declare_output(_PRIVATE + "/bin", dir = True)
+    # Not content-based: dev mode keeps this action's outputs, and Buck would copy a kept content-based
+    # one back before each run only for the driver to purge it. Not only in dev mode, as switching the
+    # path kind would leave the other kind's entry at this path, which a kept action never cleans.
+    bin = ctx.actions.declare_output(_PRIVATE + "/bin", dir = True, has_content_based_path = False)
     outputs = {name: bin.project(name) for name in names}
 
     # go's own build cache. An action's outputs are the only place it may leave state behind, and buck
     # clears them before rerunning it unless told not to. A declared output is also uploaded to the
     # cache, only do that for incremental builds; otherwise build in scratch space.
-    gocache = ctx.actions.declare_output(_PRIVATE + "/gocache", dir = True) if ctx.attrs.incremental else None
+    # Not content-based, for the reason the module cache gives.
+    gocache = ctx.actions.declare_output(_PRIVATE + "/gocache", dir = True, has_content_based_path = False) if ctx.attrs.incremental else None
 
     workspace = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
     ctx.actions.run(

@@ -50,7 +50,8 @@ def _solver_cache_impl(ctx: AnalysisContext) -> list[Provider]:
         priority = ctx.attrs.priority,
         baseurl = ctx.attrs.baseurl,
     )
-    cache = ctx.actions.declare_output("cache", dir = True)
+    # Every consumer of a promised artifact would have to assert a content-based path; keep the plain one.
+    cache = ctx.actions.declare_output("cache", dir = True, has_content_based_path = False)
     ctx.actions.run(
         cmd_args(
             box_run(box = box, exe = system.plan),

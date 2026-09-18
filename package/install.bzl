@@ -102,7 +102,9 @@ def _install_actions(
     system = package_manager.package_system[PackageSystemInfo]
     box = package_manager.box[BoxInfo]
     closure = resolve_packages(ctx, package_manager_dep, install, stack, extra_packages)
-    out = ctx.actions.declare_output("install.delta" if stack else "root", dir = True)
+    # A root tree: relocating it to a content-based path copies file by file, which breaks its hardlinks
+    # and resets its timestamps.
+    out = ctx.actions.declare_output("install.delta" if stack else "root", dir = True, has_content_based_path = False)
     work = ctx.actions.declare_output("install.work", dir = True) if stack else None
     cmd = cmd_args(
         box_run(box = box, exe = system.install),

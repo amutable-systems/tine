@@ -51,7 +51,9 @@ def digested(actions: AnalysisActions, name: str, tree: Artifact) -> Artifact:
     # The directory itself also holds whatever project ignores keep out of Buck's digest, so an action
     # reading it could use build output Buck never hashed. `relative_symlinks` keeps an internal link
     # pointing at its original relative target, so the copy survives being relocated.
-    return actions.copy_dir(name, tree, relative_symlinks = True)
+    # Not content-based: reverting an edit would bring back the earlier copy, timestamps included, and an
+    # incremental build would take the reverted file for unchanged.
+    return actions.copy_dir(name, tree, has_content_based_path = False, relative_symlinks = True)
 
 project = struct(
     digested = digested,

@@ -108,13 +108,18 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # One directory rather than a file per binary, so the build gets it as a single writable mount
     # while the project holding every input stays read-only.
-    bin = ctx.actions.declare_output(_PRIVATE + "/bin", dir = True)
+    # Not content-based: dev mode keeps this action's outputs, and Buck would copy a kept content-based
+    # one back before each run only for the driver to purge it. Not only in dev mode, as switching the
+    # path kind would leave the other kind's entry at this path, which a kept action never cleans.
+    bin = ctx.actions.declare_output(_PRIVATE + "/bin", dir = True, has_content_based_path = False)
     outputs = {name: bin.project(name) for name in ctx.attrs.binaries}
 
     # Cargo's own build directory. An action's outputs are the only place it may leave state behind,
     # and buck clears them before rerunning it unless told not to. A declared output is also uploaded to
     # the cache, only do that for incremental builds; otherwise build in scratch space.
-    target = ctx.actions.declare_output(_PRIVATE + "/target", dir = True) if ctx.attrs.incremental else None
+    # Buck restores a kept content-based output by copying it back before each run: in full, and with
+    # fresh timestamps, which defeats the incremental build it is kept for.
+    target = ctx.actions.declare_output(_PRIVATE + "/target", dir = True, has_content_based_path = False) if ctx.attrs.incremental else None
 
     resolved = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
     ctx.actions.run(

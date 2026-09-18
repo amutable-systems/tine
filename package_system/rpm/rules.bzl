@@ -77,8 +77,13 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     source_tree = ctx.attrs.source_tree
     if ctx.attrs.copy_source_tree:
         source_tree = project.digested(ctx.actions, _PRIVATE + "/source", source_tree)
-    rpms = ctx.actions.declare_output("rpms", dir = True)
-    build_dir = ctx.actions.declare_output(_PRIVATE + "/build", dir = True) if ctx.attrs.configured_dev else None
+    # Not content-based: dev mode keeps this action's outputs, and Buck would copy a kept content-based
+    # one back before each run only for the driver to purge it. Not only in dev mode, as switching the
+    # path kind would leave the other kind's entry at this path, which a kept action never cleans.
+    rpms = ctx.actions.declare_output("rpms", dir = True, has_content_based_path = False)
+    # Buck restores a kept content-based output by copying it back before each run: in full, and with
+    # fresh timestamps, which defeats the incremental build it is kept for.
+    build_dir = ctx.actions.declare_output(_PRIVATE + "/build", dir = True, has_content_based_path = False) if ctx.attrs.configured_dev else None
     in_place_spec = ctx.attrs.in_place_spec if source_tree != None else None
     spec_file = ctx.attrs.spec
     if source_tree != None and in_place_spec != None:
@@ -88,7 +93,8 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # Addressable outputs for every binary subpackage. One directory rather than a file each, so the
     # build gets it as a single writable mount while the project holding every input stays read-only.
-    subpackages = ctx.actions.declare_output(_PRIVATE + "/subpackages", dir = True)
+    # Not content-based, for the reason `rpms` gives.
+    subpackages = ctx.actions.declare_output(_PRIVATE + "/subpackages", dir = True, has_content_based_path = False)
     sub_outputs = {s: subpackages.project(s + ".rpm") for s in ctx.attrs.subpackages}
 
     build = cmd_args(

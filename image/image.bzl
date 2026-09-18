@@ -101,7 +101,10 @@ def _path(identifier: str | None, name: str) -> str:
 
 def declare_out(ctx: AnalysisContext, identifier: str | None, name: str, dir: bool = False) -> Artifact:
     """Declare an output, scoped to `identifier` when one composition declares several."""
-    return ctx.actions.declare_output(_path(identifier, name), dir = dir)
+
+    # Buck relocates a content-based output by copying it file by file, which breaks the hardlinks and
+    # resets the timestamps that are part of an image tree.
+    return ctx.actions.declare_output(_path(identifier, name), dir = dir, has_content_based_path = False)
 
 def spec_path(identifier: str | None, driver: str) -> str:
     """Name a driver's spec, scoped like the outputs of the same composition step."""
