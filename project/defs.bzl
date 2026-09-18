@@ -50,10 +50,12 @@ def digested(actions: AnalysisActions, name: str, tree: Artifact) -> Artifact:
 
     # The directory itself also holds whatever project ignores keep out of Buck's digest, so an action
     # reading it could use build output Buck never hashed. `relative_symlinks` keeps an internal link
-    # pointing at its original relative target, so the copy survives being relocated.
+    # pointing at its original relative target, so the copy survives being relocated. `preserve_mtimes`
+    # keeps the timestamps an incremental build decides by, which a fresh copy would reset every time.
+    # Only a local copy keeps them, which is all such a build ever sees: its results are never shared.
     # Not content-based: reverting an edit would bring back the earlier copy, timestamps included, and an
     # incremental build would take the reverted file for unchanged.
-    return actions.copy_dir(name, tree, has_content_based_path = False, relative_symlinks = True)
+    return actions.copy_dir(name, tree, has_content_based_path = False, preserve_mtimes = True, relative_symlinks = True)
 
 project = struct(
     digested = digested,

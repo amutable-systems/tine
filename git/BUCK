@@ -42,6 +42,10 @@ box.sh_test(
         # A fetch override is the live directory rather than a copy of it, so it still holds it.
         [[ -n "$4" && "$4" != *buck-out* && "$(cat "$4/input")" == source ]]
         [[ -e "$4/.hg/poison" ]]
+        # The copy keeps the timestamps an incremental build on top of it decides by, where a fresh one
+        # would be newer than its source. Not equal: Buck does not redo the copy of a file that was
+        # touched without changing.
+        [[ "$(stat -c %Y "$1/input")" -le "$(stat -c %Y "$4/input")" ]]
     """,
     args = [
         "$(location :fixture)",
