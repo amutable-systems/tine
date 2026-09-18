@@ -376,7 +376,7 @@ def generated(ops: list[LayerOperation], installs: list[str]) -> list[LayerOpera
 def sign_systemd_boot(key: SigningKeyInfo, arch: str) -> list[LayerOperation]:
     """Return operations that sign the image's systemd-boot binary as a `.signed` sibling.
 
-    Sign before anything seals /usr, e.g. a verity partition; design.md explains why the signed
+    Sign before anything seals /usr, e.g. a verity partition; architecture.md explains why the signed
     binary must live in the image's own /usr. The key material never enters the image.
     """
     binary = "/buildroot/usr/lib/systemd/boot/efi/systemd-boot{}.efi".format(ARCHES[arch].efi)

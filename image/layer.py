@@ -141,7 +141,7 @@ def _remove_glob(tree: Path, value: str) -> None:
 def _normalize_mode(path: Path) -> None:
     """Normalize file permissions for path.
 
-    See docs/images.md.
+    See docs/user/images.md.
     """
     mode = path.lstat().st_mode
     if stat.S_ISDIR(mode):

@@ -15,7 +15,8 @@
 
 ## Layout
 
-Cell layout and architecture: [the design plan](docs/design.md).
+Cell layout and architecture: [the design plan](docs/design/architecture.md). User guides are under
+`docs/user/`, design documents under `docs/design/`.
 
 - A unit test is `<driver>_test.py` beside its driver, run by a `box_python_test` in the same package.
 - An assertion about what a build produced is a `box_sh_test` beside the target that produced it, taking
@@ -46,9 +47,9 @@ Cell layout and architecture: [the design plan](docs/design.md).
   lock matches.
 - **Full CI pipeline:** `tools/ci.sh`, fail-fast. Run individual groups by stating their names, e.g.
   `tools/ci.sh check build`
-- **rpm importer:** `buck run tine//tools:importer -- <verb>`; see [importer.md](docs/importer.md).
+- **rpm importer:** `buck run tine//tools:importer -- <verb>`; see [importer.md](docs/user/importer.md).
 - **BuildRequires cycle analysis:** `buck run tine//tools:scc -- <branch label>`; background in
-  [self-host-approaches.md](docs/self-host-approaches.md).
+  [self-host-approaches.md](docs/design/self-host-approaches.md).
 
 ## Starlark
 

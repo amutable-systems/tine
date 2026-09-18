@@ -82,8 +82,8 @@ would leave a fresh clone unable to run `tine buck` without recreating that file
 
 Use `tine.local.toml` or `.buckconfig.local` for machine-local overrides, and keep both untracked. Tine
 updates only its generated block in `.buckconfig.local`, preserving text outside that block. The
-[configuration design](docs/design.md#shared-configuration-and-nested-commands) explains the refresh order
-and standalone behavior.
+[configuration design](docs/design/architecture.md#shared-configuration-and-nested-commands) explains the
+refresh order and standalone behavior.
 
 The entry point is [`bin/tine`](bin/tine). For Buck commands and completion, an existing `tine` on `PATH`
 automatically hands over to the configured tine cell's `bin/tine`, even without a mount. There is no need
@@ -118,39 +118,41 @@ rules, and pinned Buck2.
 
 Mount changes take effect on the next `tine buck`. Switching mounts can interrupt builds already using a
 different checkout. Mounting requires unprivileged user namespaces, which some distributions disable. The
-[architecture document](docs/design.md#building-with-out-of-tree-checkouts) explains how mounts and daemon
-reuse work.
+[architecture document](docs/design/architecture.md#building-with-out-of-tree-checkouts) explains how
+mounts and daemon reuse work.
 
 A consuming OS monorepo ("OS.git" in these docs) additionally holds package sources under
 `packages/<distro>/<branch>/<package>`, imported and updated from upstream dist-gits (Fedora, or CentOS
-Stream) by the [importer](docs/importer.md). Those build as ordinary Buck targets and feed images, so an
-image build rebuilds exactly the affected packages.
+Stream) by the [importer](docs/user/importer.md). Those build as ordinary Buck targets and feed images,
+so an image build rebuilds exactly the affected packages.
 
 ## Documentation
 
 User guides:
 
-- [Building images](docs/images.md): host requirements, declaring images and layers, output formats, the
-  VM runner
-- [Building Rust projects](docs/cargo.md): building a checked-out Rust project offline, with its
+- [Building images](docs/user/images.md): host requirements, declaring images and layers, output formats,
+  the VM runner
+- [Building Rust projects](docs/user/cargo.md): building a checked-out Rust project offline, with its
   crate graph in the executables and image SBOM
-- [Building Go projects](docs/go.md): the same for a checked-out Go project, whose module list go
+- [Building Go projects](docs/user/go.md): the same for a checked-out Go project, whose module list go
   itself embeds in the executables
-- [Fetching project sources](docs/git.md): pinning an external project while allowing a local checkout
-  during development
-- [Maintaining packages](docs/importer.md): importing and updating packages from upstream distributions,
-  local modifications, branch curation
-- [Development boxes](docs/box.md): pinned interactive development environments
-- [Shared build cache](docs/remote-cache.md): configuring it, the keys, the bucket, and reading the shim's
-  counters
+- [Fetching project sources](docs/user/git.md): pinning an external project while allowing a local
+  checkout during development
+- [Maintaining packages](docs/user/importer.md): importing and updating packages from upstream
+  distributions, local modifications, branch curation
+- [Development boxes](docs/user/box.md): pinned interactive development environments
+- [Shared build cache](docs/user/remote-cache.md): configuring it, the keys, the bucket, and reading the
+  shim's counters
 
 Design:
 
-- [Architecture](docs/design.md): component model, decision record, current limitations, roadmap
-- [Package import machinery](docs/packages.md): branch layout, metadata, consistency checks, rebuild
-  strategy
-- [Self-hosting approaches](docs/self-host-approaches.md): future design for the BuildRequires cycle
-- [Shared build cache design](docs/remote-cache-design.md): threat model, bucket layout, signatures and
+- [Architecture](docs/design/architecture.md): component model, decision record, current limitations,
+  roadmap
+- [Package import machinery](docs/design/packages.md): branch layout, metadata, consistency checks,
+  rebuild strategy
+- [Self-hosting approaches](docs/design/self-host-approaches.md): future design for the BuildRequires
+  cycle
+- [Shared build cache design](docs/design/remote-cache.md): threat model, bucket layout, signatures and
   keys
 
 ## Development
@@ -167,7 +169,7 @@ tine completion <shell>  # print the completion script for bash, fish or zsh
 
 `tine buck` runs the pinned Buck2 and forwards everything after `buck` unchanged. Use it instead of
 running Buck2 directly so that builds use your selected checkouts. Image versions can be derived from
-the project's Git history; see "Image versioning" in [images.md](docs/images.md).
+the project's Git history; see "Image versioning" in [images.md](docs/user/images.md).
 
 Install shell completion from inside a project:
 

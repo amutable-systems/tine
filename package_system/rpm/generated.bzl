@@ -231,7 +231,7 @@ def _buildrequires_edges(
 ) -> dict[str, dict[str, list[str]]]:
     """The package-to-self-hosted-provider graph, with the capabilities justifying each edge.
 
-    A seed-only source package (tool use rather than linkage; see docs/self-host-approaches.md)
+    A seed-only source package (tool use rather than linkage; see docs/design/self-host-approaches.md)
     contributes no edges as a provider: BuildRequires on it always resolve from the seed."""
     edges = {}
     for name in sorted(packages):

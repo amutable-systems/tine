@@ -2,7 +2,7 @@
 
 How to declare, build, and run OS images. This is the user guide. The architecture behind it (the
 provider vocabulary, the delta layer model, and disk composition internals) is documented in
-[design.md](design.md).
+[architecture.md](../design/architecture.md).
 
 ## Host requirements
 
@@ -52,13 +52,14 @@ as committed snapshots under [`catalog/snapshot/`](../catalog/snapshot/): reposi
 `snapshot/repo/*.json` and frozen box transactions in `snapshot/box/*.json`. Normal builds therefore
 never touch the network; `refresh-catalog` (below) advances the pins. A project can instead declare its
 own `//catalog` package with the same macros. The naming scheme and the pinning mechanism are described in
-[design.md](design.md).
+[architecture.md](../design/architecture.md).
 
 A **box** is a pinned, reproducible execution environment that runs every build action. It supplies its
 package system's own tools, Python, core utilities, and the image assembly tools; these stay in the box
 and out of the built images. Both RPM releases share `tine//catalog:fedora.rawhide.box`, while
 `arch.rolling` has its own. A box's base release only records where its userspace came from: the Rawhide
-box also serves Fedora 44. How a box bootstraps itself is described in [design.md](design.md).
+box also serves Fedora 44. How a box bootstraps itself is described in
+[architecture.md](../design/architecture.md).
 
 ## Commands
 
@@ -74,7 +75,7 @@ tine buck run tine//tools:check
 `refresh-catalog` refreshes the default `tine//catalog` package. Pass another catalog package after `--`,
 for example `tine buck run tine//tools:refresh-catalog -- my_project//catalog`. `verify-catalog`
 performs the same generation and fails when the committed JSON differs. The pinning and refresh mechanism
-is described in [design.md](design.md).
+is described in [architecture.md](../design/architecture.md).
 
 ## Declaring an image
 
@@ -129,7 +130,7 @@ package.manager(
 
 Each install then builds exactly the locally built packages in its runtime closure and offers them to the
 solver ahead of the upstream repositories; requested capabilities without a local provider continue to
-resolve upstream (details in [design.md](design.md)).
+resolve upstream (details in [architecture.md](../design/architecture.md)).
 
 ## Images and operations
 
@@ -811,7 +812,7 @@ one, as [signing-pkcs11.md](signing-pkcs11.md) describes.
 
 The systemd-boot binary is signed inside the image tree, as a `.signed` sibling under
 `/usr/lib/systemd/boot/efi`, sealed under the verity root hash where the booted system's `bootctl update`
-finds it after an OS update; [design.md](design.md) explains why it must live there.
+finds it after an OS update; [architecture.md](../design/architecture.md) explains why it must live there.
 
 Development images can source a key in two ways:
 
@@ -922,7 +923,8 @@ image.bootable_disk(
 
 Either way the package manager comes from a `select()` on that distribution, and the package names come
 from the release's package sets, so moving an image between distributions changes neither its operations
-nor the rules underneath. The mechanism is described in [design.md](design.md#selecting-a-distribution).
+nor the rules underneath. The mechanism is described in
+[architecture.md](../design/architecture.md#selecting-a-distribution).
 
 The examples deliberately have no default. `//examples/image:boot-demo` is declared for no distribution
 in particular, so building it by that name fails as incompatible and `//examples/image/...` skips it;

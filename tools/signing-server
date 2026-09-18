@@ -61,7 +61,7 @@ export TPM2_PKCS11_STORE="$dir/store"
 await "the resource manager" tpm2_getcap properties-fixed
 
 ########################################################################################################
-# Token and key creation: this performs what docs/signing-pkcs11.md documents as the manual setup:
+# Token and key creation: this performs what docs/user/signing-pkcs11.md documents as the manual setup:
 # "Backend: TPM 2.0 with tpm2-pkcs11" and "Giving the key a certificate".
 
 export PKCS11_PROVIDER_MODULE=/usr/lib64/pkcs11/libtpm2_pkcs11.so
@@ -78,7 +78,7 @@ for token in SecureBoot PcrPolicy; do
 done
 
 ########################################################################################################
-# "Serving the token" in docs/signing-pkcs11.md, with --foreground instead of daemonizing so that the
+# "Serving the token" in docs/user/signing-pkcs11.md, with --foreground instead of daemonizing so that the
 # server stays this script's child.
 
 p11-kit server --foreground --provider "$PKCS11_PROVIDER_MODULE" \
