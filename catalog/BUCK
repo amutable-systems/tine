@@ -14,7 +14,7 @@ fedora_release(
     version = "rawhide",
     box = ":fedora.rawhide.box",
     rpmrepo_mirror = "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46",
-    rpmrepo_snapshot = "f46-x86_64-rawhide-20260917",
+    rpmrepo_snapshot = "f46-x86_64-rawhide-20260919",
     # should be at most two; drop the previous version after the regular mass rebuild is done
     signing_keys = fedora_signing_keys("46", "45"),
     visibility = ["PUBLIC"],
@@ -68,7 +68,7 @@ box.new(
 # refresh-catalog advances every repository sharing this pin to the newest complete day.
 arch_release(
     name = "arch.rolling",
-    archive_snapshot = "2026/09/16",
+    archive_snapshot = "2026/09/19",
     box = ":arch.rolling.box",
     visibility = ["PUBLIC"],
 )
