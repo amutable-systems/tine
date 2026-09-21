@@ -127,6 +127,11 @@ class TestSettings(SettingsCase):
         with self.assertRaisesRegex(SystemExit, "object_lifetime .* needs signing_key"):
             self.settings(reader(object_lifetime=30))
 
+    def test_only_a_builder_accepts_uploads(self) -> None:
+        self.assertTrue(self.configured(reader()).accepts_uploads)
+        self.assertTrue(self.configured(builder(self.root)).accepts_uploads)
+        self.assertFalse(self.configured(reader(unsigned=None, authority=["ca.pem"])).accepts_uploads)
+
     def test_the_port_follows_the_store(self) -> None:
         one = self.configured(reader(dir="one"))
         self.assertEqual(one.port, self.configured(reader(dir="./one/")).port)
