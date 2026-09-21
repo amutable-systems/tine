@@ -94,7 +94,6 @@ box.new(
         "git-core",
         # for the assertions over generated certificates
         "openssl",
-        "python3",
         "rpm-build",
         # package_system/rpm's tests sign what they build
         "gnupg2",

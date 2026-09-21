@@ -17,8 +17,6 @@ box.new(
         # TLS trust for the module fetch from proxy.golang.org.
         "ca-certificates",
         "golang",
-        # tine's in-box drivers run on the box's own interpreter.
-        "python3",
     ],
     release = "tine//catalog:fedora.rawhide.release",
 )

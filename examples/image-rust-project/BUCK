@@ -16,8 +16,6 @@ box.new(
     packages = [
         "cargo",
         "gcc",
-        # tine's in-box drivers run on the box's own interpreter.
-        "python3",
         "rust",
     ],
     release = "tine//catalog:fedora.rawhide.release",
