@@ -340,9 +340,12 @@ class TestRenderLocalConfigBlock(RepositoryTestCase):
         )
         self.assertEqual(tine.read_project_buckconfig(self.repo)["project"][tine.PROJECT_IGNORE], ".git")
 
-    def cache(self) -> cache_shim.CacheSettings:
-        table = {"cache": {"read_url": "https://cache.example", "unsigned": True}}
-        cache = cache_shim.settings(table, self.repo, tine.SETTINGS)
+    def cache(self, authority: list[str] | None = None) -> cache_shim.CacheSettings:
+        """Cache settings trusting the given authority, otherwise allowing unsigned."""
+
+        trust: dict[str, object] = {"authority": authority} if authority else {"unsigned": True}
+        table = {"read_url": "https://cache.example"} | trust
+        cache = cache_shim.settings({"cache": table}, self.repo, tine.SETTINGS)
         assert cache is not None
         return cache
 
@@ -355,6 +358,17 @@ class TestRenderLocalConfigBlock(RepositoryTestCase):
         # Buck defaults this to true, and the shim serves plaintext on the loopback.
         self.assertIn("tls = false", lines)
         self.assertNotIn(f"[{tine.RE_CLIENT}]", tine.render_local_config_block(self.repo, []))
+
+    def test_cache_uploads_flag(self) -> None:
+        # not present without a cache setting
+        self.assertNotIn(tine.CACHE_UPLOADS, "".join(tine.render_local_config_block(self.repo, [])))
+        # writer can upload
+        self.assertIn(
+            f"{tine.CACHE_UPLOADS} = true", tine.render_local_config_block(self.repo, [], self.cache())
+        )
+        # reader cannot
+        reader = self.cache(authority=["ca.pem"])
+        self.assertIn(f"{tine.CACHE_UPLOADS} = false", tine.render_local_config_block(self.repo, [], reader))
 
     def test_the_address_reads_back_out_of_the_block(self) -> None:
         self.commit()

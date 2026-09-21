@@ -82,6 +82,11 @@ class CacheSettings:
     store_size: int | None
     port: int
 
+    @property
+    def accepts_uploads(self) -> bool:
+        """Return whether the settings permit writing."""
+        return not self.authorities or self.signing_key is not None
+
 
 def _digest(text: str) -> str:
     """A short stable name for a string, for a path or a port that has to key on one."""

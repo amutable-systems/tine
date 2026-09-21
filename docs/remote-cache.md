@@ -142,9 +142,9 @@ When a build is slower than it should be, read the counters of the machine's shi
   `published` counter, and that both build the same configuration.
 - **`pointers refused`**: signatures do not check out, in the bucket or in the local store. Check the
   reader's `authority`, then the log for the key id and the reason.
-- **`uploads refused`**: Buck offered results to a reader, which refuses them. A reader tells Buck that
-  it takes no uploads, so if Buck tries anyway, that's a bug or attack. The build is
-  unaffected.
+- **`uploads refused`**: Buck offered results to a reader, which refuses them. A reader's executor is
+  configured not to offer any, so this means Buck got its settings from somewhere else. The build
+  is unaffected.
 - **`bundles refused`**: a bundle did not match its result. Read the log; the builder re-uploads that
   bundle on its next publish.
 - **`bucket errors`**: the bucket answered badly or not at all. The log has the HTTP status: network,

@@ -6,8 +6,7 @@ Everything the shim does on its own is unit-tested in remote_cache/. What only a
 that `tine buck` starts and shares the shim, that Buck's client and the shim agree on the protocol,
 and that a result one build published is a hit for a machine holding nothing but the bucket. So this
 stands up a SeaweedFS bucket, points a `tine.local.toml` at it, builds the examples cold as a
-builder, then cleans, stops the shim, drops its store, and builds again as a reader, whose shim tells
-Buck it takes no uploads: Buck has to believe that rather than try and be refused.
+builder, then cleans, stops the shim, drops its store, and builds again as a reader.
 
 One example per supported component type (see SERVED), each checked through `what-ran`.
 
@@ -44,12 +43,14 @@ SERVED = {
 # `<target> (<configuration>) (<category>)`, as `what-ran` names an action.
 ACTION = re.compile(r"(?P<target>\S+) \(\S+\) \((?P<category>\w+)\)")
 ISOLATION = "cache-roundtrip"
+# The platform whose executor decides whether Buck offers the shim an upload at all.
+PLATFORM = "tine//platforms:default"
 BUCKET = "tine-cache"
 # `tine.LOCAL_SETTINGS`, which this cannot import without dragging the whole launcher in.
 LOCAL_SETTINGS = "tine.local.toml"
-# Counters a healthy round trip never touches. A reader advertises that it takes no uploads and Buck
-# honours that, so not even its write probe arrives; a refusal means a Buck that stopped reading the
-# capability, and a developer who would now see an upload warning per build.
+# Counters a healthy round trip never touches. A reader's executor offers no uploads, so not even
+# Buck's write probe arrives; a refusal means it offered one anyway, causing a noisy upload warning
+# for every cacheable action.
 QUIET = (
     "bucket errors",
     "bundles gone",
@@ -111,7 +112,7 @@ class RoundTrip:
         assert cache is not None
         self.cache = cache
 
-    def tine(self, *arguments: str) -> str:
+    def tine(self, *arguments: str, echo: bool = True) -> str:
         """`tine buck` call in the round trip's isolation dir; echo and return its output."""
         command = [str(self.root / "bin" / "tine"), "buck", "--isolation-dir", ISOLATION, *arguments]
         print("+", " ".join(command[1:]), file=sys.stderr, flush=True)
@@ -123,7 +124,8 @@ class RoundTrip:
             stderr=subprocess.STDOUT,
             text=True,
         )
-        print(proc.stdout, end="", file=sys.stderr, flush=True)
+        if echo or proc.returncode != 0:
+            print(proc.stdout, end="", file=sys.stderr, flush=True)
         if proc.returncode != 0:
             fail(f"tine buck {' '.join(arguments)} exited with {proc.returncode}")
         return proc.stdout
@@ -131,6 +133,17 @@ class RoundTrip:
     def build(self) -> None:
         """Build every target named in SERVED."""
         self.tine("build", *SERVED)
+
+    def check_uploads(self, allowed: bool) -> None:
+        """Fail unless Buck's executor offers uploads exactly when the shim takes them.
+
+        Buck2 reads no capability for this: it probes by uploading, so a reader whose platform still
+        allows uploads warns about a refusal for every action it runs. The executor's own view of it
+        is in the platform's providers.
+        """
+        wanted = f"cache_upload_behavior: {'Enabled' if allowed else 'Disabled'}"
+        if wanted not in self.tine("audit", "providers", PLATFORM, echo=False):
+            fail(f"the execution platform does not say {wanted!r}")
 
     def executors(self) -> dict[tuple[str, str], str]:
         """Where each action of the last build came from, by target and category."""
@@ -210,6 +223,7 @@ def main() -> None:
         print("=== cold build: nothing in the bucket", file=sys.stderr)
         run.build()
         run.check_served("Local")
+        run.check_uploads(True)
         run.report()
 
         print("=== warm build: a cleaned checkout, a reader shim, an empty store", file=sys.stderr)
@@ -219,6 +233,7 @@ def main() -> None:
         run.settle(run.reader)
         run.build()
         run.check_served("Cache")
+        run.check_uploads(False)
         run.report()
         print("=== every result named in SERVED came back out of the bucket", file=sys.stderr)
 

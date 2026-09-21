@@ -29,8 +29,8 @@ def _execution_platform_impl(ctx: AnalysisContext) -> list[Provider]:
             local_enabled = True,
             remote_enabled = False,
             remote_cache_enabled = ctx.attrs.remote_cache_enabled,
-            # actual uploads only happen for actions that opt in
-            allow_cache_uploads = True,
+            # only a cache that takes uploads, and then only for actions that opt in
+            allow_cache_uploads = ctx.attrs.allow_cache_uploads,
             # guard against uploading unexpectedly large files; not policy (action's `allow_cache_upload` is)
             # needs to fit the biggest package/compiler output; we don't generally remote-cache image builds
             max_cache_upload_mebibytes = 10240,
@@ -50,6 +50,7 @@ def _execution_platform_impl(ctx: AnalysisContext) -> list[Provider]:
 _execution_platform = rule(
     impl = _execution_platform_impl,
     attrs = {
+        "allow_cache_uploads": attrs.bool(),
         "cpu_configuration": attrs.dep(providers = [ConfigurationInfo]),
         "os_configuration": attrs.dep(providers = [ConfigurationInfo]),
         "remote_cache_enabled": attrs.bool(),
@@ -57,9 +58,9 @@ _execution_platform = rule(
 )
 
 def execution_platform(name: str, **kwargs) -> None:
-    """Register the platform, reading the cache switch here rather than taking it from the caller.
+    """Register the platform, reading the cache switches here rather than taking them from the caller.
 
     Buck refuses to build at all once an executor enables `remote_cache_enabled` without configuring
     one. So the cache decision happens via `[buck2_re_client]` config presence.
     """
-    _execution_platform(name = name, remote_cache_enabled = _cache_configured(), **kwargs)
+    _execution_platform(name = name, allow_cache_uploads = read_root_config("tine", "cache-uploads") == "true", remote_cache_enabled = _cache_configured(), **kwargs)
