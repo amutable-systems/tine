@@ -230,16 +230,19 @@ Generated settings go into a file rather than command-line flags because the dae
 reads its ignores from configuration files at startup, without command-line overrides. A file also
 avoids the 128 KiB limit on a single argument, and `buck2 complete` accepts no configuration flags.
 Target completion and `tine completion` select the configured wrapper without refreshing shared
-configuration. Target completion uses the selected checkout's cached Buck2 without downloading. Tine
-rewrites Buck2's completion script so target queries run through `tine buck` too.
+configuration. Target completion uses the selected checkout's cached Buck2 without downloading, and
+completes nothing until a real command has written every cell's generated ignores: the daemon it would
+start takes its file watcher's ignores from them. Tine rewrites Buck2's completion script so target
+queries run through `tine buck` too.
 
 The selected tine checkout pins Buck2 in `tools/tools.json`. Projects can override the pin in the
 `[buck2]` table of `tine.toml` or `tine.local.toml`, with per-platform fields under
 `[buck2.platforms.<platform>]`.
 
 Tine exports the pinned binary's path as `BUCK2_BINARY`. A nested Buck command still selects the
-configured wrapper, but inherits the current mounts and skips refreshing shared configuration
-underneath the build that started it.
+configured wrapper, but inherits the current mounts and neither refreshes shared configuration nor
+replaces the daemon underneath the build that started it. The one thing it writes is a cell's generated
+ignores when they are missing, without the cache address, so the next outer command replaces the daemon.
 
 ### Component model
 

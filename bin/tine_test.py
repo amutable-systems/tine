@@ -1979,6 +1979,38 @@ class TestBuckCommand(unittest.TestCase):
             tine.read_generated_buckconfig(self.root / tine.LOCAL)[tine.RE_CLIENT], tine.cache_client(cache)
         )
 
+    def test_a_nested_command_writes_missing_ignores_and_nothing_else(self) -> None:
+        """It runs under a daemon holding the config, so replacing that one kills its own build."""
+        cache = self.configure_cache()
+        checkout = self.root / "vendor" / "tine"
+        checkout.mkdir(parents=True)
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = vendor/tine\n")
+        (checkout / ".buckconfig").write_text("[cells]\ntine = .\n")
+        self.enterContext(unittest.mock.patch.object(tine, "COMMAND_PATH", wrapper_command(checkout)))
+        with self.running(), unittest.mock.patch.dict(os.environ, {"BUCK2_BINARY": "active"}):
+            tine.buck_command(["build", "//..."])
+            self.assertEqual(self.killed, [])
+            for path in (self.root, checkout):
+                generated = tine.read_generated_buckconfig(path / tine.LOCAL)
+                self.assertIn(tine.PROJECT_IGNORE, generated["project"])
+                self.assertNotIn(tine.RE_CLIENT, generated)
+
+            # A cell whose ignores went missing gets them back without the root's being rewritten.
+            (checkout / tine.LOCAL).unlink()
+            local = (self.root / tine.LOCAL).stat()
+            tine.buck_command(["build", "//..."])
+            self.assertEqual(self.killed, [])
+            self.assertIn("project", tine.read_generated_buckconfig(checkout / tine.LOCAL))
+            after = (self.root / tine.LOCAL).stat()
+            self.assertEqual((after.st_ino, after.st_mtime_ns), (local.st_ino, local.st_mtime_ns))
+        # The address it left out is what makes the next outer command replace the daemon.
+        with self.running():
+            tine.buck_command(["build", "//..."])
+        self.assertEqual(len(self.killed), 1)
+        self.assertEqual(
+            tine.read_generated_buckconfig(self.root / tine.LOCAL)[tine.RE_CLIENT], tine.cache_client(cache)
+        )
+
     def test_starting_the_shim_takes_the_address_out_first(self) -> None:
         """Buck fails outright on a cache that does not answer, so the Buck starting it must know none."""
         cache = self.configure_cache()
@@ -2042,14 +2074,26 @@ class TestBuckCommand(unittest.TestCase):
                     if cell == "."
                     else tine.render_project_buckconfig(defaults, {"cells": {"tine": cell}})
                 )
+                (self.root / tine.LOCAL).unlink(missing_ok=True)
                 before = config.stat()
                 with (
                     self.running() as execve,
                     unittest.mock.patch.object(tine, "COMMAND_PATH", wrapper_command(self.root / cell)),
                 ):
                     tine.buck_command(["complete", "--target=//x"])
+                    # No daemon may start before the ignores its file watcher takes are written.
+                    self.assertFalse(execve)
+                    self.assertFalse((self.root / tine.LOCAL).exists())
+
+                    # Every cell has its own watcher, so the tine cell's list has to exist as well.
+                    for path in {self.root, self.root / cell}:
+                        tine.refresh_local_buckconfig(path, list(tine.VCS_IGNORES))
+                    local = (self.root / tine.LOCAL).stat()
+                    execve.clear()
+                    tine.buck_command(["complete", "--target=//x"])
                 self.assertTrue(execve)
-                self.assertFalse((self.root / tine.LOCAL).exists())
+                after = (self.root / tine.LOCAL).stat()
+                self.assertEqual((after.st_ino, after.st_mtime_ns), (local.st_ino, local.st_mtime_ns))
                 after = config.stat()
                 self.assertEqual((after.st_ino, after.st_mtime_ns), (before.st_ino, before.st_mtime_ns))
                 self.assertEqual(
@@ -2450,10 +2494,15 @@ class TestRefreshProjectBuckconfig(unittest.TestCase):
         ):
             tine.buck_command(["complete"])
             self.assertEqual(self.path.read_bytes(), before)
+            self.assertFalse((self.root / tine.LOCAL).exists())
             with unittest.mock.patch.dict(os.environ, {"BUCK2_BINARY": "active"}):
                 tine.buck_command(["build", "tine//..."])
+                # Only the ignores, which no Buck starts without, and only once.
+                local = (self.root / tine.LOCAL).stat()
+                tine.buck_command(["build", "tine//..."])
             self.assertEqual(self.path.read_bytes(), before)
-            self.assertFalse((self.root / tine.LOCAL).exists())
+            after = (self.root / tine.LOCAL).stat()
+            self.assertEqual((after.st_ino, after.st_mtime_ns), (local.st_ino, local.st_mtime_ns))
 
     def test_completion_script_does_not_refresh_defaults(self) -> None:
         before = self.path.read_bytes()
