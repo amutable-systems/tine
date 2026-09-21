@@ -78,14 +78,22 @@ def _package(selector: str, workspace: Path, env: dict[str, str]) -> str:
         stdout=subprocess.PIPE,
         text=True,
     )
-    error = f"go-build: package selection {selector!r} must resolve to exactly one main package"
-    try:
-        package = cast(dict[str, str], json.loads(listed.stdout))
-    except json.JSONDecodeError:
-        util.fail(error)
-    if package["Name"] != "main":
-        util.fail(error)
-    return package["ImportPath"]
+    # go prints one object per package, back to back. A pattern such as the `./...` an undeclared
+    # `packages` stands for also matches the libraries beside the program, which are not candidates.
+    decoder = json.JSONDecoder()
+    mains: list[str] = []
+    rest = listed.stdout.lstrip()
+    while rest:
+        package, end = cast(tuple[dict[str, str], int], decoder.raw_decode(rest))
+        if package["Name"] == "main":
+            mains.append(package["ImportPath"])
+        rest = rest[end:].lstrip()
+    if len(mains) != 1:
+        util.fail(
+            f"go-build: package selection {selector!r} must resolve to exactly one main package, "
+            f"found {mains}"
+        )
+    return mains[0]
 
 
 def _build_command(binary: Path, package: str, linker_flags: list[str]) -> list[str]:

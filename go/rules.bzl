@@ -98,9 +98,11 @@ _go_build = dynamic_actions(
 
 def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
     src = ctx.attrs.src
-    names = ctx.attrs.packages.keys()
-    if not names:
-        fail("go_package: declare packages to build")
+
+    # Most projects hold one program. Its import path is only known once the sources are built, so
+    # the binary takes the target's name; the driver refuses a module with more than one candidate.
+    packages = ctx.attrs.packages or {ctx.label.name: "./..."}
+    names = packages.keys()
     for name in names:
         if name == _PRIVATE or name.startswith(_PRIVATE + "/"):
             fail("go_package: reserved output name {}".format(name))
@@ -141,7 +143,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             gocache = gocache.as_output() if gocache != None else None,
             incremental = ctx.attrs.incremental,
             linker_flags = ctx.attrs.linker_flags,
-            packages = ctx.attrs.packages,
+            packages = packages,
             src = src,
             tags = ctx.attrs.tags,
             workspace = workspace,
@@ -158,7 +160,7 @@ _go_package = rule(
         "cgo_cflags": attrs.list(attrs.string(), default = [], doc = "extra C compiler flags for a cgo build"),
         "incremental": attrs.bool(doc = "keep go's caches across dev-mode rebuilds"),
         "linker_flags": attrs.list(attrs.string(), default = [], doc = "flags for the Go linker, passed as -ldflags"),
-        "packages": attrs.dict(attrs.string(), attrs.string()),
+        "packages": attrs.dict(attrs.string(), attrs.string(), default = {}, doc = "output name to main package; unset builds the module's only one"),
         "src": attrs.source(allow_directory = True, doc = "the project's source directory, go.mod and go.sum included"),
         "tags": attrs.list(attrs.string(), default = [], doc = "build tags selecting the project's optional files"),
         "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//go:build"),
