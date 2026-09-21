@@ -9,7 +9,7 @@ import os
 import shutil
 import stat
 import tempfile
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
 from enum import Enum, auto
 from pathlib import Path
@@ -200,6 +200,34 @@ def source_overlay(source: Path, target: Path) -> Iterator[Path]:
         # A child may retain a file descriptor, which would make a strict unmount fail with EBUSY.
         stack.enter_context(Overlay((source,), upper, work, target, lazy_unmount=True))
         yield target
+
+
+@contextmanager
+def readonly_project(outputs: Mapping[Path, Path]) -> Iterator[None]:
+    """Turn the project this process stands in read-only, with `outputs` mounted outside it.
+
+    The project holds every input of a build. Nothing the build runs can then modify one, not even
+    through a source symlink leading back into the project.
+    """
+    project = Path.cwd()
+    with ExitStack() as stack:
+        # Before the project turns read-only, because a bind made from a read-only mount inherits
+        # that flag.
+        for output, mounted in outputs.items():
+            # Buck never cleans what a kept action declares, not even the link an earlier build left
+            # here while this output still had a content-based path.
+            if output.is_symlink():
+                output.unlink()
+            output.mkdir(parents=True, exist_ok=True)
+            stack.enter_context(Bind(output, mounted))
+        # The bind covers the directory this process stands in. Enter it again, or a relative path,
+        # a child's included, keeps resolving through the writable mount underneath. And once more
+        # when the bind is gone, registered first: any later and this process is left in a detached
+        # mount, where getcwd() fails.
+        stack.callback(os.chdir, project)
+        stack.enter_context(Bind(project, project, readonly=True))
+        os.chdir(project)
+        yield
 
 
 def _apivfs(stack: ExitStack, target: Path) -> None:

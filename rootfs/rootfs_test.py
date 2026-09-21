@@ -1,5 +1,6 @@
 """Tests for source overlays and root filesystem output capture."""
 
+import errno
 import os
 import subprocess
 import sys
@@ -211,6 +212,41 @@ class TestSourceOverlayTree(unittest.TestCase):
                 except RuntimeError:
                     self.assertTrue(fail)
                 self.assertEqual(list(scratch.iterdir()), [])
+
+
+class TestReadonlyProject(unittest.TestCase):
+    @override
+    def setUp(self) -> None:
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory(prefix="project.", dir="/var/tmp")))
+        self.project = self.root / "project"
+        self.project.mkdir()
+        (self.project / "input").write_text("input", encoding="utf-8")
+
+    def test_only_the_outputs_stay_writable(self) -> None:
+        mounted = self.root / "mounted"
+        # What a kept output's earlier, content-based path leaves behind.
+        (self.root / "elsewhere").mkdir()
+        (self.project / "out").symlink_to(self.root / "elsewhere")
+        for fail in (False, True):
+            with self.subTest(fail=fail), chdir(self.project):
+                try:
+                    with rootfs.readonly_project({Path("out"): mounted}):
+                        # Relative to the project this process stands in, and by its full path.
+                        for path in (Path("input"), self.project / "input", Path("out/inside")):
+                            with self.assertRaises(OSError) as caught:
+                                path.write_text("changed", encoding="utf-8")
+                            self.assertEqual(caught.exception.errno, errno.EROFS)
+                        (mounted / "built").write_text(str(fail), encoding="utf-8")
+                        if fail:
+                            raise RuntimeError("build failed")
+                except RuntimeError:
+                    self.assertTrue(fail)
+                # Not left behind in the detached mount, where this raises.
+                self.assertEqual(Path.cwd(), self.project)
+                self.assertFalse(mounted.is_mount())
+                self.assertFalse((self.project / "out").is_symlink())
+                self.assertEqual((self.project / "out/built").read_text(encoding="utf-8"), str(fail))
+                (self.project / "input").write_text("input", encoding="utf-8")
 
 
 class TestCaptureOnExit(unittest.TestCase):
