@@ -6,6 +6,12 @@
         "arguments": ["buck", "--isolation-dir", "lsp", "lsp"]
       }
     },
+    "ruff": {
+      "binary": {
+        "path": "tools/ruff",
+        "arguments": ["server"]
+      }
+    },
     "ty": {
       "binary": {
         "path": "tools/ty",

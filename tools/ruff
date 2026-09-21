@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+cell=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$cell"
+exec "$cell/bin/tine" buck run tine//tools:ruff -- "$@"
