@@ -154,6 +154,10 @@ def settings(config: Mapping[str, object], root: Path, source: str) -> CacheSett
 
     s3_bucket = _string(table, "s3_bucket", source)
     s3_endpoint = _string(table, "s3_endpoint", source)
+    if s3_endpoint is not None and "/" in s3_endpoint:
+        # The shim puts the scheme in front itself, from s3_insecure, so one written here ends up in
+        # the host part of every request URL and surfaces as a name lookup failure at the first write.
+        fail(f"[{SECTION}] s3_endpoint in {source} must be a host, without a scheme or a path")
     s3_key_file = _optional_path(table, "s3_key_file", root, source)
     s3_insecure = _bool(table, "s3_insecure", False, source)
     if s3_bucket is None:
