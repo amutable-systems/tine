@@ -14,6 +14,7 @@ from pathlib import Path
 import libdnf5
 import libdnf5.comps
 import libdnf5.conf
+import libdnf5.rpm
 import specs
 from util import fail
 
@@ -87,6 +88,57 @@ def load_base(
     return base
 
 
+def undelivered(
+    base: libdnf5.base.Base,
+    tx: libdnf5.base.Transaction,
+    install: list[str],
+    settings: libdnf5.base.GoalJobSettings,
+    installed: bool,
+) -> list[str]:
+    """Report the install specs a resolved transaction does not actually deliver.
+
+    dnf's solver may satisfy an install request with something other than the named package, for example
+    an obsoleting split-out subpackage. When that happens, dnf reports no error, and a whole package
+    silently vanishes from the image.
+
+    Validate the generated transaction against the original goal, and report what's missing.
+
+    Use libdnf's matcher, because a spec is not always a package name: it can name a group, a capability,
+    a file or a version, and only `resolve_pkg_spec` reads all of those the way `add_install` did.
+    """
+    carried = libdnf5.rpm.PackageSet(base)
+    for tp in tx.get_transaction_packages():
+        if libdnf5.transaction.transaction_item_action_is_inbound(tp.get_action()):
+            carried.add(tp.get_package())
+    if installed:
+        # A spec the lower stack already carries is delivered without the transaction adding it.
+        lower = libdnf5.rpm.PackageQuery(base)
+        lower.filter_installed()
+        carried.update(lower)
+
+    groups = {group.get_group().get_groupid() for group in tx.get_transaction_groups()}
+    missing = []
+    for spec in install:
+        if spec.startswith("@"):
+            if spec.removeprefix("@") not in groups:
+                missing.append(spec)
+            continue
+        wanted = libdnf5.rpm.PackageQuery(base)
+        wanted.resolve_pkg_spec(spec, settings, False)
+        delivered = libdnf5.rpm.PackageQuery(wanted)
+        delivered.intersection(carried)
+        if not delivered.empty():
+            continue
+        # Naming what took its place is the useful diagnosis: an obsoleting split-out subpackage
+        # looks like a successful solve from every other angle.
+        obsoleters = libdnf5.rpm.PackageQuery(base)
+        obsoleters.filter_obsoletes(wanted)
+        obsoleters.intersection(carried)
+        blame = ", ".join(sorted(pkg.get_nevra() for pkg in obsoleters.to_sorted_vector()))
+        missing.append(f"{spec}, obsoleted by {blame}" if blame else spec)
+    return missing
+
+
 def plan(
     repos: list[transaction.Repository],
     install: list[str],
@@ -114,6 +166,9 @@ def plan(
     ]
     if problems:
         fail("plan resolution failed:\n  " + "\n  ".join(problems))
+
+    if missing := undelivered(base, tx, install, settings, installroot is not None):
+        fail("plan: the transaction does not install:\n  " + "\n  ".join(missing))
 
     # Only inbound transaction items need downloading.
     resolved: list[transaction.TransactionPackage] = []

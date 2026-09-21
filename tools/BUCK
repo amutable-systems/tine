@@ -98,6 +98,8 @@ box.new(
         # package_system/rpm's tests sign what they build
         "gnupg2",
         "rpm-sign",
+        "python3-createrepo_c",
+        "python3-libdnf5",
         "sed",
     ],
     release = _RELEASE,

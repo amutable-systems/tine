@@ -66,6 +66,13 @@ tine_python_binary(
     deps = [":rpmkeys", "//:specs", "//:util"],
 )
 
+box_python_test(
+    name = "plan-test",
+    box = "tine//tools:dev.box",
+    srcs = ["createrepo.py", "plan.py", "plan_test.py"],
+    deps = ["//:specs", "//:util", "//package:transaction", "//rootfs:rootfs"],
+)
+
 # The dev box rather than the shared one: the verifier's tests sign packages they build, which takes
 # rpmbuild, gpg and rpmsign.
 box_python_test(
