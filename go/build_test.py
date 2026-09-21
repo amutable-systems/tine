@@ -135,6 +135,15 @@ class TestPackage(unittest.TestCase):
                     text=True,
                 )
 
+    def test_skips_libraries_beside_the_main_package(self) -> None:
+        listing = (
+            '{"ImportPath": "example.com/server/lib", "Name": "lib"}\n'
+            '{\n\t"ImportPath": "example.com/server/cmd/server",\n\t"Name": "main"\n}\n'
+        )
+        with patch("build.subprocess.run") as run:
+            run.return_value.stdout = listing
+            self.assertEqual(build._package("./...", Path("workspace"), {}), "example.com/server/cmd/server")
+
     def test_rejects_libraries_empty_and_multiple_matches(self) -> None:
         main = '{"ImportPath": "example.com/server", "Name": "main"}'
         for listing in ["", '{"ImportPath": "example.com/lib", "Name": "lib"}', main + main]:

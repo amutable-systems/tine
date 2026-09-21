@@ -39,6 +39,11 @@ go.package(
 - `packages` maps output names to Go main packages, such as `{"etcd": "."}` or
   `{"server": "./cmd/server"}`. Values are paths relative to the module root or full import paths;
   keys set the binary's filename and sub-target name. Together these are the target's default outputs.
+  `packages` may be left out when the module holds exactly one main package. The binary is then named
+  after the target, not after the package's directory as a bare `go build` would: `hello` above would
+  yield `:hello[hello]` rather than `hello-cli`. Every main package under the module root counts,
+  including ones under `tools/` or `examples/`. With none or several, the build fails and lists what
+  it found.
 - `box` is the build environment, declared by the consumer because only the consumer knows what its
   projects need.
 - `tags` are Go build tags: a `//go:build <tag>` line decides whether a file compiles at all. Nothing

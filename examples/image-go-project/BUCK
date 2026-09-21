@@ -30,10 +30,10 @@ go.package(
 )
 
 # A project with no dependencies at all, which therefore commits no go.sum and fetches nothing.
+# Without `packages`, the module's only main package is built under the target's name.
 go.package(
     name = "nodeps",
     box = ":go.box",
-    packages = {"nodeps": "."},
 )
 
 # The local checkout must override this fetch, so its revision is deliberately a placeholder.
@@ -46,7 +46,6 @@ git.fetch(
 go.package(
     name = "renamed",
     box = ":go.box",
-    packages = {"renamed": "."},
     src = ":nodeps.git",
 )
 
