@@ -109,6 +109,10 @@ class TestSettings(SettingsCase):
             self.settings(builder(self.root, s3_endpoint=None))
         with self.assertRaisesRegex(SystemExit, "s3_endpoint .* needs s3_bucket"):
             self.settings(reader(s3_endpoint="s3.example"))
+        with self.assertRaisesRegex(SystemExit, "s3_endpoint .* must be a host"):
+            self.settings(builder(self.root, s3_endpoint="https://s3.example"))
+        with self.assertRaisesRegex(SystemExit, "s3_endpoint .* must be a host"):
+            self.settings(builder(self.root, s3_endpoint="s3.example/foo"))
 
     def test_a_builder_signs_or_says_the_bucket_is_unsigned(self) -> None:
         with self.assertRaisesRegex(SystemExit, "s3_bucket .* needs signing_key, or unsigned"):

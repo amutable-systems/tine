@@ -37,7 +37,8 @@ checked out branch must not weaken a configured cache.
 |---|---|---|
 | `read_url` | all | base URL the bucket is read from over plain HTTP, e.g. a bucket's public domain |
 | `authority` | all | CA certificate files (PEM) whose leaves may sign results |
-| `s3_bucket`, `s3_endpoint` | builder | results get uploaded to this bucket |
+| `s3_bucket`` | builder | results get uploaded to this bucket name |
+| `s3_endpoint` | builder | the bucket's S3 API end point; host name only, no scheme, path |
 | `s3_key_file` | builder | S3 write token: `<id> <secret>` |
 | `signing_key`, `signing_certificate` | builder | the leaf key and certificate, see [The keys](#the-keys) |
 | `object_lifetime` | builder | the bucket's age rule in days, which nothing signed may outlive |
