@@ -310,7 +310,8 @@ Two things about Buck2 that are easy to lose a day to:
 
 Buck2 also stores one extra empty result per cache to check it may write at all
 (`buck2_execute_impl/src/executors/empty_action_result.rs`), under a digest built from a compiled-in
-command and the platform properties. One per platform.
+command and the platform properties. That probe is the *only* way it decides whether
+it may upload; it ignores the `update_enabled` capability which a RE-API server sends.
 
 Buck2 fails an action outright when the cache it was configured with does not answer, rather than
 treating it as a miss. So `tine buck` brings the shim up through a Buck that knows no cache address, and

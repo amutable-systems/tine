@@ -381,13 +381,13 @@ class ServerCapabilities:
     """
 
     max_batch_total_size_bytes: int
-    update_enabled: bool = True
     digest_functions: tuple[int, ...] = (SHA256,)
 
     def to_bytes(self) -> bytes:
         cache = (
             wire.packed(1, self.digest_functions)
-            + wire.submessage(2, wire.flag(1, self.update_enabled))
+            # `update_enabled`; part of RE-API, but Buck2 ignores it
+            + wire.submessage(2, wire.flag(1, True))
             + wire.varint(4, self.max_batch_total_size_bytes)
             + wire.varint(5, SYMLINKS_ALLOWED)
         )
@@ -398,10 +398,8 @@ class ServerCapabilities:
     @classmethod
     def parse(cls, data: bytes) -> Self:
         cache = wire.Message(data).child(1) or wire.Message(b"")
-        update = cache.child(2)
         return cls(
             max_batch_total_size_bytes=cache.integer(4),
-            update_enabled=bool(update and update.flag(1)),
             digest_functions=tuple(cache.numbers(1)),
         )
 

@@ -215,7 +215,7 @@ def accepts_uploads(signer: signing.Signer | None, verifier: signing.Authority |
     """Whether Buck may store results and blobs here.
 
     Refusing unsigned uploads from a reader keeps a build from filling the store with junk and evicting
-    legit content. Advertised as `update_enabled` to Buck2.
+    legit content. Not advertised as a capability, as Buck2 ignores those and probes by uploading instead.
     """
     return verifier is None or signer is not None
 
@@ -223,14 +223,8 @@ def accepts_uploads(signer: signing.Signer | None, verifier: signing.Authority |
 NOT_ACCEPTING = "a reader must not store uploads from Buck with a configured authority"
 
 
-class Capabilities:
-    def __init__(self, accepting: bool) -> None:
-        self.accepting = accepting
-
-    def get(self, request: reapi.Empty, context: grpc.ServicerContext) -> reapi.ServerCapabilities:
-        return reapi.ServerCapabilities(
-            max_batch_total_size_bytes=MAX_BATCH_SIZE, update_enabled=self.accepting
-        )
+def capabilities(request: reapi.Empty, context: grpc.ServicerContext) -> reapi.ServerCapabilities:
+    return reapi.ServerCapabilities(max_batch_total_size_bytes=MAX_BATCH_SIZE)
 
 
 class ActionCache:
@@ -693,7 +687,7 @@ def handlers(
     return (
         generic(
             reapi.CAPABILITIES,
-            {"GetCapabilities": unary(Capabilities(action_cache.accepting).get, reapi.Empty.parse)},
+            {"GetCapabilities": unary(capabilities, reapi.Empty.parse)},
         ),
         generic(
             reapi.ACTION_CACHE,
