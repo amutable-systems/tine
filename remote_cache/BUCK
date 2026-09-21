@@ -7,7 +7,6 @@ load("//python:defs.bzl", "box_python_binary", "tine_python_library")
 box.new(
     name = "shim.box",
     packages = [
-        "python3",
         "python3-cryptography",
         "python3-grpcio",
     ],

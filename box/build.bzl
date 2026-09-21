@@ -235,6 +235,10 @@ _box_alias = rule(
 # them for different execution platforms (we just have one).
 _EXECUTION_CONFIGURATION = "prelude//cfg/exec_platform/marker:is_exec_platform[true]"
 
+# Every in-box driver runs on the box's own interpreter. Arch names the package `python`, which
+# provides this.
+_DEFAULT_PACKAGES = ["python3"]
+
 def new(
     name: str,
     packages: list[str],
@@ -262,7 +266,7 @@ def new(
     locks = glob(["snapshot/box/" + name[: -len(".box")] + ".json"])
     _box(
         name = name + ".exec",
-        packages = packages,
+        packages = _DEFAULT_PACKAGES + [package for package in packages if package not in _DEFAULT_PACKAGES],
         release = release,
         resolver_box = resolver_box,
         lock = locks[0] if locks else None,
