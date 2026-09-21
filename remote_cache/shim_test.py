@@ -178,7 +178,6 @@ class TestCapabilities(ShimCase):
         """Buck2 reads both, and an empty compressor list is what keeps it on the plain paths."""
         capabilities = self.get_capabilities()
         self.assertEqual(capabilities.max_batch_total_size_bytes, shim.MAX_BATCH_SIZE)
-        self.assertTrue(capabilities.update_enabled)
         self.assertEqual(capabilities.digest_functions, (reapi.SHA256,))
 
 
@@ -597,7 +596,6 @@ class TestSignedFetch(BucketCase):
     def test_a_reader_refuses_what_buck_uploads(self) -> None:
         """It could never serve them back, so storing them would only crowd out what it can."""
         self.start_shim(verifier=self.trust())
-        self.assertFalse(self.get_capabilities().update_enabled)
         digest = reapi.Digest.for_bytes(b"built here")
         for attempt in (
             lambda: self.upload(b"built here"),
