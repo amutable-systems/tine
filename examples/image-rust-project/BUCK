@@ -46,6 +46,18 @@ cargo.package(
     box = ":rust.box",
 )
 
+box.sh_test(
+    name = "packages-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = 'for binary in "$@"; do [[ "$("$binary")" == "nothing to resolve" ]]; done',
+    # $(exe) goes through RunInfo: a single binary is run as the target, any binary as its sub-target.
+    args = [
+        "$(exe :nodeps)",
+        "$(exe :nodeps[nodeps])",
+    ],
+)
+
 # How these binaries install, declared beside the projects rather than repeated by every image that
 # installs them. Any image operation may be attached, not only copies.
 image.install(
