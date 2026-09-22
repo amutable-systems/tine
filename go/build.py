@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Build a Go project from source inside a box, against its fetched module cache.
 
 The build runs with no network: the fetched module cache is served as a file:// proxy, from which

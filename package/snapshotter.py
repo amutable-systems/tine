@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Pin one repository: its build metadata, and every package it currently serves.
 
 Refresh runs a host-side fetch-and-parse step per repository, and whichever package system owns

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The messages of the Bazel Remote Execution API that a cache has to understand.
 
 Only the fields this shim reads or writes, and only the messages it exchanges: 20 fields across the

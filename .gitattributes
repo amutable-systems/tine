@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 # Written by `tine buck run tine//tools:refresh-catalog`, never by hand: a repository snapshot is
 # every package in a distribution's tree, so a pin advancing is tens of thousands of changed lines
 # that bury the rest of a diff.

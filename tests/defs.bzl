@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The public test API, exported as the `tests` namespace."""
 
 load("@tine//distribution:defs.bzl", "distribution")

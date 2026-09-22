@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Logical image mutation and boot assembly drivers."""
 
 load("@prelude//:rules.bzl", "constraint_setting", "constraint_value")

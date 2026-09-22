@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The shared build cache: Buck2's remote cache API over an S3 bucket."""
 
 load("//box:defs.bzl", "box")

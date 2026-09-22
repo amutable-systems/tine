@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """An image carrying a Go program built from source.
 
 In a product this package lives in the OS.git that vendors tine, beside a checkout of each project

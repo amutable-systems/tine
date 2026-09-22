@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The gRPC surface, against a shim in this process and a client built the same way.
 
 Buck2 exercises these paths only incidentally, and only the ones its own build happens to take.

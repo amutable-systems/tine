@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The conventional Fedora distribution declaration."""
 
 load("//distribution:defs.bzl", "distribution")

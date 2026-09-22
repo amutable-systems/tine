@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The public box API.
 
 Load the `box` namespace here to declare a box, enter one from a rule, or run a test suite inside

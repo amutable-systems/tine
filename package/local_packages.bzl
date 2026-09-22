@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Locally built package universes selected through runtime dependency closures."""
 
 load(":repository.bzl", "LocalPackageInfo")

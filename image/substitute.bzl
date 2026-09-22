@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Expand a template a project ships into a file an image installs."""
 
 load("//:specs.bzl", "spec_args")

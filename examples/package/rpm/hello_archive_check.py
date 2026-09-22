@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Check one regular archive build: a binary and a source package, both with compressed payloads."""
 
 import subprocess

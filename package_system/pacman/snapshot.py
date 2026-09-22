@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Pin an alpm repository's database and its authoritative package inventory.
 
 Unlike repomd, an alpm database is one file that carries no checksum of its own and no

@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Assemble the vendored crate tree that a locked, offline cargo build reads.
 
 Each crate directory carries a .cargo-checksum.json recording the tarball's hash and every unpacked

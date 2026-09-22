@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Manage the shim serving the shared build cache.
 
 Buck speaks its remote cache API to a shim on this machine, and the shim talks to the bucket; see

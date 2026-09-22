@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Resolve package transactions or prebuild libdnf5 repository caches.
 
 Solves against pinned metadata and optionally an existing lower stack. Remote

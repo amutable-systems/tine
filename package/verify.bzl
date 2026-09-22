@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Verify a repository's packages as a closure selects them."""
 
 load("//:specs.bzl", "spec_args")

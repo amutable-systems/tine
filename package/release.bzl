@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """OS-release identity and its native repository universe."""
 
 load(":repository.bzl", "RepositoryUniverseInfo")

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Pinned tool binaries and development commands fetched by Buck."""
 
 load("//box:defs.bzl", "box")

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+SPDX-License-Identifier: MPL-2.0
+-->
+
 # Development boxes
 
 A box is a reproducible execution environment built from one base OS release. Build actions run inside one,

@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 # What the disk boots, extracted out of its own ESP. The selection is semantic (the newest kernel,
 # its UKI, the sections inside it), so it can go wrong without any target failing: assert by magic
 # that each artifact is what it claims to be, and that the extracted initrd is the one the UKI

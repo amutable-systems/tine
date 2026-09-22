@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 # Assert a UAPI.16 manifest lists nothing outside the hierarchies the artifact it describes carries.
 #
 # Usage: manifest-scope.sh MANIFEST PREFIX...   (each PREFIX is a top-level name, such as usr)

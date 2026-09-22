@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Mount target roots and translate stored OCI markers to native overlayfs state.
 
 Buck cannot store device nodes, xattrs, or backslashes in paths, so deltas encode them as

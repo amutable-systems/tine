@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Default repositories, OS releases, boxes, package managers, and build profiles."""
 
 # Generated data lives under `snapshot/{repo,box,key}/`, without target-type suffixes in filenames.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Archive and materialized-directory image outputs."""
 
 load("//distribution:defs.bzl", "distribution")

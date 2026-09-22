@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Build a Rust project from source inside a box, against its vendored crate tree.
 
 The build runs with no network: every registry crate is already unpacked, and pointing cargo's

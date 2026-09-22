@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Merge a logical image into a deterministic tar, cpio, or directory.
 
 Archive ownership is normalized to uid/gid 0. The newc cpio format has no general

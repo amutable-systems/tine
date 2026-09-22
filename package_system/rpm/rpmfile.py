@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Frame RPM headers and stream payload decompression.
 
 This stdlib-only path lets the bootstrap extractor read RPMs without the RPM stack.

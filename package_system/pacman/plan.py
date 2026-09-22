@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Resolve package transactions against pinned repository databases.
 
 libalpm does the resolving, bound directly in `alpm.py`. It is the same library that will

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+SPDX-License-Identifier: MPL-2.0
+-->
+
 # Maintaining packages with the importer
 
 The importer maintains a (partial) downstream derivative distribution in a monorepo: it mirrors upstream

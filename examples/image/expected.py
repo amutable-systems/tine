@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Record what the tracked targets currently build, in ./expected.json.
 
 For updating legitimate changes to the build result. `--amend` folds the new digests into the

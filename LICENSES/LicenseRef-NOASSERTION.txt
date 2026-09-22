@@ -1,0 +1,4 @@
+The files carrying this identifier are not licensed by this project. It claims no copyright over
+them and asserts nothing about whoever holds it.
+
+REUSE has no way to say that, and rejects SPDX's own NOASSERTION as a license expression.

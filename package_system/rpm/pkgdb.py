@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Copy the rpm database out of a logical image as a separate, trimmed artifact.
 
 Useful as a basis for SBOM creation and security scanners. The database is not shipped in

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """RPM repositories and package-build rules."""
 
 load("//:specs.bzl", "spec_args")

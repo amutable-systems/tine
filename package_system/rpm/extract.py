@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Bootstrap a box by extracting RPM v4 newc payloads without RPM tooling.
 
 An rpm is read as its repository serves it: the header is framed off, the payload decompressed,

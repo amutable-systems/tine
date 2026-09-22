@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Tests for the Cargo.lock reader, the vendored crate tree, and the build driver's checks.
 
     buck test tine//cargo:test

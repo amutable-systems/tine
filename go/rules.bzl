@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Build a Go project from its own source tree: one online, verified module fetch, then an offline build."""
 
 load("//:specs.bzl", "spec_args")

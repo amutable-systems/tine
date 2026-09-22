@@ -1,4 +1,8 @@
 #!/usr/bin/bash
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 # Serve PKCS#11 signing tokens for testing a build, from a software TPM.
 #
 # Runs in the swtpm-signing box, so it needs nothing from the host. One argument: an empty state

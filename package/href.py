@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Validate the locations repository metadata claims for its packages and streams.
 
 A repository names its own content, so a snapshot has to reject anything that would leave the

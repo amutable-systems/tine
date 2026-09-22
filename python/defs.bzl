@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Python bootstrap targets with an automatically generated, isolated ty check."""
 
 load("@prelude//:rules.bzl", "python_bootstrap_binary", "python_bootstrap_library")

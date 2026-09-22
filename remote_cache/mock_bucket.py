@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Mock bucket for read testing.
 
 Reads in this design are plain `GET`s of one key, so a directory behind `http.server` is a faithful

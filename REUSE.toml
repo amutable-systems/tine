@@ -1,0 +1,28 @@
+# Most source files carry their own SPDX header. This covers the files that cannot.
+version = 1
+
+[[annotations]]
+path = [
+    ".claude/settings.json",
+    ".zed/settings.json",
+    "examples/image-go-project/nodeps/message.txt",
+    "examples/image/expected.json",
+    "examples/image/from-source.txt",
+    "examples/image/marker.txt",
+    "examples/package/rpm/hello.source/rpm/packaging-marker",
+    "tools/starlark-fmt.json",
+    "tools/tools.json",
+]
+SPDX-FileCopyrightText = "Amutable GmbH <https://amutable.com/>"
+SPDX-License-Identifier = "MPL-2.0"
+
+# Upstream signing keys, generated indices of upstream repository metadata, and generated dependency
+# locks: none of it ours to license (last match wins)
+[[annotations]]
+path = [
+    "**/Cargo.lock",
+    "**/go.sum",
+    "catalog/snapshot/**",
+]
+SPDX-FileCopyrightText = "NOASSERTION"
+SPDX-License-Identifier = "LicenseRef-NOASSERTION"

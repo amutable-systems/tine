@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """`http_tool`: pin a prebuilt tool binary that buck downloads and sha256-verifies itself."""
 
 # Explicit loads keep Starlark type checking precise.

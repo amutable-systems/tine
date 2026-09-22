@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+SPDX-License-Identifier: MPL-2.0
+-->
+
 # Tine architecture
 
 This document describes the architecture implemented in this repository, the decisions that shaped it,

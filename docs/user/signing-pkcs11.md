@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+SPDX-License-Identifier: MPL-2.0
+-->
+
 # Signing with external keys
 
 The development path, where key material is a PEM file in the build graph, is described under "Secure

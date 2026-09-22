@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Install an exact RPM set into a fresh, layered, or already-mounted root.
 
 The same driver bootstraps boxes, assembles buildroots, and extends image

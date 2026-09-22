@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Make one automatic change, test it, and open the pull request for it.
 
 Only one run of each kind is ever in flight: while a pull request or a failure issue carrying the run's

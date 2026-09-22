@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Render the version an image carries from the components build configuration carries.
 
 A version derived from git state cannot be computed inside the graph, so `bin/tine` queries git

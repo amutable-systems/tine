@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+SPDX-License-Identifier: MPL-2.0
+-->
+
 # The shared build cache
 
 Buck can take an action's result over its [remote execution

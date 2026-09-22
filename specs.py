@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Load the JSON spec that carries a driver's inputs, outputs, and configuration.
 
 Rules write one spec per action instead of assembling a command line, so a driver's

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Boot an image_vm target under a pty, smoke-check it, then power off.
 
 The image_vm runner drives systemd-vmspawn with --console=native, so its console is a terminal, not

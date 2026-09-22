@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Native package repositories, universes, and dynamic transaction selection."""
 
 load(":system.bzl", "PackageSystemInfo")

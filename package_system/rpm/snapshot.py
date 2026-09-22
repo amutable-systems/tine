@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Pin a repository's build metadata and authoritative RPM inventory.
 
 The snapshot contains filtered repomd, pinned streams, and a pkgid-keyed package index.

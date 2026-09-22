@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Hand a driver its whole invocation as one JSON spec."""
 
 def spec_args(actions: AnalysisActions, name: str, spec: dict[str, typing.Any]) -> cmd_args:

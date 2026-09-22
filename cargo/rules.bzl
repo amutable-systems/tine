@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Build a Rust project from its own source tree, offline and SBOM-visible."""
 
 load("//:specs.bzl", "executable", "spec_args")

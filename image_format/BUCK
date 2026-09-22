@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Terminal image-output format drivers."""
 
 load("//box:test.bzl", "box_python_test")

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Run a package's tests inside a box's hermetic sandbox."""
 
 load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapSources")

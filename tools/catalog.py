@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Refresh pure catalog snapshots, then resolve box transactions against those pins.
 
 Repositories pinned to a mirror that publishes snapshots first advance their declaration to the

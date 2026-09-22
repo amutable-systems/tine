@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Represent reusable execution environments and run commands inside them."""
 
 ASSEMBLY_SDE = 1739577600

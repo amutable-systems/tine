@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Enter Linux namespaces and assemble filesystems for Tine sandboxes.
 
 Every sandbox imports this module. Keep imports, including transitive imports, to the absolute

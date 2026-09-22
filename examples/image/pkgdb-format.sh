@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 # A package database is captured as one file, named after the format the package system keeps it in.
 # rpm keeps one sqlite database, so the file is that. alpm keeps a directory of per-package entries,
 # so the file is a tar of them.

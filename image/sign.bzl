@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Signing credentials, and the ways an image can obtain them.
 
 A private key and its certificate are one credential, so a signing role takes one key. Every producer
