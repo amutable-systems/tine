@@ -16,6 +16,7 @@ load(
 load("//package:solver.bzl", "solve_command", "solver_cache")
 load("//package:system.bzl", "PackageSystemInfo")
 load("//package:verify.bzl", "repository_verifier")
+load("//platforms:architecture.bzl", "architecture")
 load(":runtime.bzl", "BoxInfo", "box_run")
 
 _REPOSITORY_PRIORITY = 99
@@ -154,7 +155,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
                 ctx.actions,
                 "install.spec.json",
                 {
-                    "arch": ctx.attrs.arch,
+                    "arch": architecture.spelling(ctx.attrs.arch, system.arch_schema),
                     "box_config": True,
                     "docs": True,
                     "installroot": None,

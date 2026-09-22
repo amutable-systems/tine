@@ -5,6 +5,7 @@
 
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//platforms:architecture.bzl", "architecture")
 load(":repository.bzl", "ConfiguredPackageRepositoryInfo", "encode_repositories")
 load(":system.bzl", "PackageSystemInfo")
 
@@ -32,7 +33,7 @@ def solve_command(
             ctx.actions,
             spec_name,
             {
-                "arch": arch,
+                "arch": architecture.spelling(arch, system.arch_schema),
                 "cache": solver_caches,
                 "install": install,
                 "lower": lowers,
@@ -62,7 +63,7 @@ def _solver_cache_impl(ctx: AnalysisContext) -> list[Provider]:
                 ctx.actions,
                 "make-cache.spec.json",
                 {
-                    "arch": ctx.attrs.arch,
+                    "arch": architecture.spelling(ctx.attrs.arch, system.arch_schema),
                     "repositories": encode_repositories([repository]),
                 },
             ),

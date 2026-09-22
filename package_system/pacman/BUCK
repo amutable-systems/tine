@@ -74,6 +74,7 @@ tine_python_binary(
 # `build` stays unset: Arch has no makepkg rule here yet.
 package_system(
     name = "package_system",
+    arch_schema = "pacman",
     # alpm keeps a directory of per-package entries, so a capture of it is an archive.
     database_format = "tar.zst",
     # Keep in sync with alpm.py's DBPATH, which Starlark cannot read.

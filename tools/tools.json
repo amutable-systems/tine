@@ -24,7 +24,7 @@
     "repository": "daandemeyer/buck2",
     "release": "2026-09-07-18.12.49",
     "platforms": {
-      "aarch64": {
+      "arm64": {
         "artifact": "starlark_fmt-aarch64-unknown-linux-musl.zst",
         "sha256": "aa26f52f213f82696d6f64e5171fb6ccf68528933fa7396d31bd0c89f1c7abab",
         "size": 2473273
@@ -40,7 +40,7 @@
     "repository": "astral-sh/python-build-standalone",
     "release": "20260901",
     "platforms": {
-      "aarch64": {
+      "arm64": {
         "artifact": "cpython-3.14.7+20260901-aarch64-unknown-linux-gnu-install_only.tar.gz",
         "sha256": "30f1cc489be654477d895b441e196bb080738bf0456da82080ad4ab66a22d80f",
         "size": 95628137,
@@ -58,7 +58,7 @@
     "repository": "astral-sh/ruff",
     "release": "0.16.8",
     "platforms": {
-      "aarch64": {
+      "arm64": {
         "artifact": "ruff-aarch64-unknown-linux-musl.tar.gz",
         "sha256": "57a4e072b6b74a4dd0036b7b253e056bdb70e02c68504ca6f2bfca2707d03fb6",
         "size": 9565440,
@@ -76,7 +76,7 @@
     "repository": "astral-sh/ty",
     "release": "0.0.82",
     "platforms": {
-      "aarch64": {
+      "arm64": {
         "artifact": "ty-aarch64-unknown-linux-musl.tar.gz",
         "sha256": "e28c0e9269d3742a3edce752074f65acc84a2bd26534a79a18ec646d788d1800",
         "size": 12821063,
@@ -94,7 +94,7 @@
     "repository": "anchore/syft",
     "release": "v1.52.0",
     "platforms": {
-      "aarch64": {
+      "arm64": {
         "artifact": "syft_1.52.0_linux_arm64.tar.gz",
         "sha256": "c46d5e4c28e12aa4c5becfaa343ef1c7f89045b6b895f2c21d471c62db09c706",
         "size": 26744986
@@ -110,7 +110,7 @@
     "repository": "rust-secure-code/cargo-auditable",
     "release": "v0.7.6",
     "platforms": {
-      "aarch64": {
+      "arm64": {
         "artifact": "cargo-auditable-aarch64-unknown-linux-musl.tar.xz",
         "sha256": "57265fbd87e9277fbd850c74177d17e5a6f51f15e2803643db65c187b0d4feda",
         "size": 453700,
@@ -128,7 +128,7 @@
     "repository": "seaweedfs/seaweedfs",
     "release": "4.47",
     "platforms": {
-      "aarch64": {
+      "arm64": {
         "artifact": "linux_arm64.tar.gz",
         "sha256": "ba5c9def9ff98f78becdf309a50a9f906922f6383a7c4c772d01ede3cc012e16",
         "size": 40359016

@@ -5,6 +5,7 @@
 
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//platforms:architecture.bzl", "architecture")
 load(":local_packages.bzl", "LocalPackageUniverseInfo", "select_local_packages")
 load(":manager.bzl", "PackageManagerInfo", "materialize_local_repository")
 load(
@@ -113,7 +114,7 @@ def _install_actions(
             ctx.actions,
             "install.spec.json",
             {
-                "arch": box.arch,
+                "arch": architecture.spelling(box.arch, system.arch_schema),
                 "box_config": False,
                 "docs": True,
                 "installroot": None,
