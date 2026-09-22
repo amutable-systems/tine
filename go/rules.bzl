@@ -149,8 +149,13 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             workspace = workspace,
         ),
     )
-    sub_targets = {name: [DefaultInfo(default_output = out)] for name, out in outputs.items()}
-    return [DefaultInfo(default_outputs = outputs.values(), sub_targets = sub_targets)]
+    # Run on the host, as a developer would after `go build -o`. The box is a build environment and
+    # carries no runtime packages, so it is no better a place for a dynamically linked binary.
+    sub_targets = {name: [DefaultInfo(default_output = out), RunInfo(args = cmd_args(out))] for name, out in outputs.items()}
+    providers = [DefaultInfo(default_outputs = outputs.values(), sub_targets = sub_targets)]
+    if len(outputs) == 1:
+        providers.append(RunInfo(args = cmd_args(outputs.values()[0])))
+    return providers
 
 _go_package = rule(
     impl = _go_package_impl,
