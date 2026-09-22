@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Bootstrap a box by unpacking alpm packages without pacman.
 
 An alpm package is an ordinary compressed tar of the tree it installs, so the bootstrap needs

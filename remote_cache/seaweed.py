@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """A real S3 server to test against: SeaweedFS from the pinned binary, for as long as a test needs it.
 
 Its filer serves at `/buckets/<bucket>/<key>` exactly what its S3 endpoint stored, which is the

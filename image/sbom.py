@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Generate SPDX and CycloneDX SBOMs from a logical image with syft.
 
 Scanning the whole assembled tree (not just the package database) also catches packages no

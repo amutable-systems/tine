@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+SPDX-License-Identifier: MPL-2.0
+-->
+
 # Approaches to self-hosting the BuildRequires mega-SCC
 
 The ~69-package BuildRequires cycle (gcc ↔ glibc ↔ systemd ↔ kernel ↔ …, inspect it with the `scc`

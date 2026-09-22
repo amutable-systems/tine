@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The distributions the images in this package are built for.
 
 The one place a distribution is named. What each is called here names its targets (`:demo.arch`),

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Image construction smoke targets.
 
 Every image here is declared once and built for each distribution the PACKAGE file declares. What

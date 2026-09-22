@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """What the shim keeps locally: blobs on disk, results and provenance beside them.
 
 On disk, because a shim outlives the build that filled it: Buck2 declares an artifact in one build and

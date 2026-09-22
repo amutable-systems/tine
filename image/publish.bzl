@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """What a build publishes, under the names it publishes them as.
 
 A published name is a contract with whatever consumes the build: systemd-sysupdate matches its

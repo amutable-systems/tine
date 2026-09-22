@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Build RPM targets from generated package metadata and self-hosting edges."""
 
 load("@prelude//:native.bzl", "native")

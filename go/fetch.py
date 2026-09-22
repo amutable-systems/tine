@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Download the modules a Go project's go.sum pins, ahead of its offline build.
 
 This is the one online step of a Go build, and go itself is the verifier: a download is checked

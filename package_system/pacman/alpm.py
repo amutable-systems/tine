@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Read and write alpm's formats, and resolve through alpm's library.
 
 Both halves are here because they describe one package system and share one `Package`.

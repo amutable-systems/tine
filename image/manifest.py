@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """List everything a logical image ships, as a UAPI.16 File Manifest.
 
 The format is an RFC7464 JSON-SEQ sequence: a root object naming the media type, then one object

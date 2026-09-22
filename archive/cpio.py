@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Read and write root-owned uncompressed newc archives with aligned file payloads.
 
 Newc has no general extended-attribute representation; callers needing xattrs must use a

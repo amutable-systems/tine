@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Finalizing an image: the generators a layer persists, and the preparation a terminal applies.
 
 A generator turns installed package content into the derived state a system boots from, such as

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The container holding everything one action result names.
 
 A bundle is the unit which the bucket stores and a hit fetches: its members one after another, each a

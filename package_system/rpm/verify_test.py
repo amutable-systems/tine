@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Tests for the signature verifier against the real `rpmkeys` binary
 
 Uses local (mock) GPG keys and packages.

@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Apply ordered operations against one mounted root and capture its overlay delta."""
 
 import glob  # noqa: F401  # Preload for Path.glob before entering the image chroot.

@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Expand the placeholders in a file a project ships as a template.
 
 A project that expects its build system to fill in a prefix or a port commits the file with markers

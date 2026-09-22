@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 # The full CI pipeline. Arguments select groups, e.g. `tools/ci.sh check build`
 set -Eeuo pipefail
 cd "$(dirname "$0")/.."

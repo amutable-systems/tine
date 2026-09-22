@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 # The release directory is where every published name meets. Assert the set the example publishes,
 # that each listing is named after what it describes, that the verity pair is named after the two
 # halves of the root hash (which is what lets systemd-sysupdate give the partitions it writes the

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+SPDX-License-Identifier: MPL-2.0
+-->
+
 # Fetching project sources
 
 Tine wraps Buck's `git_fetch()` as `git.fetch()` so local development can use a checkout without changing

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The public package API.
 
 Load the `package` namespace from here; the modules behind it are implementation structure and may

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+SPDX-License-Identifier: MPL-2.0
+-->
+
 # tine's remote build cache
 
 The [Buck2](https://buck2.build/) build system can ask a remote cache via

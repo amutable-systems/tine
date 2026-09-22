@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Package a logical image's /usr and /opt as a systemd system-extension DDI.
 
 The driver authors `usr/lib/extension-release.d/extension-release.<name>`, drops the base

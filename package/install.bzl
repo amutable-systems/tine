@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Resolve and install native packages into filesystem roots."""
 
 load("//:specs.bzl", "spec_args")

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Rust source builds against a vendored, hash-pinned crate tree."""
 
 load("//box:test.bzl", "box_python_test")

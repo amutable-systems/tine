@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Something to ask a running shim.
 
 The shim is started in the background by whichever `tine buck` first needs it, so a later command

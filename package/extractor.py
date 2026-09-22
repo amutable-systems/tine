@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Bootstrap a root from a package system's own archives, before its package manager exists.
 
 Every package system's bootstrap extractor answers the same request: a set of packages, or

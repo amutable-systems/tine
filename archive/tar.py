@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Deterministic tar archives.
 
 Entries are written in sorted order with ownership normalized to uid/gid 0 and mtimes clamped to

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+SPDX-License-Identifier: MPL-2.0
+-->
+
 # Building Go projects from source
 
 A repository that builds images can also build a Go project it has checked out, without packaging it first.

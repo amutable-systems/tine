@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Check that every target a cell declares loads, configures, and analyzes.
 
 A build only reaches the targets it was asked for, so a rule that fails during analysis ships

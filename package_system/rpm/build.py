@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Build RPMs inside an assembled, pinned buildroot.
 
 Sources and the RPM spec are staged in action scratch space. Buck keeps the

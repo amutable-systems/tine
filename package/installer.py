@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Run one native package installation against the root its spec names.
 
 Every package system's installer answers the same request: a directory holding the exact package

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The public Git API, exported as the `git` namespace."""
 
 load("@prelude//:rules.bzl", "git_fetch")

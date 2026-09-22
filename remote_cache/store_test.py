@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The store on disk: what it keeps, what it drops, and what it remembers about what it dropped."""
 
 import hashlib

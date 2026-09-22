@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 # Runs inside the image on Buck's own interpreter; the image itself has no python. The image is
 # this script's root, so it writes image paths, and the project is the working directory, so the
 # marker path it receives resolves the same as it would outside.
