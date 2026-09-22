@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Declaring a distribution, and pointing a target at one.
 
 A distribution is one value of the `tine//distribution:distribution` constraint plus the incoming

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Decompress a zstd-compressed tool binary downloaded by `http_tool`."""
 
 import compression.zstd

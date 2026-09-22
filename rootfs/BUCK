@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Target-root and stored-layer filesystem primitives."""
 
 load("//box:test.bzl", "box_python_test")

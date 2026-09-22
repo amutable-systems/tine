@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Partition and raw-disk assembly with systemd-repart."""
 
 load("//:specs.bzl", "spec_args")

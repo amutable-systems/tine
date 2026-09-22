@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Just enough of the RE-API protobuf wire format to serve a cache.
 
 Every field this shim reads or writes is a varint or a length-delimited value: strings, bytes,

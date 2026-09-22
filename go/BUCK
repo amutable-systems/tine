@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Go source builds: one online, go.sum-verified module fetch, then an offline compile."""
 
 load("//box:test.bzl", "box_python_test")

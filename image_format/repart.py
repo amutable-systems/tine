@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """What the drivers invoking systemd-repart share: signing key material, and reading its report back."""
 
 from pathlib import Path

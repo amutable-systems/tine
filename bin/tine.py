@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Run the pinned Buck2 with the configuration Buck cannot compute for itself.
 
 Every Buck command starts by running this, and a keypress in a completing shell runs it too, before

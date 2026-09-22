@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The signature over an `ac/` object: what it accepts, and every way it says no.
 
 The chain above the leaf is `authority_test`'s business; here the authority is a fixture and the

@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 # The listing published beside an extension DDI describes what the extension ships rather than the
 # /usr it merges onto: zsh, which this extension installs, and none of the base image whose layers
 # it sits on. What it carries outside /usr and /opt is manifest-scope.sh's half of the question.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Logical filesystem images built as ordered overlay deltas."""
 
 load("//:specs.bzl", "executable", "spec_args", "spec_argument")

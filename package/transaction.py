@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The transaction a planner writes and a package closure is selected from.
 
 One schema, shared by every package system's planner, because the same Starlark reads all of

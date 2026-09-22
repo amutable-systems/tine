@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """alpm repositories, pinned to the Arch Linux Archive."""
 
 load("//package:repository.bzl", "RepositoryPin", "declare_remote_repository")

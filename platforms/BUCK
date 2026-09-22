@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 load("@prelude//platforms:defs.bzl", "host_configuration")
 load(":defs.bzl", "execution_platform")
 

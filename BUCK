@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Shared tine Python support, and the toolchain Buck2 looks up as `toolchains//`."""
 
 load("@prelude//toolchains:python.bzl", "python_bootstrap_toolchain")

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Tests for the wrapper's git query, buckconfig reading and argument handling.
 
     buck test tine//bin:test

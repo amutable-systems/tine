@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 # Assert a built artifact mentions each of the things it is supposed to.
 #
 # Usage: contains.sh FILE PATTERN...   (each PATTERN is a basic regular expression)

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+SPDX-License-Identifier: MPL-2.0
+-->
+
 # Building images
 
 How to declare, build, and run OS images. This is the user guide. The architecture behind it (the

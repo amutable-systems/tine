@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+SPDX-License-Identifier: MPL-2.0
+-->
+
 # Tine
 
 Tine composes operating-system images out of packages and pinned third-party repositories with
@@ -211,3 +216,7 @@ Design:
   cycle
 - [Shared build cache design](docs/design/remote-cache.md): threat model, bucket layout, signatures and
   keys
+
+## License
+
+tine is distributed under the [Mozilla Public License 2.0](./COPYING) (SPDX `MPL-2.0`).

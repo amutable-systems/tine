@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """tine's execution platform: local execution, optionally against a shared cache."""
 
 load("@prelude//cfg/exec_platform:marker.bzl", "get_exec_platform_marker")

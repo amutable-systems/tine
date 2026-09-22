@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 # One image's UAPI.16 file manifest, checked against the format's own rules and against what the
 # image is known to ship. The driver's unit suite covers how each inode type is encoded; this
 # asserts that the artifact a real build produced is a well-formed sequence describing that tree.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Keys and certificates for tests.
 
 The two kinds of key anything here signs with are a TPM-shaped authority (ECDSA P-256 because a TPM has

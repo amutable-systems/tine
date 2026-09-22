@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Interactive virtual-machine image runners."""
 
 load("//box:runtime.bzl", "BoxInfo", "box_run")

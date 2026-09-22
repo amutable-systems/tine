@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Attest who wrote an `ac/` object.
 
 Every other object in the bucket is named by a hash of its own content, so a digest is enough to catch a

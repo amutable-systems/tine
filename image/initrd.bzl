@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The conventional initrd a bootable image boots, as a target of its own."""
 
 load("//distribution:defs.bzl", "distribution")

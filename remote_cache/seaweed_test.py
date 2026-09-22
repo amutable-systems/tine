@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The two halves of the bucket against a real S3 implementation.
 
 `mock_bucket.Served` covers the layout, but not the claim the layout rests on: that an object written

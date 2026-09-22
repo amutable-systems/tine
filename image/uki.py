@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Build the unified kernel image for a logical filesystem image's single kernel.
 
 Box tools operate on the mounted image without chrooting. A kernel-modules cpio

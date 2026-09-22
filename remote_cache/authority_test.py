@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The certificate chain: what it accepts, and every way an operator can try to get past it.
 
 The bucket is untrusted, so both the leaf certificate and the object it signed for arrive from an

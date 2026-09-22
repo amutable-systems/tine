@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Pick the kernel modules a UKI's per-kernel initrd carries and close over what they need.
 
 Patterns follow mkosi's `KernelModules=` semantics minus its leading-slash convenience. The dependency

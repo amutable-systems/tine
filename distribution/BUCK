@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The axis an image's distribution is selected on."""
 
 load("@prelude//:rules.bzl", "constraint_setting", "constraint_value")

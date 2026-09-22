@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Generate a deterministic alpm database for a local package repository.
 
 This is `repo-add` without pacman: the entries a database carries come from each package's

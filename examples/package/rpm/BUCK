@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """RPM package-build examples and their end-to-end assertions."""
 
 load("@tine//box:defs.bzl", "box")

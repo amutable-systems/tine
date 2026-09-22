@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Prove the shared cache end to end: a real Buck publishes through the shim, and a cold one gets it back.
 
     buck run tine//tests:cache-roundtrip

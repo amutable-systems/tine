@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Compare versions in the format shared by Linux image specifications."""
 
 _DIGITS = frozenset("0123456789")

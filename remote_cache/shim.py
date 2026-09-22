@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """A build cache for Buck2.
 
 Serves the cache half of the Bazel Remote Execution API: action results and the blobs they name.

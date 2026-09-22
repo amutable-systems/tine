@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Turn a loaded Cargo.lock's crate list into the vendored tree an offline build reads."""
 
 load("//:specs.bzl", "spec_args")

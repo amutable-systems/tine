@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """The wire contract, against bytes produced by the reference protobuf implementation.
 
 Every hex string below came from `protobuf` serialising the same message, captured with generated code

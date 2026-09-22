@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Basic read and write operations on the bucket.
 
 Everyone reads, and reading is a plain HTTP `GET` of one key: no S3 API, no signing, no credentials on

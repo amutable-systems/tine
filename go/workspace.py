@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Find the Go module a project's sources hold, ahead of the actions that build it.
 
 A project is checked out, not written by us, so it carries no build file pointing at its own root;

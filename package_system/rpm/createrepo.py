@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Generate deterministic repodata for a local package repository.
 
 Runs inside the box so the pinned createrepo_c produces the metadata.
