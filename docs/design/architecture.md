@@ -230,16 +230,19 @@ Generated settings go into a file rather than command-line flags because the dae
 reads its ignores from configuration files at startup, without command-line overrides. A file also
 avoids the 128 KiB limit on a single argument, and `buck2 complete` accepts no configuration flags.
 Target completion and `tine completion` select the configured wrapper without refreshing shared
-configuration. Target completion uses the selected checkout's cached Buck2 without downloading. Tine
-rewrites Buck2's completion script so target queries run through `tine buck` too.
+configuration. Target completion uses the selected checkout's cached Buck2 without downloading, and
+completes nothing until a real command has written every cell's generated ignores: the daemon it would
+start takes its file watcher's ignores from them. Tine rewrites Buck2's completion script so target
+queries run through `tine buck` too.
 
 The selected tine checkout pins Buck2 in `tools/tools.json`. Projects can override the pin in the
 `[buck2]` table of `tine.toml` or `tine.local.toml`, with per-platform fields under
 `[buck2.platforms.<platform>]`.
 
 Tine exports the pinned binary's path as `BUCK2_BINARY`. A nested Buck command still selects the
-configured wrapper, but inherits the current mounts and skips refreshing shared configuration
-underneath the build that started it.
+configured wrapper, but inherits the current mounts and neither refreshes shared configuration nor
+replaces the daemon underneath the build that started it. The one thing it writes is a cell's generated
+ignores when they are missing, without the cache address, so the next outer command replaces the daemon.
 
 ### Component model
 
@@ -648,7 +651,9 @@ An `rpm_package` action:
 
 1. obtains the shared base root from its `BuildrootInfo`;
 2. resolves and installs its BuildRequires delta, preferring RPMs from `buildroot_deps` over upstream;
-3. overlays the base and delta, stages its spec/sources in Buck action scratch, and runs `rpmbuild -ba`;
+3. overlays the base and delta, stages its spec/sources in Buck action scratch, and runs `rpmbuild -ba`,
+   or `rpmbuild -bb --build-in-place` on a volatile overlay of a source tree that holds anything. The
+   project holding every input is read-only meanwhile, as for a [Rust source build](#rust-source-builds);
 4. freezes `%autorelease`, `_buildhost`, the dist tag, and the per-package source date epoch;
 5. collects binary RPMs and the source RPM into one output directory, carrying its package-system identity
    in `LocalPackageInfo`;
@@ -775,8 +780,10 @@ Entry points: `package_system/pacman/{rules,catalog}.bzl` and
 ### Rust source builds
 
 A consuming repository can build a Rust project it has checked out instead of packaging it first.
-`cargo.package()` takes the project's files as ordinary sources, so a clone needs nothing added to it, and
-the single `Cargo.lock` among them identifies the workspace root. An action discovers that lock after the
+`cargo.package()` takes the project directory as input, so a clone needs nothing added to it, and
+the single `Cargo.lock` in it identifies the workspace root. A directory of the package is built from a
+copy of the files Buck digested; only a local override of a `git.fetch()` is built live, and keeps its
+results out of the shared cache in return. An action discovers that lock after the
 sources have been built, so the checkout may itself be a fetched directory artifact; a dynamic action
 then reads the resolved lock and declares what the build fetches. A project that resolves nothing carries
 no lock, because cargo will not create one under `--locked` and there would be nothing in it to pin; its
@@ -820,9 +827,10 @@ lock, and is deliberately not attempted.
 The rerun is made cheap instead for a `tine mount`ed checkout, for a developer working on that part:
 Cargo's build directory then is a declared output that buck is told not to clear before rerunning the
 action, so cargo finds the previous one and recompiles only what changed, exactly as it does in a working
-copy. Nothing else survives: the source tree is copied afresh from the action's inputs on every run, with
-the modification times cargo compares them by. A build that finds no previous directory remains the
-reference, which is what CI and any `buck2 clean` produce.
+copy. Nothing else survives: a volatile overlay over the source tree takes whatever the build writes into
+it, and shows cargo the modification times it compares the sources by. The project holding every input is
+read-only meanwhile, and the declared outputs are mounted in scratch space beside it. A build that finds
+no previous directory remains the reference, which is what CI and any `buck2 clean` produce.
 
 Fetched or committed sources declare no build directory and build in scratch space: there is no edit
 cycle to speed up, and the large intermediate build artifacts are not uploaded to a shared cache.
@@ -862,14 +870,16 @@ links. syft catalogs these as `pkg:golang` components in the image SBOM. The dec
 [go.md](../user/go.md).
 
 A local `go build` inside the checkout leaves no build tree behind: go's cache lives outside it, so there
-is no `target/` equivalent for the glob and the daemon's watcher to exclude. It does drop the binary it
-built into the current directory, which the glob then picks up as a source, so a project is better built
-with `-o`.
+is no `target/` equivalent for Buck's ignores and the daemon's watcher to exclude. It does drop the
+binary it built into the current directory, which then is a source like any other file there, so a
+project is better built with `-o`.
 
 The unit of caching is the project, not the package: one action per package would mean modelling the
 package graph and the toolchain here, which is what rules_go exists for, and go's own content-keyed build
 cache gets most of that back for none of it. That cache follows the same rule as cargo's build directory
-above, and keys on file contents, so a mounted project's rerun recompiles only what actually changed.
+above, and keys on file contents, so a mounted project's rerun recompiles only what actually changed. The
+build runs the same way too: on a volatile overlay of the sources, in a read-only project, with the
+declared outputs mounted beside it.
 
 The module cache is the one difference: `go_build` consumes it, so it is a declared output whatever the
 sources are. For a mount buck keeps it too, so a dependency bump downloads only what is missing; old

@@ -202,6 +202,20 @@ def clone_file(src: Path, dst: Path, allow_link: bool = False) -> None:
     shutil.copymode(src, dst)
 
 
+def named_files(source: Path, name: str) -> list[Path]:
+    """Find files called `name` in a project's source directory, relative to it."""
+    found: list[Path] = []
+    for directory, directories, files in source.walk():
+        # A live fetch override still holds what its ignores keep from Buck: VCS state and cargo's
+        # build output, neither of which names the project. A digested copy never carries them.
+        directories[:] = sorted(
+            entry for entry in directories if entry not in (".git", ".jj", ".hg", ".svn", "target")
+        )
+        if name in files:
+            found.append((directory / name).relative_to(source))
+    return sorted(found)
+
+
 def take_binaries(built: Path, binaries: dict[str, str], *, tool: str, where: str) -> None:
     """Copy each declared binary out of a build tree.
 

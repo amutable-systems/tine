@@ -179,6 +179,19 @@ class TestPaths(unittest.TestCase):
 
 
 class TestMountContexts(unittest.TestCase):
+    def test_overlay_paths_escape_option_separators(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
+            root = Path(directory)
+            lower, upper, work = (root / name for name in ("low:er", "up,per", "wo\\rk"))
+            for path in (lower, upper, work):
+                path.mkdir()
+            (lower / "original").write_text("original")
+            target = root / "target"
+            with isolation.Overlay((lower,), upper, work, target, lazy_unmount=False):
+                self.assertEqual((target / "original").read_text(), "original")
+                (target / "generated").write_text("output")
+            self.assertEqual((upper / "generated").read_text(), "output")
+
     def test_overlay_parent_keeps_its_mode_with_a_permissive_umask(self) -> None:
         with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
             root = Path(directory)
@@ -194,6 +207,18 @@ class TestMountContexts(unittest.TestCase):
 
             self.assertEqual(target.parent.stat().st_mode & 0o777, 0o755)
             self.assertEqual(target.stat().st_mode & 0o777, 0o755)
+
+    def test_bind_carries_the_mounts_below_its_source(self) -> None:
+        # The rpm driver mounts its persistent build directory inside the tree it then binds into
+        # the buildroot, and relies on that mount arriving there with it.
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
+            root = Path(directory)
+            kept, tree, target = (root / name for name in ("kept", "tree", "target"))
+            kept.mkdir()
+            with isolation.Bind(kept, tree / "BUILD"), isolation.Bind(tree, target):
+                (target / "BUILD/object").write_text("built")
+            self.assertEqual((kept / "object").read_text(), "built")
+            self.assertEqual(list((tree / "BUILD").iterdir()), [])
 
     def test_readonly_file_bind_covers_a_symlink_without_touching_its_target(self) -> None:
         with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:

@@ -6,6 +6,7 @@ Exercise writable source views, package selection, and build commands. The box c
 """
 
 import errno
+import os
 import subprocess
 import tempfile
 import unittest
@@ -17,90 +18,98 @@ from unittest.mock import patch
 import build
 
 
-class TestBuildTree(unittest.TestCase):
+class TestBuildGo(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        tmp = tempfile.TemporaryDirectory(prefix="go-build-test.", dir="/var/tmp")
-        self.addCleanup(tmp.cleanup)
-        self.root = Path(tmp.name)
-        self.project = self.root / "project"
-        self.source = self.project / "input"
-        (self.source / "data").mkdir(parents=True)
-        (self.source / "data/file").write_text("original", encoding="utf-8")
-        (self.source / "data/file").chmod(0o444)
-        (self.source / ".hidden").touch()
-        (self.source / "file-link").symlink_to("data/file")
-        (self.source / "directory-link").symlink_to("data")
-        (self.source / "dangling-link").symlink_to("missing")
-        (self.source / "data/relative-link").symlink_to("../file-link")
-        (self.source / "cycle").symlink_to("cycle")
-        (self.source / "absolute-link").symlink_to(self.root / "absent")
-        (self.source / "empty").mkdir()
+        self.scratch = Path(
+            self.enterContext(tempfile.TemporaryDirectory(prefix="go-build-test.", dir="/var/tmp"))
+        )
+        self.project = self.scratch / "project"
+        self.source = self.project / "checkout"
+        self.source.mkdir(parents=True)
+        (self.source / "main.go").write_text("original", encoding="utf-8")
         (self.project / "outside").write_text("outside", encoding="utf-8")
-        (self.source / "absolute-input").symlink_to(self.project / "outside")
-        (self.source / "relative-input").symlink_to("../../project/outside")
+        (self.source / "outside").symlink_to(self.project / "outside")
 
-    def test_preserves_the_whole_tree_without_copying_on_read(self) -> None:
-        with chdir(self.project), build._build_tree(Path("input"), self.root / "build") as tree:
-            self.assertFalse(tree.is_symlink())
-            original = {path.relative_to(self.source) for path in self.source.rglob("*")}
-            self.assertEqual({path.relative_to(tree) for path in tree.rglob("*")}, original)
-            for path in original:
-                source, overlaid = self.source / path, tree / path
-                self.assertEqual(overlaid.lstat().st_mode, source.lstat().st_mode)
-                if source.is_symlink():
-                    self.assertEqual(overlaid.readlink(), source.readlink())
-                elif source.is_file():
-                    self.assertEqual(overlaid.read_bytes(), source.read_bytes())
-            self.assertFalse((tree / "dangling-link").exists())
-            self.assertFalse((tree / "absolute-link").exists())
-            self.assertEqual((tree / "directory-link/file").read_text(encoding="utf-8"), "original")
-            self.assertEqual((tree / "data/relative-link").read_text(encoding="utf-8"), "original")
-            upper = next((self.root / "build").glob("overlay.*/upper"))
-            self.assertEqual(list(upper.iterdir()), [])
+    def test_source_writes_are_disposable(self) -> None:
+        self.check_build(persistent=False)
 
-    def test_writes_and_deletions_leave_inputs_unchanged(self) -> None:
-        # Mutations through upstream links must copy up their targets, including chmod.
-        with chdir(self.project), build._build_tree(Path("input"), self.root / "build") as tree:
-            (tree / "data/file").chmod(0o600)
-            (tree / "data/relative-link").write_text("changed", encoding="utf-8")
-            self.assertEqual((tree / "file-link").read_text(encoding="utf-8"), "changed")
-            (tree / ".hidden").unlink()
-            (tree / "dangling-link").unlink()
-            (tree / "new").touch()
-            self.assertFalse((tree / ".hidden").exists())
-            self.assertFalse((tree / "dangling-link").is_symlink())
+    def test_incremental_outputs_survive_success_and_failure(self) -> None:
+        self.check_build(persistent=True)
 
-        self.assertEqual((self.source / "data/file").read_text(encoding="utf-8"), "original")
-        self.assertEqual((self.source / "data/file").stat().st_mode & 0o777, 0o444)
-        self.assertTrue((self.source / ".hidden").is_file())
-        self.assertEqual((self.source / "dangling-link").readlink(), Path("missing"))
-        self.assertFalse((self.source / "new").exists())
+    def check_build(self, *, persistent: bool) -> None:
+        for iteration, fail in enumerate((False, True, False)):
+            scratch = self.scratch / str(iteration)
+            scratch.mkdir()
+            spec = build.Spec(
+                bin=f"bin-{iteration}",
+                cgo=None,
+                cgo_cflags=[],
+                gocache="gocache" if persistent else None,
+                linker_flags=[],
+                module_cache_dir=None,
+                packages={"example": "."},
+                root="",
+                src="checkout",
+                tags=[],
+            )
+            stale = self.project / spec["bin"] / "undeclared"
+            stale.parent.mkdir()
+            stale.touch()
 
-    def test_links_back_into_the_project_are_readonly(self) -> None:
-        with chdir(self.project), build._build_tree(Path("input"), self.root / "build") as tree:
-            for name in ["absolute-input", "relative-input"]:
-                with self.subTest(name=name):
-                    self.assertEqual((tree / name).read_text(encoding="utf-8"), "outside")
+            def run(
+                command: list[str],
+                *,
+                check: bool,
+                cwd: Path,
+                env: dict[str, str],
+                index: int = iteration,
+                fails: bool = fail,
+            ) -> None:
+                self.assertTrue(check)
+                (cwd / "main.go").write_text("changed", encoding="utf-8")
+                # Through a source symlink, and relative to the project the driver stands in.
+                for path in (cwd / "outside", Path("outside")):
                     with self.assertRaises(OSError) as caught:
-                        (tree / name).write_text("changed", encoding="utf-8")
+                        path.write_text("changed", encoding="utf-8")
                     self.assertEqual(caught.exception.errno, errno.EROFS)
-            self.assertEqual((self.project / "outside").read_text(encoding="utf-8"), "outside")
 
-    def test_mounts_unwind_on_success_and_failure(self) -> None:
-        for fail in [False, True]:
-            with self.subTest(fail=fail), chdir(self.project):
-                scratch = self.root / str(fail)
-                try:
-                    with build._build_tree(Path("input"), scratch) as tree:
-                        (tree / "new").touch()
-                        if fail:
-                            raise RuntimeError("build failed")
-                except RuntimeError:
-                    self.assertTrue(fail)
-                self.assertEqual(list(scratch.iterdir()), [scratch / "src"])
-                self.assertEqual(list((scratch / "src").iterdir()), [])
-                (self.project / "outside").write_text("writable again", encoding="utf-8")
+                state = Path(env["GOCACHE"]) / "state"
+                self.assertEqual(
+                    state.read_text() if state.exists() else "0", str(index if persistent else 0)
+                )
+                state.write_text(str(index + 1), encoding="utf-8")
+                if fails:
+                    raise subprocess.CalledProcessError(1, command)
+                binary = Path(command[command.index("-o") + 1])
+                binary.write_text("built", encoding="utf-8")
+                binary.chmod(0o755)
+
+            with (
+                chdir(self.project),
+                patch.object(build, "_package", return_value="example.com/example"),
+                patch.object(build.subprocess, "run", side_effect=run),
+                patch.dict(os.environ, {"TMPDIR": str(scratch)}),
+                patch.object(tempfile, "tempdir", None),
+            ):
+                if fail:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        build.build_go(spec, scratch)
+                else:
+                    build.build_go(spec, scratch)
+
+            self.assertEqual((self.source / "main.go").read_text(encoding="utf-8"), "original")
+            self.assertEqual(list((scratch / "build").iterdir()), [])
+            output = self.project / spec["bin"] / "example"
+            if fail:
+                self.assertFalse(output.exists())
+            else:
+                self.assertFalse(stale.exists())
+                self.assertEqual(output.read_text(encoding="utf-8"), "built")
+                self.assertEqual(output.stat().st_mode & 0o777, 0o755)
+            if persistent:
+                self.assertEqual((self.project / "gocache/state").read_text(), str(iteration + 1))
+            (self.project / "outside").write_text("writable again", encoding="utf-8")
 
 
 class TestBuildCommand(unittest.TestCase):

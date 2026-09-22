@@ -40,6 +40,12 @@ SERVED = {
     "tine//examples/image-rust-project:hello": ("cargo_build",),
     "tine//examples/package/rpm:hello-tree": ("rpmbuild",),
 }
+# What never reaches the cache: a local override of a `git.fetch()` is built from the live directory,
+# which can hold files Buck did not digest.
+LOCAL = {
+    "tine//examples/image-go-project:renamed": ("go_build",),
+    "tine//examples/image-rust-project:renamed": ("cargo_build",),
+}
 # `<target> (<configuration>) (<category>)`, as `what-ran` names an action.
 ACTION = re.compile(r"(?P<target>\S+) \(\S+\) \((?P<category>\w+)\)")
 ISOLATION = "cache-roundtrip"
@@ -131,8 +137,8 @@ class RoundTrip:
         return proc.stdout
 
     def build(self) -> None:
-        """Build every target named in SERVED."""
-        self.tine("build", *SERVED)
+        """Build every target named in SERVED and LOCAL."""
+        self.tine("build", *SERVED, *LOCAL)
 
     def check_uploads(self, allowed: bool) -> None:
         """Fail unless Buck's executor offers uploads exactly when the shim takes them.
@@ -157,16 +163,17 @@ class RoundTrip:
         return found
 
     def check_served(self, expected: str) -> None:
-        """Fail unless every action of SERVED came from `expected` in the last build."""
+        """Fail unless SERVED came from `expected` and LOCAL ran locally in the last build."""
         ran = self.executors()
         wrong = [
-            f"{target} ({category}) from {ran.get((target, category), 'nowhere')}"
-            for target, categories in SERVED.items()
+            f"{target} ({category}) from {ran.get((target, category), 'nowhere')}, not {wanted}"
+            for actions, wanted in ((SERVED, expected), (LOCAL, "Local"))
+            for target, categories in actions.items()
             for category in categories
-            if ran.get((target, category)) != expected
+            if ran.get((target, category)) != wanted
         ]
         if wrong:
-            fail(f"expected {expected} for each of: {', '.join(wrong)}")
+            fail(f"unexpected executors: {', '.join(wrong)}")
 
     def report(self) -> None:
         """Print the shim's counters and fail on the ones a healthy round trip never touches."""

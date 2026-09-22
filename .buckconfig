@@ -24,7 +24,8 @@ target_platform_detector_spec = target:tine//...->tine//platforms:default
 execution_platforms = tine//platforms:default
 
 [project]
-# Completion can start Buck before the generated .buckconfig.local exists.
+# `tine buck` generates the full list into .buckconfig.local before it starts Buck. These cover a Buck
+# started some other way.
 ignore = **/.git, **/.jj, **/.hg, **/.svn
 
 [buck2]

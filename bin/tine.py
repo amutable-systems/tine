@@ -1576,7 +1576,10 @@ def init_command(directory: Path, arguments: list[str]) -> None:
         print("tine: .gitignore exists, left alone", file=sys.stderr)
         update_git_excludes(directory, GITIGNORE)
     else:
-        write_if_changed(directory / ".gitignore", GITIGNORE)
+        # Cargo's build output, which Buck would otherwise read as a source. Only in a file the project
+        # sees and commits: excluded per clone, it would silently hide new files in a source directory
+        # that happens to have this name.
+        write_if_changed(directory / ".gitignore", GITIGNORE + "target/\n")
         print("tine: wrote .gitignore", file=sys.stderr)
     write_if_changed(
         directory / ".buckconfig", render_project_buckconfig(checkout / ".buckconfig", overrides)
@@ -1803,25 +1806,43 @@ def buck_command(argv: list[str]) -> None:
     config, mounts = prepare_buck(
         root, settings, ["buck", *argv], refresh_config=command.subcommand != "complete"
     )
+    # Buck resolves ignores within each cell, including in the daemon's file watcher.
+    roots = [root]
+    if (cell := cells_of(config).get(CELL)) is not None and root / cell != root:
+        roots.append(root / cell)
+    unwritten = [
+        path
+        for path in roots
+        if PROJECT_IGNORE not in read_generated_buckconfig(path / LOCAL).get("project", {})
+    ]
+    if command.subcommand == "complete" and unwritten:
+        # Nor may it start a daemon whose file watcher would take its ignores from a list that has
+        # not been written yet. The first real command writes it, and there is nothing to complete
+        # until then.
+        return
     # Hand over first so wrapper_cell_root() reads the configured checkout's pin.
     binary = buck2_binary(settings, wrapper_cell_root(), fetch=command.subcommand != "complete")
     if binary is None:
         return
-    if command.subcommand != "complete" and not os.environ.get("BUCK2_BINARY"):
+    if command.subcommand != "complete":
+        nested = bool(os.environ.get("BUCK2_BINARY"))
         # The daemon reads the cache address only at startup, so a changed one has to replace it.
         # Not `daemon_buster`: Buck takes startup constraints from the root `.buckconfig` without
         # following includes, and the mount digest owns that slot.
-        if read_generated_buckconfig(root / LOCAL).get(RE_CLIENT, {}) != cache_client(cache):
+        if not nested and read_generated_buckconfig(root / LOCAL).get(RE_CLIENT, {}) != cache_client(cache):
             kill_daemon(binary, command.isolation)
         gitdirs = namespace_gitdirs(root) if mounts else {}
-        refresh_local_buckconfig(root, collect_project_ignores(root, config, mounts, gitdirs), cache)
-        if (cell := cells_of(config).get(CELL)) is not None and (checkout := root / cell) != root:
-            # Buck resolves ignores within each cell, including in the daemon's file watcher. The
-            # cache address is the root cell's alone, so this block carries only the ignores.
-            refresh_local_buckconfig(
-                checkout,
-                collect_project_ignores(checkout, read_project_buckconfig(checkout), [], gitdirs),
-            )
+        # A nested command runs under a daemon it must not replace, so it writes only the ignores
+        # nothing wrote yet: no Buck starts without them. It leaves the cache address out, which makes
+        # the next outer command replace the daemon before writing one.
+        for path in unwritten if nested else roots:
+            if path == root:
+                ignores = collect_project_ignores(root, config, mounts, gitdirs)
+                refresh_local_buckconfig(root, ignores, None if nested else cache)
+            else:
+                # The cache address is the root cell's alone, so this block carries only the ignores.
+                ignores = collect_project_ignores(path, read_project_buckconfig(path), [], gitdirs)
+                refresh_local_buckconfig(path, ignores)
     # BUCK2_BINARY lets a tool nest a Buck2 command without refreshing config under its build.
     environment = {"BUCK2_ARG0": "tine buck", "BUCK2_BINARY": str(binary)}
     try:

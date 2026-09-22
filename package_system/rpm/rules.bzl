@@ -75,8 +75,15 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
         ]
 
     source_tree = ctx.attrs.source_tree
-    rpms = ctx.actions.declare_output("rpms", dir = True)
-    build_dir = ctx.actions.declare_output(_PRIVATE + "/build", dir = True) if ctx.attrs.configured_dev else None
+    if ctx.attrs.copy_source_tree:
+        source_tree = project.digested(ctx.actions, _PRIVATE + "/source", source_tree)
+    # Not content-based: dev mode keeps this action's outputs, and Buck would copy a kept content-based
+    # one back before each run only for the driver to purge it. Not only in dev mode, as switching the
+    # path kind would leave the other kind's entry at this path, which a kept action never cleans.
+    rpms = ctx.actions.declare_output("rpms", dir = True, has_content_based_path = False)
+    # Buck restores a kept content-based output by copying it back before each run: in full, and with
+    # fresh timestamps, which defeats the incremental build it is kept for.
+    build_dir = ctx.actions.declare_output(_PRIVATE + "/build", dir = True, has_content_based_path = False) if ctx.attrs.configured_dev else None
     in_place_spec = ctx.attrs.in_place_spec if source_tree != None else None
     spec_file = ctx.attrs.spec
     if source_tree != None and in_place_spec != None:
@@ -84,8 +91,11 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     if spec_file == None:
         fail("rpm_package: a regular build requires a spec file")
 
-    # Declare addressable outputs for every binary subpackage.
-    sub_outputs = {s: ctx.actions.declare_output(s + ".rpm") for s in ctx.attrs.subpackages}
+    # Addressable outputs for every binary subpackage. One directory rather than a file each, so the
+    # build gets it as a single writable mount while the project holding every input stays read-only.
+    # Not content-based, for the reason `rpms` gives.
+    subpackages = ctx.actions.declare_output(_PRIVATE + "/subpackages", dir = True, has_content_based_path = False)
+    sub_outputs = {s: subpackages.project(s + ".rpm") for s in ctx.attrs.subpackages}
 
     build = cmd_args(
         box_run(box = package_manager.box[BoxInfo], exe = system.build),
@@ -105,11 +115,18 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
                 "source_tree": source_tree,
                 "sources": ctx.attrs.srcs if in_place_spec == None else [],
                 "spec_file": spec_file,
-                "subpackages": {name: out.as_output() for name, out in sub_outputs.items()},
+                "subpackages": ctx.attrs.subpackages,
+                "subpackages_out": subpackages.as_output(),
             },
         ),
     )
-    ctx.actions.run(build, category = "rpmbuild", allow_cache_upload = not ctx.attrs.configured_dev, no_outputs_cleanup = ctx.attrs.configured_dev)
+    ctx.actions.run(
+        build,
+        category = "rpmbuild",
+        no_outputs_cleanup = ctx.attrs.configured_dev,
+        # Live checkouts can contain ignored files, unlike fetched trees and explicit archive inputs.
+        allow_cache_upload = not ctx.attrs.configured_dev and (source_tree == None or not source_tree.is_source),
+    )
 
     sub_targets = {s: [DefaultInfo(default_output = out)] for s, out in sub_outputs.items()}
     sub_targets["buildroot"] = [DefaultInfo(default_outputs = buildroot)]
@@ -142,6 +159,9 @@ _rpm_package = rule(
         ),
         "configured_dev": attrs.bool(
             doc = "whether project configuration selects this package for dev mode",
+        ),
+        "copy_source_tree": attrs.bool(
+            doc = "source_tree is a directory of this package, built from the copy Buck digested",
         ),
         "dist": attrs.string(default = ".aos"),
         "in_place_rpmbuild_options": attrs.list(
@@ -193,6 +213,9 @@ def rpm_package(
         source = name + ".source"
         populated = git.checkout(name = source)
         source_tree = ":" + source if populated else None
+    if spec != None and source_tree != None and project.is_directory(source_tree) and spec.startswith(source_tree.rstrip("/") + "/"):
+        # The tree is built from a copy, where a path into the directory no longer points.
+        fail("rpm_package {}: select a spec inside source_tree with in_place_spec".format(name))
     if spec == None and (source_tree == None or in_place_spec == None):
         spec = package + ".spec"
     _rpm_package(
@@ -200,6 +223,7 @@ def rpm_package(
         package = package,
         spec = spec,
         configured_dev = project.is_dev(name, source = source_tree, override = dev),
+        copy_source_tree = source_tree != None and project.is_directory(source_tree),
         source_tree = source_tree,
         in_place_rpmbuild_options = in_place_rpmbuild_options,
         in_place_spec = in_place_spec,

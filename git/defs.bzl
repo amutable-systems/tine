@@ -6,13 +6,17 @@ load("//project:defs.bzl", "project")
 _MOUNT_TARGET_LABEL = "tine:mount-target"
 
 def _checkout_impl(ctx: AnalysisContext) -> list[Provider]:
-    # Keep a populated checkout as one directory source so files omitted by glob(), including dotfiles,
-    # remain live inputs, but hand consumers a copy of it: the source path is the checkout itself, which
-    # for a mount physically holds every tree the project ignores keep out of Buck's digest, so a consumer
-    # reading it would copy build output Buck never saw. `relative_symlinks` keeps an internal symlink
-    # pointing at its original relative target rather than back at the mount, so the copy survives a
-    # consumer relocating it. The empty artifact preserves the implicit-checkout target for archive packages.
-    tree = ctx.actions.copy_dir(ctx.attrs.out, ctx.attrs.src, relative_symlinks = True) if ctx.attrs.src else ctx.actions.symlinked_dir(ctx.attrs.out, {})
+    # `src` is one directory source rather than a glob(), which would drop its dotfiles.
+    name = ctx.label.name.removesuffix(".git")
+    if ctx.attrs.src == None:
+        tree = ctx.actions.symlinked_dir(name, {})
+    elif ctx.attrs.copy:
+        tree = project.digested(ctx.actions, name, ctx.attrs.src)
+    else:
+        # A fetch override stays live: an upstream tree is large, and its timestamps drive incremental
+        # builds. It keeps its source identity, which is how consumers keep its results out of the
+        # shared cache.
+        tree = ctx.attrs.src
     return [
         DefaultInfo(
             default_output = tree,
@@ -24,8 +28,8 @@ _checkout = rule(
     doc = "Expose a checkout in the current package as a git_fetch-compatible tree.",
     impl = _checkout_impl,
     attrs = {
+        "copy": attrs.bool(doc = "hand consumers the copy Buck digested rather than the live directory"),
         "labels": attrs.list(attrs.string(), default = [], doc = "labels used to query this target"),
-        "out": attrs.string(doc = "name of the fetched work tree"),
         "src": attrs.option(attrs.source(allow_directory = True), default = None, doc = "the populated checkout"),
         "sub_targets": attrs.list(attrs.string(), default = [], doc = "tree paths exposed as sub-targets"),
     },
@@ -39,8 +43,8 @@ def fetch(name: str, repo: str, rev: str, sub_targets: list[str] = [], visibilit
     if srcs or project.is_dev(directory):
         _checkout(
             name = name,
+            copy = False,
             labels = labels,
-            out = directory,
             src = directory,
             sub_targets = sub_targets,
             visibility = visibility,
@@ -55,7 +59,7 @@ def checkout(name: str, labels: list[str] = [], **kwargs) -> bool:
     """
     srcs = glob([name + "/**"])
     populated = bool(srcs) or project.is_dev(name)
-    _checkout(name = name, labels = [_MOUNT_TARGET_LABEL] + labels, out = name, src = name if populated else None, **kwargs)
+    _checkout(name = name, copy = True, labels = [_MOUNT_TARGET_LABEL] + labels, src = name if populated else None, **kwargs)
     return populated
 
 git = struct(

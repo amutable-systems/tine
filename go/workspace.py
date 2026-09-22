@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import specs
-from util import fail
+from util import fail, named_files
 
 _MODULE = "go.mod"
 _SUM = "go.sum"
@@ -20,6 +20,8 @@ _WORK = "go.work"
 
 
 class Spec(TypedDict):
+    # Whether src is a live checkout rather than a copy of what Buck digested.
+    live: bool
     # The target, named in whatever this refuses.
     name: str
     # Where to write the resolved workspace.
@@ -28,23 +30,16 @@ class Spec(TypedDict):
     src: str
 
 
-def _named(source: Path, name: str) -> list[Path]:
-    """Find files called `name`, relative to the source directory."""
-    found: list[Path] = []
-    for directory, _, files in source.walk():
-        if name in files:
-            found.append((directory / name).relative_to(source))
-    return sorted(found)
-
-
-def resolve_workspace(target: str, source: Path) -> dict[str, str | None]:
+def resolve_workspace(target: str, source: Path, live: bool = False) -> dict[str, str | None]:
     """Find the module root and pins relative to the source directory."""
     if not source.is_dir():
         fail(f"go_package {target}: src must be a directory")
-    if _named(source, _WORK):
+    # A developer's own go.work is commonly gitignored, so Buck never saw the one in a live checkout
+    # and nobody can be asked to remove it. It is inert either way: the build runs with GOWORK=off.
+    if not live and named_files(source, _WORK):
         fail(f"go_package {target}: go workspaces are not supported; keep {_WORK} out of src")
 
-    modules = _named(source, _MODULE)
+    modules = named_files(source, _MODULE)
     if not modules:
         fail(
             f"go_package {target}: src holds no {_MODULE}; by default the checkout is expected in "
@@ -68,13 +63,13 @@ def resolve_workspace(target: str, source: Path) -> dict[str, str | None]:
     return {
         "mod": str(module),
         "root": "" if root == Path() else str(root),
-        "sum": str(pinned) if pinned in _named(source, _SUM) else None,
+        "sum": str(pinned) if pinned in named_files(source, _SUM) else None,
     }
 
 
 def main(argv: list[str] | None = None) -> None:
     spec = specs.parse(Spec, "go-workspace", argv)
-    workspace = resolve_workspace(spec["name"], Path(spec["src"]))
+    workspace = resolve_workspace(spec["name"], Path(spec["src"]), spec["live"])
     Path(spec["out"]).write_text(json.dumps(workspace, sort_keys=True) + "\n", encoding="utf-8")
 
 
