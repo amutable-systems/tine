@@ -17,7 +17,14 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      # the point of the arm64 leg is to learn where it stands, which a cancelled x86 leg hides
+      fail-fast: false
+      matrix:
+        # there is no `-latest` arm label, so both legs name the release: they then differ in
+        # nothing but the architecture, and move on together, by hand
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
