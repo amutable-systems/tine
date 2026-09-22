@@ -37,9 +37,9 @@ load(
     "uki_subtargets",
 )
 load("//package:manager.bzl", "PackageManagerInfo")
+load("//platforms:architecture.bzl", "ARCHITECTURES")
 load(
     ":image.bzl",
-    "ARCHES",
     "IMAGE_ATTRS",
     "ImageInfo",
     "ImageToolsInfo",  # @unused Used as a function argument type.
@@ -287,7 +287,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # Everything this composition publishes is named after the image identity: the disk, the UKI,
     # and every split partition, which repart names after the image it writes them out of.
-    basename = "{}_{}_{}".format(image_id, version, ARCHES[ctx.attrs.arch].systemd)
+    basename = "{}_{}_{}".format(image_id, version, ARCHITECTURES[ctx.attrs.arch].systemd)
 
     system = declare_repart(
         ctx,

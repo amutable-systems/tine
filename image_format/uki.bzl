@@ -5,7 +5,6 @@
 
 load(
     "//image:image.bzl",
-    "ARCHES",
     "FILENAME_PATTERN",
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
@@ -24,6 +23,7 @@ load(
     "resolve_signing_key",
     "signing_key_spec",
 )
+load("//platforms:architecture.bzl", "ARCHITECTURES")
 load(":archive.bzl", "ImageArchiveInfo")
 load(
     ":disk.bzl",
@@ -133,7 +133,7 @@ def declare_uki(
         image = image,
         spec = {
             "cmdline": cmdline,
-            "efi_arch": ARCHES[arch].efi,
+            "efi_arch": ARCHITECTURES[arch].efi,
             "image_id": image_id,
             "initrd_modules": initrd_modules,
             "initrds": [initrd.archive for initrd in initrds],
@@ -149,7 +149,7 @@ def declare_uki(
             "secure_boot": signing_key_spec(secure_boot_key),
             "sign_expected_pcr": signing_key_spec(sign_expected_pcr_key),
             "splash": splash,
-            "systemd_arch": ARCHES[arch].systemd,
+            "systemd_arch": ARCHITECTURES[arch].systemd,
             "version": version,
         },
     )
@@ -185,7 +185,7 @@ def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
     return [DefaultInfo(default_output = info.ukis, sub_targets = uki_subtargets(info)), info]
 
 UKI_ATTRS = {
-    "arch": attrs.enum(ARCHES.keys(), default = "x86_64"),
+    "arch": attrs.enum(ARCHITECTURES.keys(), default = "x86_64"),
     "cmdline": attrs.list(
         attrs.string(),
         default = [],

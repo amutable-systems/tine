@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MPL-2.0
 
 load("@prelude//platforms:defs.bzl", "host_configuration")
-load(":defs.bzl", "execution_platform")
+load(":architecture.bzl", "ARCHITECTURES")
+load(":defs.bzl", "execution_platform", "target_platform")
 
 # `tine init` points a project that builds against this cell here too, for both its execution and
 # its target platform, so every such project caches without configuring anything.
@@ -12,3 +13,13 @@ execution_platform(
     os_configuration = host_configuration.os,
     visibility = ["PUBLIC"],
 )
+
+# A target platform per supported architecture; select with `--target-platforms`
+[
+    target_platform(
+        name = name,
+        configurations = [spellings.config, "config//os:linux"],
+        visibility = ["PUBLIC"],
+    )
+    for name, spellings in ARCHITECTURES.items()
+]

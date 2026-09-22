@@ -1,9 +1,33 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""tine's execution platform: local execution, optionally against a shared cache."""
+"""tine's platforms: where actions run, and which architecture they build for.
+
+The execution platform is local, optionally against a shared cache. A target platform names constraints
+and registers no executor: every action still runs on the local machine, so executed build tools have to
+be reached as `exec_dep`. They cannot execute target platform code.
+"""
 
 load("@prelude//cfg/exec_platform:marker.bzl", "get_exec_platform_marker")
+
+def _target_platform_impl(ctx: AnalysisContext) -> list[Provider]:
+    constraints = dict()
+    for configuration in ctx.attrs.configurations:
+        constraints.update(configuration[ConfigurationInfo].constraints)
+    return [
+        DefaultInfo(),
+        PlatformInfo(
+            label = str(ctx.label.raw_target()),
+            configuration = ConfigurationInfo(constraints = constraints, values = {}),
+        ),
+    ]
+
+target_platform = rule(
+    impl = _target_platform_impl,
+    attrs = {
+        "configurations": attrs.list(attrs.dep(providers = [ConfigurationInfo])),
+    },
+)
 
 def _cache_configured() -> bool:
     """Whether `[buck2_re_client]` names a cache to talk to.

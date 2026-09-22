@@ -6,6 +6,7 @@
 PackageSystemInfo = provider(
     doc = "A native package ecosystem and the drivers that operate on it.",
     fields = {
+        "arch_schema": provider_field(str),
         "build": provider_field(Dependency | None),
         "database_format": provider_field(str),
         "database_paths": provider_field(list[str]),
@@ -27,6 +28,7 @@ def _package_system_impl(ctx: AnalysisContext) -> list[Provider]:
     return [
         DefaultInfo(),
         PackageSystemInfo(
+            arch_schema = ctx.attrs.arch_schema,
             extract = ctx.attrs.extract,
             snapshot = ctx.attrs.snapshot,
             install = ctx.attrs.install,
@@ -47,6 +49,7 @@ def _package_system_impl(ctx: AnalysisContext) -> list[Provider]:
 package_system = rule(
     impl = _package_system_impl,
     attrs = {
+        "arch_schema": attrs.string(doc = "the platforms/architecture.bzl schema this system names architectures in"),
         "build": attrs.option(
             attrs.exec_dep(providers = [RunInfo]),
             default = None,

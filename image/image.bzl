@@ -9,6 +9,7 @@ load("//distribution:defs.bzl", "distribution")
 load("//package:install.bzl", "resolve_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
+load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load(":sign.bzl", "SigningAccess", "SigningKeyInfo", "external_signing_execution", "key_source_arguments", "merge_signing_access")
 
 ImageToolsInfo = provider(
@@ -262,11 +263,6 @@ LayerOperationTree = LayerOperation | list[typing.Any]
 Selectable = str | Select
 SelectableArtifact = str | Artifact | Select
 
-# Each architecture's EFI spelling (ukify's --efi-arch, which also names the boot stubs) and
-# systemd spelling (systemd's %a specifier), which names boot artifacts. The uki driver reads both from
-# its spec, so this table is the single source; extend it to enable more architectures.
-ARCHES = {"x86_64": struct(efi = "x64", systemd = "x86-64")}
-
 # Operations replayed by the layer driver.
 
 def run(cmd: list[SelectableArtifact] | Select, env: dict[str, Selectable] = {}, chroot: bool | Select = False) -> LayerOperation:
@@ -394,7 +390,7 @@ def sign_systemd_boot(key: SigningKeyInfo, arch: str) -> list[LayerOperation]:
     Sign before anything seals /usr, e.g. a verity partition; architecture.md explains why the signed
     binary must live in the image's own /usr. The key material never enters the image.
     """
-    binary = "/buildroot/usr/lib/systemd/boot/efi/systemd-boot{}.efi".format(ARCHES[arch].efi)
+    binary = "/buildroot/usr/lib/systemd/boot/efi/systemd-boot{}.efi".format(ARCHITECTURES[arch].efi)
     return [
         # systemd-sbsign lives outside PATH in the box.
         run(
@@ -626,11 +622,10 @@ def declare_image(
 
     if operations or install_specs:
         closure = None
-        installer = None
+        system = None
         if install_specs:
             if package_manager == None:
                 fail("image: installing packages requires an image with a package manager")
-            package_manager_info = package_manager[PackageManagerInfo]
             closure = resolve_packages(
                 ctx,
                 package_manager,
@@ -639,7 +634,7 @@ def declare_image(
                 identifier = identifier,
                 local_seed = parent_install_specs + install_specs,
             )
-            installer = package_manager_info.package_system[PackageSystemInfo].install
+            system = package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
 
         delta = declare_out(ctx, identifier, "delta", dir = True)
         work = declare_out(ctx, identifier, "overlay.work", dir = True) if layers else None
@@ -650,11 +645,11 @@ def declare_image(
             "out": delta.as_output(),
             "work": work.as_output() if work != None else None,
         }
-        if installer != None:
+        if system != None:
             spec["install"] = {
-                "arch": box[BoxInfo].arch,
+                "arch": architecture.spelling(box[BoxInfo].arch, system.arch_schema),
                 "docs": install_docs,
-                "installer": executable(installer),
+                "installer": executable(system.install),
                 "langs": install_langs,
                 "packages_dir": closure,
             }

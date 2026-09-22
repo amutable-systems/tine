@@ -87,6 +87,7 @@ box_python_test(
 
 package_system(
     name = "package_system",
+    arch_schema = "rpm",
     extract = ":extract",
     snapshot = ":snapshot",
     install = ":install",

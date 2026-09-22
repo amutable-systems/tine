@@ -13,7 +13,6 @@ extension-release pins the base's ID/VERSION_ID.
 
 load(
     "//image:image.bzl",
-    "ARCHES",
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
     "ImageToolsInfo",
@@ -31,6 +30,7 @@ load(
     "resolve_signing_key",
     "signing_key_spec",
 )
+load("//platforms:architecture.bzl", "ARCHITECTURES")
 
 SysextImageInfo = provider(
     doc = "A systemd system-extension DDI generated from a logical image.",
@@ -77,7 +77,7 @@ def declare_image_sysext(
         systemd_arch = "_any"
         architecture = "all"
     else:
-        systemd_arch = ARCHES[arch].systemd
+        systemd_arch = ARCHITECTURES[arch].systemd
         architecture = systemd_arch
     basename = "{}_{}_{}".format(extension, version, architecture)
     stem = basename + ".sysext"
@@ -192,7 +192,7 @@ def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
 
 SYSEXT_ATTRS = {
     "arch": attrs.enum(
-        ARCHES.keys() + ["_any"],
+        ARCHITECTURES.keys() + ["_any"],
         default = "x86_64",
         doc = "architecture the extension merges on, in its name and its extension-release, "
         + "\"_any\" publishes the DDI as '..._all' and sets ARCHITECTURE=_any",
