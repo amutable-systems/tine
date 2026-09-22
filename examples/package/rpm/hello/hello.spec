@@ -2,7 +2,7 @@ Name: hello
 Version: 1
 Release: %autorelease
 Summary: Exercise regular RPM package builds
-License: MIT
+License: MPL-2.0
 BuildArch: noarch
 
 %description

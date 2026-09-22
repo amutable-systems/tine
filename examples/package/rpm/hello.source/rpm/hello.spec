@@ -2,7 +2,7 @@ Name: hello
 Version: 1
 Release: %autorelease
 Summary: Exercise dev-mode source-tree RPM package builds
-License: MIT
+License: MPL-2.0
 BuildRequires: gcc
 Source1: packaging-marker
 
