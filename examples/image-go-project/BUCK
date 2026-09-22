@@ -67,11 +67,12 @@ box.sh_test(
     labels = ["image"],
     box = "@tine//tools:dev.box",
     script = 'for binary in "$@"; do [[ "$("$binary")" == "no dependencies here" ]]; done',
+    # $(exe) goes through RunInfo: a single binary is run as the target, any binary as its sub-target.
     args = [
-        "$(location :nodeps[nodeps])",
-        "$(location :renamed[renamed])",
-        "$(location :multiple[first])",
-        "$(location :multiple[second])",
+        "$(exe :nodeps)",
+        "$(exe :renamed)",
+        "$(exe :multiple[first])",
+        "$(exe :multiple[second])",
     ],
 )
 
