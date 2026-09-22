@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 name: GitHub runner setup
-description: Prepare an ubuntu-latest runner for a build, here or in a project consuming this cell.
+description: Prepare a GitHub-hosted Ubuntu runner for a build, here or in a project consuming this cell.
 
 runs:
   using: composite
