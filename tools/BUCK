@@ -103,6 +103,8 @@ box.new(
         "rpm-sign",
         "python3-createrepo_c",
         "python3-libdnf5",
+        # the license headers lint, see the `reuse` alias below
+        "reuse",
         "sed",
     ],
     release = _RELEASE,
@@ -201,6 +203,14 @@ command_alias(
     name = "check",
     args = ["check"] + _SOURCE_ARGS,
     exe = ":dev",
+)
+
+# REUSE compliance: every file's SPDX header, plus what REUSE.toml covers instead. Nobody ships a
+# standalone binary for it, so the lint nests this alias rather than taking a pinned tool by path.
+command_alias(
+    name = "reuse",
+    args = ["reuse"],
+    exe = ":dev.box",
 )
 
 # The rpm importer (see docs/user/importer.md): its verbs need the pinned rpm toolchain plus the
