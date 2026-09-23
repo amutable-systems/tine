@@ -82,6 +82,16 @@ if [ "$mode" = github ]; then
     trap 'printf "::endgroup::\n::error::ci group %s failed\n" "$groupname"' ERR
 fi
 
+# The boot smokes need the host's KVM. Some CI envs (like GitHub's arm64 runners) don't have that.
+have_kvm() { [ -e /dev/kvm ]; }
+vm_filter=()
+if ! have_kvm; then
+    # A smoke test contains `image` too, and a matching `--include` wins without `--always-exclude`.
+    vm_filter=(--exclude vm --always-exclude)
+    if [ "$mode" = github ]; then printf '::warning::'; fi
+    printf 'no /dev/kvm: skipping the VM boot smokes\n'
+fi
+
 # Sign the Secure Boot example through PKCS#11 tokens, exercising the external-key path end to end
 # with the production module: tools/signing-server serves one tpm2-pkcs11 token per key from a
 # software TPM, and the same example builds against its socket. Every tool this needs comes from the
@@ -145,7 +155,7 @@ EOF
     test "$pcrpkey" = "$pcr_certificate"
     test "$pcrpkey" != "$secure_boot_certificate"
 
-    "${buck[@]}" run "${config[@]}" tine//examples/image-secureboot:vm-smoke
+    if have_kvm; then "${buck[@]}" run "${config[@]}" tine//examples/image-secureboot:vm-smoke; fi
 }
 
 # Nothing here needs a box, so a graph that does not analyze is reported in seconds rather than
@@ -166,7 +176,7 @@ group build             -- "${buck[@]}" build tine//...
 # Everything `check` left out: the boot smokes over both package systems, which take minutes each,
 # and the assertions about what the images above produced. Adding one is declaring it, not naming it
 # here as well.
-group image-tests       -- "${buck[@]}" test tine//... --include image
+group image-tests       -- "${buck[@]}" test tine//... --include image "${vm_filter[@]}"
 group secureboot-pkcs11 -- secureboot_pkcs11
 # The shared cache with a real Buck on both ends; in its own isolation dir.
 group remote-cache      -- "${buck[@]}" run tine//tests:cache-roundtrip
