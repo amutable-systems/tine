@@ -10,7 +10,11 @@ or in a token, and profiles can opt out of the policy, so one image build exerci
 Integration tests only cover a few combinations; the rest are asserted here.
 """
 
+import contextlib
+import tempfile
 import unittest
+from pathlib import Path
+from typing import override
 
 import uki
 
@@ -137,8 +141,45 @@ class TestSigningArguments(unittest.TestCase):
 
 
 class TestSplashArguments(unittest.TestCase):
-    def test_no_splash(self) -> None:
-        self.assertEqual(uki._splash_arguments(None), [])
+    """A source is a path Buck handed the driver; an absolute path is a file in the mounted image."""
 
-    def test_splash(self) -> None:
-        self.assertEqual(uki._splash_arguments("boot.bmp"), ["--splash", "boot.bmp"])
+    @override
+    def setUp(self) -> None:
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.scratch = Path(scratch.name)
+        self.tree = self.scratch / "buildroot"
+        (self.scratch / "boot.bmp").write_bytes(b"BM" + bytes(52))
+        self._ship("usr/share/pixmaps/splash.bmp", b"BM" + bytes(52))
+
+    def _ship(self, path: str, content: bytes) -> None:
+        file = self.tree / path
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_bytes(content)
+
+    def test_no_splash(self) -> None:
+        self.assertEqual(uki._splash_arguments(None, self.tree), [])
+
+    def test_a_source_passes_through(self) -> None:
+        """Buck hands the driver a project-relative path, run at the project root."""
+        with contextlib.chdir(self.scratch):
+            self.assertEqual(uki._splash_arguments("boot.bmp", self.tree), ["--splash", "boot.bmp"])
+
+    def test_an_image_path_resolves_into_the_mounted_tree(self) -> None:
+        self.assertEqual(
+            uki._splash_arguments("/usr/share/pixmaps/splash.bmp", self.tree),
+            ["--splash", str(self.tree / "usr/share/pixmaps/splash.bmp")],
+        )
+
+    def test_an_image_path_the_image_does_not_ship(self) -> None:
+        """Named here rather than by ukify, which would only report an argument it cannot open."""
+        with self.assertRaises(SystemExit) as raised:
+            uki._splash_arguments("/usr/share/pixmaps/missing.bmp", self.tree)
+        self.assertIn("/usr/share/pixmaps/missing.bmp", str(raised.exception))
+
+    def test_a_splash_that_is_not_a_bmp(self) -> None:
+        """ukify embeds any bytes it is given; the stub would then show nothing at boot."""
+        self._ship("usr/share/pixmaps/logo.png", b"\x89PNG\r\n\x1a\n" + bytes(52))
+        with self.assertRaises(SystemExit) as raised:
+            uki._splash_arguments("/usr/share/pixmaps/logo.png", self.tree)
+        self.assertIn("not a BMP", str(raised.exception))

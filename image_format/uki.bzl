@@ -83,7 +83,7 @@ def declare_uki(
     image_id: str,
     version: str,
     initrd_modules: list[str],
-    splash: Artifact | None = None,
+    splash: Artifact | str | None = None,
     root_hash: RootHashInfo | None = None,
     secure_boot_key: SigningKeyInfo | None = None,
     sign_expected_pcr_key: SigningKeyInfo | None = None,
@@ -92,6 +92,10 @@ def declare_uki(
     """Declare UKI generation from resolved image providers."""
     if sign_expected_pcr_key != None and secure_boot_key == None:
         fail("uki: sign_expected_pcr_key needs Secure Boot signing, which signs the UKI it seals")
+    # A relative string became a source at coercion, so a string reaching here is what
+    # attrs.source() could not read; the only one that means something is an image path.
+    if type(splash) == "string" and not splash.startswith("/"):
+        fail("uki: splash must be a source or an absolute path in the image, got {!r}".format(splash))
 
     # ukify has one pair of provider options for both keys, so it cannot load one from a provider and
     # read the other from a file. Private keys and certificates are compared apart, because that is
@@ -208,9 +212,11 @@ UKI_ATTRS = {
         doc = "key sealing the expected-PCR policy; without one the policy is not sealed",
     ),
     "splash": attrs.option(
-        attrs.source(),
+        # An absolute path is a file in the image, which attrs.source() rejects; everything else is
+        # a source, so a declaration reads the same either way.
+        attrs.one_of(attrs.source(), attrs.string()),
         default = None,
-        doc = "BMP image embedded as the UKI splash screen",
+        doc = "BMP embedded as the UKI splash screen: a source, or the absolute path of one the image ships",
     ),
 }
 

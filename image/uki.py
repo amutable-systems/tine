@@ -63,7 +63,8 @@ class Spec(finalize.ImageSpec):
     secure_boot: Key | None
     # Seals the expected-PCR policy; None leaves it unsealed.
     sign_expected_pcr: Key | None
-    # BMP displayed by the EFI stub while booting; None embeds no splash section.
+    # BMP displayed by the EFI stub while booting, a build artifact or an absolute path into the
+    # image; None embeds no splash section.
     splash: str | None
 
 
@@ -145,8 +146,22 @@ def _ukify_options() -> set[str]:
     return {word for word in re.findall(r"--[a-z0-9-]+", help.stdout)}
 
 
-def _splash_arguments(splash: str | None) -> list[str]:
-    return ["--splash", splash] if splash else []
+def _splash_arguments(splash: str | None, tree: Path) -> list[str]:
+    """ukify's argument for the splash: a build artifact as is, an absolute path inside the image."""
+    if not splash:
+        return []
+    if splash.startswith("/"):
+        path = tree / splash.lstrip("/")
+        if not path.is_file():
+            fail(f"uki: the image ships no splash at {splash}")
+    else:
+        path = Path(splash)
+    # ukify embeds whatever it is handed (with Pillow importable it only refuses a non-BMP), and the
+    # stub renders BMP alone, so anything else would surface as a blank screen at boot.
+    with path.open("rb") as file:
+        if file.read(2) != b"BM":
+            fail(f"uki: splash {splash} is not a BMP, the only format the EFI stub displays")
+    return ["--splash", str(path)]
 
 
 def _signing_arguments(
@@ -287,7 +302,7 @@ def main(argv: list[str] | None = None) -> None:
             "--uname", kver,
             "--stub", str(stub),
             "--efi-arch", efi_arch,
-            *_splash_arguments(spec["splash"]),
+            *_splash_arguments(spec["splash"], tree),
             *signing,
             "--output", str(output),
         ]  # fmt: skip
