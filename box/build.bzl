@@ -72,7 +72,8 @@ def _solve(
         box = resolver_box[BoxInfo],
         system = system,
         repositories = repositories,
-        install = packages,
+        # the macro cannot see into a select(), so do the duplication elimination here
+        install = {package: True for package in packages}.keys(),
         arch = arch,
         solver_caches = solver_caches,
     )
@@ -264,7 +265,7 @@ _DEFAULT_PACKAGES = ["python3"]
 
 def new(
     name: str,
-    packages: list[str],
+    packages: list[str] | Select,
     release: str,
     architectures: list[str] = [],
     disable_repository_groups: list[str] | None = None,
@@ -294,7 +295,7 @@ def new(
             fail("box: cannot derive a resolver box from release '{}'; pass resolver_box".format(release))
         resolver_box = release.removesuffix(".release") + ".box"
     stem = name.removesuffix(".box")
-    packages = _DEFAULT_PACKAGES + [package for package in packages if package not in _DEFAULT_PACKAGES]
+    packages = _DEFAULT_PACKAGES + packages
 
     # The lock of each architecture, None until refresh-catalog has written one. A box that keeps
     # none has nothing to select over and resolves during the build instead.

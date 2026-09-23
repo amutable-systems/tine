@@ -160,12 +160,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20260923/Packages/e/e2fsprogs-libs-1.47.4-2.fc45.aarch64.rpm"
   },
   {
-    "package_id": "edk2-ovmf-20260812-8.fc46.noarch",
+    "package_id": "edk2-aarch64-20260812-8.fc46.noarch",
     "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "850e400796f4e4680412bccff189b0d57852e5e3d9ec79dc9e4e203a6a8ef78b",
+    "pkg_checksum": "660af54d23cd5aba5076d98e73af3b1357f878a646cf2d52a2e2d38f9e2fec79",
     "source": "repo",
-    "size": 19130435,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20260923/Packages/e/edk2-ovmf-20260812-8.fc46.noarch.rpm"
+    "size": 11320675,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20260923/Packages/e/edk2-aarch64-20260812-8.fc46.noarch.rpm"
   },
   {
     "package_id": "elfutils-libelf-0.196-1.fc46.aarch64",
@@ -1232,12 +1232,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20260923/Packages/q/qemu-img-11.1.1-1.fc46.aarch64.rpm"
   },
   {
-    "package_id": "qemu-system-x86-core-2:11.1.1-1.fc46.aarch64",
+    "package_id": "qemu-system-aarch64-core-2:11.1.1-1.fc46.aarch64",
     "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "427a3870b0e781bcc7cbf204178d09fd1c79358a05950266026d199586657a22",
+    "pkg_checksum": "1f23119f0f6d722d990256837e67815022c5fcde1150ce4c90c473bcf792279c",
     "source": "repo",
-    "size": 8415931,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20260923/Packages/q/qemu-system-x86-core-11.1.1-1.fc46.aarch64.rpm"
+    "size": 5817968,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20260923/Packages/q/qemu-system-aarch64-core-11.1.1-1.fc46.aarch64.rpm"
   },
   {
     "package_id": "rdma-core-common-64.0-7.fc46.noarch",
@@ -1294,22 +1294,6 @@
     "source": "repo",
     "size": 906560,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20260923/Packages/r/rpm-sequoia-1.10.3-1.fc46.aarch64.rpm"
-  },
-  {
-    "package_id": "seabios-bin-1.17.0-16.fc46.noarch",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "3274e204471438f60b870eb7d271f8c78bde982aa8cade6c7c0ad2170c92e787",
-    "source": "repo",
-    "size": 138774,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20260923/Packages/s/seabios-bin-1.17.0-16.fc46.noarch.rpm"
-  },
-  {
-    "package_id": "seavgabios-bin-1.17.0-16.fc46.noarch",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "32a825aa94ed245025678570372cc7d187760ddcf9683ab4ab137a07dec2e7b0",
-    "source": "repo",
-    "size": 53614,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20260923/Packages/s/seavgabios-bin-1.17.0-16.fc46.noarch.rpm"
   },
   {
     "package_id": "sed-4.10-2.fc45.aarch64",
