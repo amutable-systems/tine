@@ -47,6 +47,19 @@ def _spelling(name: str, schema: str) -> str:
         fail("architecture: {} has no {} name".format(name, schema))
     return spelled
 
+# What supplies this, and why requiring it skips a target; see platforms/BUCK
+_SERVED = "tine//platforms:architecture-served"
+
+def _compatibility(names: list[str]) -> Select:
+    """`target_compatible_with` value for a target that exists on `names` only.
+
+    `//...` skips it under any other architecture, and naming it directly reports why. Every target
+    depending on it has to declare the same value, as Buck reports a compatible target depending on an
+    incompatible one as an error, not a skip.
+    """
+    _check(names)
+    return select({ARCHITECTURES[name].config: [] for name in names} | {"DEFAULT": [_SERVED]})
+
 def _configured() -> Select:
     """A rule's attribute default for the architecture being built for.
 
@@ -56,6 +69,7 @@ def _configured() -> Select:
     return _select({name: name for name in ARCHITECTURES})
 
 architecture = struct(
+    compatibility = _compatibility,
     configured = _configured,
     select = _select,
     spelling = _spelling,

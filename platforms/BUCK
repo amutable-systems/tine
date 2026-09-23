@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
+load("@prelude//:rules.bzl", "constraint_setting", "constraint_value")
 load("@prelude//platforms:defs.bzl", "host_configuration")
 load(":architecture.bzl", "ARCHITECTURES")
 load(":defs.bzl", "execution_platform", "target_platform")
@@ -11,6 +12,18 @@ execution_platform(
     name = "default",
     cpu_configuration = host_configuration.cpu,
     os_configuration = host_configuration.os,
+    visibility = ["PUBLIC"],
+)
+
+# No platform carries this value. A target declares that it exists on some architectures only by
+# requiring this constraint in `target_compatible_with`. `//...` then skips it on other architectures,
+# and building it there reports `architecture-served unsatisfied`. See `architecture.compatibility()`
+# in platforms/architecture.bzl.
+constraint_setting(name = "served")
+
+constraint_value(
+    name = "architecture-served",
+    constraint_setting = ":served",
     visibility = ["PUBLIC"],
 )
 
