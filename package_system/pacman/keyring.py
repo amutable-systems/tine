@@ -56,7 +56,9 @@ def _configuration(time: str | None) -> str:
     when = datetime.fromisoformat(time)
     if when.tzinfo is None:
         when = when.replace(tzinfo=UTC)
-    return GPG_CONF + f"faked-system-time {when.astimezone(UTC).strftime('%Y%m%dT%H%M%S')}\n"
+    # Frozen with the "!": without it each gpg process starts at the given time and runs on from
+    # there, so a key made a second later than the process that next reads it is "from the future".
+    return GPG_CONF + f"faked-system-time {when.astimezone(UTC).strftime('%Y%m%dT%H%M%S')}!\n"
 
 
 def _populate(home: Path, spec: Spec, keyrings: Path) -> None:
