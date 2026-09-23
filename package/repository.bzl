@@ -25,6 +25,20 @@ PackagePoolValueInfo = provider(
     fields = {"packages": provider_field(dict[str, PackageArtifactInfo])},
 )
 
+def _snapshot_subtarget(architecture: str) -> str:
+    """The subtarget that takes a repository's metadata for one architecture.
+
+    Keep in sync with `_snapshot` in tools/catalog.py, which names it to refresh a lock.
+    """
+    return "snapshot." + architecture
+
+def _repository_lock_path(name: str, architecture: str) -> str:
+    """Where one architecture's committed metadata lock lives, relative to the catalog package.
+
+    Keep in sync with `_repository_lock_path` in tools/catalog.py, which writes it.
+    """
+    return "snapshot/repo/{}.{}.json".format(name, architecture)
+
 def snapshot_data(snapshot: ArtifactValue, id: str) -> dict:
     """Read one repository's committed snapshot."""
     data = snapshot.read_json()
@@ -199,8 +213,8 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
             vouches = ctx.attrs.package_system[PackageSystemInfo].metadata_vouches,
         )
     )
-    if ctx.attrs._arch not in ctx.attrs.architectures:
-        fail("repository '{}' has no {} mirror; the catalog declares {}".format(ctx.label.name, ctx.attrs._arch, ctx.attrs.architectures))
+    # An architecture the mirror does not serve never gets here: the `snapshot` and `box_locks` selects
+    # have no branch for it, and Buck fails configuring the target.
     baseurl = expand_baseurl(ctx.attrs.baseurl, ctx.attrs._arch, ctx.attrs.package_system[PackageSystemInfo])
 
     return remote_repository_base(
@@ -554,17 +568,24 @@ def remote_repository_base(
     reserved = [key for key in snapshot_spec if key in ("baseurl", "id")]
     if reserved:
         fail("remote_repository_base: {} are supplied by the neutral spec".format(reserved))
+
+    # per-architecture specs/subtargets so that refresh-catalog can produce all locks from a single build
     specs = {
-        served: ctx.actions.write_json(
-            "{}.snapshot.spec.json".format(served),
-            dict(snapshot_spec, baseurl = expand_baseurl(baseurl, served, system), id = rid),
+        architecture: ctx.actions.write_json(
+            "{}.snapshot.spec.json".format(architecture),
+            dict(snapshot_spec, baseurl = expand_baseurl(baseurl, architecture, system), id = rid),
             has_content_based_path = False,
         )
-        for served in architectures
+        for architecture in architectures
     }
-    sub_targets = {_manifest_subtarget(served): [DefaultInfo(default_output = spec)] for served, spec in specs.items()}
+
+    def snapshot(architecture: str) -> list[Provider]:
+        return [DefaultInfo(), RunInfo(args = cmd_args(system.snapshot[RunInfo], "--spec", specs[architecture]))]
+
+    sub_targets = {_snapshot_subtarget(architecture): snapshot(architecture) for architecture in specs}
+    sub_targets.update({_manifest_subtarget(architecture): [DefaultInfo(default_output = spec)] for architecture, spec in specs.items()})
     sub_targets["manifest"] = [DefaultInfo(default_output = specs[arch])]
-    sub_targets["snapshot"] = [DefaultInfo(), RunInfo(args = cmd_args(system.snapshot[RunInfo], "--spec", specs[arch]))]
+    sub_targets["snapshot"] = snapshot(arch)
     return [
         DefaultInfo(default_output = repo_dir, sub_targets = sub_targets),
         PackageRepositoryInfo(
@@ -622,7 +643,14 @@ def declare_remote_repository(
     url = pin.baseurl if pin != None else baseurl
     if len(architectures) > 1 and BASEARCH not in url:
         fail("{}: {!r} serves one architecture, not {}; name it with {}: {}".format(what, url, architectures, BASEARCH, name))
-    snapshots = glob(["snapshot/repo/" + name.removesuffix(".repository") + ".json"])
+
+    # The lock of each architecture, None until refresh-catalog has written one. A repository
+    # declared but never refreshed still analyzes; consuming its empty pool fails.
+    locks = {}
+    for arch in architectures:
+        committed = glob([_repository_lock_path(name.removesuffix(".repository"), arch)])
+        locks[arch] = committed[0] if committed else None
+
     remote_repository(
         name = name,
         architectures = architectures,
@@ -634,7 +662,7 @@ def declare_remote_repository(
         package_system = package_system,
         signing_key_files = glob([SIGNING_KEY_DIRECTORY + "/" + fingerprint + SIGNING_KEY_SUFFIX for fingerprint in signing_keys]),
         signing_keys = signing_keys,
-        snapshot = snapshots[0] if snapshots else None,
+        snapshot = architecture.select(locks),
         **kwargs,
     )
 

@@ -320,7 +320,8 @@ root, not OS identity alone, is its relevant input.
 Normal builds do not resolve against live network repositories. The catalog contains one required and two
 optional generated forms:
 
-- `snapshot/repo/<name>.json` pins one repository's build metadata and its complete package inventory,
+- `snapshot/repo/<name>.<architecture>.json` pins one repository's build metadata for one of the
+  architectures its mirror serves, and that architecture's complete package inventory,
   keyed by SHA-256 checksum. The metadata is files named by where each lands in the materialized
   repository: some fetched against a stated checksum, some carried verbatim where the pin narrowed what
   the mirror served. What goes in them belongs to the package system; placing them does not. Where the
@@ -361,9 +362,10 @@ phases. Pass another catalog package after `--`, for example
    phase and checks the committed pins.
 1. Fetch every signing key the selected repositories declare and the catalog does not hold yet, on the
    host. `verify-catalog` reports a missing one.
-2. Run every remote repository's `[snapshot]` sub-target on the host. The snapshot driver downloads and
-   verifies repository metadata, drops unused streams, validates package locations, and writes
-   deterministic, pure snapshot JSON. It does not carry packages forward from an earlier snapshot.
+2. Run every remote repository's `[snapshot.<architecture>]` sub-target on the host, once per
+   architecture its mirror serves. The snapshot driver downloads and verifies repository metadata, drops
+   unused streams, validates package locations, and writes deterministic, pure snapshot JSON. It does not
+   carry packages forward from an earlier snapshot. It only reads metadata, so any host runs it.
 3. Run the selected boxes' `[resolve]` sub-targets against the freshly pinned repository trees and
    atomically replace their optional frozen transactions. The target box's release, repository
    selection, package list, and architecture define the solve.
@@ -879,8 +881,8 @@ network stays confined to the first:
    silent re-resolution, and `GOTOOLCHAIN=local` keeps the box's go the only toolchain.
 
 The `packages` mapping selects the main packages to build and names their outputs. A checked-out project
-often carries commands an image does not install; building those would cost time and may require 
-additional build requirements. The driver resolves each selection with `go list` and builds it with 
+often carries commands an image does not install; building those would cost time and may require
+additional build requirements. The driver resolves each selection with `go list` and builds it with
 `go build -o`, using the declared output name.
 
 No auditable wrapper exists in this path because go itself embeds the module list in every binary it
