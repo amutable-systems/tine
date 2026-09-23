@@ -265,6 +265,34 @@ image.sysext_image(
     ops = [image.copy("from-source.txt", "/usr/lib/tine/from-source")],
 )
 
+# A file tree that differs per distribution is one copy whose source is a select, rather than a
+# target per distribution and an alias choosing between them. A distribution the select names no
+# tree for gets `None`, which copies nothing; only arch ships one so every other exercises that.
+image.layer(
+    name = "tree.layer",
+    parent = ":base",
+    ops = [
+        image.copy("tree/os", "/"),
+        image.copy(distribution.select({"arch": "tree/os.arch"}, default = None), "/"),
+    ],
+)
+
+image.archive(
+    name = "tree",
+    image = ":tree.layer",
+    format = "tar",
+)
+
+# Every distribution the PACKAGE file declares, so the test sees the select choose the arch tree
+# and none for the rest, whichever those are.
+box.sh_test(
+    name = "tree-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    test = "tree-test.sh",
+    args = [arg for name in sorted(DISTRIBUTIONS) for arg in ["$(location :tree.{})".format(name), name if name == "arch" else "none"]],
+)
+
 # Replacing a populated directory exercises the opaque-dir marker.
 image.layer(
     name = "opaque-base",

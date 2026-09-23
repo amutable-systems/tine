@@ -257,6 +257,11 @@ LayerOperation = tuple
 # Recursive type aliases are unavailable, so nested lists become dynamic at this boundary.
 LayerOperationTree = LayerOperation | list[typing.Any]
 
+# An operation argument, or a `select()` over it: Buck resolves the select where the rule reads the
+# operation, so the helpers pass it through untouched.
+Selectable = str | Select
+SelectableArtifact = str | Artifact | Select
+
 # Each architecture's EFI spelling (ukify's --efi-arch, which also names the boot stubs) and
 # systemd spelling (systemd's %a specifier), which names boot artifacts. The uki driver reads both from
 # its spec, so this table is the single source; extend it to enable more architectures.
@@ -264,7 +269,7 @@ ARCHES = {"x86_64": struct(efi = "x64", systemd = "x86-64")}
 
 # Operations replayed by the layer driver.
 
-def run(cmd: list[str | Artifact], env: dict[str, str] = {}, chroot: bool = False) -> LayerOperation:
+def run(cmd: list[SelectableArtifact] | Select, env: dict[str, Selectable] = {}, chroot: bool | Select = False) -> LayerOperation:
     """Run `cmd` against the image, either with the box's tooling or the image's own.
 
     By default the box supplies the userspace and the image is mounted at /buildroot. With
@@ -278,7 +283,7 @@ def run(cmd: list[str | Artifact], env: dict[str, str] = {}, chroot: bool = Fals
     """
     return ("run", cmd, _environment(env), chroot)
 
-def python(cmd: list[str | Artifact], env: dict[str, str] = {}, chroot: bool = False) -> LayerOperation:
+def python(cmd: list[SelectableArtifact], env: dict[str, Selectable] = {}, chroot: bool | Select = False) -> LayerOperation:
     """Run a python script against the image, with the interpreter Buck already pins.
 
     `chroot` picks the image's view exactly as it does for `run`: mounted at /buildroot by default,
@@ -294,27 +299,31 @@ def python(cmd: list[str | Artifact], env: dict[str, str] = {}, chroot: bool = F
         fail("python: cmd must not be empty")
     return ("python", cmd, _environment(env), chroot)
 
-def _environment(env: dict[str, str]) -> dict[str, str]:
+def _environment(env: dict[str, Selectable]) -> dict[str, Selectable]:
     return {name: env[name] for name in sorted(env)}
 
-def mkdir(path: str) -> LayerOperation:
+def mkdir(path: Selectable) -> LayerOperation:
     """Create a directory in the image."""
     return ("mkdir", path)
 
-def symlink(target: str, path: str) -> LayerOperation:
+def symlink(target: Selectable, path: Selectable) -> LayerOperation:
     """Create a symlink at `path` pointing at `target`."""
     return ("symlink", target, path)
 
-def write_file(path: str, content: str = "") -> LayerOperation:
+def write_file(path: Selectable, content: Selectable = "") -> LayerOperation:
     """Write a file at `path` in the image holding exactly `content`."""
     return ("write_file", path, content)
 
-def remove(path: str) -> LayerOperation:
+def remove(path: Selectable) -> LayerOperation:
     """Remove every image path matching an absolute glob pattern."""
     return ("remove", path)
 
-def copy(source: str | Artifact, destination: str) -> LayerOperation:
-    """Copy a declared artifact to an absolute path in the image."""
+def copy(source: SelectableArtifact | None, destination: Selectable) -> LayerOperation:
+    """Copy a declared artifact to an absolute path in the image.
+
+    A `select()` may resolve `source` to `None`, in which case nothing is copied: that is how a
+    tree only some distributions ship is one operation rather than a target per distribution.
+    """
     return ("copy", source, destination)
 
 def install_from(target: str) -> LayerOperation:
@@ -334,6 +343,9 @@ def expand_install_from(ops: list[typing.Any]) -> (list[str], list[typing.Any]):
             info = operation[1][ImageInstallInfo]
             packages += info.packages
             expanded += info.operations
+        elif operation[0] == "copy" and operation[1] == None:
+            # A select chose no source for this configuration.
+            pass
         else:
             expanded.append(operation)
     return packages, expanded
@@ -730,7 +742,7 @@ IMAGE_OPERATION_ATTR = attrs.one_of(
     ),
     attrs.tuple(
         attrs.enum(["copy"]),
-        attrs.source(allow_directory = True),
+        attrs.option(attrs.source(allow_directory = True)),
         attrs.string(),
     ),
     attrs.tuple(

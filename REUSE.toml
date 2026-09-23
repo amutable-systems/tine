@@ -9,6 +9,7 @@ path = [
     "examples/image/expected.json",
     "examples/image/from-source.txt",
     "examples/image/marker.txt",
+    "examples/image/tree/**",
     "examples/package/rpm/hello.source/rpm/packaging-marker",
     "tools/starlark-fmt.json",
     "tools/tools.json",
