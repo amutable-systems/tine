@@ -1,15 +1,52 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Tests for the catalog tool's host-side key handling and its rollback."""
+"""Tests for the catalog refresher.
+
+    buck test tine//tools:catalog-test
+
+The gateway enumeration is stubbed, so advancing a pin is covered offline. Armoring a key is checked
+against the dev box's gpg, and a failed refresh's rollback against a scratch checkout.
+"""
 
 import base64
+import contextlib
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from typing import override
+from unittest import mock
 
 import catalog
+
+MIRROR = "https://mirror.test/v2/mirror/public/t9"
+
+# What each fixture repository's manifest says it is pinned to, per architecture, in place of
+# building the manifest: (target, architecture) -> snapshot id as the mirror spells it.
+SERVED: dict[tuple[str, str], str] = {}
+
+
+def pin(snapshot: str, name: str = "test.rolling", **snapshots: str) -> catalog.Pin:
+    """A repository's pin as `_pinned_repositories` reads it, serving `snapshots` per architecture."""
+    target = f"tine//catalog:{name}.repository"
+    for architecture, served in snapshots.items():
+        SERVED[(target, architecture)] = served
+    return catalog.Pin(
+        target=target,
+        mirror=MIRROR,
+        snapshot=snapshot,
+        architectures=tuple(snapshots),
+    )
+
+
+def two_architectures(snapshot: str) -> catalog.Pin:
+    """A pin whose mirror serves arm64 and x86_64, each under rpm's name for it."""
+    return pin(
+        snapshot,
+        arm64=snapshot.replace("$basearch", "aarch64"),
+        x86_64=snapshot.replace("$basearch", "x86_64"),
+    )
 
 
 class TestCheckout(unittest.TestCase):
@@ -95,6 +132,64 @@ class TestArmor(unittest.TestCase):
         self.assertTrue(armored.endswith(catalog.ARMOR_FOOTER.decode() + "\n"))
         body = "".join(line for line in armored.splitlines()[2:-2])
         self.assertEqual(base64.b64decode(body), binary)
+
+
+class NewestRpmrepoSnapshot(unittest.TestCase):
+    @override
+    def setUp(self) -> None:
+        # Where the tool would build a manifest, answer from the fixtures.
+        patched = mock.patch.object(
+            catalog,
+            "_pinned_snapshot",
+            side_effect=lambda buck, pin, architecture: SERVED[(pin.target, architecture)],
+        )
+        patched.start()
+        self.addCleanup(patched.stop)
+
+    def enumerating(
+        self, *snapshots: str
+    ) -> contextlib.AbstractContextManager[mock.MagicMock | mock.AsyncMock]:
+        """Stub the mirror, answering each series it is asked about with the next snapshot given."""
+        return mock.patch.object(catalog, "_newest_snapshot", side_effect=snapshots)
+
+    def test_moves_the_datestamp_and_keeps_the_placeholder(self) -> None:
+        with self.enumerating("t9-x86_64-rolling-20260202"):
+            newest = catalog._newest_rpmrepo_snapshot(
+                "buck", [pin("t9-$basearch-rolling-20260101", x86_64="t9-x86_64-rolling-20260101")]
+            )
+        self.assertEqual(newest, "t9-$basearch-rolling-20260202")
+
+    def test_enumerates_the_series_of_every_architecture(self) -> None:
+        with self.enumerating(
+            "t9-aarch64-rolling-20260202", "t9-x86_64-rolling-20260202"
+        ) as newest_snapshot:
+            catalog._newest_rpmrepo_snapshot("buck", [two_architectures("t9-$basearch-rolling-20260101")])
+        self.assertEqual(
+            [call.args[2] for call in newest_snapshot.call_args_list],
+            ["t9-aarch64-rolling", "t9-x86_64-rolling"],
+        )
+
+    def test_refuses_architectures_on_different_days(self) -> None:
+        with self.enumerating("t9-aarch64-rolling-20260201", "t9-x86_64-rolling-20260202"):
+            with self.assertRaises(SystemExit) as raised:
+                catalog._newest_rpmrepo_snapshot(
+                    "buck", [two_architectures("t9-$basearch-rolling-20260101")]
+                )
+        self.assertIn("one pin cannot advance to several snapshots", str(raised.exception))
+        self.assertIn("(arm64) offers t9-aarch64-rolling-20260201", str(raised.exception))
+
+    def test_refuses_repositories_on_different_days(self) -> None:
+        shared = "t9-$basearch-rolling-20260101"
+        with self.enumerating("t9-x86_64-rolling-20260201", "t9-x86_64-rolling-20260202"):
+            with self.assertRaises(SystemExit) as raised:
+                catalog._newest_rpmrepo_snapshot(
+                    "buck",
+                    [
+                        pin(shared, name="test.core", x86_64="t9-x86_64-rolling-20260101"),
+                        pin(shared, name="test.extra", x86_64="t9-x86_64-rolling-20260101"),
+                    ],
+                )
+        self.assertIn("one pin cannot advance to several snapshots", str(raised.exception))
 
 
 if __name__ == "__main__":

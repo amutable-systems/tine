@@ -24,11 +24,13 @@ import argparse
 import base64
 import contextlib
 import difflib
+import functools
 import itertools
 import json
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -53,6 +55,7 @@ PACMAN_REMOTE_REPOSITORY_LABEL = "tine:pacman-remote-repository"
 # Keep in sync with SIGNING_KEY_DIRECTORY/SIGNING_KEY_SUFFIX in package/repository.bzl.
 SIGNING_KEY_DIRECTORY = Path("snapshot/key")
 SIGNING_KEY_SUFFIX = ".key"
+
 ARMOR_HEADER = b"-----BEGIN PGP PUBLIC KEY BLOCK-----"
 ARMOR_FOOTER = b"-----END PGP PUBLIC KEY BLOCK-----"
 # How a binary OpenPGP stream that opens with a public-key packet starts: tag 6 in either framing.
@@ -109,17 +112,34 @@ def _run(buck: str, target: str) -> str:
     return subprocess.run(command, check=True, stdout=subprocess.PIPE, encoding="utf-8").stdout
 
 
-def _pinned_repositories(buck: str, catalog: str, label: str, prefix: str) -> dict[str, dict[str, str]]:
-    """Map repository targets carrying a `<prefix>.*` pin to that pin's metadata."""
+@dataclass(frozen=True)
+class Pin:
+    """One repository's mirror pin, as the catalog declares it."""
+
+    target: str
+    mirror: str
+    # Exactly as the catalog writes it, `$basearch` included.
+    snapshot: str
+    # What the mirror serves, and so what the pin names one snapshot of each.
+    architectures: tuple[str, ...]
+
+    @property
+    def name(self) -> str:
+        """The repository's target name, as progress and errors report it."""
+        return _name_of(self.target)
+
+
+def _pinned_repositories(buck: str, catalog: str, label: str, prefix: str) -> list[Pin]:
+    """The repositories in `catalog` whose base URLs come from a `<prefix>.*` mirror pin."""
     out = buck_output(
         buck,
         "uquery",
         "--json",
-        "--output-attribute=^metadata$",
+        "--output-attribute=^(architectures|metadata)$",
         f"attrfilter(labels, '{label}', {catalog})",
     )
-    repositories: dict[str, dict[str, str]] = {}
-    for target, attributes in json.loads(out).items():
+    pins = []
+    for target, attributes in sorted(json.loads(out).items()):
         metadata = attributes.get("metadata") or {}
         pin = {
             key.removeprefix(f"{prefix}."): value
@@ -127,8 +147,15 @@ def _pinned_repositories(buck: str, catalog: str, label: str, prefix: str) -> di
             if key.startswith(f"{prefix}.")
         }
         if "snapshot" in pin and "mirror" in pin:
-            repositories[target] = pin
-    return repositories
+            pins.append(
+                Pin(
+                    target=target,
+                    mirror=pin["mirror"],
+                    snapshot=pin["snapshot"],
+                    architectures=tuple(attributes["architectures"]),
+                )
+            )
+    return pins
 
 
 class _Checkout:
@@ -179,24 +206,24 @@ def _rewrite_pin(checkout: _Checkout, declaration: Path, attribute: str, current
 
 def _advance(
     checkout: _Checkout,
-    repositories: dict[str, dict[str, str]],
+    repositories: list[Pin],
     selected: set[str],
-    newest: Callable[[dict[str, dict[str, str]]], str],
+    newest: Callable[[list[Pin]], str],
     declaration: Path,
     attribute: str,
 ) -> int:
     """Advance each distinct pin once, so repositories sharing one stay on one snapshot; how many moved."""
-    groups: dict[str, dict[str, dict[str, str]]] = {}
-    for target, pin in sorted(repositories.items()):
-        groups.setdefault(pin["snapshot"], {})[target] = pin
+    groups: dict[str, list[Pin]] = {}
+    for pin in repositories:
+        groups.setdefault(pin.snapshot, []).append(pin)
 
     advances = {}
     for current, pins in sorted(groups.items()):
         # Grouping is over the whole catalog, not the selection, because rewriting the literal
         # moves every repository written from it. A group the caller is not about to re-snapshot
         # in full therefore has to stay where it is.
-        names = ", ".join(_name_of(target) for target in sorted(pins))
-        if not set(pins) <= selected:
+        names = ", ".join(pin.name for pin in pins)
+        if not {pin.target for pin in pins} <= selected:
             print(f"==> leaving {names} on {current} (outside this refresh)", file=sys.stderr)
             continue
         wanted = newest(pins)
@@ -227,14 +254,42 @@ def _series(snapshot: str) -> str:
     return snapshot.rsplit("-", 1)[0]
 
 
-def _newest_rpmrepo_snapshot(pins: dict[str, dict[str, str]]) -> str:
-    """The newest snapshot every repository sharing one rpmrepo pin can move to."""
-    wanted = {
-        _newest_snapshot(_name_of(target), pin["mirror"], _series(pin["snapshot"]))
-        for target, pin in pins.items()
+def _datestamp(snapshot: str) -> str:
+    """A snapshot id's trailing datestamp."""
+    return snapshot.rsplit("-", 1)[1]
+
+
+def _pinned_snapshot(buck: str, pin: Pin, architecture: str) -> str:
+    """The snapshot id one architecture of a pinned repository is served from, as the mirror spells it.
+
+    The rule that expands the pin's placeholder writes it into that architecture's snapshot spec,
+    so this reads it from there.
+    """
+    # Keep the subtarget name in sync with `_manifest_subtarget` in package/repository.bzl.
+    subtarget = f"{pin.target}[manifest.{architecture}]"
+    manifest = buck_output(buck, "build", "--show-full-simple-output", subtarget)
+    spec = cast(dict[str, str], json.loads(Path(manifest).read_text(encoding="utf-8")))
+    return spec["baseurl"].rsplit("/", 1)[1]
+
+
+def _newest_rpmrepo_snapshot(buck: str, pins: list[Pin]) -> str:
+    """The newest snapshot every repository and architecture sharing one rpmrepo pin can move to.
+
+    The answer is a pin like the one read, placeholder and all: a refresh moves the datestamp and
+    leaves the shape of the id the catalog maintains alone.
+    """
+    offers = {
+        f"{pin.name} ({architecture})": _newest_snapshot(
+            pin.name, pin.mirror, _series(_pinned_snapshot(buck, pin, architecture))
+        )
+        for pin in pins
+        for architecture in pin.architectures
     }
+    # A group shares its snapshot literal, so any member's series is the series of all of them.
+    wanted = {f"{_series(pins[0].snapshot)}-{_datestamp(offer)}" for offer in offers.values()}
     if len(wanted) != 1:
-        fail(f"catalog: {sorted(pins)} disagree on their successor: {sorted(wanted)}")
+        detail = ", ".join(f"{who} offers {offer}" for who, offer in sorted(offers.items()))
+        fail(f"catalog: one pin cannot advance to several snapshots: {detail}")
     return wanted.pop()
 
 
@@ -256,16 +311,16 @@ def _newest_snapshot(repository: str, mirror: str, series: str) -> str:
     return max(matches)
 
 
-def _newest_archive_snapshot(pins: dict[str, dict[str, str]]) -> str:
+def _newest_archive_snapshot(pins: list[Pin]) -> str:
     """The newest day the archive has finished publishing.
 
     The archive publishes a tree per day rather than an index to enumerate, but it does record when
     it last finished one, which is the only thing that says a day is complete rather than half
     written. Every repository in a group shares the pin, so one marker answers for all of them.
     """
-    pin = next(iter(pins.values()))
+    pin = pins[0]
     # Keep in sync with pacman_remote_repository's base URL, whose mirror this is rooted at.
-    url = pin["mirror"].rstrip("/") + "/last/lastsync"
+    url = pin.mirror.rstrip("/") + "/last/lastsync"
 
     def lastsync() -> str:
         with urlopen(url, agent="tine-catalog") as response:
@@ -273,7 +328,7 @@ def _newest_archive_snapshot(pins: dict[str, dict[str, str]]) -> str:
         return synced.strftime("%Y/%m/%d")
 
     # An advance never moves a pin backwards.
-    return max(with_retries("archive: lastsync", lastsync), pin["snapshot"])
+    return max(with_retries("archive: lastsync", lastsync), pin.snapshot)
 
 
 def _advance_snapshots(
@@ -289,7 +344,12 @@ def _advance_snapshots(
     wanted = set(selected)
     advanced = 0
     for label, prefix, attribute, newest in (
-        (RPM_REMOTE_REPOSITORY_LABEL, "rpmrepo", "rpmrepo_snapshot", _newest_rpmrepo_snapshot),
+        (
+            RPM_REMOTE_REPOSITORY_LABEL,
+            "rpmrepo",
+            "rpmrepo_snapshot",
+            functools.partial(_newest_rpmrepo_snapshot, buck),
+        ),
         (PACMAN_REMOTE_REPOSITORY_LABEL, "archlinux", "archive_snapshot", _newest_archive_snapshot),
     ):
         pinned = _pinned_repositories(buck, catalog, label, prefix)
