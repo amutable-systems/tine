@@ -3,9 +3,10 @@
 
 """Refresh pure catalog snapshots, then resolve box transactions against those pins.
 
-Repositories pinned to a mirror that publishes snapshots first advance their declaration to the
-newest one: an rpmrepo gateway enumerates them, while the Arch Linux Archive publishes a tree
-per day. Repositories sharing one pin advance together, and rolling back means editing the pin.
+With `--advance`, repositories pinned to a mirror that publishes snapshots first advance their
+declaration to the newest one: an rpmrepo gateway enumerates them, while the Arch Linux Archive
+publishes a tree per day. Repositories sharing one pin advance together, and rolling back means
+editing the pin.
 
 Remote box-lock entries retain their package transports, so a repository's package pool keeps
 the committed box available after its repodata advances.
@@ -130,7 +131,40 @@ def _pinned_repositories(buck: str, catalog: str, label: str, prefix: str) -> di
     return repositories
 
 
-def _rewrite_pin(declaration: Path, attribute: str, current: str, wanted: str) -> None:
+class _Checkout:
+    """The files a refresh writes, and what they held before, so a failed one puts them back.
+
+    A refresh has to write as it goes: the advanced pin is what the snapshots are taken at, and a
+    snapshot has to be on disk before the box that reads it resolves. Left half done, the advanced
+    pin beside the old snapshots builds neither the old catalog nor the new, so a failure restores
+    every file to what the checkout held.
+    """
+
+    def __init__(self) -> None:
+        self._originals: dict[Path, str | None] = {}
+
+    def write(self, path: Path, content: str) -> None:
+        if path not in self._originals:
+            self._originals[path] = path.read_text(encoding="utf-8") if path.exists() else None
+        atomic_write_text(path, content)
+
+    def restore(self) -> None:
+        """Put every written file back, all of them even if one refuses, then report the first refusal."""
+        failed: Exception | None = None
+        for path, content in self._originals.items():
+            try:
+                if content is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    atomic_write_text(path, content)
+            except OSError as error:
+                failed = failed or error
+        self._originals.clear()
+        if failed is not None:
+            raise failed
+
+
+def _rewrite_pin(checkout: _Checkout, declaration: Path, attribute: str, current: str, wanted: str) -> None:
     """Repoint every declaration carrying one pin at its successor.
 
     Every occurrence moves, which is why only a whole pin group is ever advanced: repositories
@@ -140,17 +174,18 @@ def _rewrite_pin(declaration: Path, attribute: str, current: str, wanted: str) -
     content = declaration.read_text(encoding="utf-8")
     if pin not in content:
         fail(f"catalog: expected {pin!r} in {declaration}")
-    declaration.write_text(content.replace(pin, f'{attribute} = "{wanted}"'), encoding="utf-8")
+    checkout.write(declaration, content.replace(pin, f'{attribute} = "{wanted}"'))
 
 
 def _advance(
+    checkout: _Checkout,
     repositories: dict[str, dict[str, str]],
     selected: set[str],
     newest: Callable[[dict[str, dict[str, str]]], str],
     declaration: Path,
     attribute: str,
-) -> None:
-    """Advance each distinct pin once, so repositories sharing one stay on one snapshot."""
+) -> int:
+    """Advance each distinct pin once, so repositories sharing one stay on one snapshot; how many moved."""
     groups: dict[str, dict[str, dict[str, str]]] = {}
     for target, pin in sorted(repositories.items()):
         groups.setdefault(pin["snapshot"], {})[target] = pin
@@ -183,7 +218,8 @@ def _advance(
 
     for current, (wanted, names) in advances.items():
         print(f"==> advancing {names} to {wanted} (from {current})", file=sys.stderr)
-        _rewrite_pin(declaration, attribute, current, wanted)
+        _rewrite_pin(checkout, declaration, attribute, current, wanted)
+    return len(advances)
 
 
 def _series(snapshot: str) -> str:
@@ -240,7 +276,9 @@ def _newest_archive_snapshot(pins: dict[str, dict[str, str]]) -> str:
     return max(with_retries("archive: lastsync", lastsync), pin["snapshot"])
 
 
-def _advance_snapshots(buck: str, catalog: str, catalog_dir: Path, selected: list[str]) -> None:
+def _advance_snapshots(
+    checkout: _Checkout, buck: str, catalog: str, catalog_dir: Path, selected: list[str]
+) -> None:
     """Advance the selected mirror-pinned repositories to the newest snapshot their mirror offers.
 
     Advancing a pin without re-snapshotting the repository it belongs to would leave a base URL
@@ -249,12 +287,17 @@ def _advance_snapshots(buck: str, catalog: str, catalog_dir: Path, selected: lis
     """
     declaration = catalog_dir / "BUCK"
     wanted = set(selected)
+    advanced = 0
     for label, prefix, attribute, newest in (
         (RPM_REMOTE_REPOSITORY_LABEL, "rpmrepo", "rpmrepo_snapshot", _newest_rpmrepo_snapshot),
         (PACMAN_REMOTE_REPOSITORY_LABEL, "archlinux", "archive_snapshot", _newest_archive_snapshot),
     ):
         pinned = _pinned_repositories(buck, catalog, label, prefix)
-        _advance(pinned, wanted, newest, declaration, attribute)
+        advanced += _advance(checkout, pinned, wanted, newest, declaration, attribute)
+    if not advanced:
+        # Asked for and not done is worth a line: every selected pin is either newest already or
+        # shared with a repository outside the selection.
+        print("==> no pin advanced", file=sys.stderr)
 
 
 def _declared_signing_keys(buck: str, repositories: list[str]) -> dict[str, str]:
@@ -367,9 +410,8 @@ def _plan(
     buck: str,
     catalog: str,
     selected_boxes: list[str] | None,
-    advance_snapshots: bool,
 ) -> tuple[Path, list[str], list[str]]:
-    """Pick what to refresh, advancing the mirror pins it will be resolved against.
+    """Pick what to refresh.
 
     Selecting boxes also scopes the snapshotted repositories to those the boxes depend on, so a
     partial refresh or verify never touches a repository outside the selection.
@@ -384,10 +426,7 @@ def _plan(
     targets = all_resolves + snapshots
     if not targets:
         fail(f"catalog: no repository/box refresh targets found in {catalog}")
-    catalog_dir = _catalog_directory(buck, targets)
-    if advance_snapshots:
-        _advance_snapshots(buck, catalog, catalog_dir, snapshots)
-    return catalog_dir, snapshots, resolves
+    return _catalog_directory(buck, targets), snapshots, resolves
 
 
 def _regenerate(
@@ -458,6 +497,11 @@ def main(argv: list[str] | None = None) -> None:
         help="only (re)resolve these boxes and snapshot the repositories they depend on; default: all",
     )
     p.add_argument(
+        "--advance",
+        action="store_true",
+        help="first advance the selected repositories' pins to the newest snapshot their mirrors offer",
+    )
+    p.add_argument(
         "--verify",
         action="store_true",
         help="assert the committed catalog matches what the pinned resolvers produce (CI)",
@@ -470,17 +514,26 @@ def main(argv: list[str] | None = None) -> None:
     args = p.parse_args(argv)
     if args.commit and args.verify:
         p.error("--verify leaves the checkout as it found it, so there is nothing to commit")
+    if args.advance and args.verify:
+        p.error("--verify checks the committed pins, so there is nothing to advance")
     catalog = _catalog_pattern(args.catalog)
 
     # Run nested commands from the project root so wrappers resolve consistently.
     with contextlib.chdir(buck_output(args.buck, "root", "--kind", "project")) as _:
-        catalog_dir, snapshots, resolves = _plan(
-            args.buck, catalog, args.box, advance_snapshots=not args.verify
-        )
+        catalog_dir, snapshots, resolves = _plan(args.buck, catalog, args.box)
+        # Lazy: nothing is snapshotted until the loop below asks, after the pins have moved.
         regenerated = _regenerate(args.buck, catalog_dir, snapshots, resolves)
         if not args.verify:
-            for path, content in regenerated:
-                atomic_write_text(path, content)
+            checkout = _Checkout()
+            try:
+                if args.advance:
+                    _advance_snapshots(checkout, args.buck, catalog, catalog_dir, snapshots)
+                for path, content in regenerated:
+                    checkout.write(path, content)
+            except BaseException:
+                print("==> the refresh failed; restoring the checkout", file=sys.stderr)
+                checkout.restore()
+                raise
             if args.commit:
                 _commit(catalog_dir)
             return

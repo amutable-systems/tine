@@ -39,7 +39,7 @@ Each release consists of targets named `<family>.<release>.<role>`, for example
 `tine//catalog:fedora.rawhide.package-manager` or `tine//catalog:arch.rolling.release`. The pins live
 as committed snapshots under [`catalog/snapshot/`](../catalog/snapshot/): repository metadata in
 `snapshot/repo/*.json` and frozen box transactions in `snapshot/box/*.json`. Normal builds therefore
-never touch the network; `refresh-catalog` (below) advances the pins. A project can instead declare its
+never touch the network; `refresh-catalog --advance` (below) advances the pins. A project can instead declare its
 own `//catalog` package with the same macros. The naming scheme and the pinning mechanism are described in
 [architecture.md](../design/architecture.md).
 

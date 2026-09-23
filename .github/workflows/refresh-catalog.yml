@@ -35,7 +35,7 @@ jobs:
         run: |
           python3 tools/bot_pr.py --name refresh-catalog \
               --label-description 'automatic catalog refreshes' \
-              --command 'bin/tine buck run tine//tools:refresh-catalog -- --commit &&
+              --command 'bin/tine buck run tine//tools:refresh-catalog -- --advance --commit &&
                   bin/tine buck run tine//examples/image:refresh-expected -- --amend' \
               --test tools/ci.sh \
               --repo '${{ github.repository }}' \

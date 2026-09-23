@@ -348,8 +348,8 @@ when its authored policy, resolver box, or pinned repository inputs change.
 phases. Pass another catalog package after `--`, for example
 `tine buck run tine//tools:refresh-catalog -- my_project//catalog`:
 
-0. Advance every repository pinned to a mirror that publishes snapshots, by rewriting the pin in the
-   declaration. A remote repository rule owns its own pin arguments and carries them as metadata under a
+0. With `--advance`, advance every repository pinned to a mirror that publishes snapshots, by rewriting
+   the pin in the declaration. A remote repository rule owns its own pin arguments and carries them as metadata under a
    namespace it owns, so a package system joins this phase by declaring a pin. How the newest snapshot is
    found is the mirror's business: one enumerates its snapshots through a gateway, while another publishes
    a tree per day and exposes no index at all, but does record when it last finished one, which is the

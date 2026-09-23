@@ -11,7 +11,7 @@ load("//distribution:arch.bzl", "arch_release", "arch_signing_keys")
 load("//distribution:fedora.bzl", "fedora_release", "fedora_signing_keys")
 
 # Pinned rpmrepo compose snapshot: packages never vanish underneath committed pins.
-# refresh-catalog enumerates the mirror and advances the snapshot pin to the newest compose.
+# refresh-catalog --advance enumerates the mirror and moves the snapshot pin to the newest compose.
 fedora_release(
     name = "fedora.rawhide",
     version = "rawhide",
@@ -67,7 +67,7 @@ box.new(
 
 # Arch has no numbered releases, so the catalog pins a day in the Arch Linux Archive: its dated
 # trees serve databases that never change under a committed pin, which a rolling mirror cannot.
-# refresh-catalog advances every repository sharing this pin to the newest complete day.
+# refresh-catalog --advance moves every repository sharing this pin to the newest complete day.
 arch_release(
     name = "arch.rolling",
     archive_snapshot = "2026/09/19",
