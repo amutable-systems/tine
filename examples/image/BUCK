@@ -26,7 +26,7 @@ DISTRIBUTIONS = distribution.for_package()
 # from is the one thing a distribution decides for an image, so it is the only select below.
 package.manager(
     name = "image.package-manager",
-    base = select({d["distribution"]: d["package_manager"] for d in DISTRIBUTIONS.values()}),
+    base = distribution.select({name: d["package_manager"] for name, d in DISTRIBUTIONS.items()}),
 )
 
 # A build artifact a command names through $(location), chrooted or not.
@@ -54,7 +54,12 @@ export_file(
 image.rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
-    packages = ["bash", "coreutils"],
+    packages = ["bash", "coreutils"]
+    # Some extra coverage for distribution.select().
+    + distribution.select({
+        "arch": ["archlinux-keyring"],
+        "fedora": ["fedora-gpg-keys"],
+    }),
     ops = [
         image.run(["/usr/bin/mkdir", "-p", "/buildroot/etc/tine"]),
         image.run(["/usr/bin/cp", "$(location :marker.txt)", "/buildroot/etc/tine/from-location"]),
@@ -232,7 +237,7 @@ tests.vm_smoke(
         # build produced rather than the `/etc` symlink to it: a `/usr`-only disk boots with a
         # volatile root, and whether anything recreates that symlink is a property of the
         # distribution's own systemd rather than of the image.
-        select({d["distribution"]: "grep -q '^ID={}$' /usr/lib/os-release".format(d["os_release_id"]) for d in DISTRIBUTIONS.values()}),
+        distribution.select({name: "grep -q '^ID={}$' /usr/lib/os-release".format(d["os_release_id"]) for name, d in DISTRIBUTIONS.items()}),
         "bootctl | grep -F 'Secure Boot: disabled (setup)'",
         # The build compiled the hardware database into /usr, which is read-only here, so a guest
         # that has it got it from the build rather than from a boot-time regeneration.

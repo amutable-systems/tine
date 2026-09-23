@@ -99,6 +99,19 @@ def for_package() -> dict[str, dict[str, str]]:
     """What this package declared, keyed by the name it calls each distribution."""
     return read_package_value(_DISTRIBUTIONS) or {}
 
+# `distribution.select`; a def of that name would shadow the builtin it wraps.
+def by_distribution(values: dict[str, typing.Any], default = []):
+    """A `select()` over the package's distributions, `default` where one has no entry.
+
+    Keyed by the names the PACKAGE file gives them rather than by distribution labels, so a package
+    list or a target that differs per distribution says which by the name the package already uses.
+    """
+    declared = for_package()
+    for name in values:
+        if name not in declared:
+            fail("unknown distribution {!r}; the PACKAGE file declares {}".format(name, sorted(declared)))
+    return select({described["distribution"]: values.get(name, default) for name, described in declared.items()})
+
 _UNCHOSEN = "tine//distribution:no-distribution-chosen"
 
 def compatibility():
@@ -188,6 +201,7 @@ distribution = struct(
     alias = alias,
     aliases = aliases,
     attrs = attributes,
+    select = by_distribution,
     compatibility = compatibility,
     distributed = distributed,
     for_package = for_package,
