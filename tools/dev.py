@@ -107,6 +107,10 @@ def _lint(args: argparse.Namespace) -> None:
     _bold("ruff")
     _run([args.ruff, "format", "--check", "--no-cache", cell])
     _run([args.ruff, "check", "--no-cache", cell])
+    _bold("reuse")
+    # Scoped by --root rather than by the cwd Buck runs this in, so a consuming project checks the
+    # cell it declares and not whatever else sits beside it.
+    _run([args.buck, "-v", "0", "run", "tine//tools:reuse", "--", "--root", cell, "lint", "--lines"])
     _bold("ty")
     targets = buck_output(args.buck, "uquery", "attrfilter(labels, 'python-typecheck', tine//...)").split()
     if not targets:
