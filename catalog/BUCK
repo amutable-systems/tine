@@ -13,7 +13,7 @@ load("//distribution:fedora.bzl", "fedora_release", "fedora_signing_keys")
 
 # What the mirror serves, and so what a box of this release keeps a committed lock for. A box only
 # ever takes architectures its release has, so state each release's once.
-_FEDORA_ARCHITECTURES = ["x86_64"]
+_FEDORA_ARCHITECTURES = ["x86_64", "arm64"]
 
 # Arch publishes only x86_64. Arch ARM is a separate distribution with its own mirrors and no archive.
 _ARCH_ARCHITECTURES = ["x86_64"]
@@ -26,7 +26,7 @@ fedora_release(
     architectures = _FEDORA_ARCHITECTURES,
     box = ":fedora.rawhide.box",
     rpmrepo_mirror = "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46",
-    rpmrepo_snapshot = "f46-$basearch-rawhide-20260919",
+    rpmrepo_snapshot = "f46-$basearch-rawhide-20260923",
     # should be at most two; drop the previous version after the regular mass rebuild is done
     signing_keys = fedora_signing_keys("46", "45"),
     visibility = ["PUBLIC"],
