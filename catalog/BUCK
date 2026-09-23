@@ -10,6 +10,7 @@
 load("//box:defs.bzl", "box")
 load("//distribution:arch.bzl", "arch_release", "arch_signing_keys")
 load("//distribution:fedora.bzl", "fedora_release", "fedora_signing_keys")
+load("//platforms:architecture.bzl", "architecture")
 
 # What the mirror serves, and so what a box of this release keeps a committed lock for. A box only
 # ever takes architectures its release has, so state each release's once.
@@ -59,17 +60,21 @@ box.new(
         "dosfstools",
         "mtools",
         "systemd-container",
-        "qemu-system-x86-core",
         "qemu-img",
         "zstd",
-        "edk2-ovmf",
         "virtiofsd",
         # software TPM so systemd-vmspawn can offer the guest a vTPM for measured boot;
         # swtpm-tools provides swtpm_setup, which vmspawn runs to initialize the TPM state
         "swtpm",
         "swtpm-tools",
         "openssh",
-    ],
+    ]
+    + architecture.select({
+        # qemu and its EDK2 firmware are packaged per guest architecture; a box only ever runs guests
+        # of its own.
+        "arm64": ["edk2-aarch64", "qemu-system-aarch64-core"],
+        "x86_64": ["edk2-ovmf", "qemu-system-x86-core"],
+    }),
     release = ":fedora.rawhide.release",
     root = True,
     visibility = ["PUBLIC"],
