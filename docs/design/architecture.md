@@ -369,8 +369,10 @@ phases. Pass another catalog package after `--`, for example
    carry packages forward from an earlier snapshot. It only reads metadata, so any host runs it.
 3. Run the selected boxes' `<box>.lock.<architecture>` targets against the freshly pinned repository trees
    and atomically replace their optional frozen transactions. The target box's release, repository
-   selection, package list, and architecture define the solve. A lock target carries its architecture as
-   an incoming transition, so it reads that architecture's repositories.
+   selection, package list, and architecture define the solve. A lock target reads them from a spec
+   target that carries the architecture as an incoming transition, so the spec sees that architecture's
+   repositories while the lock stays in the host's configuration, where it exists only on the hosts that
+   have the box resolving it.
 
 Snapshot and resolve take the result from the driver's stdout: a resolve runs in a sandbox that binds the
 project and nothing else, so stdout is the one destination that needs no writable path. The tool then atomically
@@ -964,6 +966,10 @@ would decide which distribution actually gets built and leave the others to rot.
 that list once in its `PACKAGE` file and every image rule defaults to it, because the failure mode of
 repeating it per target is a target that forgets: being compatible while depending on something
 incompatible is an error rather than a skip.
+
+The same rule shapes how an architecture the catalog does not serve is handled. A release states the
+architectures its mirror serves, and its repositories, everything the release declares above them, its box
+and that box's locks are incompatible on any other, each on its own, through `architecture.compatibility()`.
 
 This is deliberately not a buckconfig. A distribution is a property of the image, so it belongs in the
 declaration, where it is visible to `buck2 uquery`, can differ between two targets in one build, and does

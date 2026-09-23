@@ -204,38 +204,66 @@ _box = rule(
     },
 )
 
-def _box_lock_impl(ctx: AnalysisContext) -> list[Provider]:
+BoxSpecInfo = provider(
+    doc = "What a box is made of, for one architecture.",
+    fields = {
+        "arch": provider_field(str),
+        "packages": provider_field(list[str]),
+        "release": provider_field(Dependency),
+        "repositories": provider_field(list[Dependency]),
+    },
+)
+
+def _box_spec_impl(ctx: AnalysisContext) -> list[Provider]:
     release = ctx.attrs.release[OsReleaseInfo]
-    repositories = _configure_repositories(
-        ctx,
-        select_repositories(
-            release.repository_universe,
-            ctx.attrs.enable_repository_groups,
-            ctx.attrs.disable_repository_groups,
-        ),
-        None,
-    )
     return [
         DefaultInfo(),
-        RunInfo(args = _solve(ctx, release, ctx.attrs.resolver_box, repositories, ctx.attrs.packages, ctx.attrs._arch)),
+        BoxSpecInfo(
+            arch = ctx.attrs._arch,
+            packages = ctx.attrs.packages,
+            release = ctx.attrs.release,
+            repositories = select_repositories(
+                release.repository_universe,
+                ctx.attrs.enable_repository_groups,
+                ctx.attrs.disable_repository_groups,
+            ),
+        ),
     ]
 
-# What a box is made of, resolved for one architecture. The repositories come in under the target
-# configuration, so an incoming transition to that architecture's platform is what makes them serve
-# its metadata; the box running the solver stays an exec_dep, and so the host's.
-_box_lock = rule(
-    impl = _box_lock_impl,
+# The repositories and the package list come in under the target configuration, so an incoming
+# transition to the architecture's platform is what makes them serve its metadata and its packages.
+# Nothing here runs, so this exists on every host.
+_box_spec = rule(
+    impl = _box_spec_impl,
     attrs = {
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
-        "labels": attrs.list(attrs.string(), default = []),
         "packages": attrs.list(attrs.string(), doc = "the box's top-level package names"),
         "release": attrs.dep(providers = [OsReleaseInfo], doc = "base OS release for the box root"),
-        "resolver_box": attrs.exec_dep(providers = [BoxInfo], doc = "box the solver runs in"),
         # Private: the incoming transition decides.
         "_arch": attrs.string(default = architecture.configured(), doc = "the architecture to resolve for"),
     },
     supports_incoming_transition = True,
+)
+
+def _box_lock_impl(ctx: AnalysisContext) -> list[Provider]:
+    spec = ctx.attrs.spec[BoxSpecInfo]
+    repositories = _configure_repositories(ctx, spec.repositories, None)
+    return [
+        DefaultInfo(),
+        RunInfo(args = _solve(ctx, spec.release[OsReleaseInfo], ctx.attrs.resolver_box, repositories, spec.packages, spec.arch)),
+    ]
+
+# Resolving a spec is the host's business: the solver runs in an exec_dep box, so this stays in the
+# host's configuration, where its compatibility can say which hosts have that box at all. Keeping the
+# spec apart is what lets the target architecture be one thing and the host another.
+_box_lock = rule(
+    impl = _box_lock_impl,
+    attrs = {
+        "labels": attrs.list(attrs.string(), default = []),
+        "resolver_box": attrs.exec_dep(providers = [BoxInfo], doc = "box the solver runs in"),
+        "spec": attrs.dep(providers = [BoxSpecInfo], doc = "what to resolve, configured for its architecture"),
+    },
 )
 
 def _box_alias_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -298,11 +326,12 @@ def new(
     packages = _DEFAULT_PACKAGES + packages
 
     # The lock of each architecture, None until refresh-catalog has written one. A box that keeps
-    # none has nothing to select over and resolves during the build instead.
+    # none has nothing to select over and resolves during the build instead, on whatever host.
     locks = {}
     for arch in architectures:
         committed = glob([box_lock_path(stem, arch)])
         locks[arch] = committed[0] if committed else None
+    compatible = architecture.compatibility(architectures) if architectures else []
 
     _box(
         name = name + ".exec",
@@ -312,27 +341,35 @@ def new(
         disable_repository_groups = disable_repository_groups,
         enable_repository_groups = enable_repository_groups,
         lock = architecture.select(locks) if locks else None,
-        target_compatible_with = [_EXECUTION_CONFIGURATION],
+        target_compatible_with = [_EXECUTION_CONFIGURATION] + compatible,
         **kwargs,
     )
     _box_alias(
         name = name,
         actual = ":" + name + ".exec",
         labels = labels,
+        target_compatible_with = compatible,
         visibility = visibility,
     )
 
     # A root box resolves through itself: its committed lock is what builds the root that then says
-    # what the lock should be.
+    # what the lock should be. Resolving takes the resolver box on the host, and a box's own
+    # architectures are the hosts it can count on that box on.
     for arch in architectures:
-        _box_lock(
-            # Keep in sync with BOX_LOCK_INFIX in tools/catalog.py.
-            name = "{}.lock.{}".format(name, arch),
+        # Keep in sync with BOX_LOCK_INFIX in tools/catalog.py.
+        lock = "{}.lock.{}".format(name, arch)
+        _box_spec(
+            name = lock + ".spec",
             packages = packages,
             release = release,
-            resolver_box = ":" + name if root else resolver_box,
             disable_repository_groups = disable_repository_groups,
             enable_repository_groups = enable_repository_groups,
             incoming_transition = "tine//platforms:" + arch,
+        )
+        _box_lock(
+            name = lock,
+            spec = ":" + lock + ".spec",
+            resolver_box = ":" + name if root else resolver_box,
             labels = ["tine:box-lock"],
+            target_compatible_with = compatible,
         )
