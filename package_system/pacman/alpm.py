@@ -53,6 +53,8 @@ class Package(NamedTuple):
     filename: str = ""
     sha256: str = ""
     size: int = 0
+    # The detached signature over the package file, base64 as `%PGPSIG%` carries it.
+    signature: str = ""
 
     @property
     def id(self) -> str:
@@ -110,6 +112,7 @@ def package_from_desc(entry: dict[str, list[str]], repo: str, what: str) -> Pack
         filename=one("FILENAME", ""),
         sha256=one("SHA256SUM", "").lower(),
         size=int(size),
+        signature=one("PGPSIG", ""),
     )
 
 

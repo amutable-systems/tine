@@ -435,11 +435,12 @@ second pool.
 A repository that declares signing keys verifies package signatures after fetching them. The repository
 cannot verify them itself, because that takes a box and the box a release names is built from the
 release's own repositories; so the package manager or the box rule declares the verification with the box
-it has: one keyring built from the declared key files (validated against the committed fingerprints), and
-the selector then verifies what a transaction selects from that repository in one action, publishing the
-closure's copies of those packages. One action per closure and repository, as the overhead of launching
-the sandbox and `rpmverify` per package is unbearably high. derived manager inherits the verifier. The
-unverified pool is only being used by the repository configuration code.
+it has: one keyring per set of declared key files (validated against the committed fingerprints), shared by
+the repositories declaring that set, and the selector then verifies what a transaction selects from that
+repository in one action, publishing the closure's copies of those packages. One action per closure and
+repository, as the overhead of launching the sandbox and `rpmverify` per package is unbearably high. A
+derived manager inherits the verifier. The unverified pool is only being used by the repository
+configuration code.
 
 Why repository ownership matters:
 
@@ -768,14 +769,21 @@ Limitations specific to this system:
 - It cannot build packages, so an Arch image can only install upstream ones and no target builds a
   local alpm repository. The local-package naming rule is unit-tested, but nothing exercises that
   path end to end.
-- Package signatures are not verified. Arch signs each package with an individual packager's key,
-  trusted through master-key certifications in `archlinux-keyring` rather than one key a catalog could
-  declare by fingerprint, so its repositories declare no signing keys and the system has no verify driver.
+- Arch signs each package with an individual packager's key and vouches for those through
+  certifications by its main keys, both shipped in `archlinux-keyring`. The declared signing keys are
+  the main keys; the keyring driver merges the declared files with the box's copy of that package, drops
+  what its revoked list withdraws, and certifies the declared keys locally with marginal ownertrust, so
+  that a packager's key is valid once three declared main keys certify it: `pacman-key --populate`'s
+  model, with the catalog rather than the package choosing the main keys. A signature is read from the
+  pinned database's `%PGPSIG%`, so a package a frozen box lock retains after the database stopped
+  describing it cannot be verified until the lock is refreshed. The keyring's gpg clock is stopped at
+  the archive day the repository is pinned to, so key expiry is judged as of the snapshot and a build
+  of it verifies the same way however much later it runs; an unpinned repository judges as of the build.
 - Pinning a database by content means a rolling mirror goes stale the moment it advances; only an
   archive with immutable dated trees is usable as a pinned repository.
 
 Entry points: `package_system/pacman/{rules,catalog}.bzl` and
-`package_system/pacman/{alpm,snapshot,plan,install,pkgdb,index,extract}.py`.
+`package_system/pacman/{alpm,snapshot,plan,install,pkgdb,index,extract,keyring,verify}.py`.
 
 ### Rust source builds
 
@@ -1538,8 +1546,9 @@ package against them as it is selected, a box using its predecessor. What remain
 1. A root box has no predecessor and verifies with its own stage1. Closing that needs a verifier that did
    not come out of the served packages: a host-side check of the header signature in `rpmfile.py` would
    do, since Fedora signs with one RSA/SHA-256 key per release.
-2. Arch's per-packager keys need a trust model for `archlinux-keyring` before its repositories can declare
-   anything a build could verify against.
+2. Arch verifies through the box's `archlinux-keyring`, so a packager key the catalog's box predates is
+   refused until the box lock is refreshed; a keyring taken from the pinned repository itself would need
+   verifying first, by the previous one, which is the same bootstrap pacman has.
 3. Repository metadata stays unsigned upstream; the snapshot diff is its review.
 
 A later release pipeline needs repository composition, package-group metadata, source/debuginfo publication

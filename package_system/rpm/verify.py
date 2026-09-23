@@ -19,6 +19,8 @@ class Spec(TypedDict):
     out: str
     # name of verified copy in `out` (<rpm name>--<sha256>.rpm) → original unverified <sha256>.rpm
     packages: dict[str, str]
+    # The pinned repository directory, unread: an rpm carries its own signature.
+    repository: str
 
 
 # Upstream rpm's default verify level `digest` accepts an unsigned package and Fedora's `all` does not;

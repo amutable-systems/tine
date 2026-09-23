@@ -42,6 +42,8 @@ def pacman_remote_repository(
                 "archlinux.repository": repository,
                 "archlinux.snapshot": archive_snapshot,
             },
+            # The end of the day: the tree holds what was published up to then.
+            pinned_at = "{}-{}-{}T23:59:59Z".format(*day),
         )
     declare_remote_repository(
         name = name,

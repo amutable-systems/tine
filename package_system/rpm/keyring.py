@@ -19,6 +19,8 @@ class Spec(TypedDict):
     # The declared fingerprint of each key file.
     keys: dict[str, str]
     out: str
+    # When the repository's snapshot was published, unread: rpm's keyring has no clock to pin.
+    time: str | None
 
 
 # How rpm names an imported key in a filesystem keyring.

@@ -130,6 +130,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
 
     box = box_dep[BoxInfo]
     configured_repositories = []
+    keyrings = {}
     for repository in repositories:
         repo = repository[PackageRepositoryInfo]
         rid = repository.label.name
@@ -159,7 +160,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
                 if baseurl == None:
                     fail("remote repository '{}' has no base URL".format(rid))
                 packages = repository[PackagePoolInfo].value
-                verifier = repository_verifier(ctx, box, rid, repo.signing_keys, package_system)
+                verifier = repository_verifier(ctx, box, rid, repo.signing_keys, package_system, directory, keyrings, repo.pinned_at)
             else:
                 fail("package_manager: repository '{}' has no directory".format(rid))
         priority = ctx.attrs.repository_priorities.get(rid, default_priority)

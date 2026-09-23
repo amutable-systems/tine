@@ -137,6 +137,14 @@ tine_python_binary(
     deps = ["//:util"],
 )
 
+# The dev box carries gpg, which the armoring test reads its output back with.
+box.python_test(
+    name = "catalog-test",
+    box = ":dev.box",
+    srcs = ["catalog.py", "catalog_test.py"],
+    deps = ["//:util"],
+)
+
 # PUBLIC: a consuming project bumps its own tools.json with this, passing --data.
 tine_python_binary(
     name = "bump-driver",

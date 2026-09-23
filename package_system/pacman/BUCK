@@ -57,6 +57,20 @@ tine_python_binary(
     deps = [":alpm", "//:util", "//package:href", "//package:snapshotter"],
 )
 
+tine_python_library(name = "gnupg", srcs = ["gnupg.py"])
+
+tine_python_binary(
+    name = "keyring",
+    main = "keyring.py",
+    deps = [":gnupg", "//:specs", "//:util"],
+)
+
+tine_python_binary(
+    name = "verify",
+    main = "verify.py",
+    deps = [":alpm", ":gnupg", "//:specs", "//:util"],
+)
+
 # `build` stays unset: Arch has no makepkg rule here yet.
 package_system(
     name = "package_system",
@@ -69,6 +83,8 @@ package_system(
     extract = ":extract",
     index = ":index",
     install = ":install",
+    keyring = ":keyring",
+    verify = ":verify",
     # Arch has served zstd for years, so that is what a selected package is named with; an older
     # compressor still in a pinned repository is only recognized (alpm.is_package), never named.
     package_suffix = ".pkg.tar.zst",
@@ -78,12 +94,18 @@ package_system(
     visibility = ["PUBLIC"],
 )
 
+# The dev box rather than the alpm one: the verifier's tests build a distribution's keys, which
+# takes gpg, and nothing here needs alpm's library.
 box_python_test(
     name = "test",
     box = "//tools:dev.box",
-    deps = ["//:util"],
+    deps = ["//:specs", "//:util"],
     srcs = [
         "alpm.py",
         "alpm_test.py",
+        "gnupg.py",
+        "keyring.py",
+        "verify.py",
+        "verify_test.py",
     ],
 )

@@ -108,13 +108,20 @@ class TestVerify(unittest.TestCase):
     def keyring(self, *keys: Key, declared: dict[str, Path] | None = None) -> Path:
         out = Path(tempfile.mkdtemp(dir=self._scratch.name)) / "keyring"
         files = declared if declared is not None else {key.fingerprint: key.file for key in keys}
-        keyring.keyring(keyring.Spec(keys={f: str(path) for f, path in files.items()}, out=str(out)))
+        keyring.keyring(
+            keyring.Spec(keys={f: str(path) for f, path in files.items()}, out=str(out), time=None)
+        )
         return out
 
     def verify(self, keyring: Path, *packages: Path) -> Path:
         out = keyring.parent / "verified"
         verify.verify(
-            verify.Spec(keyring=str(keyring), out=str(out), packages={p.name: str(p) for p in packages})
+            verify.Spec(
+                keyring=str(keyring),
+                out=str(out),
+                packages={p.name: str(p) for p in packages},
+                repository=str(keyring.parent),
+            )
         )
         return out
 

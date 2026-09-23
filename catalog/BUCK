@@ -7,7 +7,7 @@
 # Boxes with a resolver can derive their transaction during the build; refresh the catalog to freeze
 # one as a retained lock. Signing keys are fetched once, when a repository first declares them.
 load("//box:defs.bzl", "box")
-load("//distribution:arch.bzl", "arch_release")
+load("//distribution:arch.bzl", "arch_release", "arch_signing_keys")
 load("//distribution:fedora.bzl", "fedora_release", "fedora_signing_keys")
 
 # Pinned rpmrepo compose snapshot: packages never vanish underneath committed pins.
@@ -72,6 +72,7 @@ arch_release(
     name = "arch.rolling",
     archive_snapshot = "2026/09/19",
     box = ":arch.rolling.box",
+    signing_keys = arch_signing_keys(),
     visibility = ["PUBLIC"],
 )
 
@@ -84,6 +85,8 @@ box.new(
     name = "arch.rolling.box",
     packages = [
         "pacman",
+        # the keyring driver takes the packagers' keys and the main keys' certifications from here
+        "archlinux-keyring",
         "bash",
         "coreutils",
         "libseccomp",

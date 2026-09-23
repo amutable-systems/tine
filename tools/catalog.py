@@ -20,6 +20,7 @@ Nested Buck reuses the invoking daemon through the inherited isolation directory
 """
 
 import argparse
+import base64
 import contextlib
 import difflib
 import itertools
@@ -52,6 +53,9 @@ PACMAN_REMOTE_REPOSITORY_LABEL = "tine:pacman-remote-repository"
 SIGNING_KEY_DIRECTORY = Path("snapshot/key")
 SIGNING_KEY_SUFFIX = ".key"
 ARMOR_HEADER = b"-----BEGIN PGP PUBLIC KEY BLOCK-----"
+ARMOR_FOOTER = b"-----END PGP PUBLIC KEY BLOCK-----"
+# How a binary OpenPGP stream that opens with a public-key packet starts: tag 6 in either framing.
+_PUBLIC_KEY_PACKET = (0x98, 0x99, 0x9A, 0xC6)
 
 
 def _catalog_pattern(catalog: str) -> str:
@@ -273,6 +277,29 @@ def _declared_signing_keys(buck: str, repositories: list[str]) -> dict[str, str]
     return keys
 
 
+def _crc24(data: bytes) -> int:
+    """RFC 9580's CRC-24, the check an armored block ends with."""
+    crc = 0xB704CE
+    for byte in data:
+        crc ^= byte << 16
+        for _ in range(8):
+            crc <<= 1
+            if crc & 0x1000000:
+                crc ^= 0x1864CFB
+    return crc & 0xFFFFFF
+
+
+def armor(raw: bytes) -> str:
+    """A binary public key as the armored block the keyring drivers import."""
+    body = base64.b64encode(raw).decode("ascii")
+    lines = [body[start : start + 64] for start in range(0, len(body), 64)]
+    check = base64.b64encode(_crc24(raw).to_bytes(3, "big")).decode("ascii")
+    return (
+        "\n".join([ARMOR_HEADER.decode("ascii"), "", *lines, f"={check}", ARMOR_FOOTER.decode("ascii")])
+        + "\n"
+    )
+
+
 def _fetch_signing_key(fingerprint: str, url: str) -> str:
     """One armored public key, normalized to end in exactly one newline."""
     print(f"==> fetching signing key {fingerprint}", file=sys.stderr)
@@ -282,10 +309,14 @@ def _fetch_signing_key(fingerprint: str, url: str) -> str:
             return response.read()
 
     raw = with_retries(f"key {fingerprint}", fetch)
-    # rpm imports armored keys only; a binary keyring such as fedoraproject.org's fedora.gpg is not one.
-    if not raw.startswith(ARMOR_HEADER):
-        fail(f"catalog: {url} is not an armored public key")
-    return raw.decode("ascii").rstrip("\n") + "\n"
+    # rpm imports armored keys only, and a web key directory serves a key binary: armor those here,
+    # so that the catalog holds one form. A binary keyring such as fedoraproject.org's fedora.gpg
+    # starts the same way and is caught by the build's check that a file holds its declared key.
+    if raw.startswith(ARMOR_HEADER):
+        return raw.decode("ascii").rstrip("\n") + "\n"
+    if raw[:1] and raw[0] in _PUBLIC_KEY_PACKET:
+        return armor(raw)
+    fail(f"catalog: {url} is not an OpenPGP public key, armored or binary")
 
 
 def _signing_keys(
