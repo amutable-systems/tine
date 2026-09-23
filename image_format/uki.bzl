@@ -23,7 +23,7 @@ load(
     "resolve_signing_key",
     "signing_key_spec",
 )
-load("//platforms:architecture.bzl", "ARCHITECTURES")
+load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load(":archive.bzl", "ImageArchiveInfo")
 load(
     ":disk.bzl",
@@ -185,7 +185,7 @@ def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
     return [DefaultInfo(default_output = info.ukis, sub_targets = uki_subtargets(info)), info]
 
 UKI_ATTRS = {
-    "arch": attrs.enum(ARCHITECTURES.keys(), default = "x86_64"),
+    "arch": attrs.enum(ARCHITECTURES.keys(), default = architecture.configured()),
     "cmdline": attrs.list(
         attrs.string(),
         default = [],

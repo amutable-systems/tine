@@ -477,7 +477,7 @@ Optional attributes:
 
   Either way the file must be a BMP; the build fails on any other format, and on an image path the
   image does not ship.
-- `arch` (string): Architecture; only `x86_64` is supported right now; passed on to `image.uki()`.
+- `arch` (string): Architecture; defaults to the one the image is built for; passed on to `image.uki()`.
 - `esp_files` (dict): Map from an absolute image path (under `/boot` or `/efi`, the trees the ESP
   partition carries) to a source target copied onto the ESP.
 - `install_docs` (boolean): Passed to the root filesystem layer only; an `image.initrd()` carries its

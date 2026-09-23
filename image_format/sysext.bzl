@@ -30,7 +30,7 @@ load(
     "resolve_signing_key",
     "signing_key_spec",
 )
-load("//platforms:architecture.bzl", "ARCHITECTURES")
+load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 
 SysextImageInfo = provider(
     doc = "A systemd system-extension DDI generated from a logical image.",
@@ -193,7 +193,7 @@ def _image_sysext_impl(ctx: AnalysisContext) -> list[Provider]:
 SYSEXT_ATTRS = {
     "arch": attrs.enum(
         ARCHITECTURES.keys() + ["_any"],
-        default = "x86_64",
+        default = architecture.configured(),
         doc = "architecture the extension merges on, in its name and its extension-release, "
         + "\"_any\" publishes the DDI as '..._all' and sets ARCHITECTURE=_any",
     ),
