@@ -105,7 +105,7 @@ def fedora_release(
         required_repositories = [":" + name + ".repository"] + additional_repositories,
         target_compatible_with = compatible,
     )
-    distribution.new(name = name + ".distribution", visibility = visibility)
+    distribution.new(name = name + ".distribution", architectures = architectures, visibility = visibility)
     os_release(
         name = name + ".release",
         repository_universe = ":" + name + ".repositories",

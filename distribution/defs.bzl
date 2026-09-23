@@ -11,22 +11,43 @@ this cell never has to know which distributions exist.
 The transition sets the constraint only where nothing has set it yet. The target being built is
 therefore the one that decides, and every image below it, `parent` chain included, follows: a base
 layer is not a distribution, it is whatever the leaf pulling it in is.
+
+A distribution also says which architectures its catalog serves it for. Choosing it marks the
+configuration `tine//platforms:architecture-served` only for one of those, and every image requires that
+mark beside its distribution, so under any other architecture the image is skipped rather than failing
+somewhere under it.
 """
 
 load("@prelude//:rules.bzl", "constraint_value")
+load("//platforms:architecture.bzl", "architecture")
+
+def _satisfies(constraints: dict[TargetLabel, ConstraintValueInfo], configuration: ConfigurationInfo) -> bool:
+    """Whether a platform's constraints carry everything a `select()` key asks for."""
+    for setting, wanted in configuration.constraints.items():
+        if setting not in constraints or constraints[setting].label != wanted.label:
+            return False
+    return True
 
 def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
     value = ctx.attrs.constraint[ConstraintValueInfo]
+    served = ctx.attrs.served[ConstraintValueInfo]
+    architectures = [dep[ConfigurationInfo] for dep in ctx.attrs.architectures]
+
+    def choose(constraints: dict[TargetLabel, ConstraintValueInfo]) -> dict[TargetLabel, ConstraintValueInfo]:
+        chosen = dict(constraints)
+        chosen[value.setting.label] = value
+        if [arch for arch in architectures if _satisfies(constraints, arch)]:
+            chosen[served.setting.label] = served
+        return chosen
 
     def select_distribution(platform: PlatformInfo) -> PlatformInfo:
         constraints = platform.configuration.constraints
         if value.setting.label in constraints:
             return platform
-        constraints[value.setting.label] = value
         return PlatformInfo(
             label = platform.label,
             configuration = ConfigurationInfo(
-                constraints = constraints,
+                constraints = choose(constraints),
                 values = platform.configuration.values,
             ),
         )
@@ -43,7 +64,7 @@ def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
         PlatformInfo(
             label = str(ctx.label.raw_target()),
             configuration = ConfigurationInfo(
-                constraints = ctx.attrs.base[PlatformInfo].configuration.constraints | {value.setting.label: value},
+                constraints = choose(ctx.attrs.base[PlatformInfo].configuration.constraints),
                 values = ctx.attrs.base[PlatformInfo].configuration.values,
             ),
         ),
@@ -52,16 +73,20 @@ def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
 _distribution = rule(
     impl = _distribution_impl,
     attrs = {
+        "architectures": attrs.list(attrs.dep(providers = [ConfigurationInfo]), doc = "the cpu configurations this is served for"),
         "base": attrs.dep(providers = [PlatformInfo], default = "tine//platforms:default"),
         "constraint": attrs.dep(providers = [ConstraintValueInfo]),
+        "served": attrs.dep(providers = [ConstraintValueInfo], default = "tine//platforms:architecture-served"),
     },
     is_configuration_rule = True,
 )
 
-def new(name: str, visibility: list[str] | None = None) -> None:
-    """Declare a distribution and the constraint value `select()` keys on."""
+def new(name: str, architectures: list[str], visibility: list[str] | None = None) -> None:
+    """Declare a distribution and the constraint value `select()` keys on, served for `architectures`."""
     if not name.endswith(".distribution"):
         fail("distribution name must end with '.distribution': {}".format(name))
+    if not architectures:
+        fail("distribution {} is served for no architecture".format(name))
     constraint_value(
         name = name + ".constraint",
         constraint_setting = "tine//distribution:distribution",
@@ -69,6 +94,7 @@ def new(name: str, visibility: list[str] | None = None) -> None:
     )
     _distribution(
         name = name,
+        architectures = [architecture.spelling(arch, "config") for arch in architectures],
         constraint = ":" + name + ".constraint",
         visibility = visibility,
     )
@@ -113,20 +139,22 @@ def by_distribution(values: dict[str, typing.Any], default = []):
     return select({described["distribution"]: values.get(name, default) for name, described in declared.items()})
 
 _UNCHOSEN = "tine//distribution:no-distribution-chosen"
+_SERVED = "tine//platforms:architecture-served"
 
 def compatibility():
-    """Say a target is buildable only where one of this package's distributions was chosen.
+    """Say a target is buildable only where one of this package's distributions was chosen, and serves it.
 
     `target_compatible_with` requires every constraint in its list, so "one of these" is a select
-    that asks for nothing under each distribution and for the unsatisfiable value under anything
-    else. A package that declared no distributions constrains nothing. Rules tine owns get this
-    through their macros; a rule it does not own, such as a prelude one over an image, asks here.
+    that asks under each distribution for the mark choosing it leaves where it is served, and for the
+    unsatisfiable value under anything else. A package that declared no distributions constrains
+    nothing. Rules tine owns get this through their macros; a rule it does not own, such as a prelude
+    one over an image, asks here.
     """
     declared = for_package()
     if not declared:
         return []
     targets = [described["distribution"] for described in declared.values()]
-    return select({target: [] for target in targets} | {"DEFAULT": [_UNCHOSEN]})
+    return select({target: [_SERVED] for target in targets} | {"DEFAULT": [_UNCHOSEN]})
 
 def attributes(distro: str | None = None, visibility: list[str] | None = None) -> dict:
     """Resolve what a package declares about distributions into the attributes rules take.
@@ -192,10 +220,11 @@ def alias(name: str, actual: str, distro: str, visibility: list[str] | None = No
     """The same target, built for another distribution.
 
     Everything below it is reconfigured, so one declaration serves every distribution rather than
-    being written out once per distribution. The alias itself stays compatible with anything: it is
-    what chooses, so requiring a choice of it would be circular.
+    being written out once per distribution. The alias needs no choice of its own, it is what
+    chooses; it does need the choice to be served for the architecture, so that it is skipped where
+    its target is, rather than reported as depending on something incompatible.
     """
-    _distribution_alias(name = name, actual = actual, incoming_transition = distro, visibility = visibility)
+    _distribution_alias(name = name, actual = actual, incoming_transition = distro, target_compatible_with = [_SERVED], visibility = visibility)
 
 distribution = struct(
     alias = alias,

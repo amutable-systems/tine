@@ -15,10 +15,13 @@ execution_platform(
     visibility = ["PUBLIC"],
 )
 
-# No platform carries this value. A target declares that it exists on some architectures only by
-# requiring this constraint in `target_compatible_with`. `//...` then skips it on other architectures,
-# and building it there reports `architecture-served unsatisfied`. See `architecture.compatibility()`
-# in platforms/architecture.bzl.
+# A configuration carries this value exactly when the distribution chosen for it is served on the
+# configured architecture; the transition in distribution/defs.bzl adds it, and no platform has it. A
+# target declares that it exists on some architectures only by requiring this constraint in
+# `target_compatible_with`. `//...` then skips it on other architectures, and building it there reports
+# `architecture-served unsatisfied`. See `architecture.compatibility()` in platforms/architecture.bzl for
+# a component, `distribution.compatibility()` for an image, and `distribution.alias()` for the aliases
+# that choose a distribution for one.
 constraint_setting(name = "served")
 
 constraint_value(
