@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
 """Tests for the planner against real repodata and a real solve.
 
 Builds throwaway packages and indexes them with the same driver a build uses, thus exercises
