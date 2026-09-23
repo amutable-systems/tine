@@ -13,6 +13,10 @@ SPDX-License-Identifier: MPL-2.0
   follow along, and check the exit status separately. `tine buck log what-ran --failed --show-std-err`
   prints the full stderr of the actions that failed in the last build, which the build output truncates.
 - Keep `buck run tine//tools:check` green.
+- Start every new file with the SPDX header, in the file's comment syntax, after a shebang if there is
+  one: `SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>` and `SPDX-License-Identifier:
+  MPL-2.0`. A file that cannot carry one, such as data, is listed in `REUSE.toml` instead; `check` runs
+  `reuse` and fails on a file with neither.
 - Line break documents and plans at 109 columns.
 - Comments explain *why*, not *what*; say each thing once.
 - Do not write user-facing documentation. At most, add a TODO comment where documentation should be
