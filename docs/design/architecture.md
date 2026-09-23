@@ -329,7 +329,8 @@ optional generated forms:
   the ones the resolver will not read; where it does not, the snapshot pins the bytes the refresh saw,
   which stays buildable only against a mirror that serves immutable snapshots and not against an
   ordinary rolling one;
-- `snapshot/box/<name>.json` optionally freezes a box transaction. Remote records contain
+- `snapshot/box/<name>.<architecture>.json` optionally freezes a box transaction for one architecture.
+  Remote records contain
   `{source, repo, pkg_checksum, package_id, url, size}`: the checksum verifies the bytes, while `url` and
   `size` record the last known transport after rolling repository metadata stops advertising that package.
   The target's `.repository` or `.box` suffix is not repeated in the snapshot filename;
@@ -366,9 +367,10 @@ phases. Pass another catalog package after `--`, for example
    architecture its mirror serves. The snapshot driver downloads and verifies repository metadata, drops
    unused streams, validates package locations, and writes deterministic, pure snapshot JSON. It does not
    carry packages forward from an earlier snapshot. It only reads metadata, so any host runs it.
-3. Run the selected boxes' `[resolve]` sub-targets against the freshly pinned repository trees and
-   atomically replace their optional frozen transactions. The target box's release, repository
-   selection, package list, and architecture define the solve.
+3. Run the selected boxes' `<box>.lock.<architecture>` targets against the freshly pinned repository trees
+   and atomically replace their optional frozen transactions. The target box's release, repository
+   selection, package list, and architecture define the solve. A lock target carries its architecture as
+   an incoming transition, so it reads that architecture's repositories.
 
 Snapshot and resolve take the result from the driver's stdout: a resolve runs in a sandbox that binds the
 project and nothing else, so stdout is the one destination that needs no writable path. The tool then atomically
@@ -420,7 +422,8 @@ catalog is optional for that box and freezes the generated result at the convent
 
 The refresh convention keeps repository and box declarations plus their generated data in the active
 catalog's root Buck package, with generated data grouped under `snapshot/{repo,box,key}/`. This makes
-target-name-derived paths and the package-local optional `snapshot/box/*.json` retention inputs agree.
+target-name-derived paths and the package-local optional `snapshot/box/*.<architecture>.json` retention
+inputs agree, the latter narrowed to the architecture being built for.
 
 ### Authoritative repository package pools
 
@@ -481,11 +484,12 @@ A lockless box uses its resolver box, by default the one its release names, to p
 transaction and perform the authoritative installation. Its target root therefore contains only the
 requested packages and their dependencies; it does not need Python, package-manager libraries, or
 other construction tools unless they are part of its intended runtime.
-A locked box can use its own completed root to run the explicit `[resolve]` update command; during a
-bootstrap or tooling transition, a predecessor may run that command instead. This edge is deliberately
-one-way: it changes where resolution and installation execute, not the repositories, requested packages,
-architecture, or root built for the new box. Box resolution does not consume package-manager priority
-policy; its repositories use the native default priority until bootstrap needs an explicit policy of its own.
+A locked box's `<box>.lock.<architecture>` target runs the explicit update command through its resolver
+box; a root box has none and runs it through its own completed root. A resolver box only changes where
+resolution and installation execute, not the repositories, requested packages, architecture, or root built
+for the new box. Box resolution does not consume
+package-manager priority policy; its repositories use the native default priority until bootstrap needs an
+explicit policy of its own.
 
 Only a box declared `root = True`, which has no predecessor, bootstraps its own installation tools in
 two stages:
@@ -1428,7 +1432,7 @@ rule owns instead of revalidating an argument grammar. A driver that invokes ano
 the image layer driver writes an install spec for the package installer.
 
 Two exceptions are deliberate. A planner keeps its verb on the command line, since each verb has its own
-spec schema. Both it and the snapshot driver keep `--out` there too: their `[resolve]` and `[snapshot]` run
+spec schema. Both it and the snapshot driver keep `--out` there too: the box lock and `[snapshot]` run
 targets let a caller name the file to write, or `-` for stdout when it has nowhere to write one, and one
 calling convention per driver beats splitting the destination by verb.
 

@@ -15,7 +15,7 @@ A repository's declared signing keys are fetched once, by fingerprint, and the f
 rewritten afterwards. Whether a file is the declared key is the build's check, with the package
 system's own tools.
 
-The host orchestrator discovers refresh subtargets and takes each result from the driver's stdout,
+The host orchestrator discovers refresh targets and takes each result from the driver's stdout,
 so refreshing and verifying run one command and only the host decides where an output belongs.
 Nested Buck reuses the invoking daemon through the inherited isolation directory.
 """
@@ -47,7 +47,9 @@ from util import (
 )
 
 DEFAULT_CATALOG = "tine//catalog"
-BOX_LABEL = "tine:box"
+BOX_LOCK_LABEL = "tine:box-lock"
+# Keep in sync with the lock targets `box.new` declares in box/build.bzl.
+BOX_LOCK_INFIX = ".lock."
 REMOTE_REPOSITORY_LABEL = "tine:remote-repository"
 RPM_REMOTE_REPOSITORY_LABEL = "tine:rpm-remote-repository"
 PACMAN_REMOTE_REPOSITORY_LABEL = "tine:pacman-remote-repository"
@@ -85,25 +87,37 @@ def _catalog_directory(buck: str, targets: list[str]) -> Path:
     return package_directory(buck, packages.pop())
 
 
-def _snapshot_path(target: str, kind: str, suffix: str, architecture: str = "") -> Path:
-    name = _name_of(target)
-    if not name.endswith(suffix):
-        fail(f"catalog: {target} does not end with {suffix!r}")
-    stem = name.removesuffix(suffix) + (f".{architecture}" if architecture else "")
-    return Path("snapshot") / kind / f"{stem}.json"
+def _lock_path(kind: str, stem: str, architecture: str) -> Path:
+    """Where one architecture's committed lock lives, relative to the catalog package.
 
-
-def _box_snapshot_path(target: str) -> Path:
-    return _snapshot_path(target, "box", ".box")
+    Keep in sync with `_repository_lock_path`/`box_lock_path` in package/repository.bzl, which read it.
+    """
+    return Path("snapshot") / kind / f"{stem}.{architecture}.json"
 
 
 def _repository_lock_path(target: str, architecture: str) -> Path:
-    """Keep in sync with `_repository_lock_path` in package/repository.bzl, which reads it."""
-    return _snapshot_path(target, "repo", ".repository", architecture)
+    name = _name_of(target)
+    if not name.endswith(".repository"):
+        fail(f"catalog: {target} does not end with '.repository'")
+    return _lock_path("repo", name.removesuffix(".repository"), architecture)
+
+
+def _box_lock_parts(target: str) -> tuple[str, str]:
+    """The box a `<box>.lock.<architecture>` target resolves, and the architecture it resolves for."""
+    # An architecture name has no dot in it, so the last infix is the one.
+    box, separator, architecture = _name_of(target).rpartition(BOX_LOCK_INFIX)
+    if not separator or not box.endswith(".box"):
+        fail(f"catalog: {target} is not a <name>.box{BOX_LOCK_INFIX}<architecture> target")
+    return box, architecture
+
+
+def _box_lock_path(target: str) -> Path:
+    box, architecture = _box_lock_parts(target)
+    return _lock_path("box", box.removesuffix(".box"), architecture)
 
 
 def _run(buck: str, target: str) -> str:
-    """Run a refresh subtarget, returning what it wrote to stdout.
+    """Run a refresh target, returning what it wrote to stdout.
 
     Buck execs the target rather than piping it, and its own output is on stderr, so stdout is
     the driver's alone. That is the only channel out: the hermetic sandbox a driver runs in binds
@@ -453,9 +467,7 @@ def _signing_keys(
 def _snapshot(buck: str, target: str, architecture: str) -> str:
     """One repository's current pure metadata, for one architecture.
 
-    The subtarget is what keeps this off `--target-platforms`: every architecture a repository
-    serves is addressable from the host's own configuration. Keep the name in sync with
-    `_snapshot_subtarget` in package/repository.bzl.
+    Keep the subtarget name in sync with `_snapshot_subtarget` in package/repository.bzl.
     """
     subtarget = f"{target}[snapshot.{architecture}]"
     print(f"==> snapshotting {_name_of(target)} for {architecture} (via {subtarget})", file=sys.stderr)
@@ -463,22 +475,25 @@ def _snapshot(buck: str, target: str, architecture: str) -> str:
 
 
 def _resolve(buck: str, target: str) -> str:
-    print(f"==> resolving {_name_of(target)} (via {target}[resolve])", file=sys.stderr)
-    return _run(buck, f"{target}[resolve]")
+    """What one box is made of, for the architecture its lock target resolves."""
+    box, architecture = _box_lock_parts(target)
+    print(f"==> resolving {box} for {architecture} (via {target})", file=sys.stderr)
+    return _run(buck, target)
 
 
 def _select_boxes(all_resolves: list[str], selected_boxes: list[str] | None) -> list[str]:
+    """The lock targets of the selected boxes, every architecture of each."""
     if selected_boxes is None:
         return all_resolves
     duplicates = sorted({name for name in selected_boxes if selected_boxes.count(name) > 1})
     if duplicates:
         fail(f"catalog: box names selected more than once: {duplicates}")
-    by_name = {_name_of(target): target for target in all_resolves}
-    unknown = sorted(set(selected_boxes) - by_name.keys())
+    boxes = {_box_lock_parts(target)[0] for target in all_resolves}
+    unknown = sorted(set(selected_boxes) - boxes)
     if unknown:
-        fail(f"catalog: unknown box names: {unknown}")
+        fail(f"catalog: boxes {unknown} have no lock targets: unknown, or declaring no architectures")
     selected = set(selected_boxes)
-    return [target for target in all_resolves if _name_of(target) in selected]
+    return [target for target in all_resolves if _box_lock_parts(target)[0] in selected]
 
 
 def _repositories_for_boxes(buck: str, boxes: list[str]) -> list[str]:
@@ -498,7 +513,7 @@ def _plan(
     Selecting boxes also scopes the snapshotted repositories to those the boxes depend on, so a
     partial refresh or verify never touches a repository outside the selection.
     """
-    all_resolves = _targets_with_label(buck, catalog, BOX_LABEL)
+    all_resolves = _targets_with_label(buck, catalog, BOX_LOCK_LABEL)
     resolves = _select_boxes(all_resolves, selected_boxes)
 
     if selected_boxes is None:
@@ -533,7 +548,7 @@ def _regenerate(
             )
 
     for target in resolves:
-        yield catalog_dir / _box_snapshot_path(target), _resolve(buck, target)
+        yield catalog_dir / _box_lock_path(target), _resolve(buck, target)
 
 
 def _commit(catalog_dir: Path) -> None:
