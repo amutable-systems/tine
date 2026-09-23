@@ -463,8 +463,19 @@ Optional attributes:
   `image.DEFAULT_INITRD_MODULES`; see "Kernel modules in the UKI"; passed on to `image.uki()`.
 - `profiles` (`image.uki_profile()` descriptor list): Alternative sd-boot menu entries, passed on to
   `image.uki()`.
-- `splash` (source target): BMP image embedded in the UKI and displayed by the EFI stub while booting;
-  passed on to `image.uki()`.
+- `splash` (source target or absolute image path): BMP image embedded in the UKI and displayed by the EFI
+  stub while booting; passed on to `image.uki()`. An absolute path names a file the image ships, so one
+  declaration can pick each distribution's own logo:
+
+  ```starlark
+  splash = distribution.select({
+      "arch": "/usr/share/systemd/bootctl/splash-arch.bmp",
+      "debian": "splash.bmp",
+  }),
+  ```
+
+  Either way the file must be a BMP; the build fails on any other format, and on an image path the
+  image does not ship.
 - `arch` (string): Architecture; only `x86_64` is supported right now; passed on to `image.uki()`.
 - `esp_files` (dict): Map from an absolute image path (under `/boot` or `/efi`, the trees the ESP
   partition carries) to a source target copied onto the ESP.

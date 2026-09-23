@@ -201,6 +201,9 @@ image.bootable_disk(
     ],
     # Arbitrary declared artifacts can be shipped through the ESP.
     esp_files = {"/boot/metadata/demo.spdx.json": ":demo[sbom][spdx]"},
+    # An absolute path names a BMP the image itself ships, here the one Arch's systemd package
+    # installs; the other distributions ship no BMP and embed none.
+    splash = distribution.select({"arch": "/usr/share/systemd/bootctl/splash-arch.bmp"}, default = None),
     # A shipped appliance has no terminal to read a man page on.
     install_docs = False,
     # Ship the disk with free space past its partitions, so an installed system can claim it without
@@ -325,6 +328,16 @@ box.sh_test(
         "$(location :boot-demo.fedora[boot][initrd])",
         "$(location :boot-demo.fedora[initrd])",
     ],
+)
+
+# The splash the image ships reached the UKI. The image tools' box carries ukify, which lists a
+# UKI's sections one per `.name:` line.
+box.sh_test(
+    name = "uki-splash-test",
+    labels = ["image"],
+    box = "@tine//catalog:fedora.rawhide.box",
+    script = 'ukify inspect "$1" | grep -qx ".splash:"',
+    args = ["$(location :boot-demo.arch[boot][uki])"],
 )
 
 # Both distributions, because each package system captures its database in its own format.
