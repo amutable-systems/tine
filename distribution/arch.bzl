@@ -62,10 +62,10 @@ def _check_name(name: str) -> None:
 def arch_release(
     name: str,
     box: str,
+    architectures: list[str],
     signing_keys: dict[str, str],
     archive_snapshot: str | None = None,
     archive_mirror: str = ARCHIVE_MIRROR,
-    arch: str = "x86_64",
     repository_urls: dict[str, str] = {},
     package_set_overrides: dict[str, list[str]] = {},
     enable_repository_groups: list[str] = [],
@@ -102,7 +102,7 @@ def arch_release(
         pacman_remote_repository(
             name = "{}.{}.repository".format(name, component),
             repository = component,
-            arch = arch,
+            architectures = architectures,
             baseurl = repository_urls.get(component),
             archive_mirror = archive_mirror if archive_snapshot else None,
             archive_snapshot = archive_snapshot,
