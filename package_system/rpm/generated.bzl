@@ -5,6 +5,7 @@
 
 load("@prelude//:native.bzl", "native")
 load("//package:local_packages.bzl", "local_packages")
+load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load(":rules.bzl", "rpm_package")
 
 # Keep these records aligned with the importer's generated schema.
@@ -25,15 +26,19 @@ SrcpkgMetadata = record(
     source_date_epoch = int,
 )
 
-# TODO: Generalize the currently pinned build architecture.
-_ARCH = "x86_64"
-
 PackageMetadata = dict[str, typing.Any]
 
-def _build_requires(meta: SrcpkgMetadata) -> list[str]:
-    """Combine common and architecture-specific BuildRequires."""
+def _build_requires(meta: SrcpkgMetadata, architecture: str) -> list[str]:
+    """Combine common and one architecture's conditional BuildRequires."""
     brs = meta.build_requires
-    return sorted(brs["_all"] + brs.get(_ARCH, []))
+    return sorted(brs["_all"] + brs.get(architecture, []))
+
+def _by_architecture(meta: SrcpkgMetadata, value: typing.Callable) -> Select:
+    """`value(rpm_arch)` for each architecture the import recorded binaries for.
+
+    Building for any other architecture fails configuring the target.
+    """
+    return architecture.select({name: value(spellings.rpm) for name, spellings in ARCHITECTURES.items() if spellings.rpm in meta.binaries})
 
 def _parse_metadata(meta: PackageMetadata) -> SrcpkgMetadata:
     """Validate one generated JSON value and return its typed representation."""
@@ -73,8 +78,8 @@ def _declare_rpm_package(
         release = meta.release,
         dist = meta.dist,
         source_date_epoch = meta.source_date_epoch,
-        subpackages = sorted(meta.binaries[_ARCH]),
-        build_requires = _build_requires(meta),
+        subpackages = _by_architecture(meta, lambda rpm_arch: sorted(meta.binaries[rpm_arch])),
+        build_requires = _by_architecture(meta, lambda rpm_arch: _build_requires(meta, rpm_arch)),
         buildroot_deps = buildroot_deps,
         in_place_rpmbuild_options = in_place_rpmbuild_options,
         in_place_spec = in_place_spec,
@@ -235,11 +240,14 @@ def _buildrequires_edges(
     """The package-to-self-hosted-provider graph, with the capabilities justifying each edge.
 
     A seed-only source package (tool use rather than linkage; see docs/design/self-host-approaches.md)
-    contributes no edges as a provider: BuildRequires on it always resolve from the seed."""
+    contributes no edges as a provider: BuildRequires on it always resolve from the seed.
+
+    A branch's edge graph is declared once, not per architecture. So an edge any architecture needs is
+    kept for all of them. That over-approximates the way rich dependencies already do."""
     edges = {}
     for name in sorted(packages):
         deps = {}
-        for br in _build_requires(packages[name]):
+        for br in sorted({br: True for brs in meta.build_requires.values() for br in brs}):
             for cap in _br_caps(br):
                 for p in provides.get(cap, {}):
                     if p != name and p not in seed_only_packages:

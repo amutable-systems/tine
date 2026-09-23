@@ -654,7 +654,7 @@ creates targets.
 
 For each branch, `rpm_branch()` currently:
 
-- combines common and `x86_64` BuildRequires;
+- combines common and the configured architecture's BuildRequires;
 - indexes each imported binary package's name, `Provides`, and file paths;
 - maps BuildRequires capabilities to source-package targets;
 - computes strongly connected components and drops ordinary intra-cycle edges to upstream packages;
@@ -664,7 +664,7 @@ For each branch, `rpm_branch()` currently:
   manager-attached local package selection.
 
 This is a static, import-time self-hosting approximation. It is useful today but is not the planned final
-dependency lock: rich dependency parsing is intentionally limited, the architecture is fixed to `x86_64`,
+dependency lock: rich dependency parsing is intentionally limited, the graph is one for every architecture,
 and runtime package closures are still delegated to libdnf5 at buildroot-plan time.
 
 An `rpm_package` action:
@@ -683,7 +683,6 @@ discarded; failed scratch remains available for diagnosis.
 
 #### Limitations
 
-- Generated package metadata is fixed to `x86_64`.
 - The imported self-host dependency graph is inferred from stored BuildRequires/Provides/file metadata; it
   does not run RPM's dynamic BuildRequires protocol.
 - Build cycles fall back to upstream RPMs for ordinary intra-SCC edges, so the package set is not a fully
@@ -1546,9 +1545,8 @@ section is approximate and should follow the next concrete product need.
    same dependency graph.
 3. Model runtime closures at binary-subpackage granularity and make debuginfo/debugsource outputs explicit
    where consumers or publishing require them.
-4. Extend importer/build configuration beyond the fixed `x86_64` slice.
-5. Extend bootstrap extraction to a newer package format when a pinned repository requires it.
-6. Decide and implement build-time test policy. Because successful build scratch is discarded, checks most
+4. Extend bootstrap extraction to a newer package format when a pinned repository requires it.
+5. Decide and implement build-time test policy. Because successful build scratch is discarded, checks most
    likely belong in the primary build action with per-package opt-outs for broken or prohibitively
    expensive suites.
 
