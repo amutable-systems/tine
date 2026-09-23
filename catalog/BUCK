@@ -3,7 +3,8 @@
 
 """Default repositories, OS releases, boxes, package managers, and build profiles."""
 
-# Generated data lives under `snapshot/{repo,box,key}/`, without target-type suffixes in filenames.
+# Generated data lives under `snapshot/{repo,box,key}/`, named by target without its type suffix, and
+# by architecture.
 # Boxes with a resolver can derive their transaction during the build; refresh the catalog to freeze
 # one as a retained lock. Signing keys are fetched once, when a repository first declares them.
 load("//box:defs.bzl", "box")

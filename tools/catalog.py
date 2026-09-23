@@ -85,19 +85,21 @@ def _catalog_directory(buck: str, targets: list[str]) -> Path:
     return package_directory(buck, packages.pop())
 
 
-def _snapshot_path(target: str, kind: str, suffix: str) -> Path:
+def _snapshot_path(target: str, kind: str, suffix: str, architecture: str = "") -> Path:
     name = _name_of(target)
     if not name.endswith(suffix):
         fail(f"catalog: {target} does not end with {suffix!r}")
-    return Path("snapshot") / kind / f"{name.removesuffix(suffix)}.json"
+    stem = name.removesuffix(suffix) + (f".{architecture}" if architecture else "")
+    return Path("snapshot") / kind / f"{stem}.json"
 
 
 def _box_snapshot_path(target: str) -> Path:
     return _snapshot_path(target, "box", ".box")
 
 
-def _repository_snapshot_path(target: str) -> Path:
-    return _snapshot_path(target, "repo", ".repository")
+def _repository_lock_path(target: str, architecture: str) -> Path:
+    """Keep in sync with `_repository_lock_path` in package/repository.bzl, which reads it."""
+    return _snapshot_path(target, "repo", ".repository", architecture)
 
 
 def _run(buck: str, target: str) -> str:
@@ -189,6 +191,20 @@ class _Checkout:
         self._originals.clear()
         if failed is not None:
             raise failed
+
+
+def _served_architectures(buck: str, repositories: list[str]) -> dict[str, tuple[str, ...]]:
+    """The architectures each repository's mirror serves, and so the locks it keeps."""
+    out = buck_output(
+        buck,
+        "uquery",
+        "--json",
+        "--output-attribute=^architectures$",
+        f"set({' '.join(repositories)})",
+    )
+    return {
+        target: tuple(sorted(attributes["architectures"])) for target, attributes in json.loads(out).items()
+    }
 
 
 def _rewrite_pin(checkout: _Checkout, declaration: Path, attribute: str, current: str, wanted: str) -> None:
@@ -434,10 +450,16 @@ def _signing_keys(
             yield path, _fetch_signing_key(fingerprint, url)
 
 
-def _snapshot(buck: str, target: str) -> str:
-    """One repository's current pure metadata."""
-    print(f"==> snapshotting {_name_of(target)} (via {target}[snapshot])", file=sys.stderr)
-    return _run(buck, f"{target}[snapshot]")
+def _snapshot(buck: str, target: str, architecture: str) -> str:
+    """One repository's current pure metadata, for one architecture.
+
+    The subtarget is what keeps this off `--target-platforms`: every architecture a repository
+    serves is addressable from the host's own configuration. Keep the name in sync with
+    `_snapshot_subtarget` in package/repository.bzl.
+    """
+    subtarget = f"{target}[snapshot.{architecture}]"
+    print(f"==> snapshotting {_name_of(target)} for {architecture} (via {subtarget})", file=sys.stderr)
+    return _run(buck, subtarget)
 
 
 def _resolve(buck: str, target: str) -> str:
@@ -502,8 +524,13 @@ def _regenerate(
     """
     yield from _signing_keys(buck, catalog_dir, snapshots)
 
+    served = _served_architectures(buck, snapshots)
     for target in snapshots:
-        yield catalog_dir / _repository_snapshot_path(target), _snapshot(buck, target)
+        for architecture in served[target]:
+            yield (
+                catalog_dir / _repository_lock_path(target, architecture),
+                _snapshot(buck, target, architecture),
+            )
 
     for target in resolves:
         yield catalog_dir / _box_snapshot_path(target), _resolve(buck, target)
