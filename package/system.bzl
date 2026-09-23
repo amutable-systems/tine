@@ -13,6 +13,7 @@ PackageSystemInfo = provider(
         "index": provider_field(Dependency),
         "install": provider_field(Dependency),
         "keyring": provider_field(Dependency | None),
+        "metadata_vouches": provider_field(bool),
         "package_suffix": provider_field(str),
         "pkgdb": provider_field(Dependency),
         "plan": provider_field(Dependency),
@@ -38,6 +39,7 @@ def _package_system_impl(ctx: AnalysisContext) -> list[Provider]:
             database_format = ctx.attrs.database_format,
             database_paths = ctx.attrs.database_paths,
             keyring = ctx.attrs.keyring,
+            metadata_vouches = ctx.attrs.metadata_vouches,
             verify = ctx.attrs.verify,
         ),
     ]
@@ -64,6 +66,10 @@ package_system = rule(
             attrs.exec_dep(providers = [RunInfo]),
             default = None,
             doc = "build the keyring of a repository's declared signing keys that `verify` checks against",
+        ),
+        "metadata_vouches": attrs.bool(
+            default = False,
+            doc = "whether the repository's signed metadata vouches for a package rather than the package for itself; a lock then retains the metadata it was resolved against",
         ),
         "package_suffix": attrs.string(doc = "file suffix a selected native package is named with"),
         "pkgdb": attrs.exec_dep(providers = [RunInfo], doc = "capture an installed root's package database"),

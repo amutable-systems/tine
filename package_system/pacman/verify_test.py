@@ -17,6 +17,7 @@ from typing import override
 
 import alpm
 import keyring
+import snapshotter
 import verify
 from gnupg import KEYRING_FILES, fingerprints, gpg, kill_agent
 
@@ -282,6 +283,49 @@ class TestVerify(unittest.TestCase):
             self.verify(self.keyring(*self.distribution.main, time=LATER), self.repository(entry), package)
         self.assertIn("EXPKEYSIG", str(failure.exception))
 
+    def test_publishes_a_package_only_a_retained_database_describes(self) -> None:
+        # The pin moved on and dropped the package; the lock that selected it retains the database
+        # it was resolved against, which still carries the signature.
+        dropped, dropped_entry = self.package("dropped", self.distribution.vouched)
+        current, current_entry = self.package("current", self.distribution.vouched)
+        repository = self.repository(current_entry)
+        retained = repository / snapshotter.RETAINED / "0"
+        retained.mkdir(parents=True)
+        alpm.write_db([("dropped-1-1", dropped_entry)], retained / "test.db", EPOCH)
+        out = self.verify(self.keyring(*self.distribution.main), repository, dropped, current)
+        for package in (dropped, current):
+            self.assertTrue((out / f"pkg--{package.name}").exists())
+
+    def test_reads_a_retained_database_only_for_what_the_pinned_one_lacks(self) -> None:
+        # What a lock retained is the concern of the packages needing it: a retained database that
+        # cannot be read rejects those and no other.
+        current, current_entry = self.package("current-only", self.distribution.vouched)
+        dropped, _ = self.package("dropped-unread", self.distribution.vouched)
+        repository = self.repository(current_entry)
+        retained = repository / snapshotter.RETAINED / "0"
+        retained.mkdir(parents=True)
+        # Two databases where one is expected: the driver refuses the generation as a whole.
+        for name in ("one.db", "two.db"):
+            alpm.write_db([], retained / name, EPOCH)
+        out = self.verify(self.keyring(*self.distribution.main), repository, current)
+        self.assertTrue((out / f"pkg--{current.name}").exists())
+        with self.assertRaises(SystemExit):
+            self.verify(self.keyring(*self.distribution.main), repository, current, dropped)
+
+    def test_judges_a_retained_database_as_of_the_repository_pin(self) -> None:
+        # The keyring computes validity once, at the repository's pin, so a packager key that
+        # expired between the retained database's pin and the repository's is refused, whatever
+        # the retained generation says it was pinned at.
+        package, entry = self.package("retained-stale", self.distribution.stale)
+        repository = self.repository()
+        retained = repository / snapshotter.RETAINED / "0"
+        retained.mkdir(parents=True)
+        alpm.write_db([("retained-stale-1-1", entry)], retained / "test.db", EPOCH)
+        (retained / snapshotter.PINNED_AT).write_text(PINNED + "\n")
+        with self.assertRaises(SystemExit) as failure:
+            self.verify(self.keyring(*self.distribution.main, time=LATER), repository, package)
+        self.assertIn("EXPKEYSIG", str(failure.exception))
+
     def test_rejects_a_tampered_package(self) -> None:
         package, entry = self.package("tampered", self.distribution.vouched)
         package.write_bytes(b"something else")
@@ -304,7 +348,7 @@ class TestVerify(unittest.TestCase):
         package, entry = self.package("unsigned", None)
         with self.assertRaises(SystemExit) as failure:
             self.verify(self.keyring(*self.distribution.main), self.repository(entry), package)
-        self.assertIn("carries no signature", str(failure.exception))
+        self.assertIn("has a signature for it", str(failure.exception))
 
     def test_rejects_a_signature_that_does_not_decode(self) -> None:
         package, entry = self.package("garbled", None)

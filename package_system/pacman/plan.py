@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> None:
             solver.register(repository.id)
         resolved = solver.resolve(spec["install"])
 
-    transaction.write(Path(args.out), resolved_packages(repositories, resolved))
+    transaction.write(Path(args.out), resolved_packages(repositories, resolved), repositories)
 
 
 if __name__ == "__main__":

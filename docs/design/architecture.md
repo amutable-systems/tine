@@ -376,12 +376,24 @@ found it.
 
 The catalog tool asks Buck for the selected package's canonical targets and derives the snapshot directory
 from their canonical cell and package. `--box` limits which box transactions are resolved, and scopes
-the repositories refreshed to those the selected boxes depend on.
+the repositories refreshed to those the selected boxes depend on. The pins stay where they are, so a box
+whose package list changed re-resolves in place; `--advance` first moves each selected pin to the newest
+snapshot its mirror offers. A refresh writes as it goes, since the advanced pin is what the snapshots are
+taken at and a snapshot has to be on disk before the box reading it resolves, so a failed one restores
+every file it wrote: the advanced pin beside the old snapshots would build neither catalog.
 
 A committed box lock retains any package transport needed to build that exact transaction. The repository
 package pool combines those retained transports with its current snapshot, so every intermediate refresh
-state remains buildable and an interrupted refresh can simply be re-run. A lockless box always resolves
-from the current pinned snapshot and therefore needs no retained transport for packages absent from it.
+state remains buildable and an interrupted refresh can simply be re-run. Where the repository's metadata
+rather than the package carries the proof of a package, a lock also records the metadata it was resolved
+against, as `metadata` entries, and the repository materializes that generation under `retained/` while
+the lock still needs a package the current metadata dropped, so the retained transport fetches nothing a
+verifier cannot vouch for. The lock records the pin with it, for a verifier whose clock is its own to judge
+the generation as of then, the way the current one is judged as of the repository's; a rolling repository
+records nothing, since its metadata URLs do not outlive the mirror's next advance. A verifier reads a
+retained generation only for a package the pinned metadata does not vouch for, so a generation that fails
+to verify fails those packages and no other. A lockless box always resolves from the current pinned
+snapshot and therefore needs no retained transport or metadata for packages absent from it.
 
 Transport retention does not turn a rolling mirror into an archive. A URL may eventually disappear; a
 clean-cache rebuild then needs a durable archive/content store, while an already fetched artifact can still
@@ -775,8 +787,10 @@ Limitations specific to this system:
   what its revoked list withdraws, and certifies the declared keys locally with marginal ownertrust, so
   that a packager's key is valid once three declared main keys certify it: `pacman-key --populate`'s
   model, with the catalog rather than the package choosing the main keys. A signature is read from the
-  pinned database's `%PGPSIG%`, so a package a frozen box lock retains after the database stopped
-  describing it cannot be verified until the lock is refreshed. The keyring's gpg clock is stopped at
+  pinned database's `%PGPSIG%`, or from the database a frozen box lock retains once the pinned one
+  stopped describing a package the lock selected; the keyring judges both as of the repository's
+  pin, since it computes validity once when built, so a packager key that expired between the two
+  pins is refused until the lock is refreshed. The keyring's gpg clock is stopped at
   the archive day the repository is pinned to, so key expiry is judged as of the snapshot and a build
   of it verifies the same way however much later it runs; an unpinned repository judges as of the build.
 - Pinning a database by content means a rolling mirror goes stale the moment it advances; only an

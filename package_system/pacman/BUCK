@@ -68,7 +68,7 @@ tine_python_binary(
 tine_python_binary(
     name = "verify",
     main = "verify.py",
-    deps = [":alpm", ":gnupg", "//:specs", "//:util"],
+    deps = [":alpm", ":gnupg", "//:specs", "//:util", "//package:snapshotter"],
 )
 
 # `build` stays unset: Arch has no makepkg rule here yet.
@@ -84,6 +84,8 @@ package_system(
     index = ":index",
     install = ":install",
     keyring = ":keyring",
+    # The database carries each package's signature.
+    metadata_vouches = True,
     verify = ":verify",
     # Arch has served zstd for years, so that is what a selected package is named with; an older
     # compressor still in a pinned repository is only recognized (alpm.is_package), never named.
@@ -107,7 +109,7 @@ box_python_test(
 box_python_test(
     name = "test",
     box = "//tools:dev.box",
-    deps = ["//:specs", "//:util"],
+    deps = ["//:specs", "//:util", "//package:snapshotter"],
     srcs = [
         "alpm.py",
         "alpm_test.py",

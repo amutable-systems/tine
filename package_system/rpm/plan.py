@@ -245,7 +245,7 @@ def main(argv: list[str] | None = None) -> None:
             solve_spec["arch"],
             seeds,
         )
-    transaction.write(Path(args.out), tx)
+    transaction.write(Path(args.out), tx, repos)
 
 
 if __name__ == "__main__":
