@@ -622,7 +622,7 @@ def declare_image(
 
     if operations or install_specs:
         closure = None
-        system = None
+        package_manager_info = None
         if install_specs:
             if package_manager == None:
                 fail("image: installing packages requires an image with a package manager")
@@ -634,7 +634,7 @@ def declare_image(
                 identifier = identifier,
                 local_seed = parent_install_specs + install_specs,
             )
-            system = package_manager[PackageManagerInfo].package_system[PackageSystemInfo]
+            package_manager_info = package_manager[PackageManagerInfo]
 
         delta = declare_out(ctx, identifier, "delta", dir = True)
         work = declare_out(ctx, identifier, "overlay.work", dir = True) if layers else None
@@ -645,9 +645,10 @@ def declare_image(
             "out": delta.as_output(),
             "work": work.as_output() if work != None else None,
         }
-        if system != None:
+        if package_manager_info != None:
+            system = package_manager_info.package_system[PackageSystemInfo]
             spec["install"] = {
-                "arch": architecture.spelling(box[BoxInfo].arch, system.arch_schema),
+                "arch": architecture.spelling(package_manager_info.arch, system.arch_schema),
                 "docs": install_docs,
                 "installer": executable(system.install),
                 "langs": install_langs,

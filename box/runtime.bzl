@@ -9,7 +9,6 @@ BoxInfo = provider(
     # Carry the configured sandbox through providers so anonymous targets can reuse it.
     doc = "A reusable execution environment built from one base OS release.",
     fields = {
-        "arch": provider_field(str),
         "root": provider_field(Artifact),  # the box root
         "sandbox": provider_field(Dependency),
     },
