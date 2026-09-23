@@ -24,7 +24,9 @@ runs:
       shell: bash
       run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
+    # GitHub's arm64 runners have no KVM; the pipeline skips the VM boot smokes where it is missing.
     - name: Set up /dev/kvm
+      if: runner.arch == 'X64'
       shell: bash
       run: |
         echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
