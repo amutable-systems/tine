@@ -368,16 +368,14 @@ box.sh_test(
     args = ["$(location :boot-demo.arch[boot][uki])"],
 )
 
-# Both distributions, because each package system captures its database in its own format.
+# Once per distribution, because each package system captures its database in its own format.
 box.sh_test(
     name = "pkgdb-format-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
     test = "pkgdb-format.sh",
-    args = [
-        "$(location :demo.fedora[pkgdb])",
-        "$(location :demo.arch[pkgdb])",
-    ],
+    args = ["$(location :demo[pkgdb])"] + distribution.select({"arch": ["tar.zst"], "fedora": ["sqlite"]}),
+    **distribution.distributed("pkgdb-format-test"),
 )
 
 # A DDI's file name is what a systemd-sysupdate transfer matches, so it is part of the contract
