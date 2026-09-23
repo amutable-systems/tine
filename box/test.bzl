@@ -73,11 +73,16 @@ def box_python_test(
     box: str,
     srcs: list[str] | Select,
     deps: list[str] | Select | None = None,
+    target_compatible_with: list[str] | Select | None = None,
     **kwargs,
 ) -> None:
-    """Declare a box-hosted Python suite and the ty check over its sources, in the box that runs them."""
-    _box_python_test(name = name, box = box, deps = deps, srcs = srcs, **kwargs)
-    ty_check(name = name + "-ty", srcs = srcs, deps = deps, boxes = [box])
+    """Declare a box-hosted Python suite and the ty check over its sources, in the box that runs them.
+
+    `target_compatible_with` covers both: a box that exists on some hosts only takes the suite and its
+    check with it.
+    """
+    _box_python_test(name = name, box = box, deps = deps, srcs = srcs, target_compatible_with = target_compatible_with, **kwargs)
+    ty_check(name = name + "-ty", srcs = srcs, deps = deps, boxes = [box], target_compatible_with = target_compatible_with)
 
 def _box_sh_test_impl(ctx: AnalysisContext) -> list[Provider]:
     if (ctx.attrs.script == None) == (ctx.attrs.test == None):

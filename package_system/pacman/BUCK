@@ -4,7 +4,9 @@
 """The alpm (pacman) native package system and its driver bundle."""
 
 load("//box:test.bzl", "box_python_test")
+load("//catalog:architectures.bzl", "ARCH_ARCHITECTURES")
 load("//package:system.bzl", "package_system")
+load("//platforms:architecture.bzl", "architecture")
 load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
 
 # Host tools bootstrap the box; remaining drivers run inside it.
@@ -97,12 +99,14 @@ package_system(
     visibility = ["PUBLIC"],
 )
 
-# The planner resolves through libalpm, so its test runs in the box that carries it.
+# The planner resolves through libalpm, so its test runs in the box that carries it, on the hosts
+# that have that box.
 box_python_test(
     name = "plan-test",
     box = "tine//catalog:arch.rolling.box",
     srcs = ["alpm.py", "plan.py", "plan_test.py"],
     deps = ["//:specs", "//:util", "//package:href", "//package:transaction", "//rootfs:rootfs"],
+    target_compatible_with = architecture.compatibility(ARCH_ARCHITECTURES),
 )
 
 # The dev box rather than the alpm one: the verifier's tests build a distribution's keys, which

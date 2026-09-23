@@ -115,7 +115,9 @@ def _lint(args: argparse.Namespace) -> None:
     targets = buck_output(args.buck, "uquery", "attrfilter(labels, 'python-typecheck', tine//...)").split()
     if not targets:
         fail("ty: no generated type-check targets found")
-    _run([args.buck, "build", *targets])
+    # A check against a box this host lacks is incompatible here; named outright, buck would refuse
+    # it rather than skip it as a pattern would.
+    _run([args.buck, "build", "--skip-incompatible-targets", *targets])
     _bold("starlark_fmt")
     # starlark_fmt has no check mode, so diff each file and fail on the first rewrite it would make.
     if diffs := [diff for src in srcs if (diff := _fmt_diff(args, src))]:

@@ -11,20 +11,14 @@ load("//box:defs.bzl", "box")
 load("//distribution:arch.bzl", "arch_release", "arch_signing_keys")
 load("//distribution:fedora.bzl", "fedora_release", "fedora_signing_keys")
 load("//platforms:architecture.bzl", "architecture")
-
-# What the mirror serves, and so what a box of this release keeps a committed lock for. A box only
-# ever takes architectures its release has, so state each release's once.
-_FEDORA_ARCHITECTURES = ["x86_64", "arm64"]
-
-# Arch publishes only x86_64. Arch ARM is a separate distribution with its own mirrors and no archive.
-_ARCH_ARCHITECTURES = ["x86_64"]
+load(":architectures.bzl", "ARCH_ARCHITECTURES", "FEDORA_ARCHITECTURES")
 
 # Pinned rpmrepo compose snapshot: packages never vanish underneath committed pins.
 # refresh-catalog --advance enumerates the mirror and moves the snapshot pin to the newest compose.
 fedora_release(
     name = "fedora.rawhide",
     version = "rawhide",
-    architectures = _FEDORA_ARCHITECTURES,
+    architectures = FEDORA_ARCHITECTURES,
     box = ":fedora.rawhide.box",
     rpmrepo_mirror = "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46",
     rpmrepo_snapshot = "f46-$basearch-rawhide-20260923",
@@ -36,7 +30,7 @@ fedora_release(
 # Shared RPM box plus the image assembly and VM tools. These tools stay out of images.
 box.new(
     name = "fedora.rawhide.box",
-    architectures = _FEDORA_ARCHITECTURES,
+    architectures = FEDORA_ARCHITECTURES,
     packages = [
         "rpm",
         "python3-libdnf5",
@@ -85,7 +79,7 @@ box.new(
 # refresh-catalog --advance moves every repository sharing this pin to the newest complete day.
 arch_release(
     name = "arch.rolling",
-    architectures = _ARCH_ARCHITECTURES,
+    architectures = ARCH_ARCHITECTURES,
     archive_snapshot = "2026/09/19",
     box = ":arch.rolling.box",
     signing_keys = arch_signing_keys(),
@@ -99,7 +93,7 @@ arch_release(
 # would be built for nothing.
 box.new(
     name = "arch.rolling.box",
-    architectures = _ARCH_ARCHITECTURES,
+    architectures = ARCH_ARCHITECTURES,
     packages = [
         "pacman",
         # the keyring driver takes the packagers' keys and the main keys' certifications from here

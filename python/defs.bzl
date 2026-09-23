@@ -96,14 +96,24 @@ def ty_check(
     srcs: list[str] | Select,
     deps: list[str] | Select | None = None,
     boxes: list[str] | Select | None = None,
+    target_compatible_with: list[str] | Select | None = None,
 ) -> None:
     """Check `srcs` in a flat tree of their transitive runtime, in every box named.
 
     The boxes hang off the check rather than the driver, which would otherwise depend on a box its
-    own drivers build.
+    own drivers build. A check against a box that exists on some hosts only is skipped elsewhere
+    through `target_compatible_with`, the same one the target it checks states.
     """
     manifests = glob(["pyproject.toml"])
-    _ty_check(name = name, boxes = boxes, deps = deps, labels = [_TYPECHECK_LABEL], pyproject = manifests[0] if manifests else None, srcs = srcs)
+    _ty_check(
+        name = name,
+        boxes = boxes,
+        deps = deps,
+        labels = [_TYPECHECK_LABEL],
+        pyproject = manifests[0] if manifests else None,
+        srcs = srcs,
+        target_compatible_with = target_compatible_with,
+    )
 
 def tine_python_library(
     name: str,

@@ -5,8 +5,16 @@
 
 load("@prelude//:rules.bzl", "constraint_setting", "constraint_value")
 load("//box:test.bzl", "box_python_test")
+load("//catalog:architectures.bzl", "ARCH_ARCHITECTURES", "FEDORA_ARCHITECTURES")
+load("//platforms:architecture.bzl", "architecture")
 load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
 load(":image.bzl", "image_tools")
+
+# The artifacts driver runs in whichever manager's box an image resolves through, so it is checked
+# against each, on the hosts that have it.
+_MANAGER_BOXES = ["tine//catalog:fedora.rawhide.box"] + architecture.select(
+    {arch: ["tine//catalog:arch.rolling.box"] if arch in ARCH_ARCHITECTURES else [] for arch in FEDORA_ARCHITECTURES}
+)
 
 # The one bundle every image rule resolves its drivers through.
 image_tools(
@@ -143,7 +151,7 @@ tine_python_library(
 tine_python_library(
     name = "artifacts-lib",
     srcs = ["artifacts.py"],
-    boxes = ["tine//catalog:arch.rolling.box", "tine//catalog:fedora.rawhide.box"],
+    boxes = _MANAGER_BOXES,
     deps = [
         ":finalize",
         "//:specs",
@@ -154,7 +162,7 @@ tine_python_library(
 tine_python_binary(
     name = "artifacts",
     main = "artifacts.py",
-    boxes = ["tine//catalog:arch.rolling.box", "tine//catalog:fedora.rawhide.box"],
+    boxes = _MANAGER_BOXES,
     deps = [
         ":finalize",
         "//:specs",

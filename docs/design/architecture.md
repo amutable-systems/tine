@@ -973,8 +973,10 @@ and that box's locks are incompatible on any other, each on its own, through `ar
 A distribution states them too: choosing it marks the configuration `tine//platforms:architecture-served`
 only for one of those, and every image and its per-distribution aliases require that mark beside their
 distribution, so on an arm64 host the Arch images are skipped rather than failing under their package
-manager. It is the one mark there is: a plain configuration never carries it, which is what makes
-requiring it under a foreign architecture a skip for the catalog's own targets as well.
+manager. It is the one mark there is: a plain configuration never carries it, which is what makes requiring
+it under a foreign architecture a skip for the catalog's own targets as well. A target naming a box by hand,
+such as a test running in it, reads the box's architectures from `catalog/architectures.bzl` and states the
+same.
 
 This is deliberately not a buckconfig. A distribution is a property of the image, so it belongs in the
 declaration, where it is visible to `buck2 uquery`, can differ between two targets in one build, and does
