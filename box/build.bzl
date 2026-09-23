@@ -10,6 +10,7 @@ load(
     "ConfiguredPackageRepositoryInfo",
     "PackagePoolInfo",
     "PackageRepositoryInfo",
+    "box_lock_path",
     "select_package_artifacts",
     "select_repositories",
 )
@@ -55,6 +56,27 @@ def _configure_repositories(
         )
     return configured
 
+def _solve(
+    ctx: AnalysisContext,
+    release: OsReleaseInfo,
+    resolver_box: Dependency,
+    repositories: list[ConfiguredPackageRepositoryInfo],
+    packages: list[str],
+    arch: str,
+) -> cmd_args:
+    """The command resolving `packages` for `arch` in `resolver_box`, against `repositories`."""
+    system = release.package_system[PackageSystemInfo]
+    solver_caches = [solver_cache(ctx, resolver_box, release.package_system, repository, arch) for repository in repositories] if system.solver_cache else []
+    return solve_command(
+        ctx = ctx,
+        box = resolver_box[BoxInfo],
+        system = system,
+        repositories = repositories,
+        install = packages,
+        arch = arch,
+        solver_caches = solver_caches,
+    )
+
 def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     release = ctx.attrs.release[OsReleaseInfo]
     system = release.package_system[PackageSystemInfo]
@@ -66,37 +88,14 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     configured_repositories = _configure_repositories(ctx, repositories, None)
 
     resolver_box = None
-    resolve = None
     if ctx.attrs.resolver_box != None:
         resolver_box = ctx.attrs.resolver_box[BoxInfo]
-        solver_caches = (
-            [
-                solver_cache(
-                    ctx,
-                    ctx.attrs.resolver_box,
-                    release.package_system,
-                    repository,
-                    ctx.attrs._arch,
-                )
-                for repository in configured_repositories
-            ]
-            if system.solver_cache
-            else []
-        )
-        resolve = solve_command(
-            ctx = ctx,
-            box = resolver_box,
-            system = system,
-            repositories = configured_repositories,
-            install = ctx.attrs.packages,
-            arch = ctx.attrs._arch,
-            solver_caches = solver_caches,
-        )
 
     transaction = ctx.attrs.lock
     if transaction == None:
-        if resolve == None:
+        if ctx.attrs.resolver_box == None:
             fail("box: a root box has nothing to resolve with and requires a committed lock")
+        resolve = _solve(ctx, release, ctx.attrs.resolver_box, configured_repositories, ctx.attrs.packages, ctx.attrs._arch)
         transaction = ctx.actions.declare_output("transaction.json")
         resolve.add("--out", transaction.as_output())
         ctx.actions.run(resolve, category = "box_resolve", allow_cache_upload = True)
@@ -173,21 +172,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
         root = stage2,
         sandbox = ctx.attrs._sandbox,
     )
-
-    # A locked bootstrap box can use its completed root to update its own transaction.
-    if resolve == None:
-        resolve = solve_command(
-            ctx = ctx,
-            box = info,
-            system = system,
-            repositories = configured_repositories,
-            install = ctx.attrs.packages,
-            arch = ctx.attrs._arch,
-        )
-    sub_targets = {
-        "resolve": [DefaultInfo(), RunInfo(args = resolve)],
-        "transaction": [DefaultInfo(default_output = transaction)],
-    }
+    sub_targets = {"transaction": [DefaultInfo(default_output = transaction)]}
 
     return [DefaultInfo(default_output = stage2, sub_targets = sub_targets), info]
 
@@ -216,6 +201,40 @@ _box = rule(
         # BoxInfo carries this into the rest of the graph.
         "_sandbox": attrs.exec_dep(default = "tine//box:sandbox", providers = [RunInfo]),
     },
+)
+
+def _box_lock_impl(ctx: AnalysisContext) -> list[Provider]:
+    release = ctx.attrs.release[OsReleaseInfo]
+    repositories = _configure_repositories(
+        ctx,
+        select_repositories(
+            release.repository_universe,
+            ctx.attrs.enable_repository_groups,
+            ctx.attrs.disable_repository_groups,
+        ),
+        None,
+    )
+    return [
+        DefaultInfo(),
+        RunInfo(args = _solve(ctx, release, ctx.attrs.resolver_box, repositories, ctx.attrs.packages, ctx.attrs._arch)),
+    ]
+
+# What a box is made of, resolved for one architecture. The repositories come in under the target
+# configuration, so an incoming transition to that architecture's platform is what makes them serve
+# its metadata; the box running the solver stays an exec_dep, and so the host's.
+_box_lock = rule(
+    impl = _box_lock_impl,
+    attrs = {
+        "disable_repository_groups": attrs.list(attrs.string(), default = []),
+        "enable_repository_groups": attrs.list(attrs.string(), default = []),
+        "labels": attrs.list(attrs.string(), default = []),
+        "packages": attrs.list(attrs.string(), doc = "the box's top-level package names"),
+        "release": attrs.dep(providers = [OsReleaseInfo], doc = "base OS release for the box root"),
+        "resolver_box": attrs.exec_dep(providers = [BoxInfo], doc = "box the solver runs in"),
+        # Private: the incoming transition decides.
+        "_arch": attrs.string(default = architecture.configured(), doc = "the architecture to resolve for"),
+    },
+    supports_incoming_transition = True,
 )
 
 def _box_alias_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -247,6 +266,9 @@ def new(
     name: str,
     packages: list[str],
     release: str,
+    architectures: list[str] = [],
+    disable_repository_groups: list[str] | None = None,
+    enable_repository_groups: list[str] | None = None,
     resolver_box: str | None = None,
     root: bool = False,
     labels: list[str] = [],
@@ -258,6 +280,10 @@ def new(
     A release names its own box beside it, so an unset `resolver_box` resolves through that sibling.
     A `root` box has none: it bootstraps by extracting its transaction, which is how the box a
     release names is built in the first place.
+
+    `architectures` are the ones this box keeps a committed lock for: it is built for the host's
+    alone, but refresh-catalog writes a lock per architecture, so a build on any of them has one to
+    start from. A box that names none resolves during the build instead, which a root box cannot do.
     """
     if not name.endswith(".box"):
         fail("box name must end with '.box': {}".format(name))
@@ -267,19 +293,45 @@ def new(
         if not release.endswith(".release"):
             fail("box: cannot derive a resolver box from release '{}'; pass resolver_box".format(release))
         resolver_box = release.removesuffix(".release") + ".box"
-    locks = glob(["snapshot/box/" + name[: -len(".box")] + ".json"])
+    stem = name.removesuffix(".box")
+    packages = _DEFAULT_PACKAGES + [package for package in packages if package not in _DEFAULT_PACKAGES]
+
+    # The lock of each architecture, None until refresh-catalog has written one. A box that keeps
+    # none has nothing to select over and resolves during the build instead.
+    locks = {}
+    for arch in architectures:
+        committed = glob([box_lock_path(stem, arch)])
+        locks[arch] = committed[0] if committed else None
+
     _box(
         name = name + ".exec",
-        packages = _DEFAULT_PACKAGES + [package for package in packages if package not in _DEFAULT_PACKAGES],
+        packages = packages,
         release = release,
         resolver_box = resolver_box,
-        lock = locks[0] if locks else None,
+        disable_repository_groups = disable_repository_groups,
+        enable_repository_groups = enable_repository_groups,
+        lock = architecture.select(locks) if locks else None,
         target_compatible_with = [_EXECUTION_CONFIGURATION],
         **kwargs,
     )
     _box_alias(
         name = name,
         actual = ":" + name + ".exec",
-        labels = ["tine:box"] + labels,
+        labels = labels,
         visibility = visibility,
     )
+
+    # A root box resolves through itself: its committed lock is what builds the root that then says
+    # what the lock should be.
+    for arch in architectures:
+        _box_lock(
+            # Keep in sync with BOX_LOCK_INFIX in tools/catalog.py.
+            name = "{}.lock.{}".format(name, arch),
+            packages = packages,
+            release = release,
+            resolver_box = ":" + name if root else resolver_box,
+            disable_repository_groups = disable_repository_groups,
+            enable_repository_groups = enable_repository_groups,
+            incoming_transition = "tine//platforms:" + arch,
+            labels = ["tine:box-lock"],
+        )

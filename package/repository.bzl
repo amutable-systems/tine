@@ -39,6 +39,13 @@ def _repository_lock_path(name: str, architecture: str) -> str:
     """
     return "snapshot/repo/{}.{}.json".format(name, architecture)
 
+def box_lock_path(name: str, architecture: str) -> str:
+    """Where one architecture's committed box transaction lives, relative to the catalog package.
+
+    Keep in sync with `_box_lock_path` in tools/catalog.py, which writes it.
+    """
+    return "snapshot/box/{}.{}.json".format(name, architecture)
+
 def snapshot_data(snapshot: ArtifactValue, id: str) -> dict:
     """Read one repository's committed snapshot."""
     data = snapshot.read_json()
@@ -655,7 +662,9 @@ def declare_remote_repository(
         name = name,
         architectures = architectures,
         baseurl = url,
-        box_locks = glob(["snapshot/box/*.json"]),
+        # A box lock's transports point into one architecture's mirror, so only this architecture's
+        # belong in its pool.
+        box_locks = architecture.select({arch: glob([box_lock_path("*", arch)]) for arch in architectures}),
         pinned_at = pin.pinned_at if pin != None else None,
         labels = ["tine:remote-repository", label] + labels,
         metadata = pin.metadata if pin != None else {},

@@ -350,7 +350,7 @@ def _launch(args: Options) -> Launch:
         # short-lived files only.
         #
         # Entered outside a run action there is no scratch directory: `buck run` on a box or
-        # its [resolve] subtarget, and every `buck test`. Those keep a tmpfs here too, which dies
+        # on one of its lock targets, and every `buck test`. Those keep a tmpfs here too, which dies
         # with the mount namespace.
         staging = None
         if cwd and "BUCK_SCRATCH_PATH" in os.environ:

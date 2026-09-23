@@ -134,6 +134,25 @@ class TestArmor(unittest.TestCase):
         self.assertEqual(base64.b64decode(body), binary)
 
 
+class LockPaths(unittest.TestCase):
+    def test_names_a_box_lock_by_box_and_architecture(self) -> None:
+        self.assertEqual(
+            catalog._box_lock_path("tine//catalog:fedora.rawhide.box.lock.x86_64"),
+            Path("snapshot/box/fedora.rawhide.x86_64.json"),
+        )
+
+    def test_rejects_a_lock_target_of_something_that_is_no_box(self) -> None:
+        with self.assertRaises(SystemExit) as raised:
+            catalog._box_lock_path("tine//catalog:fedora.rawhide.lock.x86_64")
+        self.assertIn("is not a <name>.box.lock.<architecture> target", str(raised.exception))
+
+    def test_names_a_repository_lock_by_repository_and_architecture(self) -> None:
+        self.assertEqual(
+            catalog._repository_lock_path("tine//catalog:arch.rolling.core.repository", "x86_64"),
+            Path("snapshot/repo/arch.rolling.core.x86_64.json"),
+        )
+
+
 class NewestRpmrepoSnapshot(unittest.TestCase):
     @override
     def setUp(self) -> None:
