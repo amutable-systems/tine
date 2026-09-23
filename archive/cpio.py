@@ -186,11 +186,15 @@ def unpack(fd: int, dest: Path, *, offset: int = 0) -> int:
 class Writer:
     """Stream a reproducible archive with fixed ownership and clamped mtimes."""
 
-    def __init__(self, path: Path, epoch: int) -> None:
+    def __init__(self, path: Path, epoch: int, *, block_align: bool = True) -> None:
         self._fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
         self._epoch = epoch
         self._pos = 0
         self._ino = 0
+        # Alignment pads the name field, and the kernel's early cpio reader (lib/earlycpio.c) refuses
+        # an entry whose name field exceeds its 18-byte name buffer, so an archive it reads before
+        # unpacking anything, microcode, is written without.
+        self._block_align = block_align
 
     def __enter__(self) -> Self:
         return self
@@ -239,7 +243,13 @@ class Writer:
         fd = os.open(src, os.O_RDONLY)
         try:
             size = os.fstat(fd).st_size
-            self._header(name, stat.S_IFREG | (mode & 0o7777), size, mtime=mtime, block_align=size >= _BLOCK)
+            self._header(
+                name,
+                stat.S_IFREG | (mode & 0o7777),
+                size,
+                mtime=mtime,
+                block_align=self._block_align and size >= _BLOCK,
+            )
             util.copy_range(self._fd, self._pos, fd, 0, size)
             self._pos += size
         finally:
@@ -275,11 +285,11 @@ def _add(w: Writer, tree: Path, path: Path) -> bool:
     return True
 
 
-def pack_tree(tree: Path, out: Path, epoch: int) -> int:
+def pack_tree(tree: Path, out: Path, epoch: int, *, block_align: bool = True) -> int:
     """Pack a whole tree into `out`."""
     tree = Path(tree)
     count = 0
-    with Writer(out, epoch) as w:
+    with Writer(out, epoch, block_align=block_align) as w:
         for path in sorted(tree.rglob("*")):
             count += _add(w, tree, path)
     return count

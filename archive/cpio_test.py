@@ -109,6 +109,20 @@ class TestUnpack(unittest.TestCase):
             self.assertEqual((dest / "usr/demo").stat().st_mode & 0o7777, 0o755)
             self.assertTrue(os.path.isdir(dest / "usr"))
 
+    def test_an_unaligned_archive_keeps_the_stock_name_field(self) -> None:
+        """The kernel's early cpio reader refuses a padded name, so nothing pads the microcode's."""
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            (root / "payload").write_bytes(bytes(cpio._BLOCK))
+            name = "kernel/x86/microcode/GenuineIntel.bin"
+            for block_align, namesize in ((True, cpio._BLOCK - cpio._HEADER), (False, len(name) + 1)):
+                with self.subTest(block_align=block_align):
+                    archive = root / "ucode.cpio"
+                    with cpio.Writer(archive, 0, block_align=block_align) as writer:
+                        writer.add_file(name, root / "payload", mode=0o644, mtime=0)
+                    header = archive.read_bytes()[: cpio._HEADER]
+                    self.assertEqual(int(header[6 + 11 * 8 : 6 + 12 * 8], 16), namesize)
+
 
 if __name__ == "__main__":
     unittest.main()
