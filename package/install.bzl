@@ -78,7 +78,7 @@ def resolve_packages(
         system = system,
         repositories = plan_repositories,
         install = install,
-        arch = box.arch,
+        arch = package_manager.arch,
         output = tx.as_output(),
         solver_caches = package_manager.solver_caches,
         lowers = stack,
@@ -114,7 +114,7 @@ def _install_actions(
             ctx.actions,
             "install.spec.json",
             {
-                "arch": architecture.spelling(box.arch, system.arch_schema),
+                "arch": architecture.spelling(package_manager.arch, system.arch_schema),
                 "box_config": False,
                 "docs": True,
                 "installroot": None,

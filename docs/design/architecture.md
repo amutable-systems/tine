@@ -295,9 +295,8 @@ The providers have deliberately narrow roles:
 - `LocalPackageUniverseInfo` describes a universe of locally built packages together with the imported
   runtime Requires/Provides metadata needed to select an install request's closure among them.
 - `BuildrootInfo` materializes the shared base root from explicit packages or a release package set.
-- `BoxInfo` contains a runnable root filesystem, its resolution architecture, and the sandbox used to
-  enter it. Its target label establishes provenance; the box may serve compatible package managers for
-  other releases.
+- `BoxInfo` contains a runnable root filesystem and the sandbox used to enter it. Its target label
+  establishes provenance; the box may serve compatible package managers for other releases.
 
 Solver caches are anonymous targets keyed by resolver box, package system, configured repository,
 architecture, and execution platform. Matching boxes and package managers therefore consume one shared

@@ -47,7 +47,16 @@ def _spelling(name: str, schema: str) -> str:
         fail("architecture: {} has no {} name".format(name, schema))
     return spelled
 
+def _configured() -> Select:
+    """A rule's attribute default for the architecture being built for.
+
+    Under the target configuration (plain `dep`) this is the host's, unless `--target-platforms` picks
+    another. Under the execution configuration (`exec_dep`), it is always the host's.
+    """
+    return _select({name: name for name in ARCHITECTURES})
+
 architecture = struct(
+    configured = _configured,
     select = _select,
     spelling = _spelling,
 )

@@ -6,6 +6,7 @@
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//distribution:defs.bzl", "distribution")
+load("//platforms:architecture.bzl", "architecture")
 load(":local_packages.bzl", "LocalPackageUniverseInfo")
 load(":release.bzl", "OsReleaseInfo")
 load(
@@ -74,6 +75,9 @@ def materialize_local_repository(
 PackageManagerInfo = provider(
     doc = "The box and repository selection used for native package operations.",
     fields = {
+        # Target architecture for resolving/installing packages (not the box'es, that's an exec_dep and
+        # runs as the host arch)
+        "arch": provider_field(str),
         "box": provider_field(Dependency),
         "local_packages": provider_field(Dependency | None, default = None),
         "package_sets": provider_field(dict[str, list[str]]),
@@ -180,7 +184,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
                     box_dep,
                     package_system,
                     configured,
-                    box.arch,
+                    ctx.attrs._arch,
                 )
             )
         configured_repositories.append(configured)
@@ -188,6 +192,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
     return [
         DefaultInfo(),
         PackageManagerInfo(
+            arch = ctx.attrs._arch,
             box = box_dep,
             package_sets = package_sets,
             package_system = package_system,
@@ -215,6 +220,7 @@ _package_manager = rule(
         ),
         "release": attrs.option(attrs.dep(providers = [OsReleaseInfo]), default = None),
         "repository_priorities": attrs.dict(attrs.string(), attrs.int(), default = {}),
+        "_arch": attrs.string(default = architecture.configured(), doc = "the architecture to resolve for"),
     },
 )
 

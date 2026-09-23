@@ -76,7 +76,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
                     ctx.attrs.resolver_box,
                     release.package_system,
                     repository,
-                    ctx.attrs.arch,
+                    ctx.attrs._arch,
                 )
                 for repository in configured_repositories
             ]
@@ -89,7 +89,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
             system = system,
             repositories = configured_repositories,
             install = ctx.attrs.packages,
-            arch = ctx.attrs.arch,
+            arch = ctx.attrs._arch,
             solver_caches = solver_caches,
         )
 
@@ -128,7 +128,6 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
             category = "extract",
         )
         installer_box = BoxInfo(
-            arch = ctx.attrs.arch,
             root = stage1,
             sandbox = ctx.attrs._sandbox,
         )
@@ -155,7 +154,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
                 ctx.actions,
                 "install.spec.json",
                 {
-                    "arch": architecture.spelling(ctx.attrs.arch, system.arch_schema),
+                    "arch": architecture.spelling(ctx.attrs._arch, system.arch_schema),
                     "box_config": True,
                     "docs": True,
                     "installroot": None,
@@ -171,7 +170,6 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     )
 
     info = BoxInfo(
-        arch = ctx.attrs.arch,
         root = stage2,
         sandbox = ctx.attrs._sandbox,
     )
@@ -184,7 +182,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
             system = system,
             repositories = configured_repositories,
             install = ctx.attrs.packages,
-            arch = ctx.attrs.arch,
+            arch = ctx.attrs._arch,
         )
     sub_targets = {
         "resolve": [DefaultInfo(), RunInfo(args = resolve)],
@@ -196,7 +194,6 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
 _box = rule(
     impl = _box_impl,
     attrs = {
-        "arch": attrs.string(default = "x86_64", doc = "the resolution arch"),
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
         "lock": attrs.option(
@@ -214,6 +211,8 @@ _box = rule(
             default = None,
             doc = "predecessor box used to resolve and install this box's transaction",
         ),
+        # Private: A box is only ever reached as an exec_dep, so that is the build host's architecture.
+        "_arch": attrs.string(default = architecture.configured(), doc = "the resolution arch"),
         # BoxInfo carries this into the rest of the graph.
         "_sandbox": attrs.exec_dep(default = "tine//box:sandbox", providers = [RunInfo]),
     },
