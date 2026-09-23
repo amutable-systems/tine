@@ -3,6 +3,7 @@
 
 """Native package repositories, universes, and dynamic transaction selection."""
 
+load("//platforms:architecture.bzl", "architecture")
 load(":system.bzl", "PackageSystemInfo")
 load(":verify.bzl", "Verifier", "verify_packages")
 
@@ -198,8 +199,14 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
             vouches = ctx.attrs.package_system[PackageSystemInfo].metadata_vouches,
         )
     )
+    if ctx.attrs._arch not in ctx.attrs.architectures:
+        fail("repository '{}' has no {} mirror; the catalog declares {}".format(ctx.label.name, ctx.attrs._arch, ctx.attrs.architectures))
+    baseurl = expand_baseurl(ctx.attrs.baseurl, ctx.attrs._arch, ctx.attrs.package_system[PackageSystemInfo])
+
     return remote_repository_base(
         ctx,
+        arch = ctx.attrs._arch,
+        architectures = ctx.attrs.architectures,
         baseurl = ctx.attrs.baseurl,
         package_system = ctx.attrs.package_system,
         pinned_at = ctx.attrs.pinned_at,
@@ -210,7 +217,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
         PackagePoolInfo(
             value = _declare_package_pool(
                 ctx,
-                baseurl = ctx.attrs.baseurl,
+                baseurl = baseurl,
                 box_locks = ctx.attrs.box_locks,
                 package_system = ctx.attrs.package_system,
                 snapshot = snapshot,
@@ -258,6 +265,18 @@ PackageRepositoryInfo = provider(
     },
 )
 
+# The catalog's placeholder for the architecture in a mirror's layout. Spelled like dnf's repository
+# variable, but per-arch mirror URLs are are more general concept (e.g. Arch uses it too). The rule
+# expands it to the package system's own name for the architecture.
+BASEARCH = "$basearch"
+
+def _manifest_subtarget(arch: str) -> str:
+    """The subtarget carrying one architecture's expanded snapshot spec.
+
+    Keep in sync with `_pinned_snapshot` in tools/catalog.py, which reads it to advance a pin.
+    """
+    return "manifest." + arch
+
 # Where a catalog keeps a fetched signing key, named by its fingerprint like rpm names an imported one.
 SIGNING_KEY_DIRECTORY = "snapshot/key"
 SIGNING_KEY_SUFFIX = ".key"
@@ -285,7 +304,9 @@ ConfiguredPackageRepositoryInfo = record(
 
 # What every remote repository declares, whichever package system owns it.
 _REMOTE_REPOSITORY_ATTRS = {
-    "baseurl": attrs.string(),
+    # All of them, so refresh-catalog can update them all at once
+    "architectures": attrs.list(attrs.string(), doc = "the architectures the mirror serves"),
+    "baseurl": attrs.string(doc = "the mirror URL, with " + BASEARCH + " wherever its layout names the architecture"),
     "box_locks": attrs.list(
         attrs.source(),
         default = [],
@@ -316,6 +337,8 @@ _REMOTE_REPOSITORY_ATTRS = {
         default = {},
         doc = "what else this repository's snapshot driver needs to name its metadata",
     ),
+    # Private: the configuration a repository is reached under says which architecture it serves.
+    "_arch": attrs.string(default = architecture.configured(), doc = "the architecture to serve"),
 }
 
 remote_repository = rule(impl = _remote_repository_impl, attrs = _REMOTE_REPOSITORY_ATTRS)
@@ -503,9 +526,15 @@ def repository_universe(name: str, **kwargs) -> None:
         fail("repository_universe name must end with '.repositories': {}".format(name))
     _repository_universe(name = name, **kwargs)
 
+def expand_baseurl(baseurl: str, arch: str, system: PackageSystemInfo) -> str:
+    """The mirror URL serving `arch`, replacing BASEARCH with the package system's name."""
+    return baseurl.replace(BASEARCH, architecture.spelling(arch, system.arch_schema))
+
 def remote_repository_base(
     ctx: AnalysisContext,
     *,
+    arch: str,
+    architectures: list[str],
     baseurl: str,
     package_system: Dependency,
     repo_dir: Artifact,
@@ -516,26 +545,30 @@ def remote_repository_base(
     """Register the package-system-neutral interface to a remote repository.
 
     `snapshot_spec` carries whatever else one package system's snapshot driver needs to name
-    its metadata; the identity and base URL every repository has are supplied here.
+    its metadata; the identity and base URL every repository has are supplied here. The manifest
+    of every served architecture is offered as `[manifest.<architecture>]`, so refresh-catalog reads
+    each one's expanded URL from the one place that expands it.
     """
     rid = ctx.label.name
     system = package_system[PackageSystemInfo]
     reserved = [key for key in snapshot_spec if key in ("baseurl", "id")]
     if reserved:
         fail("remote_repository_base: {} are supplied by the neutral spec".format(reserved))
-    spec = ctx.actions.write_json(
-        "snapshot.spec.json",
-        dict(snapshot_spec, baseurl = baseurl, id = rid),
-        has_content_based_path = False,
-    )
-    sub_targets = {
-        "manifest": [DefaultInfo(default_output = spec)],
-        "snapshot": [DefaultInfo(), RunInfo(args = cmd_args(system.snapshot[RunInfo], "--spec", spec))],
+    specs = {
+        served: ctx.actions.write_json(
+            "{}.snapshot.spec.json".format(served),
+            dict(snapshot_spec, baseurl = expand_baseurl(baseurl, served, system), id = rid),
+            has_content_based_path = False,
+        )
+        for served in architectures
     }
+    sub_targets = {_manifest_subtarget(served): [DefaultInfo(default_output = spec)] for served, spec in specs.items()}
+    sub_targets["manifest"] = [DefaultInfo(default_output = specs[arch])]
+    sub_targets["snapshot"] = [DefaultInfo(), RunInfo(args = cmd_args(system.snapshot[RunInfo], "--spec", specs[arch]))]
     return [
         DefaultInfo(default_output = repo_dir, sub_targets = sub_targets),
         PackageRepositoryInfo(
-            baseurl = baseurl,
+            baseurl = expand_baseurl(baseurl, arch, system),
             dir = repo_dir,
             package_system = package_system,
             pinned_at = pinned_at,
@@ -544,7 +577,7 @@ def remote_repository_base(
     ]
 
 RepositoryPin = record(
-    # Where the pinned snapshot serves this repository from.
+    # BASEARCH template URL of the pinned snapshot
     baseurl = field(str),
     # What refresh-catalog reads back to advance the pin, under the namespace its system owns.
     metadata = field(dict[str, str]),
@@ -559,6 +592,7 @@ def declare_remote_repository(
     what: str,
     label: str,
     package_system: str,
+    architectures: list[str],
     baseurl: str | None,
     pin: RepositoryPin | None,
     labels: list[str] = [],
@@ -567,10 +601,11 @@ def declare_remote_repository(
 ) -> None:
     """Declare a remote repository backed by its optional package-relative snapshot.
 
-    A repository is named either by a plain `baseurl` or by a pin, which composes the base URL
-    from a mirror publishing immutable snapshots and records what refresh-catalog advances. Only
-    a mirror whose metadata never changes keeps a committed snapshot buildable, so the pin belongs
-    on the declaration a catalog writes and releases forward their own pin arguments to it.
+    A repository is named either by a plain `baseurl` or by a pin. The latter composes the base URL from
+    a mirror publishing immutable snapshots and records what refresh-catalog advances. Only a mirror
+    whose metadata never changes keeps a committed snapshot buildable, so the pin belongs on the
+    declaration a catalog writes and releases forward their own pin arguments to it.
+    Either URL can contain the BASEARCH placeholder.
 
     `signing_keys` maps the approved key fingerprints to the corresponding key download URL.
 
@@ -582,10 +617,16 @@ def declare_remote_repository(
         fail("{} takes a pin or baseurl, not both: {}".format(what, name))
     if pin == None and baseurl == None:
         fail("{} requires baseurl or a pin: {}".format(what, name))
+    if not architectures:
+        fail("{} requires the architectures its mirror serves: {}".format(what, name))
+    url = pin.baseurl if pin != None else baseurl
+    if len(architectures) > 1 and BASEARCH not in url:
+        fail("{}: {!r} serves one architecture, not {}; name it with {}: {}".format(what, url, architectures, BASEARCH, name))
     snapshots = glob(["snapshot/repo/" + name.removesuffix(".repository") + ".json"])
     remote_repository(
         name = name,
-        baseurl = pin.baseurl if pin != None else baseurl,
+        architectures = architectures,
+        baseurl = url,
         box_locks = glob(["snapshot/box/*.json"]),
         pinned_at = pin.pinned_at if pin != None else None,
         labels = ["tine:remote-repository", label] + labels,

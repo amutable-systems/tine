@@ -62,6 +62,7 @@ def fedora_release(
     name: str,
     version: str,
     box: str,
+    architectures: list[str],
     signing_keys: dict[str, str],
     baseurl: str | None = None,
     rpmrepo_mirror: str | None = None,
@@ -79,12 +80,13 @@ def fedora_release(
     _check_name(name, "fedora", version)
     if rpmrepo_mirror == None and baseurl == None:
         if version == "rawhide":
-            baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/x86_64/os/"
+            baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/$basearch/os/"
         else:
-            baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/releases/{}/Everything/x86_64/os/".format(version)
+            baseurl = "https://dl.fedoraproject.org/pub/fedora/linux/releases/{}/Everything/$basearch/os/".format(version)
 
     rpm_remote_repository(
         name = name + ".repository",
+        architectures = architectures,
         baseurl = baseurl,
         rpmrepo_mirror = rpmrepo_mirror,
         rpmrepo_snapshot = rpmrepo_snapshot,

@@ -9,7 +9,7 @@ load("//git:defs.bzl", "git")
 load("//package:buildroot.bzl", "BuildrootInfo")
 load("//package:install.bzl", "install_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
-load("//package:repository.bzl", "LocalPackageInfo", "RepositoryPin", "declare_remote_repository")
+load("//package:repository.bzl", "BASEARCH", "LocalPackageInfo", "RepositoryPin", "declare_remote_repository")
 load("//package:system.bzl", "PackageSystemInfo")
 load("//project:defs.bzl", "project")
 
@@ -18,6 +18,7 @@ _PRIVATE = "__tine"
 
 def rpm_remote_repository(
     name: str,
+    architectures: list[str],
     baseurl: str | None = None,
     rpmrepo_mirror: str | None = None,
     rpmrepo_snapshot: str | None = None,
@@ -28,6 +29,9 @@ def rpm_remote_repository(
         fail("rpm_remote_repository requires rpmrepo_mirror and rpmrepo_snapshot together: {}".format(name))
     pin = None
     if rpmrepo_mirror != None:
+        # In the id itself, so that advancing the one literal moves every architecture.
+        if BASEARCH not in rpmrepo_snapshot:
+            fail("rpm_remote_repository: rpmrepo_snapshot {!r} must name its architecture with {}: {}".format(rpmrepo_snapshot, BASEARCH, name))
         pin = RepositoryPin(
             baseurl = rpmrepo_mirror.rstrip("/") + "/" + rpmrepo_snapshot,
             metadata = {"rpmrepo.mirror": rpmrepo_mirror, "rpmrepo.snapshot": rpmrepo_snapshot},
@@ -37,6 +41,7 @@ def rpm_remote_repository(
         what = "rpm_remote_repository",
         label = "tine:rpm-remote-repository",
         package_system = PACKAGE_SYSTEM,
+        architectures = architectures,
         baseurl = baseurl,
         pin = pin,
         **kwargs,
