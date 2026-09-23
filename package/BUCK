@@ -37,13 +37,13 @@ tine_python_library(
 tine_python_library(
     name = "transaction",
     srcs = ["transaction.py"],
-    deps = ["//:util"],
+    deps = [":snapshotter", "//:util"],
     visibility = ["PUBLIC"],
 )
 
 box_python_test(
     name = "test",
     box = "tine//catalog:fedora.rawhide.box",
-    srcs = ["installer_test.py"],
-    deps = [":installer"],
+    srcs = ["installer_test.py", "transaction_test.py"],
+    deps = [":installer", ":transaction"],
 )

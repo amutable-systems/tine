@@ -966,5 +966,31 @@
     "source": "repo",
     "size": 100356,
     "url": "https://archive.archlinux.org/repos/2026/09/19/extra/os/x86_64/xxhash-0.8.3-1-x86_64.pkg.tar.zst"
+  },
+  {
+    "repo": "arch.rolling.core.repository",
+    "source": "metadata",
+    "files": [
+      {
+        "out": "core.db",
+        "sha256": "765e6921dd87961c37e38c429037108849566a9f1301eb539283d84532daac09",
+        "size": 130479,
+        "url": "https://archive.archlinux.org/repos/2026/09/19/core/os/x86_64/core.db"
+      }
+    ],
+    "pinned_at": "2026-09-19T23:59:59Z"
+  },
+  {
+    "repo": "arch.rolling.extra.repository",
+    "source": "metadata",
+    "files": [
+      {
+        "out": "extra.db",
+        "sha256": "10193e9c50bbd53c15bee70e0297f78a9f399f12e2799cd05e8d3980d5f2b0a5",
+        "size": 8846331,
+        "url": "https://archive.archlinux.org/repos/2026/09/19/extra/os/x86_64/extra.db"
+      }
+    ],
+    "pinned_at": "2026-09-19T23:59:59Z"
   }
 ]

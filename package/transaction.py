@@ -15,6 +15,9 @@ from typing import Literal, NamedTuple, NotRequired, TypedDict
 
 from util import fail, text_destination
 
+import snapshotter
+from snapshotter import MetadataFile
+
 
 class Repository(NamedTuple):
     id: str
@@ -44,6 +47,24 @@ class TransactionPackage(TypedDict):
     location: NotRequired[str]
     size: NotRequired[int]
     url: NotRequired[str]
+
+
+class TransactionMetadata(TypedDict):
+    """The metadata one remote repository was resolved against.
+
+    Where the metadata rather than the package carries the proof, a committed lock keeps this so
+    that its packages stay verifiable after the repository's pin moves on, the way it keeps their
+    transports so that they stay fetchable.
+    """
+
+    repo: str
+    source: Literal["metadata"]
+    files: list[MetadataFile]
+    # When the repository was pinned, for a verifier to judge the generation as of then.
+    pinned_at: str | None
+
+
+type TransactionEntry = TransactionPackage | TransactionMetadata
 
 
 def load_repositories(spec: Spec, *, absolute: bool = False) -> list[Repository]:
@@ -95,7 +116,33 @@ def entry(
     return package
 
 
-def write(path: Path, packages: list[TransactionPackage]) -> None:
+def resolved_against(repositories: list[Repository]) -> list[TransactionMetadata]:
+    """What vouched for each remote repository's packages, from the manifest its materialization wrote.
+
+    A repository whose packages vouch for themselves has no manifest, and a lock records nothing
+    for it. Nor for a rolling repository: its metadata is fetched from where the mirror serves it
+    now, which the mirror's next advance replaces, so there is nothing durable to record.
+    """
+    entries = []
+    for repository in sorted(repositories, key=lambda repository: repository.id):
+        manifest = repository.path / snapshotter.MANIFEST
+        if repository.baseurl is None or not manifest.is_file():
+            continue
+        manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
+        if manifest_data["pinned_at"] is None:
+            continue
+        entries.append(
+            TransactionMetadata(
+                repo=repository.id,
+                source="metadata",
+                files=manifest_data["files"],
+                pinned_at=manifest_data["pinned_at"],
+            )
+        )
+    return entries
+
+
+def write(path: Path, packages: list[TransactionPackage], repositories: list[Repository]) -> None:
     """Order a transaction before writing it, so identical solves give identical bytes."""
     packages.sort(
         key=lambda package: (
@@ -106,6 +153,7 @@ def write(path: Path, packages: list[TransactionPackage]) -> None:
             package.get("url", ""),
         )
     )
+    entries: list[TransactionEntry] = [*packages, *resolved_against(repositories)]
     with text_destination(path) as output:
-        json.dump(packages, output, indent=2)
+        json.dump(entries, output, indent=2)
         output.write("\n")

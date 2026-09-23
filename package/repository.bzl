@@ -70,30 +70,75 @@ def pool_transports(id: str, baseurl: str, snapshot: ArtifactValue, box_locks: l
         }
     return packages
 
+def _retained_metadata(id: str, box_locks: list[ArtifactValue], current: list, packages: dict) -> list[dict]:
+    """The metadata generations committed box locks still need from this repository.
+
+    A lock records the metadata that vouched for its packages. A generation is materialized only
+    while one of those packages is absent from the current snapshot: until then the current
+    metadata vouches for all of them, and afterwards the retained transport alone would fetch a
+    package nothing can verify.
+    """
+    generations = {}
+    for lock in box_locks:
+        entries = lock.read_json()
+        missing = [entry for entry in entries if entry["source"] == "repo" and entry["repo"] == id and entry["pkg_checksum"] not in packages]
+        if not missing:
+            continue
+        for entry in entries:
+            if entry["source"] != "metadata" or entry["repo"] != id:
+                continue
+            files = entry["files"]
+            if type(files) != type([]) or files == current:
+                continue
+            generations[json.encode(files)] = entry
+    return [generations[key] for key in sorted(generations)]
+
+def _download(actions: AnalysisActions, path: str, file: dict) -> Artifact:
+    out = actions.declare_output(path)
+    actions.download_file(out, file["url"], sha256 = file["sha256"], size_bytes = int(file["size"]))
+    return out
+
 def _materialize_metadata_impl(
     actions: AnalysisActions,
     id: str,
     repo: OutputArtifact,
     snapshot: ArtifactValue,
+    box_locks: list[ArtifactValue],
+    pinned_at: str | None,
+    vouches: bool,
 ) -> list[Provider]:
-    metadata = snapshot_data(snapshot, id).get("metadata")
+    data = snapshot_data(snapshot, id)
+    metadata = data.get("metadata")
     if not metadata:
         fail("repository '{}' is not locked yet (snapshot missing or empty); run refresh-catalog".format(id))
 
     tree = {path: actions.write(path, content) for path, content in metadata["inline"].items()}
     for file in metadata["files"]:
-        out = actions.declare_output(file["out"])
-        actions.download_file(out, file["url"], sha256 = file["sha256"], size_bytes = int(file["size"]))
-        tree[file["out"]] = out
+        tree[file["out"]] = _download(actions, file["out"], file)
+    if vouches:
+        # A resolve records the manifest in the lock it writes, so what vouched for a package
+        # is retained with its transport, and a lock's packages stay verifiable after the pin moves.
+        manifest = {"files": metadata["files"], "pinned_at": pinned_at}
+        tree[METADATA_MANIFEST] = actions.write_json(METADATA_MANIFEST, manifest)
+        for index, generation in enumerate(_retained_metadata(id, box_locks, metadata["files"], data.get("packages", {}))):
+            directory = "{}/{}".format(RETAINED_DIRECTORY, index)
+            for file in generation["files"]:
+                tree[directory + "/" + file["out"]] = _download(actions, directory + "/" + file["out"], file)
+            # A generation is judged as of its own pin, the way the current one is as of the repository's.
+            if generation.get("pinned_at") != None:
+                tree[directory + "/" + PINNED_AT_FILE] = actions.write(directory + "/" + PINNED_AT_FILE, generation["pinned_at"])
     actions.copied_dir(repo, tree)
     return []
 
 _materialize_metadata = dynamic_actions(
     impl = _materialize_metadata_impl,
     attrs = {
+        "box_locks": dynattrs.list(dynattrs.artifact_value()),
         "id": dynattrs.value(str),
+        "pinned_at": dynattrs.value(str | None),
         "repo": dynattrs.output(),
         "snapshot": dynattrs.artifact_value(),
+        "vouches": dynattrs.value(bool),
     },
 )
 
@@ -145,9 +190,12 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
         snapshot = ctx.actions.write("empty-snapshot.json", "{}")
     ctx.actions.dynamic_output_new(
         _materialize_metadata(
+            box_locks = ctx.attrs.box_locks,
             id = ctx.label.name,
+            pinned_at = ctx.attrs.pinned_at,
             repo = repo.as_output(),
             snapshot = snapshot,
+            vouches = ctx.attrs.package_system[PackageSystemInfo].metadata_vouches,
         )
     )
     return remote_repository_base(
@@ -213,6 +261,14 @@ PackageRepositoryInfo = provider(
 # Where a catalog keeps a fetched signing key, named by its fingerprint like rpm names an imported one.
 SIGNING_KEY_DIRECTORY = "snapshot/key"
 SIGNING_KEY_SUFFIX = ".key"
+
+# What a materialized repository whose metadata vouches for its packages carries beyond the snapshot's
+# files: the manifest of those files, and the generations committed locks retain, one subdirectory
+# each with the time it was pinned at. Keep in sync with MANIFEST, RETAINED and PINNED_AT in
+# snapshotter.py.
+METADATA_MANIFEST = "metadata.json"
+RETAINED_DIRECTORY = "retained"
+PINNED_AT_FILE = "pinned_at"
 
 ConfiguredPackageRepositoryInfo = record(
     id = str,
@@ -585,6 +641,11 @@ def _select_package_artifacts_impl(
         if type(entry) != type({}):
             fail("transaction entry is not an object: {}".format(entry))
         source = entry.get("source")
+        if source == "metadata":
+            # What vouched for the packages; the repository reads it when materializing its metadata.
+            if type(entry.get("repo")) != type("") or type(entry.get("files")) != type([]) or type(entry.get("pinned_at")) != type(""):
+                fail("transaction metadata entry lacks a repo, files or pinned_at: {}".format(entry))
+            continue
         if source not in ("local", "repo"):
             fail("transaction entry has unknown source {!r}".format(source))
         required = ("package_id", "pkg_checksum", "repo", "source")

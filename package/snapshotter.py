@@ -55,6 +55,35 @@ class Spec(TypedDict):
     baseurl: str
 
 
+# What a materialized repository whose metadata vouches for its packages carries beyond the
+# snapshot's files: the manifest of those files, which a resolve records in the lock it writes, and
+# the generations committed locks retain, one subdirectory each with the time it was pinned at.
+# Keep in sync with METADATA_MANIFEST, RETAINED_DIRECTORY and PINNED_AT_FILE in
+# package/repository.bzl.
+MANIFEST = "metadata.json"
+RETAINED = "retained"
+PINNED_AT = "pinned_at"
+
+
+def generations(repository: Path) -> list[Path]:
+    """The metadata generations a materialized repository carries: the pinned one, then the retained.
+
+    A lock's packages were vouched for by the metadata it was resolved against, so a package the
+    pinned metadata no longer describes is still verifiable through the generation a lock retains.
+    """
+    retained = repository / RETAINED
+    return [repository, *(sorted(retained.iterdir()) if retained.is_dir() else [])]
+
+
+def pinned_at(generation: Path) -> str | None:
+    """When a retained generation was pinned, ISO 8601 in UTC, for a verifier to judge it as of then.
+
+    The pinned generation itself carries no time: the keyring built for the repository does.
+    """
+    marker = generation / PINNED_AT
+    return marker.read_text(encoding="utf-8").strip() if marker.is_file() else None
+
+
 def checksum(rid: str, what: str, value: str | None) -> str:
     """Normalize and validate a sha256 a repository states about its own contents."""
     digest = "" if value is None else value.strip().lower()
