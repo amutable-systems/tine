@@ -1161,7 +1161,12 @@ its own rather than an anonymous step inside the disk image. The composition pub
 given from `[initrd]` and returns the same
 instance directly, so both interfaces describe exactly the same initrd.
 
-`uki.py` appends the kernel-modules cpio and runs `ukify`. That cpio carries the modules `initrd_modules`
+`uki.py` appends the kernel-modules cpio and runs `ukify`. On x86 it also packs the microcode the image
+ships under `/usr/lib/firmware/{amd,intel}-ucode` into a `.ucode` section: one concatenated file per vendor
+in an uncompressed cpio, which the stub hands the kernel ahead of the initrds so the early loader finds it.
+Nothing configures this; installing a microcode package is what asks for it. Narrowing the blobs to the
+CPU the build runs on is deliberately not offered, since reading that host is not hermetic. That cpio
+carries the modules `initrd_modules`
 selects, closed over their dependencies and their firmware with libkmod, which reads the image's own depmod
 index and no configuration from the box; `/usr` keeps the full set for the booted system. A pattern
 matches a trailing run of a module's path components; a leading slash anchors it at the modules root

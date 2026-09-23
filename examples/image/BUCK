@@ -192,7 +192,16 @@ image.bootable_disk(
     # The release names what a bootable system of its own family needs, so this stays symbolic.
     # The composition generates the databases those packages only describe, hwdb's among them.
     package_sets = ["bootable"],
-    packages = ["less"],
+    packages = ["less"]
+    # Microcode is a package like any other; the UKI driver packs whatever vendor blobs the image
+    # ends up shipping. Only x86 has any, and only x86 mirrors carry the packages.
+    + architecture.select({
+        "arm64": [],
+        "x86_64": distribution.select({
+            "arch": ["amd-ucode", "intel-ucode"],
+            "fedora": ["amd-ucode-firmware", "microcode_ctl"],
+        }),
+    }),
     profiles = [
         image.uki_profile(
             id = "debug",
@@ -370,6 +379,16 @@ box.sh_test(
     script = 'test "$(ukify inspect "$1" | grep -cx ".splash:")" = "$2"',
     args = ["$(location :boot-demo[boot][uki])"] + distribution.select({"arch": ["1"]}, default = ["0"]),
     **distribution.distributed("uki-splash-test"),
+)
+
+# The microcode the image installs reached the UKI, which only an x86 kernel takes that way. The
+# image tools' box carries the ukify the checker reads sections with.
+box.sh_test(
+    name = "uki-microcode-test",
+    labels = ["image"],
+    box = "@tine//catalog:fedora.rawhide.box",
+    test = "uki-microcode.sh",
+    args = ["$(location :boot-demo.fedora[boot][uki])"] + architecture.select({name: [name] for name in ARCHITECTURES}),
 )
 
 # Once per distribution, because each package system captures its database in its own format.
