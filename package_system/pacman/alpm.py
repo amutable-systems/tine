@@ -214,6 +214,24 @@ class _DepMissing(ctypes.Structure):
     ]
 
 
+class _Conflict(ctypes.Structure):
+    """alpm_conflict_t, which a failed prepare returns one of per pair of packages that cannot coexist."""
+
+    _fields_ = [
+        ("package1", ctypes.c_void_p),
+        ("package2", ctypes.c_void_p),
+        ("reason", ctypes.c_void_p),
+    ]
+
+
+# alpm_errno_t values a failed prepare explains itself with. What its list holds depends on which:
+# strings, depmissings or conflicts, and reading one as another is how a pointer gets dereferenced
+# as something it is not. Part of the ABI the SONAME above pins.
+_ERR_PKG_INVALID_ARCH = 42
+_ERR_UNSATISFIED_DEPS = 45
+_ERR_CONFLICTING_DEPS = 46
+
+
 _QUESTION = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)
 
 
@@ -353,15 +371,39 @@ class Alpm:
             util.fail(f"plan: nothing provides {spec!r}")
         return members
 
+    def _depend(self, depend: ctypes.c_void_p | None) -> str:
+        wanted = ctypes.cast(self._lib.alpm_dep_compute_string(depend), ctypes.c_char_p) if depend else None
+        return wanted.value.decode() if wanted and wanted.value else "?"
+
     def _unsatisfied(self, missing: ctypes._Pointer[_List]) -> list[str]:
         """Name what a failed prepare could not satisfy, and for whom."""
         reasons = []
         for entry in self._each(missing):
             record = ctypes.cast(entry, ctypes.POINTER(_DepMissing)).contents
-            wanted = ctypes.cast(self._lib.alpm_dep_compute_string(record.depend), ctypes.c_char_p)
             target = record.target.decode() if record.target else "?"
-            reasons.append(f"{target} requires {wanted.value.decode() if wanted.value else '?'}")
+            reasons.append(f"{target} requires {self._depend(record.depend)}")
         return reasons
+
+    def _conflicting(self, conflicts: ctypes._Pointer[_List]) -> list[str]:
+        """Name each pair of packages a failed prepare found cannot coexist, and over what."""
+        reasons = []
+        for entry in self._each(conflicts):
+            record = ctypes.cast(entry, ctypes.POINTER(_Conflict)).contents
+            first = self._name(ctypes.c_void_p(record.package1)) if record.package1 else "?"
+            second = self._name(ctypes.c_void_p(record.package2)) if record.package2 else "?"
+            reasons.append(f"{first} conflicts with {second} ({self._depend(record.reason)})")
+        return reasons
+
+    def _explained(self, error: int, data: ctypes._Pointer[_List]) -> list[str]:
+        """What a failed prepare says, read as whatever its error code says the list holds."""
+        if error == _ERR_UNSATISFIED_DEPS:
+            return self._unsatisfied(data)
+        if error == _ERR_CONFLICTING_DEPS:
+            return self._conflicting(data)
+        if error == _ERR_PKG_INVALID_ARCH:
+            names = [ctypes.cast(entry, ctypes.c_char_p).value for entry in self._each(data)]
+            return [f"{name.decode() if name else '?'} is not built for this architecture" for name in names]
+        return []
 
     @contextmanager
     def _transaction(self) -> Iterator[None]:
@@ -381,10 +423,13 @@ class Alpm:
                     if self._needed(package) and self._lib.alpm_add_pkg(self._handle, package) != 0:
                         self._fail(f"cannot add {self._name(package)}")
 
-            missing = _LIST()
-            if self._lib.alpm_trans_prepare(self._handle, ctypes.byref(missing)) != 0:
-                reasons = self._unsatisfied(missing)
-                self._fail("\n  ".join(["cannot resolve", *reasons]) if reasons else "cannot resolve")
+            data = _LIST()
+            if self._lib.alpm_trans_prepare(self._handle, ctypes.byref(data)) != 0:
+                # Read first: the calls that explain the failure reset the handle's error.
+                error = self._lib.alpm_errno(self._handle)
+                reasons = self._explained(error, data)
+                why = self._lib.alpm_strerror(error).decode()
+                util.fail("plan: " + "\n  ".join(["cannot resolve", *reasons]) + f": {why}")
 
             if self.ambiguous:
                 util.fail(
