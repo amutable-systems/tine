@@ -8,6 +8,7 @@ load("//package:manager.bzl", "package_manager")
 load("//package:release.bzl", "os_release")
 load("//package:repository.bzl", "repository_universe")
 load("//package_system/pacman:rules.bzl", "ARCHIVE_MIRROR", "PACKAGE_SYSTEM", "pacman_remote_repository")
+load("//platforms:architecture.bzl", "architecture")
 
 # Arch's main signing keys, the set `archlinux-keyring` ships as archlinux-trusted, each served by the
 # distribution's web key directory under the hash of its user ID's local part, e.g.:
@@ -109,6 +110,8 @@ def arch_release(
             signing_keys = signing_keys,
         )
 
+    # Everything above the repositories exists where they do.
+    compatible = architecture.compatibility(architectures)
     repository_universe(
         name = name + ".repositories",
         package_system = PACKAGE_SYSTEM,
@@ -118,6 +121,7 @@ def arch_release(
             "multilib": [":" + name + ".multilib.repository"],
         },
         default_repository_groups = ["extra"],
+        target_compatible_with = compatible,
     )
     distribution.new(name = name + ".distribution", visibility = visibility)
     package_sets = dict(_ARCH_PACKAGE_SETS)
@@ -126,6 +130,7 @@ def arch_release(
         name = name + ".release",
         repository_universe = ":" + name + ".repositories",
         package_sets = package_sets,
+        target_compatible_with = compatible,
         visibility = visibility,
     )
     package_manager(
@@ -136,5 +141,6 @@ def arch_release(
         disable_repository_groups = disable_repository_groups,
         additional_repositories = additional_repositories,
         repository_priorities = repository_priorities,
+        target_compatible_with = compatible,
         visibility = visibility,
     )

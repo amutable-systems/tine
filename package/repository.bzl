@@ -220,8 +220,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
             vouches = ctx.attrs.package_system[PackageSystemInfo].metadata_vouches,
         )
     )
-    # An architecture the mirror does not serve never gets here: the `snapshot` and `box_locks` selects
-    # have no branch for it, and Buck fails configuring the target.
+    # An architecture the mirror does not serve never gets here: the target is incompatible there.
     baseurl = expand_baseurl(ctx.attrs.baseurl, ctx.attrs._arch, ctx.attrs.package_system[PackageSystemInfo])
 
     return remote_repository_base(
@@ -672,6 +671,7 @@ def declare_remote_repository(
         signing_key_files = glob([SIGNING_KEY_DIRECTORY + "/" + fingerprint + SIGNING_KEY_SUFFIX for fingerprint in signing_keys]),
         signing_keys = signing_keys,
         snapshot = architecture.select(locks),
+        target_compatible_with = architecture.compatibility(architectures),
         **kwargs,
     )
 

@@ -9,6 +9,7 @@ load("//package:manager.bzl", "package_manager")
 load("//package:release.bzl", "os_release")
 load("//package:repository.bzl", "repository_universe")
 load("//package_system/rpm:rules.bzl", "PACKAGE_SYSTEM", "rpm_remote_repository")
+load("//platforms:architecture.bzl", "architecture")
 
 _FEDORA_KEY_URL = "https://src.fedoraproject.org/rpms/fedora-repos/raw/rawhide/f/RPM-GPG-KEY-fedora-{}-primary"
 
@@ -92,6 +93,8 @@ def fedora_release(
         rpmrepo_snapshot = rpmrepo_snapshot,
         signing_keys = signing_keys,
     )
+    # Everything above the repository exists where it does.
+    compatible = architecture.compatibility(architectures)
     repository_universe(
         name = name + ".repositories",
         package_system = PACKAGE_SYSTEM,
@@ -100,12 +103,14 @@ def fedora_release(
         # release from building with the tools it ships: an image running a systemd from one of
         # these has to be assembled by the matching ukify and repart, which live in the same place.
         required_repositories = [":" + name + ".repository"] + additional_repositories,
+        target_compatible_with = compatible,
     )
     distribution.new(name = name + ".distribution", visibility = visibility)
     os_release(
         name = name + ".release",
         repository_universe = ":" + name + ".repositories",
         package_sets = _merge_package_sets(_FEDORA_PACKAGE_SETS, package_set_overrides),
+        target_compatible_with = compatible,
         visibility = visibility,
     )
     package_manager(
@@ -114,11 +119,13 @@ def fedora_release(
         box = box,
         additional_repositories = additional_repositories,
         repository_priorities = repository_priorities,
+        target_compatible_with = compatible,
         visibility = visibility,
     )
     buildroot(
         name = name + ".buildroot",
         package_manager = ":" + name + ".package-manager",
         package_set = "buildroot",
+        target_compatible_with = compatible,
         visibility = visibility,
     )

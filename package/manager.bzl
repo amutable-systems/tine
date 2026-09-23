@@ -224,10 +224,13 @@ _package_manager = rule(
     },
 )
 
-def package_manager(name: str, **kwargs) -> None:
+def package_manager(name: str, target_compatible_with: list[str] | Select = [], **kwargs) -> None:
     if not name.endswith(".package-manager"):
         fail("package_manager name must end with '.package-manager': {}".format(name))
 
     # An image reaches this through a dependency and configures it on the way, so it takes the
-    # package's compatibility without the per-distribution aliases a named target needs.
-    _package_manager(name = name, **(distribution.attrs() | kwargs))
+    # package's compatibility without the per-distribution aliases a named target needs. A caller's
+    # own constraint, such as the architectures its release serves, applies on top.
+    attributes = distribution.attrs()
+    attributes["target_compatible_with"] = attributes.get("target_compatible_with", []) + target_compatible_with
+    _package_manager(name = name, **(attributes | kwargs))
