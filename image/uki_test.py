@@ -16,6 +16,7 @@ import unittest
 from pathlib import Path
 from typing import override
 
+import cpio
 import uki
 
 SECURE_BOOT: uki.Key = {
@@ -183,3 +184,65 @@ class TestSplashArguments(unittest.TestCase):
         with self.assertRaises(SystemExit) as raised:
             uki._splash_arguments("/usr/share/pixmaps/logo.png", self.tree)
         self.assertIn("not a BMP", str(raised.exception))
+
+
+class TestMicrocode(unittest.TestCase):
+    """The early loader reads one concatenated file per vendor off the head of an uncompressed cpio."""
+
+    @override
+    def setUp(self) -> None:
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.scratch = Path(scratch.name)
+        self.tree = self.scratch / "buildroot"
+
+    def _ship(self, path: str, content: bytes) -> None:
+        file = self.tree / "usr/lib/firmware" / path
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_bytes(content)
+
+    def _entries(self, archive: Path) -> dict[str, bytes]:
+        data = archive.read_bytes()
+        return {entry.name: data[entry.data_off : entry.data_off + entry.size] for entry in cpio.read(data)}
+
+    def test_an_image_without_microcode(self) -> None:
+        self._ship("amdgpu/vega.bin", b"gpu")
+        self.assertIsNone(uki._microcode(self.tree, self.scratch, 0, "x64"))
+
+    def test_an_empty_vendor_directory_ships_nothing(self) -> None:
+        (self.tree / "usr/lib/firmware/intel-ucode").mkdir(parents=True)
+        self.assertIsNone(uki._microcode(self.tree, self.scratch, 0, "x64"))
+
+    def test_only_x86_loads_microcode_this_way(self) -> None:
+        self._ship("amd-ucode/microcode_amd.bin", b"amd")
+        self.assertIsNone(uki._microcode(self.tree, self.scratch, 0, "aa64"))
+
+    def test_each_vendor_gets_the_concatenation_of_its_blobs(self) -> None:
+        self._ship("amd-ucode/microcode_amd_fam19h.bin", b"fam19")
+        self._ship("amd-ucode/microcode_amd_fam17h.bin", b"fam17")
+        self._ship("intel-ucode/06-8e-09", b"kaby")
+        self._ship("intel-ucode/06-a5-02", b"comet")
+        archive = uki._microcode(self.tree, self.scratch, 0, "x64")
+        assert archive is not None
+        self.assertEqual(
+            self._entries(archive),
+            {
+                "kernel": b"",
+                "kernel/x86": b"",
+                "kernel/x86/microcode": b"",
+                # Sorted by name, so the archive is the same whatever order the directory lists.
+                "kernel/x86/microcode/AuthenticAMD.bin": b"fam17fam19",
+                "kernel/x86/microcode/GenuineIntel.bin": b"kabycomet",
+            },
+        )
+
+    def test_the_names_are_not_padded(self) -> None:
+        """The kernel's early cpio reader allows 18 bytes past the directory for a name, padding included."""
+        name = "kernel/x86/microcode/GenuineIntel.bin"
+        self._ship("intel-ucode/06-8e-09", bytes(2 * cpio._BLOCK))
+        archive = uki._microcode(self.tree, self.scratch, 0, "x64")
+        assert archive is not None
+        data = archive.read_bytes()
+        entry = next(entry for entry in cpio.read(data) if entry.name == name)
+        header = data.rfind(cpio.MAGIC, 0, entry.data_off)
+        self.assertEqual(int(data[header + 6 + 11 * 8 : header + 6 + 12 * 8], 16), len(name) + 1)

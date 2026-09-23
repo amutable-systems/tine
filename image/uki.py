@@ -14,7 +14,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TypedDict
 
 import specs
@@ -23,6 +23,13 @@ from util import fail
 import cpio
 import finalize
 import kmod
+
+# The kernel's early loader (arch/x86/kernel/cpu/microcode) looks for one file per CPU vendor at this
+# path, named after the vendor string cpuid reports.
+MICROCODE = PurePosixPath("kernel/x86/microcode")
+MICROCODE_VENDORS = {"AuthenticAMD": "amd-ucode", "GenuineIntel": "intel-ucode"}
+# ukify's EFI architectures whose kernels load microcode from the initrd.
+_X86 = ("ia32", "x64")
 
 
 class Profile(TypedDict):
@@ -164,6 +171,39 @@ def _splash_arguments(splash: str | None, tree: Path) -> list[str]:
     return ["--splash", str(path)]
 
 
+def _microcode(tree: Path, scratch: Path, epoch: int, efi_arch: str) -> Path | None:
+    """The microcode cpio for the image's CPU vendors, None when it ships microcode for none.
+
+    Every blob a vendor's firmware directory holds goes into that vendor's file, concatenated: the
+    early loader picks the one matching the running CPU out of the concatenation, and which CPU
+    that is cannot be known at build time. The archive stays uncompressed, because the loader reads
+    it before anything decompresses the initrd.
+    """
+    if efi_arch not in _X86:
+        return None
+    root = scratch / "microcode"
+    destination = root / MICROCODE
+    packed = []
+    for vendor, directory in sorted(MICROCODE_VENDORS.items()):
+        blobs = sorted(path for path in (tree / kmod.FIRMWARE / directory).glob("*") if path.is_file())
+        if not blobs:
+            continue
+        destination.mkdir(parents=True, exist_ok=True)
+        with (destination / f"{vendor}.bin").open("wb") as out:
+            for blob in blobs:
+                out.write(blob.read_bytes())
+        packed.append(vendor)
+    if not packed:
+        return None
+    # The modes are the archive's, so they cannot be left to the umask this happens to run under.
+    for path in root.rglob("*"):
+        path.chmod(0o755 if path.is_dir() else 0o644)
+    archive = scratch / "microcode.cpio"
+    cpio.pack_tree(root, archive, epoch, block_align=False)
+    print(f"uki: microcode for {', '.join(packed)} in {archive.stat().st_size // 1024} KiB", file=sys.stderr)
+    return archive
+
+
 def _signing_arguments(
     secure_boot: Key | None,
     pcr: Key | None,
@@ -295,6 +335,10 @@ def main(argv: list[str] | None = None) -> None:
         cmd = ["ukify", "build", "--linux", str(kernel)]
         for initrd in [*initrds, modules]:
             cmd += ["--initrd", str(initrd)]
+        # A .ucode section, which the stub hands the kernel ahead of every initrd, as the early loader
+        # needs it. Every distribution tine pins ships a ukify and a stub that know the section.
+        if microcode := _microcode(tree, scratch, epoch, efi_arch):
+            cmd += ["--microcode", str(microcode)]
         cmd += [
             "--cmdline", f"@{cmdline}",
             *(argument for pe in profile_pes for argument in ("--join-profile", str(pe))),
