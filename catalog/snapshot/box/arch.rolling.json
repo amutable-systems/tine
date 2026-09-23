@@ -8,6 +8,14 @@
     "url": "https://archive.archlinux.org/repos/2026/09/19/core/os/x86_64/acl-2.4.0-1-x86_64.pkg.tar.zst"
   },
   {
+    "package_id": "archlinux-keyring-20260909-1",
+    "repo": "arch.rolling.core.repository",
+    "pkg_checksum": "6a8ea16f51d3b305c18322d5884ca959f12c32a3f186873090fdc18465605293",
+    "source": "repo",
+    "size": 1273532,
+    "url": "https://archive.archlinux.org/repos/2026/09/19/core/os/x86_64/archlinux-keyring-20260909-1-any.pkg.tar.zst"
+  },
+  {
     "package_id": "attr-2.6.0-1",
     "repo": "arch.rolling.core.repository",
     "pkg_checksum": "0db32b421f67000950f7b55b531291ce8c13985c5444425b22dce94d485daed1",

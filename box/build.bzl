@@ -30,6 +30,7 @@ def _configure_repositories(
     Their packages are verified by `verifier_box`. Use None only for bootstrapping the root box, as
     that has nothing to verify with."""
     configured = []
+    keyrings = {}
     for repository in repositories:
         repo = repository[PackageRepositoryInfo]
         rid = repository.label.name
@@ -39,7 +40,7 @@ def _configure_repositories(
             fail("box: repository '{}' has no bootstrap base URL".format(rid))
         verifier = None
         if verifier_box != None:
-            verifier = repository_verifier(ctx, verifier_box, rid, repo.signing_keys, repo.package_system)
+            verifier = repository_verifier(ctx, verifier_box, rid, repo.signing_keys, repo.package_system, repo.dir, keyrings, repo.pinned_at)
         configured.append(
             ConfiguredPackageRepositoryInfo(
                 id = rid,

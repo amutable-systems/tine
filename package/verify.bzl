@@ -8,10 +8,12 @@ load("//box:runtime.bzl", "BoxInfo", "box_run")
 load(":system.bzl", "PackageSystemInfo")
 
 # What verifies one repository's packages for one consumer: the keyring of the repository's declared
-# keys, and the package system's verify program run in the consumer's box.
+# keys, the package system's verify program run in the consumer's box, and the repository's pinned
+# metadata, for a system whose signatures travel in the database rather than the package.
 Verifier = record(
     keyring = Artifact,
     verify = RunInfo,
+    repository = Artifact,
 )
 
 def repository_verifier(
@@ -20,11 +22,19 @@ def repository_verifier(
     id: str,
     signing_keys: dict[str, Artifact | None],
     package_system: Dependency,
+    directory: Artifact,
+    keyrings: dict[str, Artifact],
+    pinned_at: str | None = None,
 ) -> Verifier | None:
     """The verifier for repository `id`'s packages in a consumer that verifies with `box`.
 
     The keyring is built from the declared keys, any others are refused. None for a repository without
-    declared keys.
+    declared keys. Repositories declaring the same keys share one keyring: `keyrings` is the caller's
+    cache of those built so far, one per consumer and package system, so the same key set is not
+    imported and certified once per repository that trusts it.
+
+    `pinned_at` is when the repository's snapshot was published: the keyring judges key expiry as of
+    then, so a pinned snapshot verifies the same way however long after it is built.
     """
     if not signing_keys:
         return None
@@ -35,16 +45,28 @@ def repository_verifier(
     if missing:
         fail("repository '{}': signing key(s) {} are not in the catalog yet; run refresh-catalog".format(id, missing))
 
-    keyring = ctx.actions.declare_output(id + ".keyring", dir = True)
-    ctx.actions.run(
-        cmd_args(
-            box_run(box = box, exe = system.keyring),
-            spec_args(ctx.actions, id + ".keyring.spec.json", {"keys": signing_keys, "out": keyring.as_output()}),
-        ),
-        category = "keyring",
-        identifier = id,
-    )
-    return Verifier(keyring = keyring, verify = box_run(box = box, exe = system.verify))
+    fingerprints = sorted(signing_keys)
+    key = str(package_system.label) + " " + str(pinned_at) + " " + " ".join(fingerprints)
+    keyring = keyrings.get(key)
+    if keyring == None:
+        # Named by the keys' short ids: readable, and a collision between distinct sets declares the
+        # same output twice, which fails loudly rather than sharing wrongly.
+        name = "keyring-" + "-".join([fingerprint[-8:] for fingerprint in fingerprints])
+        keyring = ctx.actions.declare_output(name, dir = True)
+        ctx.actions.run(
+            cmd_args(
+                box_run(box = box, exe = system.keyring),
+                spec_args(
+                    ctx.actions,
+                    name + ".spec.json",
+                    {"keys": signing_keys, "out": keyring.as_output(), "time": pinned_at},
+                ),
+            ),
+            category = "keyring",
+            identifier = name,
+        )
+        keyrings[key] = keyring
+    return Verifier(keyring = keyring, verify = box_run(box = box, exe = system.verify), repository = directory)
 
 def verify_packages(
     actions: AnalysisActions,
@@ -61,7 +83,12 @@ def verify_packages(
             spec_args(
                 actions,
                 name + "." + id + ".verify.spec.json",
-                {"keyring": verifier.keyring, "out": out.as_output(), "packages": packages},
+                {
+                    "keyring": verifier.keyring,
+                    "out": out.as_output(),
+                    "packages": packages,
+                    "repository": verifier.repository,
+                },
             ),
         ),
         category = "verify",

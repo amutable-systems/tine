@@ -154,6 +154,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx,
         baseurl = ctx.attrs.baseurl,
         package_system = ctx.attrs.package_system,
+        pinned_at = ctx.attrs.pinned_at,
         repo_dir = repo,
         signing_keys = _signing_keys(ctx),
         snapshot_spec = ctx.attrs.snapshot_spec,
@@ -200,6 +201,8 @@ PackageRepositoryInfo = provider(
         # Local declarations are materialized by a consuming package manager.
         "dir": provider_field(Artifact | None, default = None),
         "package_system": provider_field(Dependency),
+        # When the pinned snapshot was published, ISO 8601 in UTC; None for a rolling repository.
+        "pinned_at": provider_field(str | None, default = None),
         # The fingerprints of the keys one of which must have signed each package, each with its
         # committed key file, or None until refresh-catalog has fetched it. Empty for a local
         # repository: what is built here is unsigned and vouched for by Buck.
@@ -234,6 +237,11 @@ _REMOTE_REPOSITORY_ATTRS = {
     ),
     "labels": attrs.list(attrs.string(), default = []),
     "package_system": attrs.dep(providers = [PackageSystemInfo]),
+    "pinned_at": attrs.option(
+        attrs.string(),
+        default = None,
+        doc = "when the pinned snapshot was published, ISO 8601 in UTC; a verifier judges key expiry as of then",
+    ),
     "signing_key_files": attrs.list(
         attrs.source(),
         default = [],
@@ -447,6 +455,7 @@ def remote_repository_base(
     repo_dir: Artifact,
     signing_keys: dict[str, Artifact | None],
     snapshot_spec: dict[str, typing.Any] = {},
+    pinned_at: str | None = None,
 ) -> list[Provider]:
     """Register the package-system-neutral interface to a remote repository.
 
@@ -473,6 +482,7 @@ def remote_repository_base(
             baseurl = baseurl,
             dir = repo_dir,
             package_system = package_system,
+            pinned_at = pinned_at,
             signing_keys = signing_keys,
         ),
     ]
@@ -482,6 +492,9 @@ RepositoryPin = record(
     baseurl = field(str),
     # What refresh-catalog reads back to advance the pin, under the namespace its system owns.
     metadata = field(dict[str, str]),
+    # When the pinned snapshot was published, ISO 8601 in UTC, for a verifier to judge key expiry
+    # as of then rather than as of the build: a pin freezes the trust data, so the clock goes with it.
+    pinned_at = field(str | None, default = None),
 )
 
 def declare_remote_repository(
@@ -518,6 +531,7 @@ def declare_remote_repository(
         name = name,
         baseurl = pin.baseurl if pin != None else baseurl,
         box_locks = glob(["snapshot/box/*.json"]),
+        pinned_at = pin.pinned_at if pin != None else None,
         labels = ["tine:remote-repository", label] + labels,
         metadata = pin.metadata if pin != None else {},
         package_system = package_system,
