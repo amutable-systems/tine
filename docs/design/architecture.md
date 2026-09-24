@@ -370,7 +370,9 @@ phases. Pass another catalog package after `--`, for example
 3. Run the selected boxes' `<box>.lock.<architecture>` targets against the freshly pinned repository trees
    and atomically replace their optional frozen transactions. The target box's release, repository
    selection, package list, and architecture define the solve. A lock target carries its architecture as
-   an incoming transition, so it reads that architecture's repositories.
+   an incoming transition, so it reads that architecture's repositories. It resolves in its box on the
+   host, so a host lacking one of the boxes cannot verify the whole catalog. Thus CI verifies it only on
+   x86_64 for now, as Arch is not available on arm64.
 
 Snapshot and resolve take the result from the driver's stdout: a resolve runs in a sandbox that binds the
 project and nothing else, so stdout is the one destination that needs no writable path. The tool then atomically

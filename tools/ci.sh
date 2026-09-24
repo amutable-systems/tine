@@ -82,6 +82,24 @@ if [ "$mode" = github ]; then
     trap 'printf "::endgroup::\n::error::ci group %s failed\n" "$groupname"' ERR
 fi
 
+# Arch only has an x86_64 repository, so bootstrapping/verifying the catalog fails on other arches.
+has_arch_box() { [ "$(uname -m)" = x86_64 ]; }
+
+# All available build targets; see tools/dev.py for why that is not always `tine//...`.
+universe() { "${buck[@]}" run tine//tools:dev -- universe; }
+
+# `build` and `test` take no query, so they get the universe target list explicitly.
+whole_cell() {
+    local verb=$1 query listing targets
+    shift
+    query=$(universe)
+    listing=$("${buck[@]}" uquery "$query")
+    mapfile -t targets <<< "$listing"
+    # There are a lot of targets which are incompatible everywhere (image base without a chosen distribution, a
+    # signing token without config, etc.), don't fail on them.
+    "${buck[@]}" "$verb" --skip-incompatible-targets "${targets[@]}" "$@"
+}
+
 # The boot smokes need the host's KVM. Some CI envs (like GitHub's arm64 runners) don't have that.
 have_kvm() { [ -e /dev/kvm ]; }
 vm_filter=()
@@ -160,23 +178,27 @@ EOF
 
 # Nothing here needs a box, so a graph that does not analyze is reported in seconds rather than
 # after two bootstraps. `check` runs it again, for anyone running that on its own.
-group graph             -- "${buck[@]}" bxl tine//tools/graph.bxl:analyze
+group graph             -- "${buck[@]}" bxl tine//tools/graph.bxl:analyze -- --pattern "$(universe)"
 # First invocation fetches buck's pinned tools and builds the shared box; kept its own group so
 # bootstrap time stays visible.
 group box               -- "${buck[@]}" build tine//catalog:fedora.rawhide.box
 # The second package system's box is a root box of its own, so its bootstrap is its own group.
-group arch-box          -- "${buck[@]}" build tine//catalog:arch.rolling.box
+if has_arch_box; then
+    group arch-box      -- "${buck[@]}" build tine//catalog:arch.rolling.box
+fi
 group check             -- "${buck[@]}" run tine//tools:check
 # Every repository the catalog declares is pinned to a mirror serving immutable snapshots, so the whole
 # catalog is verifiable rather than the boxes that happen to be pinned.
-group verify-catalog    -- "${buck[@]}" run tine//tools:verify-catalog
+if has_arch_box; then
+    group verify-catalog -- "${buck[@]}" run tine//tools:verify-catalog
+fi
 # Everything the cell declares, rather than the handful of targets someone remembered to name here:
 # every example image over both package systems, the boxes, and the source-build demos.
-group build             -- "${buck[@]}" build tine//...
+group build             -- whole_cell build
 # Everything `check` left out: the boot smokes over both package systems, which take minutes each,
 # and the assertions about what the images above produced. Adding one is declaring it, not naming it
 # here as well.
-group image-tests       -- "${buck[@]}" test tine//... --include image "${vm_filter[@]}"
+group image-tests       -- whole_cell test --include image "${vm_filter[@]}"
 group secureboot-pkcs11 -- secureboot_pkcs11
 # The shared cache with a real Buck on both ends; in its own isolation dir.
 group remote-cache      -- "${buck[@]}" run tine//tests:cache-roundtrip
