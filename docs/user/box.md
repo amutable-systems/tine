@@ -38,7 +38,7 @@ Entering a box sets `TINE_BOX` to the target's name without its `.box` suffix, i
 `:3`, and so on when boxes nest. For ordinary prompts it also adds the corresponding marker to the standard
 `SHELL_PROMPT_PREFIX`. The target itself sets these, so every way of entering it is marked the same.
 
-Starship owns its multiline layout, so Tine leaves `SHELL_PROMPT_PREFIX` alone when `STARSHIP_SHELL` is
+Starship owns its multiline layout, so tine leaves `SHELL_PROMPT_PREFIX` alone when `STARSHIP_SHELL` is
 set. Add a native segment to `~/.config/starship.toml` instead:
 
 ```toml

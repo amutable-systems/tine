@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 SPDX-License-Identifier: MPL-2.0
 -->
 
-# Tine architecture
+# tine architecture
 
 This document describes the architecture implemented in this repository, the decisions that shaped it,
 and the work that remains. It is a living architecture document, not a chronological implementation plan.
@@ -20,7 +20,7 @@ running images, and [importer.md](../user/importer.md) covers maintaining packag
 
 ## Purpose and scope
 
-Tine uses Buck2 to build native packages and compose operating-system images. The long-term goal is a
+tine uses Buck2 to build native packages and compose operating-system images. The long-term goal is a
 monorepo in which a useful core package set is rebuilt from source, scheduled in dependency order, cached
 by content, and suitable for remote execution. The current implementation already provides:
 
@@ -62,7 +62,7 @@ tine//bin/                the command a checkout builds through, which fetches a
 ```
 
 The default `tine//catalog` package owns its release selection, mirrors, box choice, repository additions,
-and policy overrides. Projects can instead declare their own catalog package with Tine's reusable family
+and policy overrides. Projects can instead declare their own catalog package with tine's reusable family
 macros or low-level rules. The project's `//buildroots` package maps importer-generated
 `//buildroots/<family>:<release>` names to catalog targets.
 
@@ -78,7 +78,7 @@ The package source tree lives in the OS.git repository (which consumes this `tin
 It is intentionally not part of the reusable `tine` cell: package policy and imported source data change
 independently of build machinery.
 
-Buck2 looks every rule's toolchain up in a cell named `toolchains`. Tine declares the only one it needs,
+Buck2 looks every rule's toolchain up in a cell named `toolchains`. tine declares the only one it needs,
 the bootstrap Python interpreter, in this cell's root package and aliases `toolchains` to `tine`;
 `tine init` writes that alias into the consuming project's generated `.buckconfig`, so no project
 declares a toolchain of its own. The obvious shape, a `toolchains/` cell in this repository, is
@@ -100,13 +100,13 @@ They cannot overlap or cover `.buck/` or `.buckconfig.d/`: nested mounts would d
 order, and those directories hold the mount table and private configuration. Invalid declarations stop
 the command rather than silently falling back to the checked-in directory.
 
-For example, `tine mount` can make `/work/lib` appear at `vendor/lib` inside a project. Tine sets up the
+For example, `tine mount` can make `/work/lib` appear at `vendor/lib` inside a project. tine sets up the
 bind mounts in a private mount namespace before starting the Buck client, so uncommitted source edits
 are visible without changing Buck's project-relative paths.
 
-Before running Buck, Tine selects the configured tine cell's `bin/tine`, whether or not any mounts were
-needed. If its path differs from the current wrapper after resolving symlinks, Tine re-executes it so
-the command, rules, and Buck2 pin come from the same checkout. After creating mounts, Tine always
+Before running Buck, tine selects the configured tine cell's `bin/tine`, whether or not any mounts were
+needed. If its path differs from the current wrapper after resolving symlinks, tine re-executes it so
+the command, rules, and Buck2 pin come from the same checkout. After creating mounts, tine always
 re-executes: a mount may have replaced the wrapper at the same path. A configured cell without
 `bin/tine` is an error, not a reason to keep running another checkout's wrapper.
 
@@ -116,13 +116,13 @@ A build needs a daemon with the right mounts, but it should not be stuck with an
 project setting. The Buck client sends build requests to a background process, the daemon. The daemon
 keeps the mounts it started with. Changing a mount declaration does not change that daemon's mounts.
 
-Tine gives each set of mounts a label, called the mount digest, using the `[buck2] daemon_buster` setting.
+tine gives each set of mounts a label, called the mount digest, using the `[buck2] daemon_buster` setting.
 The Buck client reads that setting from its config files. If it starts a daemon, it passes the label to
 that daemon in its startup arguments. The daemon keeps that label and reports it to clients; it does not
 reread the config to update it. Each later client reads its own config and compares its label with the
 daemon's saved label before reusing the daemon.
 
-Previously, Tine put that label in a private copy of `.buckconfig`. This also hid later edits to ordinary
+Previously, tine put that label in a private copy of `.buckconfig`. This also hid later edits to ordinary
 settings. For example, if the copy said `build.threads = 4` and the project changed it to `8`, processes
 using that copy would still read `4`. Only the mount information needs to be private, not the whole
 project config.
@@ -151,7 +151,7 @@ rather than being frozen with the mounts. They still follow the refresh rules de
 [Shared configuration and nested commands](#shared-configuration-and-nested-commands).
 
 The root-cell config layers are read in order: `.buckconfig.d/`, `.buckconfig`, then `.buckconfig.local`.
-Tine rejects project-owned `[buck2] daemon_buster` and `[tine] dev` while mounts are declared so that a
+tine rejects project-owned `[buck2] daemon_buster` and `[tine] dev` while mounts are declared so that a
 higher-precedence setting cannot replace the private label or mounted-path list.
 
 #### Identifying the mounted directory
@@ -164,7 +164,7 @@ through `vendor/lib`. The digest includes the target path, source path, and moun
 It omits the device number because btrfs can assign a new one each time a subvolume is mounted.
 
 Re-executing inside an existing mount namespace preserves both the namespace and its saved list of
-mounted paths. Tine does not reread declarations that another command may already have changed. Git
+mounted paths. tine does not reread declarations that another command may already have changed. Git
 ignores are read through the mounted paths too, so they describe the checkout the build will use.
 
 #### Git metadata in mounted checkouts
@@ -174,7 +174,7 @@ example, `/work/main/lib/.git` might contain `gitdir: ../.git/modules/lib`, refe
 `/work/main/.git/modules/lib`. After mounting that checkout at `vendor/lib`, the same pointer would look
 under `vendor/.git/modules/lib` instead.
 
-Before mounting, Tine resolves each gitfile with `git rev-parse --absolute-git-dir` and saves the result
+Before mounting, tine resolves each gitfile with `git rev-parse --absolute-git-dir` and saves the result
 under `[tine] gitdirs` in `.buckconfig.d/tine-mounts/config`, as a JSON map from mount targets to absolute
 metadata paths. Both relative and absolute gitfile pointers are recorded. Ordinary `.git` directories
 remain accessible through the bind mount and need no saved path. Neither directories nor gitfiles are
@@ -186,7 +186,7 @@ If that path now holds a replacement checkout, following it would read the wrong
 Git both paths keeps the query on the mounted tree while retaining the saved metadata's `info/exclude`
 rules and tracked-file index, so tracked files are not mistaken for ignored build output.
 
-During configuration refresh, Tine reads the map once from the project's private config and passes it
+During configuration refresh, tine reads the map once from the project's private config and passes it
 to both the project and tine-cell ignore queries, keyed by mounted checkout paths. With no mounts, it
 skips this read. A mounted tine checkout's own private config is unrelated to this invocation and must
 not supply this map; malformed Git-directory data there must not break the build.
@@ -223,7 +223,7 @@ in native Buck configuration.
 When the tine cell is the project root itself, it is a standalone checkout. Its `.buckconfig` is source
 configuration and is not regenerated; put Buck overrides directly in that file rather than in TOML.
 
-The `.buckconfig.local` update only replaces Tine's generated block, which contains project ignores and
+The `.buckconfig.local` update only replaces tine's generated block, which contains project ignores and
 Git-derived image version components. Text outside that block is preserved.
 Configured ignores are merged with VCS metadata exclusions and Git ignores; a project-owned
 `[project] ignore` in `.buckconfig.local` is rejected because it would replace the generated list.
@@ -235,14 +235,14 @@ Generated settings go into a file rather than command-line flags because the dae
 reads its ignores from configuration files at startup, without command-line overrides. A file also
 avoids the 128 KiB limit on a single argument, and `buck2 complete` accepts no configuration flags.
 Target completion and `tine completion` select the configured wrapper without refreshing shared
-configuration. Target completion uses the selected checkout's cached Buck2 without downloading. Tine
+configuration. Target completion uses the selected checkout's cached Buck2 without downloading. tine
 rewrites Buck2's completion script so target queries run through `tine buck` too.
 
 The selected tine checkout pins Buck2 in `tools/tools.json`. Projects can override the pin in the
 `[buck2]` table of `tine.toml` or `tine.local.toml`, with per-platform fields under
 `[buck2.platforms.<platform>]`.
 
-Tine exports the pinned binary's path as `BUCK2_BINARY`. A nested Buck command still selects the
+tine exports the pinned binary's path as `BUCK2_BINARY`. A nested Buck command still selects the
 configured wrapper, but inherits the current mounts and skips refreshing shared configuration
 underneath the build that started it.
 
@@ -906,7 +906,7 @@ Otherwise buck clears it before the fetch, and what reaches the cache follows `g
 ### Filesystem layer representation
 
 Buck directory artifacts cannot faithfully store overlay whiteout devices, opaque-directory xattrs, or a
-backslash in a path component. Tine stores filesystem deltas in a regular-file representation:
+backslash in a path component. tine stores filesystem deltas in a regular-file representation:
 
 - `.wh.<name>` represents a whiteout;
 - `.wh..wh..opq` represents an opaque directory;
@@ -1349,7 +1349,7 @@ to them belongs in commit history or focused notes; this section records the dur
 
 Buck2 was chosen because package builds benefit from content-addressed artifacts, lazy action execution,
 sub-target providers for a build's binary outputs, and a test protocol that can later host the Barrage
-executor. Its lack of an implicit local sandbox also lets Tine use the same mkosi-sandbox boundary locally
+executor. Its lack of an implicit local sandbox also lets tine use the same mkosi-sandbox boundary locally
 and on future remote workers. Bazel's broader language-rule ecosystem mattered less than these properties
 for a package-heavy repository.
 
@@ -1617,7 +1617,7 @@ Useful implementation entry points:
 External projects that informed the design:
 
 - Buck2 for action/dynamic-dependency semantics, sub-targets, content-based paths, and test execution;
-- the native package managers Tine drives, for build, resolution, transaction, and signature behavior;
+- the native package managers tine drives, for build, resolution, transaction, and signature behavior;
 - mkosi/mkosi-sandbox for user-namespace isolation, root mounting, UKIs, and repart-based images;
 - Barrage for the planned streamed integration-test executor;
 - Siguldry for a possible production PKCS#11 signing boundary.
