@@ -357,7 +357,8 @@ box.sh_test(
         "$(location :boot-demo.fedora[boot][uki])",
         "$(location :boot-demo.fedora[boot][initrd])",
         "$(location :boot-demo.fedora[initrd])",
-    ],
+    ]
+    + architecture.select({name: [name] for name in ARCHITECTURES}),
 )
 
 # The splash the image ships reached the UKI. The image tools' box carries ukify, which lists a
