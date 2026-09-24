@@ -10,7 +10,7 @@ BuildRequires: gcc
 Source1: packaging-marker
 
 %description
-An integration fixture for Tine's source-tree RPM package build path.
+An integration fixture for tine's source-tree RPM package build path.
 
 %build
 mkdir -p %{_vpath_builddir}

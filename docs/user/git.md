@@ -5,7 +5,7 @@ SPDX-License-Identifier: MPL-2.0
 
 # Fetching project sources
 
-Tine wraps Buck's `git_fetch()` as `git.fetch()` so local development can use a checkout without changing
+tine wraps Buck's `git_fetch()` as `git.fetch()` so local development can use a checkout without changing
 the pinned source. The wrapper normally fetches the requested commit. It uses a directory in the current Buck
 package instead when that directory is non-empty and its name matches the target after removing a
 trailing `.git`.
@@ -53,7 +53,7 @@ The override has a few constraints:
 - Only `git_fetch()` targets can be mounted, anything else is rejected.
 - The directory must contain at least one file. An empty mount point or uninitialized submodule falls back
   to the remote fetch.
-- Every file not excluded by `.gitignore` or `[project] ignore` is a build input. Tine merges both, plus
+- Every file not excluded by `.gitignore` or `[project] ignore` is a build input. tine merges both, plus
   VCS metadata directories, into the generated ignore list; put build outputs in `.gitignore` and
   anything Git tracks but Buck should not see in `[project] ignore`.
 - The local checkout is not checked against `rev`. Remove the mount before a release build to restore the

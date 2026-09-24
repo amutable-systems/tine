@@ -3,9 +3,9 @@ SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 SPDX-License-Identifier: MPL-2.0
 -->
 
-# Tine
+# tine
 
-Tine composes operating-system images out of packages and pinned third-party repositories with
+tine composes operating-system images out of packages and pinned third-party repositories with
 [Buck2](https://buck2.build/). Every build action runs in an unprivileged sandbox without network access.
 Filesystem images are stacks of overlay deltas. tine's primary output targets are [unified kernel
 images](https://uapi-group.org/specifications/specs/unified_kernel_image/) and dm-verity protected GPT
@@ -99,10 +99,10 @@ edits to the generated `.buckconfig` are overwritten.
 ### Configuration
 
 Keep `tine.toml` and the generated `.buckconfig` committed in the consuming project. The latter is a
-bootstrap file: Tine needs it to locate the project before it can refresh the defaults. Ignoring it
+bootstrap file: tine needs it to locate the project before it can refresh the defaults. Ignoring it
 would leave a fresh clone unable to run `tine buck` without recreating that file first.
 
-Use `tine.local.toml` or `.buckconfig.local` for machine-local overrides, and keep both untracked. Tine
+Use `tine.local.toml` or `.buckconfig.local` for machine-local overrides, and keep both untracked. tine
 updates only its generated block in `.buckconfig.local`, preserving text outside that block.
 
 Image versions can be derived from the project's Git history; see
@@ -171,7 +171,7 @@ so an image build rebuilds exactly the affected packages.
 ## Pinned dependencies
 
 [`tools/tools.json`](tools/tools.json) declares the supported Buck2 and every other tool tine uses
-internally. `tine//tools:bump` updates those pins. Tine depends on fixes in its Buck2 fork, so running
+internally. `tine//tools:bump` updates those pins. tine depends on fixes in its Buck2 fork, so running
 another Buck2 is unsupported.
 
 ## Developing tine

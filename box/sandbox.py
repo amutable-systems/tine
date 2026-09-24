@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Run commands with pinned userspace through Tine's Linux sandbox.
+"""Run commands with pinned userspace through tine's Linux sandbox.
 
 Every build action starts this launcher. Keep imports, including transitive imports, to the absolute
 minimum to minimize startup time.

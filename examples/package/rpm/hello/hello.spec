@@ -9,7 +9,7 @@ License: MPL-2.0
 BuildArch: noarch
 
 %description
-An integration fixture for Tine's regular RPM package build path.
+An integration fixture for tine's regular RPM package build path.
 
 %prep
 

@@ -12,7 +12,7 @@ instead of having to re-do them on their own machine, and only build the inputs 
 changed locally. Which actions are cached at all is decided in the graph, not here: see [reproducibility
 and caching](../design/architecture.md#reproducibility-and-caching).
 
-Tine implements such a cache over an S3 bucket, with unique properties: not trusting the cloud provider,
+tine implements such a cache over an S3 bucket, with unique properties: not trusting the cloud provider,
 being robust against data corruption, reading with plain HTTP/public buckets, and functioning with dumb
 bucket expiry rules. See the [design document](../design/remote-cache.md) about how this is achieved.
 
