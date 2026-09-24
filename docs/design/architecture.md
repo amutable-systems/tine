@@ -372,7 +372,8 @@ phases. Pass another catalog package after `--`, for example
    selection, package list, and architecture define the solve. A lock target reads them from a spec
    target that carries the architecture as an incoming transition, so the spec sees that architecture's
    repositories while the lock stays in the host's configuration, where it exists only on the hosts that
-   have the box resolving it.
+   have the box resolving it. A host lacking one of the boxes therefore cannot verify the whole catalog,
+   so CI verifies it on x86_64 alone for now.
 
 Snapshot and resolve take the result from the driver's stdout: a resolve runs in a sandbox that binds the
 project and nothing else, so stdout is the one destination that needs no writable path. The tool then atomically

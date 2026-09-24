@@ -82,6 +82,11 @@ if [ "$mode" = github ]; then
     trap 'printf "::endgroup::\n::error::ci group %s failed\n" "$groupname"' ERR
 fi
 
+# The Arch box exists on x86_64 only, so bootstrapping it, and verifying the catalog, which resolves
+# every box's lock in that box, are left to x86_64 hosts until it exists on both. Naming it on any
+# other host is an error rather than a skip.
+has_arch_box() { [ "$(uname -m)" = x86_64 ]; }
+
 # The boot smokes need the host's KVM, and GitHub's arm64 runners have none. Build and assert
 # everything else there, and say so up front: a run that quietly left the smokes out would look green
 # for the wrong reason.
@@ -167,11 +172,15 @@ group graph             -- "${buck[@]}" bxl tine//tools/graph.bxl:analyze
 # bootstrap time stays visible.
 group box               -- "${buck[@]}" build tine//catalog:fedora.rawhide.box
 # The second package system's box is a root box of its own, so its bootstrap is its own group.
-group arch-box          -- "${buck[@]}" build tine//catalog:arch.rolling.box
+if has_arch_box; then
+    group arch-box      -- "${buck[@]}" build tine//catalog:arch.rolling.box
+fi
 group check             -- "${buck[@]}" run tine//tools:check
 # Every repository the catalog declares is pinned to a mirror serving immutable snapshots, so the whole
 # catalog is verifiable rather than the boxes that happen to be pinned.
-group verify-catalog    -- "${buck[@]}" run tine//tools:verify-catalog
+if has_arch_box; then
+    group verify-catalog -- "${buck[@]}" run tine//tools:verify-catalog
+fi
 # Everything the cell declares, rather than the handful of targets someone remembered to name here:
 # every example image over both package systems, the boxes, and the source-build demos.
 group build             -- "${buck[@]}" build tine//...
