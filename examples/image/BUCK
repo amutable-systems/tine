@@ -14,6 +14,7 @@ load("@tine//box:defs.bzl", "box")
 load("@tine//distribution:defs.bzl", "distribution")
 load("@tine//image:defs.bzl", "image")
 load("@tine//package:defs.bzl", "package")
+load("@tine//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load("@tine//python:defs.bzl", "tine_python_binary")
 load("@tine//tests:defs.bzl", "tests")
 load(":expected.json", _expected = "value")
@@ -382,13 +383,14 @@ box.sh_test(
 
 # A DDI's file name is what a systemd-sysupdate transfer matches, so it is part of the contract
 # rather than an implementation detail. The example sets no version, so this pins the rule's
-# default alongside the shape.
+# default alongside the shape; the architecture is spelled the way systemd's `%a` does.
 box.sh_test(
     name = "sysext-name-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
     script = 'test "$(basename "$1")" = "$2"',
-    args = ["$(location :demo-ext.fedora)", "demo-ext_0_x86-64.sysext.raw"],
+    args = ["$(location :demo-ext.fedora)"]
+    + architecture.select({name: ["demo-ext_0_{}.sysext.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()}),
 )
 
 # Compare the current builds to the checksums in ./expected.json to validate reproducibility: between
