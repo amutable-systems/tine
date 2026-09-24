@@ -7,6 +7,8 @@
 
 For updating legitimate changes to the build result. `--amend` folds the new digests into the
 commit that moved them, which is where they belong; without it, amend them by hand.
+
+A single run records the sum for the current host architecture; the others are kept.
 """
 
 import argparse
@@ -36,6 +38,14 @@ def _digests(buck: str, names: list[str]) -> dict[str, str]:
     return digests
 
 
+def _host_architecture(buck: str) -> str:
+    output = buck_output(
+        buck, "uquery", "--json", "--output-attribute=^cpu_configuration$", "tine//platforms:default"
+    )
+    attributes = cast(dict[str, dict[str, str]], json.loads(output))
+    return attributes["tine//platforms:default"]["cpu_configuration"].rsplit(":", 1)[1]
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="expected", description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -45,17 +55,19 @@ def main(argv: list[str] | None = None) -> None:
 
     buck = nested_buck()
     path = package_directory(buck, PACKAGE) / EXPECTATIONS
-    expectations = json.loads(path.read_text(encoding="utf-8"))
+    recorded = json.loads(path.read_text(encoding="utf-8"))
+    architecture = _host_architecture(buck)
+    expectations = recorded.get(architecture)
     if not expectations:
-        fail(f"expected: {path} tracks no target")
+        fail(f"expected: {path} tracks no target for {architecture}, only {sorted(recorded)}")
 
     names = sorted(expectations)
-    print(f"==> building {len(names)} tracked target(s)", file=sys.stderr)
+    print(f"==> building {len(names)} tracked target(s) for {architecture}", file=sys.stderr)
     for name, digest in _digests(buck, names).items():
         was = expectations[name].get("sha256")
         print(f"    {name}: {'unchanged' if digest == was else f'{was} -> {digest}'}", file=sys.stderr)
         expectations[name]["sha256"] = digest
-    atomic_write_text(path, json.dumps(expectations, indent=2, sort_keys=True) + "\n")
+    atomic_write_text(path, json.dumps(recorded, indent=2, sort_keys=True) + "\n")
 
     if args.amend and not amend_paths(path.parent, EXPECTATIONS):
         print("==> every digest is already recorded, nothing to amend", file=sys.stderr)

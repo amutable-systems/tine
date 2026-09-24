@@ -399,7 +399,7 @@ box.sh_test(
 # such as a git-derived version, so a digest only moves when the catalog pins a package the image
 # carries or a build rule changes what it writes. When one of those moved it legitimately, record the
 # new checksums with `buck run tine//examples/image:refresh-expected` and commit them with the change
-# that moved them.
+# that moved them. The refresh records the architecture it runs on.
 box.sh_test(
     name = "reproducibility-test",
     labels = ["image"],
@@ -412,7 +412,9 @@ done
 printf "%s\\n" "$@" | sha256sum --check --strict --quiet
 """,
     # Sorted, so the command line stays put when an entry is added and Buck reuses its cached run.
-    args = ["{}  $(location :{})".format(_expected[name]["sha256"], name) for name in sorted(_expected)],
+    args = architecture.select(
+        {arch: ["{}  $(location :{})".format(digests[name]["sha256"], name) for name in sorted(digests)] for arch, digests in _expected.items()}
+    ),
 )
 
 tine_python_binary(
