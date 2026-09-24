@@ -352,7 +352,7 @@ at the client instead, exactly as the sandbox does. **Use a fresh shell**: overw
 export PKCS11_PROVIDER_MODULE=/usr/lib64/pkcs11/p11-kit-client.so
 export P11_KIT_SERVER_ADDRESS="unix:path=$XDG_RUNTIME_DIR/signing/pkcs11"
 
-KEY="pkcs11:token=<token>;object=<key>;type=private?pin-source=$HOME/.config/signing-pin"
+KEY="pkcs11:token=<token>;object=<key>;type=private?pin-source=file:$HOME/.config/signing-pin"
 CERT="pkcs11:token=<token>;object=<key>;type=cert"
 
 /usr/lib/systemd/systemd-keyutil validate \

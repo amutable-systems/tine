@@ -318,8 +318,8 @@ def _pkcs11_signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
         certificate = ctx.attrs.certificate or certificate_uri,
         certificate_source = None if ctx.attrs.certificate else "provider:pkcs11",
         # pin-source rather than pin-value: the URI lands in spec files and tool command lines,
-        # neither secret. RFC 7512 puts it in the query component, hence the '?'.
-        private_key = uri + "private?pin-source=" + sandbox_pin,
+        # neither secret. RFC 7512 puts it in the query component, hence the '?'
+        private_key = uri + "private?pin-source=file:" + sandbox_pin,
         private_key_source = "provider:pkcs11",
         ro_binds = {host_directory: _SIGNING_CONFIG_DIR + host_directory, pin_file: sandbox_pin},
         setenv = {
