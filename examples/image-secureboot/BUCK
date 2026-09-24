@@ -16,6 +16,7 @@ enforcing the signature through its sysext.conf image policy.
 load("@tine//box:defs.bzl", "box")
 load("@tine//image:defs.bzl", "image")
 load("@tine//package:defs.bzl", "package")
+load("@tine//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load("@tine//tests:defs.bzl", "tests")
 
 package.manager(
@@ -253,7 +254,8 @@ box.sh_test(
     labels = ["image"],
     box = "@tine//tools:dev.box",
     test = "release-artifacts.sh",
-    args = ["$(location :release)", "$(location :image[roothash])"],
+    args = ["$(location :release)", "$(location :image[roothash])"]
+    + architecture.select({name: [spellings.systemd] for name, spellings in ARCHITECTURES.items()}),
 )
 
 # The disk's own listing is the union of its partitions': what an installation of it leaves behind,

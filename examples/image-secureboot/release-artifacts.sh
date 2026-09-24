@@ -9,20 +9,20 @@
 # UUIDs dissection pairs them by), and that the ESP is not among them.
 set -euo pipefail
 
-directory=$1 roothash_file=$2
+directory=$1 roothash_file=$2 arch=$3
 roothash=$(cat "$roothash_file")
 names=$(ls "$directory")
 
+image="image_0_$arch" extension="demo-ext_0_$arch"
 missing=0
-for expected in image_0_x86-64.raw image_0_x86-64.qcow2 image_0_x86-64.efi \
-    image_0_x86-64.vmlinuz image_0_x86-64.initrd demo-ext_0_x86-64.sysext.raw \
-    image_0_x86-64.Uapi16Manifest image_0_x86-64.esp.Uapi16Manifest \
-    image_0_x86-64.usr.Uapi16Manifest demo-ext_0_x86-64.sysext.Uapi16Manifest \
-    image_0_x86-64.spdx.json image_0_x86-64.cdx.json image_0_x86-64.pkgdb.sqlite \
-    image_0_x86-64.initrd.spdx.json image_0_x86-64.initrd.cdx.json \
-    demo-ext_0_x86-64.spdx.json demo-ext_0_x86-64.cdx.json \
-    "image_0_x86-64.usr-x86-64.${roothash:0:32}.raw" \
-    "image_0_x86-64.usr-x86-64-verity.${roothash:32:32}.raw"; do
+for expected in "$image.raw" "$image.qcow2" "$image.efi" "$image.vmlinuz" "$image.initrd" \
+    "$extension.sysext.raw" "$image.Uapi16Manifest" "$image.esp.Uapi16Manifest" \
+    "$image.usr.Uapi16Manifest" "$extension.sysext.Uapi16Manifest" \
+    "$image.spdx.json" "$image.cdx.json" "$image.pkgdb.sqlite" \
+    "$image.initrd.spdx.json" "$image.initrd.cdx.json" \
+    "$extension.spdx.json" "$extension.cdx.json" \
+    "$image.usr-$arch.${roothash:0:32}.raw" \
+    "$image.usr-$arch-verity.${roothash:32:32}.raw"; do
     grep -qx "$expected" <<< "$names" || { echo "release: $expected is missing" >&2; missing=1; }
 done
 # Its listing is published, because what it carries is on the disk; the partition itself is not.
