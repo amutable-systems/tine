@@ -6,6 +6,7 @@
 import argparse
 import json
 import os
+import platform
 import subprocess
 import sys
 import tomllib
@@ -84,6 +85,33 @@ def _orphan_tests(buck: str, cell: Path) -> list[Path]:
     return sorted(p for p in cell.rglob("*_test.py") if "buck-out" not in p.parts and p not in claimed)
 
 
+def _universe() -> str:
+    """The query for everything a whole-cell run asks for on this host.
+
+    The catalog serves Arch for x86_64 only, so elsewhere every target reaching it fails to
+    configure, and Buck reports what depends on it as an error rather than a skip. So leave out the
+    Arch catalog, the per-distribution aliases that choose Arch, and what names the Arch box itself.
+    A new target reaching Arch some other way fails on such a host, which is how it gets added here.
+    """
+    if platform.machine() == "x86_64":
+        return "tine//..."
+    return (
+        r"tine//... - filter('\.arch$', tine//...) - filter('^tine//catalog:arch\.', tine//catalog:)"
+        " - rdeps(tine//..., tine//catalog:arch.rolling.box, 1)"
+    )
+
+
+def _targets(buck: str) -> list[str]:
+    """What `_universe()` matches, to hand to a command that takes no query.
+
+    Named explicitly, a target incompatible by design (an image base without a chosen distribution, a
+    signing token without a configured token) is an error rather than a skip, so a command given these
+    needs `--skip-incompatible-targets`. That does not hide an Arch target the query missed: on a host
+    without Arch, that fails configuration rather than being incompatible.
+    """
+    return buck_output(buck, "uquery", _universe()).split()
+
+
 def _starlark_fmt(args: argparse.Namespace, *arguments: str | Path) -> list[str | Path]:
     return [args.starlark_fmt, "--config", args.starlark_fmt_config, *arguments]
 
@@ -112,7 +140,9 @@ def _lint(args: argparse.Namespace) -> None:
     # cell it declares and not whatever else sits beside it.
     _run([args.buck, "-v", "0", "run", "tine//tools:reuse", "--", "--root", cell, "lint", "--lines"])
     _bold("ty")
-    targets = buck_output(args.buck, "uquery", "attrfilter(labels, 'python-typecheck', tine//...)").split()
+    targets = buck_output(
+        args.buck, "uquery", f"attrfilter(labels, 'python-typecheck', {_universe()})"
+    ).split()
     if not targets:
         fail("ty: no generated type-check targets found")
     _run([args.buck, "build", *targets])
@@ -136,7 +166,20 @@ def _lint(args: argparse.Namespace) -> None:
     # Analysis, not a build: it reaches every rule a build would run, without producing anything.
     # Scoped to this cell, whose platform the parser knows how to detect; what a consuming project
     # declares is its own to check, with its own pattern.
-    _run([args.buck, "-v", "0", "bxl", "--console", "none", "tine//tools/graph.bxl:analyze"])
+    _run(
+        [
+            args.buck,
+            "-v",
+            "0",
+            "bxl",
+            "--console",
+            "none",
+            "tine//tools/graph.bxl:analyze",
+            "--",
+            "--pattern",
+            _universe(),
+        ]
+    )
 
 
 def _check(args: argparse.Namespace) -> None:
@@ -144,7 +187,11 @@ def _check(args: argparse.Namespace) -> None:
     _bold("unit tests")
     # Building an example image is minutes where these are seconds. Everything that needs one is
     # labelled `image` and covered by `buck test tine//... --include image`, which is what CI runs.
-    _run([args.buck, "test", "tine//...", "--exclude", "image"])
+    _run([args.buck, "test", "--skip-incompatible-targets", *_targets(args.buck), "--exclude", "image"])
+
+
+def _print_universe(_args: argparse.Namespace) -> None:
+    print(_universe())
 
 
 def _fmt(args: argparse.Namespace) -> None:
@@ -393,6 +440,9 @@ def main(argv: list[str] | None = None) -> None:
         verb = sub.add_parser(name, parents=[common, starlark], help=help_text)
         verb.add_argument("--ruff", required=True)
         verb.set_defaults(func=func)
+
+    universe = sub.add_parser("universe", help="print the query for what a whole-cell run asks for here")
+    universe.set_defaults(func=_print_universe)
 
     fmt = sub.add_parser("fmt", parents=[common, starlark], help="auto-format and auto-fix lints")
     fmt.add_argument("--ruff", required=True)
