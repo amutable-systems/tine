@@ -1287,11 +1287,11 @@ def build_vr(meta: SrcpkgMetadata) -> str | None:
 def arch_vr_skew(meta: SrcpkgMetadata) -> list[str]:
     """Binaries whose recorded version-release differs between arch buckets; [] when consistent.
 
-    The arch buckets of `binaries` are refreshed by independent per-arch builds (packages.md "aarch64
-    support"), so a partial update can leave e.g. x86_64 recording a Release bump that aarch64
-    never built. A binary recorded under several arches must carry the same self-provide V-R in
-    each. Comparison is per binary name, so a subpackage with its own Version: (libbpf's
-    usdt-devel) is never held against its siblings.
+    The arch buckets of `binaries` are refreshed by independent per-arch builds (packages.md
+    "Multiple architectures"), so a partial update can leave e.g. x86_64 recording a Release bump
+    that aarch64 never built. A binary recorded under several arches must carry the same
+    self-provide V-R in each. Comparison is per binary name, so a subpackage with its own Version:
+    (libbpf's usdt-devel) is never held against its siblings.
     """
     vrs: dict[str, dict[str, str]] = {}  # binary name -> arch -> V-R
     for arch, bucket in meta["binaries"].items():
