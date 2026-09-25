@@ -3,8 +3,8 @@
 
 """The CPU architectures tine builds for, and how each consumer spells them.
 
-The canonical names are systemd's `ConditionArchitecture=` spellings, but with `_` instead of `-` (same
-as in mkosi). Everything with its own naming schema reads it from this table:
+The canonical names are systemd's `ConditionArchitecture=` spellings, but with `_` instead of `-`.
+Everything with its own naming schema reads it from this table:
 
 - `config`: the Buck2 prelude's constraint value, which `select()` keys on
 - `efi`: ukify's `--efi-arch`, which also names the boot stubs and systemd-boot

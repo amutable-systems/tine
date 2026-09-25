@@ -3,7 +3,8 @@
 
 """Pick the kernel modules a UKI's per-kernel initrd carries and close over what they need.
 
-Patterns follow mkosi's `KernelModules=` semantics minus its leading-slash convenience. The dependency
+A pattern matches a trailing run of a module's path components; a leading slash anchors it at the
+modules root instead, and a trailing slash takes everything below a directory. The dependency
 and firmware closure comes from libkmod, so the initrd resolves modules through the very index modprobe
 reads at boot, and it is bound with an empty configuration vector so no modprobe.d from the box can
 reach the result.

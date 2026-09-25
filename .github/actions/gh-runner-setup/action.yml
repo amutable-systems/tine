@@ -18,7 +18,7 @@ runs:
         sudo mv /opt/hostedtoolcache /opt/hostedtoolcache.trash
         sudo systemd-run rm -rf /usr/local.trash /opt/hostedtoolcache.trash
 
-    # buck's mkosi-sandbox needs unprivileged user namespaces (unshare(CLONE_NEWUSER)); Ubuntu
+    # buck's sandbox needs unprivileged user namespaces (unshare(CLONE_NEWUSER)); Ubuntu
     # restricts them via AppArmor, so lift the restriction.
     - name: Allow unprivileged user namespaces
       shell: bash

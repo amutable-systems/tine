@@ -46,7 +46,7 @@ SigningKeyInfo = provider(
         # Each a PEM artifact, or a URI when its own source is set
         "certificate": provider_field(Artifact | str),
         # OpenSSL sources in systemd's spelling, each None for material in the build graph.
-        # Separate, as in mkosi: a key in a token whose certificate is a file is the combination
+        # Separate because a key in a token whose certificate is a file is the combination
         # that lets an image carry the certificate it verifies against.
         "certificate_source": provider_field(str | None, default = None),
         "private_key": provider_field(Artifact | str),
