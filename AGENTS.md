@@ -54,6 +54,11 @@ Cell layout and architecture: [the design plan](docs/design/architecture.md). Us
   seconds-long half that `check` runs, `--include image` the rest, which CI runs as its own step.
 - **Catalog lock:** `buck run tine//tools:refresh-catalog`; `tools:verify-catalog` asserts the committed
   lock matches.
+- **Example image digests:** `buck run tine//examples/image:refresh-expected`, then commit
+  `examples/image/expected.json` with the change that moved it. Anything that can alter what the example
+  images build needs this: a package they install, an image or UKI rule, a driver that writes into a root.
+  `examples/image:reproducibility-test` asserts the committed digests, and it carries the `image` label, so
+  `check` does not run it and only CI's image step catches a stale file.
 - **Full CI pipeline:** `tools/ci.sh`, fail-fast. Run individual groups by stating their names, e.g.
   `tools/ci.sh check build`
 - **rpm importer:** `buck run tine//tools:importer -- <verb>`; see [importer.md](docs/user/importer.md).
