@@ -567,6 +567,7 @@ image.artifacts(
 ```
 
 ```text
+artifacts_x86-64.json
 demo-ext_0_x86-64.sysext.raw
 image_0_x86-64.cdx.json
 image_0_x86-64.efi
@@ -586,6 +587,58 @@ metadata beside it, which is why it assembles the directory from a dynamic actio
 one name is an error rather than a silent overwrite. The `usr` and `usr-verity` UUIDs above are the two
 halves of that build's verity root hash, and `%M_@v_%a.usr-%a.@u.raw` in a transfer is how
 systemd-sysupdate reads one back to give the partition it writes the UUID dissection pairs them by.
+
+The release carries a file `artifacts_<arch>.json`, which says what each published file is. The `arch` is
+spelled as systemd does, as in `x86-64` or `arm64`. Each entry has the following fields:
+
+- `kind`: This says what kind of file it is. It is `uki`, `kernel`, `initrd`, `disk` (the raw disk), the
+  wrapping format (`qcow2`, `raw.zst`), partition type (`usr`, `usr-verity`, `usr-verity-sig`), `sysext`,
+  `roothash` (an extension's verity root hash file), `sbom`, `pkgdb`, or `listing` (a `Uapi16Manifest`).
+  A partition type is given without an explicit architecture, so `usr-x86-64-verity` becomes `usr-verity`.
+- `image`: This names the image the file belongs to. All files of one image share this value, so a consumer
+  can find the usr partition that goes with a UKI, or the SBOM that describes an extension, without parsing
+  names. The value is the prefix those files are published under. In the example above it is
+  `image_0_x86-64`. The initrd's SBOM and package database describe the initrd rather than the disk, so they
+  form a group of their own named `<prefix>.initrd`. The initrd file itself stays in the disk's group.
+- `root_hash`: This is the verity root hash of a usr partition or of an extension built with verity.
+
+A consumer reads these fields rather than the file names. Every rule that publishes a file says what it is.
+A published name without a kind fails the release, and so does a target that names no image. The excerpt
+below also gathers `:image[initrd][sbom]`.
+
+```json
+{
+ "arch": "x86-64",
+ "files": {
+  "image_0_x86-64.efi": {"image": "image_0_x86-64", "kind": "uki"},
+  "image_0_x86-64.usr-x86-64.0a72787674a137eaabf7aa97c82a72ee.raw": {
+   "image": "image_0_x86-64", "kind": "usr", "root_hash": "0a72787674a137eaabf7aa97c82a72ee94dcef64374b73274b88fe1a9ff45b31"
+  },
+  "image_0_x86-64.spdx.json": {"image": "image_0_x86-64", "kind": "sbom"},
+  "image_0_x86-64.initrd.spdx.json": {"image": "image_0_x86-64.initrd", "kind": "sbom"},
+  "demo-ext_0_x86-64.sysext.raw": {"image": "demo-ext_0_x86-64", "kind": "sysext", "root_hash": "…"}
+ }
+}
+```
+
+The project decides what a release means beyond its files, such as update metadata or signatures. `author`
+names an executable that the rule runs as `<author> --artifacts artifacts_<arch>.json --files <dir> --out-dir
+<dir> <author_args>`. The `--files` directory holds the published files under their published names. The
+names in `author_outputs` are taken from `--out-dir` into the release, beside the published files and
+`artifacts_<arch>.json`. Anything else the author writes is dropped, and a name that clashes fails. With
+`author_local_only` the author runs on this host and is never cached, as for an external Secure Boot key.
+That lets it read host state such as a signing key.
+
+```Starlark
+image.artifacts(
+    name = "release",
+    targets = [":image", ":image[qcow2]", ":image[sbom]", ":image[pkgdb]", ":demo-ext"],
+    author = ":release-author",  # a RunInfo: a box.run of the project's own driver
+    author_outputs = ["1.root.json", "targets_x86-64.json"],
+    author_local_only = PROD,
+)
+```
+
 `image.RepartInfo` contains the optional `image.RootHashInfo` when verity is enabled. The completed
 `image.ImageInfo` includes the ESP layer, so another image can use the bootable image as its parent without
 relying on a generated
