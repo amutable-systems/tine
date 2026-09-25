@@ -527,7 +527,7 @@ The host contract is intentionally small; its short list of requirements is docu
 
 All build actions run through `box.run()` and `box/sandbox.py`. The sandbox binds the box's
 userspace read-only over an otherwise isolated namespace, supplies API and temporary filesystems, clears the
-host environment, disables network by default, and uses mkosi-sandbox's unprivileged fakeroot behavior
+host environment, disables network by default, and offers unprivileged fakeroot behavior
 (`--suppress-chown`, `--suppress-sync`, and `--become-root`).
 
 The project is mounted at `/tine/project` and the action runs there, rather than at the path it is checked
@@ -604,8 +604,8 @@ base.
 After installation, the installer parks the package database and scrubs the package-manager and ldconfig
 bookkeeping that would otherwise make identical roots differ; what parking takes is each package system's
 own business. The action that owns the root then captures names and overlay metadata into Buck-storable
-form. A fresh root receives mkosi's `uninitialized` machine-id marker; incremental installs preserve any
-existing machine ID.
+form. A fresh root receives the `uninitialized` machine-id marker systemd initializes on first boot;
+incremental installs preserve any existing machine ID.
 
 `LocalPackageInfo` intentionally does not carry the producer's box. `local_repository` checks that its
 packages use one native package system and remains a box-independent declaration. The consuming package
@@ -1161,13 +1161,14 @@ instance directly, so both interfaces describe exactly the same initrd.
 
 `uki.py` appends the kernel-modules cpio and runs `ukify`. That cpio carries the modules `initrd_modules`
 selects, closed over their dependencies and their firmware with libkmod, which reads the image's own depmod
-index and no configuration from the box; `/usr` keeps the full set for the booted system. The pattern
-syntax is mkosi's `KernelModules=`, minus the convenience of retrying a leading-slash pattern below
-`kernel/`, so a leading slash anchors instead; `re:` regexes and the `host` value have no equivalent, the
-latter because reading the build host's loaded modules is not hermetic. `image.DEFAULT_INITRD_MODULES` is
-mkosi-initrd's list, so an image moving onto tine from `KernelInitrdModules=default` keeps the module set it
-had. One list serves kernels that ship different sets of modules, so a pattern matching nothing is reported
-rather than fatal, in the manifest the rule publishes beside the UKI. The UKI is named
+index and no configuration from the box; `/usr` keeps the full set for the booted system. A pattern
+matches a trailing run of a module's path components; a leading slash anchors it at the modules root
+instead, and a trailing slash takes everything below a directory. Selecting by regex is not offered, nor
+is selecting whatever the build host has loaded, the latter because reading that host is not hermetic.
+`image.DEFAULT_INITRD_MODULES` is the committed set a general-purpose initrd needs to find and open the
+root it was built for. One list serves kernels that ship different sets of modules, so a pattern
+matching nothing is reported rather than fatal, in the manifest the rule publishes beside the UKI. The
+UKI is named
 `<image_id>_<version>_<arch>.efi` from the image identity. For now an image holds exactly one kernel — the
 name (and sysupdate's matching of it) could not distinguish more. If several kernels per image ever become
 a requirement, add naming configuration to `image.uki()` to disambiguate them. The ESP layer copies the UKI
@@ -1353,8 +1354,8 @@ to them belongs in commit history or focused notes; this section records the dur
 
 Buck2 was chosen because package builds benefit from content-addressed artifacts, lazy action execution,
 sub-target providers for a build's binary outputs, and a test protocol that can later host the Barrage
-executor. Its lack of an implicit local sandbox also lets tine use the same mkosi-sandbox boundary locally
-and on future remote workers. Bazel's broader language-rule ecosystem mattered less than these properties
+executor. Its lack of an implicit local sandbox also lets tine use the same boundary locally and on
+future remote workers. Bazel's broader language-rule ecosystem mattered less than these properties
 for a package-heavy repository.
 
 Buck cannot add ordinary target dependencies discovered from an action output. Dynamic actions may select
@@ -1416,9 +1417,9 @@ tooling roots. Box-only images remain available when no native package resolutio
 ### Use one sandbox boundary and let drivers mount target roots
 
 The box userspace must be pinned, the host environment must not leak into builds, and package scriptlets
-need unprivileged fakeroot semantics. Vendored mkosi-sandbox supplies those properties without host package
-tooling, a build-chroot manager, bwrap, or a second nested sandbox. Drivers mount their own target roots
-because install, build, image, pack, and disk actions need different layouts.
+need unprivileged fakeroot semantics. A sandbox of tine's own supplies those properties without host
+package tooling, a build-chroot manager, bwrap, or a second nested sandbox. Drivers mount their own
+target roots because install, build, image, pack, and disk actions need different layouts.
 
 ### Pass drivers one JSON spec
 

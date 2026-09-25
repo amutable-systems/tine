@@ -105,7 +105,7 @@ class TestSelect(TreeTest):
     def test_leading_slash_anchors_at_the_modules_root(self) -> None:
         self.install("kernel/fs/erofs/erofs.ko.xz")
         self.assertEqual(self.select("/kernel/fs/erofs/erofs"), ["kernel/fs/erofs/erofs.ko.xz"])
-        # mkosi would retry this one under kernel/; tine does not.
+        # An anchored pattern is not retried below kernel/.
         self.assertEqual(self.select("/fs/erofs/erofs"), [])
 
     def test_directory_takes_everything_below_it(self) -> None:
