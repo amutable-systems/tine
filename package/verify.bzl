@@ -14,6 +14,8 @@ Verifier = record(
     keyring = Artifact,
     verify = RunInfo,
     repository = Artifact,
+    # What else this package system's verify driver needs to name the metadata it follows.
+    spec = field(dict[str, str], {}),
 )
 
 def repository_verifier(
@@ -25,6 +27,7 @@ def repository_verifier(
     directory: Artifact,
     keyrings: dict[str, Artifact],
     pinned_at: str | None = None,
+    verify_spec: dict[str, str] = {},
 ) -> Verifier | None:
     """The verifier for repository `id`'s packages in a consumer that verifies with `box`.
 
@@ -35,6 +38,9 @@ def repository_verifier(
 
     `pinned_at` is when the repository's snapshot was published: the keyring judges key expiry as of
     then, so a pinned snapshot verifies the same way however long after it is built.
+
+    `verify_spec` is what the repository was declared as, for a driver that has to check the pinned
+    metadata is the metadata that declaration asked for.
     """
     if not signing_keys:
         return None
@@ -66,7 +72,12 @@ def repository_verifier(
             identifier = name,
         )
         keyrings[key] = keyring
-    return Verifier(keyring = keyring, verify = box_run(box = box, exe = system.verify), repository = directory)
+    return Verifier(
+        keyring = keyring,
+        verify = box_run(box = box, exe = system.verify),
+        repository = directory,
+        spec = verify_spec,
+    )
 
 def verify_packages(
     actions: AnalysisActions,
@@ -77,19 +88,19 @@ def verify_packages(
 ) -> Artifact:
     """Verify what closure `name` selects from repository `id`, publishing a directory of copies named by key."""
     out = actions.declare_output(name + "." + id + ".verified", dir = True)
+    neutral = {
+        "keyring": verifier.keyring,
+        "out": out.as_output(),
+        "packages": packages,
+        "repository": verifier.repository,
+    }
+    reserved = [key for key in verifier.spec if key in neutral]
+    if reserved:
+        fail("verify_packages: {} are supplied by the neutral spec".format(reserved))
     actions.run(
         cmd_args(
             verifier.verify,
-            spec_args(
-                actions,
-                name + "." + id + ".verify.spec.json",
-                {
-                    "keyring": verifier.keyring,
-                    "out": out.as_output(),
-                    "packages": packages,
-                    "repository": verifier.repository,
-                },
-            ),
+            spec_args(actions, name + "." + id + ".verify.spec.json", neutral | verifier.spec),
         ),
         category = "verify",
         identifier = name + "/" + id,

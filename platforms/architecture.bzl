@@ -9,12 +9,13 @@ as in mkosi). Everything with its own naming schema reads it from this table:
 - `config`: the Buck2 prelude's constraint value, which `select()` keys on
 - `efi`: ukify's `--efi-arch`, which also names the boot stubs and systemd-boot
 - `systemd`: the `%a` specifier, which names published artifacts
-- `rpm`, `pacman`: the package system's own name, in its metadata and its mirrors' layout
+- `rpm`, `pacman`, `deb`: the package system's own name, in its metadata and its mirrors' layout
 """
 
 ARCHITECTURES = {
     "arm64": struct(
         config = "config//cpu:arm64",
+        deb = "arm64",
         efi = "aa64",
         pacman = "aarch64",
         rpm = "aarch64",
@@ -22,6 +23,7 @@ ARCHITECTURES = {
     ),
     "x86_64": struct(
         config = "config//cpu:x86_64",
+        deb = "amd64",
         efi = "x64",
         pacman = "x86_64",
         rpm = "x86_64",

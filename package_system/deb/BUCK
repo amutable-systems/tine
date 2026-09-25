@@ -1,0 +1,167 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
+"""The Debian package planner, repository snapshotter, and the metadata readers they share."""
+
+load("//box:test.bzl", "box_python_test")
+load("//package:system.bzl", "package_system")
+load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
+
+tine_python_library(
+    name = "deb822",
+    srcs = ["deb822.py"],
+    deps = ["//:util"],
+)
+
+tine_python_library(
+    name = "arches",
+    srcs = ["arches.py"],
+)
+
+tine_python_library(
+    name = "debfile",
+    srcs = ["debfile.py"],
+    deps = ["//:util"],
+)
+
+tine_python_library(
+    name = "edsp",
+    srcs = ["edsp.py"],
+    deps = [":deb822", "//:util"],
+)
+
+tine_python_library(name = "openpgp", srcs = ["openpgp.py"])
+
+tine_python_library(
+    name = "release",
+    srcs = ["release.py"],
+    deps = [":deb822", "//:util", "//package:href", "//package:snapshotter"],
+)
+
+tine_python_binary(
+    name = "extract",
+    main = "extract.py",
+    deps = [":debfile", "//package:extractor"],
+)
+
+tine_python_binary(
+    name = "plan",
+    main = "plan.py",
+    deps = [
+        ":deb822",
+        ":edsp",
+        "//:specs",
+        "//:util",
+        "//package:href",
+        "//package:transaction",
+        "//rootfs:rootfs",
+    ],
+)
+
+tine_python_binary(
+    name = "snapshot",
+    main = "snapshot.py",
+    deps = [
+        ":deb822",
+        ":release",
+        "//:util",
+        "//package:href",
+        "//package:snapshotter",
+    ],
+)
+
+tine_python_binary(
+    name = "keyring",
+    main = "keyring.py",
+    deps = [":openpgp", "//:specs", "//:util"],
+)
+
+tine_python_binary(
+    name = "verify",
+    main = "verify.py",
+    deps = [":deb822", ":openpgp", ":release", "//:specs", "//:util", "//package:snapshotter"],
+)
+
+tine_python_binary(
+    name = "install",
+    main = "install.py",
+    deps = [":arches", ":debfile", "//:util", "//package:installer"],
+)
+
+tine_python_binary(
+    name = "index",
+    main = "index.py",
+    deps = [":deb822", ":debfile", "//:specs", "//:util"],
+)
+
+# The capture driver implements the terminal-image contract, so it takes that library.
+tine_python_binary(
+    name = "pkgdb",
+    main = "pkgdb.py",
+    deps = [":debfile", "//:specs", "//:util", "//archive:tar", "//image:finalize"],
+)
+
+# `build` stays unset: Debian has no dpkg-buildpackage rule here yet.
+package_system(
+    name = "package_system",
+    arch_schema = "deb",
+    database_format = "tar.zst",
+    # Keep in sync with debfile.py's ADMINDIR, which Starlark cannot read.
+    database_paths = ["var/lib/dpkg"],
+    # APT builds its own cache during `update`, so there is nothing to convert in advance.
+    solver_cache = False,
+    extract = ":extract",
+    index = ":index",
+    install = ":install",
+    keyring = ":keyring",
+    # The Release vouches for the index and the index for each package.
+    metadata_vouches = True,
+    package_suffix = ".deb",
+    pkgdb = ":pkgdb",
+    plan = ":plan",
+    snapshot = ":snapshot",
+    verify = ":verify",
+    visibility = ["PUBLIC"],
+)
+
+# The dev box rather than a Debian one: the tests make an archive's keys and sign with gpg, and
+# verify with the sqv the driver runs, which the dev box carries for that.
+box_python_test(
+    name = "test",
+    box = "//tools:dev.box",
+    srcs = [
+        "deb822_test.py",
+        "debfile_test.py",
+        "extract.py",
+        "extract_test.py",
+        "index.py",
+        "index_test.py",
+        "install.py",
+        "install_test.py",
+        "keyring.py",
+        "openpgp_test.py",
+        "plan.py",
+        "plan_test.py",
+        "release_test.py",
+        "snapshot.py",
+        "snapshot_test.py",
+        "verify.py",
+        "verify_test.py",
+    ],
+    deps = [
+        ":arches",
+        ":deb822",
+        ":debfile",
+        ":edsp",
+        ":openpgp",
+        ":release",
+        "//:specs",
+        "//:util",
+        "//package:extractor",
+        "//package:href",
+        "//package:installer",
+        "//package:snapshotter",
+        "//package:transaction",
+        "//rootfs:rootfs",
+    ],
+)
