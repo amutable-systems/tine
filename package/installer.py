@@ -105,9 +105,19 @@ def run(
     it is layering over packages a lower stack already carries.
     """
     spec = specs.parse(InstallSpec, prog, argv)
-    # We already build the kernel/initrd in the ESP. Prevent systemd's `kernel-install` (called via
-    # package install scripts) from building and writing its own (dead weight and waste of time).
-    os.environ["KERNEL_INSTALL_BYPASS"] = "1"
+    os.environ.update(
+        {
+            # Do not pick up personal rpm macros or rpmrc from the box's home directory.
+            "HOME": "/",
+            # An unprivileged namespace cannot inspect /proc/1/root to detect the chroot itself.
+            "SYSTEMD_IN_CHROOT": "1",
+            # Buck directory artifacts cannot preserve subvolumes.
+            "SYSTEMD_TMPFILES_FORCE_SUBVOL": "0",
+            # Tine generates the hardware database and boot artifacts after package installation.
+            "SYSTEMD_HWDB_UPDATE_BYPASS": "1",
+            "KERNEL_INSTALL_BYPASS": "1",
+        }
+    )
 
     # An installer resolves its own paths against the root, so give it no relative ones.
     packages_dir = Path(spec["packages_dir"]).absolute()
