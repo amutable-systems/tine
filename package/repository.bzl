@@ -547,9 +547,13 @@ def repository_universe(name: str, **kwargs) -> None:
         fail("repository_universe name must end with '.repositories': {}".format(name))
     _repository_universe(name = name, **kwargs)
 
+def arch_spelling(arch: str, system: PackageSystemInfo) -> str:
+    """What `system` calls `arch`, which is how its own metadata names it."""
+    return architecture.spelling(arch, system.arch_schema)
+
 def expand_baseurl(baseurl: str, arch: str, system: PackageSystemInfo) -> str:
     """The mirror URL serving `arch`, replacing BASEARCH with the package system's name."""
-    return baseurl.replace(BASEARCH, architecture.spelling(arch, system.arch_schema))
+    return baseurl.replace(BASEARCH, arch_spelling(arch, system))
 
 def remote_repository_base(
     ctx: AnalysisContext,
@@ -572,7 +576,7 @@ def remote_repository_base(
     """
     rid = ctx.label.name
     system = package_system[PackageSystemInfo]
-    reserved = [key for key in snapshot_spec if key in ("baseurl", "id")]
+    reserved = [key for key in snapshot_spec if key in ("arch", "baseurl", "id")]
     if reserved:
         fail("remote_repository_base: {} are supplied by the neutral spec".format(reserved))
 
@@ -580,7 +584,12 @@ def remote_repository_base(
     specs = {
         architecture: ctx.actions.write_json(
             "{}.snapshot.spec.json".format(architecture),
-            dict(snapshot_spec, baseurl = expand_baseurl(baseurl, architecture, system), id = rid),
+            dict(
+                snapshot_spec,
+                arch = arch_spelling(architecture, system),
+                baseurl = expand_baseurl(baseurl, architecture, system),
+                id = rid,
+            ),
             has_content_based_path = False,
         )
         for architecture in architectures
@@ -623,6 +632,7 @@ def declare_remote_repository(
     architectures: list[str],
     baseurl: str | None,
     pin: RepositoryPin | None,
+    arch_in_url: bool = True,
     labels: list[str] = [],
     signing_keys: dict[str, str] = {},
     **kwargs,
@@ -633,7 +643,9 @@ def declare_remote_repository(
     a mirror publishing immutable snapshots and records what refresh-catalog advances. Only a mirror
     whose metadata never changes keeps a committed snapshot buildable, so the pin belongs on the
     declaration a catalog writes and releases forward their own pin arguments to it.
-    Either URL can contain the BASEARCH placeholder.
+    Either URL can contain the BASEARCH placeholder. `arch_in_url` is how a mirror serving several
+    architectures tells them apart: false for a layout like Debian's, which names the architecture
+    in the index path a snapshot spec carries rather than anywhere in the URL.
 
     `signing_keys` maps the approved key fingerprints to the corresponding key download URL.
 
@@ -648,7 +660,7 @@ def declare_remote_repository(
     if not architectures:
         fail("{} requires the architectures its mirror serves: {}".format(what, name))
     url = pin.baseurl if pin != None else baseurl
-    if len(architectures) > 1 and BASEARCH not in url:
+    if arch_in_url and len(architectures) > 1 and BASEARCH not in url:
         fail("{}: {!r} serves one architecture, not {}; name it with {}: {}".format(what, url, architectures, BASEARCH, name))
 
     # The lock of each architecture, None until refresh-catalog has written one. A repository
