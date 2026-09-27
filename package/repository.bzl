@@ -234,6 +234,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
         repo_dir = repo,
         signing_keys = _signing_keys(ctx),
         snapshot_spec = ctx.attrs.snapshot_spec,
+        verify_spec = ctx.attrs.verify_spec,
     ) + [
         PackagePoolInfo(
             value = _declare_package_pool(
@@ -283,6 +284,9 @@ PackageRepositoryInfo = provider(
         # committed key file, or None until refresh-catalog has fetched it. Empty for a local
         # repository: what is built here is unsigned and vouched for by Buck.
         "signing_keys": provider_field(dict[str, Artifact | None], default = {}),
+        # What this repository was declared as, for its package system's verify driver to check the
+        # pinned metadata against. Empty for a local repository, which declares no metadata.
+        "verify_spec": provider_field(dict[str, str], default = {}),
     },
 )
 
@@ -357,6 +361,12 @@ _REMOTE_REPOSITORY_ATTRS = {
         attrs.string(),
         default = {},
         doc = "what else this repository's snapshot driver needs to name its metadata",
+    ),
+    "verify_spec": attrs.dict(
+        attrs.string(),
+        attrs.string(),
+        default = {},
+        doc = "what this repository was declared as, for its verify driver to check the pinned metadata against",
     ),
     # Private: the configuration a repository is reached under says which architecture it serves.
     "_arch": attrs.string(default = architecture.configured(), doc = "the architecture to serve"),
@@ -561,14 +571,17 @@ def remote_repository_base(
     repo_dir: Artifact,
     signing_keys: dict[str, Artifact | None],
     snapshot_spec: dict[str, typing.Any] = {},
+    verify_spec: dict[str, str] = {},
     pinned_at: str | None = None,
 ) -> list[Provider]:
     """Register the package-system-neutral interface to a remote repository.
 
     `snapshot_spec` carries whatever else one package system's snapshot driver needs to name
-    its metadata; the identity and base URL every repository has are supplied here. The manifest
-    of every served architecture is offered as `[manifest.<architecture>]`, so refresh-catalog reads
-    each one's expanded URL from the one place that expands it.
+    its metadata; the identity and base URL every repository has are supplied here. `verify_spec`
+    is the same for the verify driver, which is where a declaration rather than a snapshot has to
+    say which metadata was asked for. The manifest of every served architecture is offered as
+    `[manifest.<architecture>]`, so refresh-catalog reads each one's expanded URL from the one place
+    that expands it.
     """
     rid = ctx.label.name
     system = package_system[PackageSystemInfo]
@@ -601,6 +614,7 @@ def remote_repository_base(
             package_system = package_system,
             pinned_at = pinned_at,
             signing_keys = signing_keys,
+            verify_spec = verify_spec,
         ),
     ]
 
