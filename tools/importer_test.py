@@ -1726,6 +1726,29 @@ class RegenerateBuck(unittest.TestCase):
         for value in ("//buildroots/myos:base", "glibc32", "--with=upstream", "--with=basic"):
             self.assertNotIn(value, buck)
 
+    def test_formatter_stable(self) -> None:
+        # starlark_fmt keeps the cell load first, sorts the local ones by file name, and sorts dict
+        # keys, so the generated file must already be in that order to pass a formatter check. A
+        # name extending another sorts differently as a file name ('-' < '.') and as a key.
+        (self.branchdir / "glibc-common.json").write_text("{}")
+        self.curate()
+        lines = self.buck().splitlines()
+        self.assertEqual(
+            [line for line in lines if line.startswith("load(")],
+            [
+                'load("@tine//package_system/rpm:generated.bzl", "rpm_branch")',
+                'load(":_properties.json", _properties = "value")',
+                'load(":gcc.json", _gcc = "value")',
+                'load(":glibc-common.json", _glibc_common = "value")',
+                'load(":glibc.json", _glibc = "value")',
+            ],
+        )
+        packages = lines.index("PACKAGES = {")
+        self.assertEqual(
+            lines[packages + 1 : packages + 4],
+            ['    "gcc": _gcc,', '    "glibc": _glibc,', '    "glibc-common": _glibc_common,'],
+        )
+
     def test_default_buildroot(self) -> None:
         # Absent an override, the buildroot label is derived from the branch's <distro>/<branch>
         # path -- the one default that must be generated, since buck cannot know the branch's
