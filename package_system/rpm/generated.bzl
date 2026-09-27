@@ -247,7 +247,7 @@ def _buildrequires_edges(
     edges = {}
     for name in sorted(packages):
         deps = {}
-        for br in sorted({br: True for brs in meta.build_requires.values() for br in brs}):
+        for br in sorted({br: True for brs in packages[name].build_requires.values() for br in brs}):
             for cap in _br_caps(br):
                 for p in provides.get(cap, {}):
                     if p != name and p not in seed_only_packages:
