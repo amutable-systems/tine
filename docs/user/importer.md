@@ -61,6 +61,30 @@ Operations on the `main` branch to maintain the downstream packages:
  - `check [start-ref]`: Validate consistency of all commits (optionally, starting from given ref); will
    run in all PRs
 
+## Initialization
+
+The importer names a package branch by its upstream distro (`fedora`, `centos`) and branch (`f44`,
+`c10s`): the generated `packages/`_distro_`/`_branch_`/BUCK` builds against abstract
+`//buildroots/`_distro_`:`_branch_ targets. These names need to be mapped to actual catalogs (see
+"Concepts" in [images.md](images.md)). In your OS.git, create these aliases in
+`buildroots/`_distro_`/BUCK`:
+
+```Starlark
+alias(
+    name = "rawhide",
+    actual = "//catalog:fedora.rawhide.buildroot",
+    visibility = ["PUBLIC"],
+)
+```
+
+The alias can also point to tine's default catalog (`tine//catalog:fedora.rawhide.buildroot`), but it is
+recommended to declare the OS's own `//catalog` package(s): then the OS advances its repository pins in
+its own commits, instead of whenever it updates tine.
+
+To use locally built packages in an image build, its package manager has to attach the branch's
+`//packages/`_distro_`/`_branch_`:_local_packages` universe. See `local_packages` in
+[images.md](images.md).
+
 ## Release and changelog conventions
 
  - Local modifications don't modify `%changelog`: We document changes in git, this avoids unnecessary
