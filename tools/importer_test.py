@@ -572,6 +572,20 @@ class UpstreamPackages(PackagesTestCase):
         with self.assertRaises(subprocess.CalledProcessError):
             self.tool.ensure_worktree()
 
+    def test_worktree_initializes_origin(self) -> None:
+        """A fresh OS.git without any imports gets an empty upstream-rpm branch on origin."""
+        git("branch", "--quiet", "-D", "upstream-rpm", cwd=self.monorepo)
+        origin = self._tmp / "origin.git"
+        git("clone", "--quiet", "--bare", str(self.monorepo), str(origin), cwd=self._tmp)
+        git("remote", "add", "origin", str(origin), cwd=self.monorepo)
+
+        wt = self.tool.ensure_worktree()
+
+        tip = git("rev-parse", "upstream-rpm", cwd=origin)
+        self.assertEqual(git("rev-parse", "HEAD", cwd=wt), tip)
+        self.assertEqual(git("log", "--format=%s", tip, cwd=origin), "Initialize upstream-rpm branch")
+        self.assertEqual(git("ls-tree", tip, cwd=origin), "")
+
     def test_new_package(self) -> None:
         sha = self.make_upstream("testpkg", "fedora", "rawhide")
         self.tool.import_upstream("fedora", "rawhide", "testpkg", None)

@@ -263,15 +263,26 @@ def ensure_branch() -> None:
         git("branch", "upstream-rpm", "origin/upstream-rpm", cwd=_root())
 
 
+def init_origin_branch() -> None:
+    """Create an empty upstream-rpm branch on origin, for a new OS.git without any imports yet."""
+    tree = git("hash-object", "-w", "-t", "tree", "/dev/null", cwd=_root()).strip()
+    commit = git("commit-tree", "-m", "Initialize upstream-rpm branch", tree, cwd=_root()).strip()
+    logging.info("origin has no upstream-rpm branch; creating an empty one")
+    git_net("-C", str(_root()), "push", "--quiet", "origin", f"{commit}:refs/heads/upstream-rpm")
+
+
 def ensure_worktree() -> Path:
     """Return a checkout of the upstream-rpm branch, current with origin.
 
-    Fetches the upstream-rpm branch and fast-forwards the local one.
+    Fetches the upstream-rpm branch and fast-forwards the local one. Creates the branch on origin if
+    it does not exist yet.
     """
     worktree = WORKTREE
     assert worktree is not None
     refresh = "origin" in git("remote", cwd=_root()).split()
     if refresh:
+        if not git_net("-C", str(_root()), "ls-remote", "origin", "refs/heads/upstream-rpm").strip():
+            init_origin_branch()
         git_net("-C", str(_root()), "fetch", "--quiet", "origin", "upstream-rpm")
     ensure_branch()
     if not worktree.exists():
