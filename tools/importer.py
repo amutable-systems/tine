@@ -1406,19 +1406,19 @@ def regenerate_buck(branchdir: Path) -> None:
     Loads are sorted, so an add/remove touches one line and rebases re-resolve by regenerating.
     """
     distro, branch = branchdir.parts[-2], branchdir.parts[-1]
-    # Sort by the filename (with .json) to match the formatter's load order
-    pkgs = [p.stem for p in sorted(branchdir.glob("*.json"), key=lambda p: p.name) if is_package_entry(p)]
+    pkgs = sorted(p.stem for p in branchdir.glob("*.json") if is_package_entry(p))
+    local_loads = {f"{p}.json": f'load(":{p}.json", {_load_symbol(p)} = "value")' for p in pkgs}
+    has_properties = (branchdir / BRANCH_PROPERTIES).exists()
+    if has_properties:
+        local_loads[BRANCH_PROPERTIES] = f'load(":{BRANCH_PROPERTIES}", _properties = "value")'
 
-    # all loads have to come first in Starlark
+    # all loads have to come first in Starlark; the local ones sorted by file name, like the formatter
     loads = ['load("@tine//package_system/rpm:generated.bzl", "rpm_branch")']
-    loads += [f'load(":{p}.json", {_load_symbol(p)} = "value")' for p in pkgs]
+    loads += [local_loads[name] for name in sorted(local_loads)]
     # Add a stub for branches without _properties.json to keep the rest of the file
     # in the same shape
-    loads += [
-        f'load(":{BRANCH_PROPERTIES}", _properties = "value")'
-        if (branchdir / BRANCH_PROPERTIES).exists()
-        else "_properties = {}"
-    ]
+    if not has_properties:
+        loads.append("_properties = {}")
 
     lines = ["# @generated -- do not edit (regenerated on import/update).", *loads, "", "PACKAGES = {"]
     lines += [f'    "{p}": {_load_symbol(p)},' for p in pkgs]
