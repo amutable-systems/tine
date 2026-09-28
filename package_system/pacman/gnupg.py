@@ -35,7 +35,9 @@ def gpg(
     return subprocess.run(
         ["gpg", "--homedir", str(home), "--batch", "--no-tty", *args],
         input=stdin,
-        capture_output=capture,
+        # Never stderr: CalledProcessError does not print what it holds, so a captured failure would
+        # say only that gpg refused.
+        stdout=subprocess.PIPE if capture else None,
         check=check,
         text=True,
     )
