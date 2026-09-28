@@ -115,6 +115,7 @@ box_python_test(
         "alpm.py",
         "alpm_test.py",
         "gnupg.py",
+        "gnupg_test.py",
         "keyring.py",
         "verify.py",
         "verify_test.py",

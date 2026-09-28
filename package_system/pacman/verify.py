@@ -96,7 +96,7 @@ def _check(home: Path, signature: Path, package: str) -> str | None:
         trust = sorted(word for word in status if word.startswith("TRUST_"))
         return f"signed by a key the declared main keys do not vouch for ({', '.join(trust)})"
     outcome = sorted(status - {"NEWSIG", "KEY_CONSIDERED"})
-    return f"{', '.join(outcome) or 'gpg failed'}: {result.stderr.strip()}"
+    return f"{', '.join(outcome) or 'gpg failed'} (gpg output above)"
 
 
 def verify(spec: Spec) -> None:

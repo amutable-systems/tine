@@ -84,7 +84,7 @@ def _populate(home: Path, spec: Spec, keyrings: Path) -> None:
     for fingerprint, file in spec["keys"].items():
         shown = gpg(home, "--with-colons", "--show-keys", file, capture=True)
         if shown.returncode:
-            util.fail(f"keyring: {file} is not a key file: {shown.stderr.strip()}")
+            util.fail(f"keyring: {file} is not a key file (gpg output above)")
         found = sorted(set(primary_fingerprints(shown.stdout)))
         if found != [fingerprint.upper()]:
             util.fail(f"keyring: {file} holds {found}, not the declared key {fingerprint}")
@@ -108,13 +108,12 @@ def _populate(home: Path, spec: Spec, keyrings: Path) -> None:
         # Captured: gpg narrates every certification it makes, whichever quiet option it is given.
         certify = gpg(home, "--yes", "--local-user", local, "--quick-lsign-key", fingerprint, capture=True)
         if certify.returncode:
-            util.fail(f"keyring: certifying the declared key {fingerprint} failed: {certify.stderr.strip()}")
+            util.fail(f"keyring: certifying the declared key {fingerprint} failed (gpg output above)")
     ownertrust = "".join(f"{fingerprint}:{_MARGINAL}:\n" for fingerprint in sorted(declared))
     if gpg(home, "--quiet", "--import-ownertrust", stdin=ownertrust).returncode:
         util.fail("keyring: setting the declared keys' ownertrust failed (gpg output above)")
-    check = gpg(home, "--check-trustdb", capture=True)
-    if check.returncode:
-        util.fail(f"keyring: computing key validity failed: {check.stderr.strip()}")
+    if gpg(home, "--check-trustdb").returncode:
+        util.fail("keyring: computing key validity failed (gpg output above)")
 
     # gpg reports success for a certification it could not make, such as of a key without a user
     # ID to certify, so what matters is checked directly: every declared key came out valid.
