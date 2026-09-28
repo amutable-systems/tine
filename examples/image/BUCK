@@ -192,7 +192,7 @@ image.bootable_disk(
     # The release names what a bootable system of its own family needs, so this stays symbolic.
     # The composition generates the databases those packages only describe, hwdb's among them.
     package_sets = ["bootable"],
-    packages = ["less"]
+    packages = ["grep", "less"]
     # Microcode is a package like any other; the UKI driver packs whatever vendor blobs the image
     # ends up shipping. Only x86 has any, and only x86 mirrors carry the packages.
     + architecture.select({
