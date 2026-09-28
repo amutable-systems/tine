@@ -53,6 +53,9 @@ class RepositoryMetadata(TypedDict):
 class Spec(TypedDict):
     id: str
     baseurl: str
+    # The package system's own name for the architecture this snapshot is of. A mirror that names
+    # it in the URL has it in `baseurl` already; one that names it in an index path needs it here.
+    arch: str
 
 
 # What a materialized repository whose metadata vouches for its packages carries beyond the
