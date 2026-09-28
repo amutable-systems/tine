@@ -18,6 +18,9 @@ concurrency:
 jobs:
   build:
     strategy:
+      # One architecture failing says nothing about the other, and which of the two broke is the
+      # first thing worth knowing.
+      fail-fast: false
       matrix:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
