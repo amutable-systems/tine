@@ -182,6 +182,25 @@ class TestPaths(unittest.TestCase):
 
 
 class TestMountContexts(unittest.TestCase):
+    def test_overlay_paths_escape_option_separators(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
+            root = Path(directory)
+            # A separator of each class, and two lowers, so the joined list is exercised as well.
+            top, bottom, upper, work = (root / name for name in ("to:p", "bot,tom", "up,per", "wo\\rk"))
+            for path in (top, bottom, upper, work):
+                path.mkdir()
+            (top / "original").write_text("original")
+            (bottom / "underneath").write_text("underneath")
+            (top / "shadowed").write_text("from the top")
+            (bottom / "shadowed").write_text("from the bottom")
+            target = root / "target"
+            with isolation.Overlay((top, bottom), upper, work, target, lazy_unmount=False):
+                self.assertEqual((target / "original").read_text(), "original")
+                self.assertEqual((target / "underneath").read_text(), "underneath")
+                self.assertEqual((target / "shadowed").read_text(), "from the top")
+                (target / "generated").write_text("output")
+            self.assertEqual((upper / "generated").read_text(), "output")
+
     def test_overlay_parent_keeps_its_mode_with_a_permissive_umask(self) -> None:
         with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
             root = Path(directory)
