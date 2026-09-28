@@ -28,23 +28,27 @@ from pathlib import Path
 from typing import Literal, NamedTuple, NotRequired, TypedDict, cast, get_args
 
 
-def repo_root() -> Path | None:
-    """The OS.git root: the nearest ancestor holding both packages/ and a git checkout.
+def repo_root(start: Path) -> Path | None:
+    """The OS.git root: the Buck project `start` (this tool's file) belongs to.
 
-    The importer only does useful work from inside the OS tree, so walk up from this file to the
-    first ancestor carrying packages/ and a .git (a directory in a plain clone, a file in a worktree
-    or submodule). That finds the root wherever the cell sits: expanded from an external cell,
-    vendored without its own .git, or in the copied test tree under buck-out. Returns None in a
-    standalone tine checkout with no OS tree above it: import must stay quiet there; only the git
-    verbs need the root, and they exit with a message.
+    Like Buck, take the furthest ancestor with a .buckconfig: the tine cell has one of its own,
+    and so does its checkout, with a .git (a directory in a plain clone, a file in a worktree or
+    submodule). That finds the root wherever the cell sits: expanded from an external cell,
+    vendored, or copied under buck-out. A new OS.git has no packages/ yet, so that cannot mark it.
+
+    Returns None if that project has no .git, or is a standalone tine checkout, whose .buckconfig
+    maps the tine cell to itself: import must stay quiet there; only the verbs need the root, and
+    they exit with a message.
     """
-    for d in Path(__file__).resolve().parents:
-        if (d / "packages").is_dir() and (d / ".git").exists():
-            return d
-    return None
+    roots = [d for d in start.resolve().parents if (d / ".buckconfig").exists()]
+    if not roots or not (roots[-1] / ".git").exists():
+        return None
+    if re.search(r"^\s*tine\s*=\s*\.\s*$", (roots[-1] / ".buckconfig").read_text(), re.MULTILINE):
+        return None
+    return roots[-1]
 
 
-ROOT: Path | None = repo_root()
+ROOT: Path | None = repo_root(Path(__file__))
 
 
 def _root() -> Path:
@@ -1910,7 +1914,9 @@ def main() -> None:
         level=logging.DEBUG if args.debug else logging.INFO, format="%(levelname)s %(message)s"
     )
     if ROOT is None:
-        raise SystemExit("no OS.git tree found above this tool (need an ancestor with packages/ and .git)")
+        raise SystemExit(
+            "no OS.git found: this tine cell is not part of a git checkout of a project that uses it"
+        )
     if args.command == "import-upstream":
         import_upstream(args.distro, args.branch, args.packagename, args.sha)
     elif args.command == "update-upstreams":

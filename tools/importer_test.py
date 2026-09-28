@@ -1759,6 +1759,48 @@ class RegenerateBuck(unittest.TestCase):
         self.assertIn(default, self.buck())
 
 
+class RepoRoot(unittest.TestCase):
+    """repo_root() finds the OS.git as Buck's project root, from wherever the tool file sits.
+
+    The layout mirrors a consuming project: the tine cell is a submodule with a .buckconfig and
+    .git of its own, and `buck run` executes a copy of the tool under buck-out.
+    """
+
+    @override
+    def setUp(self) -> None:
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        self.project = Path(tmp) / "os"
+        self.cell = self.project / "tine"
+        (self.cell / "tools").mkdir(parents=True)
+        (self.project / ".git").mkdir()
+        (self.project / ".buckconfig").write_text("[cells]\n  root = .\n  tine = tine\n")
+        (self.cell / ".git").write_text("gitdir: ../.git/modules/tine\n")
+        (self.cell / ".buckconfig").write_text(
+            "[cells]\n# the cell's real name\ntine = .\nprelude = prelude\n"
+        )
+
+    def test_from_the_cell(self) -> None:
+        # No packages/ yet: a new OS.git before its first import.
+        self.assertEqual(tool.repo_root(self.cell / "tools" / "importer.py"), self.project)
+
+    def test_from_buck_out(self) -> None:
+        start = self.project / "buck-out" / "v2" / "art" / "tine" / "0123" / "tools" / "importer.py"
+        self.assertEqual(tool.repo_root(start), self.project)
+
+    def test_standalone_tine(self) -> None:
+        # A tine checkout is its own project; the importer must not treat it as an OS.git.
+        shutil.rmtree(self.project / ".git")
+        (self.project / ".buckconfig").unlink()
+        (self.cell / ".git").unlink()
+        (self.cell / ".git").mkdir()
+        self.assertIsNone(tool.repo_root(self.cell / "tools" / "importer.py"))
+
+    def test_project_without_git(self) -> None:
+        shutil.rmtree(self.project / ".git")
+        self.assertIsNone(tool.repo_root(self.cell / "tools" / "importer.py"))
+
+
 class TestCLI(unittest.TestCase):
     """Out-of-process smoke test: the real CLI entry point (argparse + dispatch)."""
 
