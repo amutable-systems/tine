@@ -48,7 +48,7 @@ tine//examples/box/       pinned interactive development environment
 tine//distribution/       the axis an image's distribution is selected on
 tine//package/            package-system-neutral providers and installation flow
 tine//package_system/     one directory per package system: its repository, resolver, installer,
-                          extractor, indexer, and optional builder
+                          extractor, and optional indexer and builder
 tine//box/                box bootstrap and sandbox command construction
 tine//rootfs/             bind/overlay mounting and stored-delta translation
 tine//image/              layers, boot artifacts, composition macros, and VM runners
@@ -269,11 +269,12 @@ PackageSystemInfo (one package system's drivers)
 The providers have deliberately narrow roles:
 
 - `PackageSystemInfo` bundles the drivers for one native binary-package ecosystem: snapshot, extract,
-  install, package database capture, repository indexing, plan, and optionally build, plus the paths
-  that database occupies in an installed root, the file suffix a selected package is named with,
-  and whether its planner reuses prebuilt repository metadata. The builder is optional, and a system
-  whose repository metadata is already what its resolver reads declines the cache instead of leaving
-  it on. A package build declared against a manager whose system has no builder is refused by name.
+  install, package database capture, plan, and optionally repository indexing and build, plus the
+  paths that database occupies in an installed root, the file suffix a selected package is named with,
+  and whether its planner reuses prebuilt repository metadata. The builder and the indexer are
+  optional, and a system whose repository metadata is already what its resolver reads declines the
+  cache instead of leaving it on. A package build declared against a manager whose system has no
+  builder is refused by name, and so is a local repository of a system with no indexer.
 - `PackageRepositoryInfo` represents one repository and binds it to a package system. Its target name is
   the repository ID; remote declarations also expose their pinned directory and base URL. Priority is
   configuration policy, not an intrinsic repository property. A repository is not inherently owned by an
