@@ -313,7 +313,8 @@ def start(cache: CacheSettings, buck: list[str]) -> None:
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("wb") as out:
         process = subprocess.Popen(
-            [*buck, "run", "-v", "0", SHIM, "--", *expected],
+            # Report building the box, but suppress status, so that it's quiet on a warm cache.
+            [*buck, "run", "-v", "0,actions", SHIM, "--", *expected],
             stdin=subprocess.DEVNULL,
             stdout=out,
             stderr=out,
