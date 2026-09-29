@@ -87,6 +87,33 @@ def pinned_at(generation: Path) -> str | None:
     return marker.read_text(encoding="utf-8").strip() if marker.is_file() else None
 
 
+class Vouching[T]:
+    """What the repository's metadata states per package checksum: the pinned generation, then the retained.
+
+    A retained generation is read only once a package the pinned one does not describe asks for it,
+    so what a lock retained is a concern of the packages that need it and of no other.
+    """
+
+    def __init__(self, repository: Path, read: Callable[[Path], dict[str, T]]) -> None:
+        self._read = read
+        pinned, *self._retained = generations(repository)
+        self._known = read(pinned)
+
+    def get(self, checksum: str) -> T | None:
+        while checksum not in self._known and self._retained:
+            for digest, stated in self._read(self._retained.pop(0)).items():
+                self._known.setdefault(digest, stated)
+        return self._known.get(checksum)
+
+
+def pool_checksum(prog: str, package: str) -> str:
+    """The checksum a pool artifact is named by, ahead of its package system's suffix."""
+    checksum, suffix, _ = Path(package).name.partition(".")
+    if not suffix or len(checksum) != 64:
+        fail(f"{prog}: {package} is not named by its checksum")
+    return checksum.lower()
+
+
 def checksum(rid: str, what: str, value: str | None) -> str:
     """Normalize and validate a sha256 a repository states about its own contents."""
     digest = "" if value is None else value.strip().lower()

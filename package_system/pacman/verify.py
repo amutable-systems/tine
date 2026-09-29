@@ -52,35 +52,6 @@ def signatures(generation: Path) -> dict[str, bytes]:
     return found
 
 
-class Signatures:
-    """The signatures the repository carries: the pinned database's, then what locks retained.
-
-    A retained database is read only once a package the pinned one does not describe asks for it,
-    so what a lock retained is a concern of the packages that need it and of no other. It is judged
-    by the same keyring, whose clock is stopped at the repository's pin: validity is computed once,
-    when the keyring is built, so a packager key that expired between a lock's pin and the
-    repository's is refused until the lock is refreshed.
-    """
-
-    def __init__(self, repository: Path) -> None:
-        pinned, *self._retained = snapshotter.generations(repository)
-        self._known = signatures(pinned)
-
-    def get(self, checksum: str) -> bytes | None:
-        while checksum not in self._known and self._retained:
-            for digest, signature in signatures(self._retained.pop(0)).items():
-                self._known.setdefault(digest, signature)
-        return self._known.get(checksum)
-
-
-def _checksum(package: str) -> str:
-    """The checksum a pool artifact is named by."""
-    checksum, stem, _ = Path(package).name.partition(alpm.PACKAGE_STEM)
-    if not stem or len(checksum) != 64:
-        util.fail(f"verify: {package} is not named by its checksum")
-    return checksum.lower()
-
-
 def _check(home: Path, signature: Path, package: str) -> str | None:
     """Why gpg rejects the signature over `package`, or None when it is good and from a valid key."""
     result = gpg(home, "--status-fd", "1", "--verify", str(signature), package, capture=True)
@@ -103,13 +74,16 @@ def verify(spec: Spec) -> None:
     """Require a valid signature from a vouched-for key on every package, then publish verified copies."""
     out = Path(spec["out"])
     out.mkdir(parents=True)
-    known = Signatures(Path(spec["repository"]))
+    # Retained databases are judged by the same keyring, whose clock is stopped at the
+    # repository's pin: validity is computed once, when the keyring is built, so a packager key
+    # that expired between a lock's pin and the repository's is refused until the lock is refreshed.
+    known = snapshotter.Vouching(Path(spec["repository"]), signatures)
     home = Path(spec["keyring"])
     rejected = []
     with tempfile.TemporaryDirectory(prefix="verify.") as scratch:
         signature = Path(scratch) / "package.sig"
         for name, package in spec["packages"].items():
-            detached = known.get(_checksum(package))
+            detached = known.get(snapshotter.pool_checksum("verify", package))
             if detached is None:
                 rejected.append(
                     f"{name}: no database the repository carries has a signature for it; a lock that"
