@@ -27,7 +27,7 @@ export_file(
     name = "tine.lock.json",
     src = "tine.lock.json",
     mode = "reference",
-    visibility = ["//tools/..."],
+    visibility = ["//bump/..."],
 )
 
 export_file(

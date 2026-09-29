@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
+"""The command that updates the pins in tine.lock.json."""
+
+load("//box:test.bzl", "box_python_test")
+load("//python:defs.bzl", "tine_python_binary")
+
+# PUBLIC: a consuming project runs this driver with `--data` to bump its own tine.lock.json.
+tine_python_binary(
+    name = "driver",
+    main = "bump.py",
+    deps = ["//:util"],
+    visibility = ["PUBLIC"],
+)
+
+# bump gets the ty configuration as a label. If `ty.toml` moves or is renamed, the analysis of this
+# target fails, and not the next bump run.
+command_alias(
+    name = "bump",
+    args = ["--data", "$(location //:tine.lock.json)", "--ty-config", "$(location_exec //:ty-config)"],
+    exe = ":driver",
+)
+
+box_python_test(
+    name = "test",
+    box = "//tools:dev.box",
+    srcs = [
+        "bump.py",
+        "bump_test.py",
+    ],
+    deps = ["//:util"],
+)
