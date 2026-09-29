@@ -42,17 +42,7 @@ def _configure_repositories(
             fail("box: repository '{}' has no bootstrap base URL".format(rid))
         verifier = None
         if verifier_box != None:
-            verifier = repository_verifier(
-                ctx,
-                verifier_box,
-                rid,
-                repo.signing_keys,
-                repo.package_system,
-                repo.dir,
-                keyrings,
-                repo.pinned_at,
-                repo.verify_spec,
-            )
+            verifier = repository_verifier(ctx, verifier_box, rid, repo.signing_keys, repo.package_system, repo.dir, keyrings, repo.pinned_at)
         configured.append(
             ConfiguredPackageRepositoryInfo(
                 id = rid,
