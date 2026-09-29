@@ -1,38 +1,38 @@
 {
   "buck2": {
     "repository": "daandemeyer/buck2",
-    "release": "2026-09-23-15.23.16",
+    "release": "2026-09-29-12.11.25",
     "platforms": {
       "Linux-aarch64": {
         "artifact": "buck2-aarch64-unknown-linux-musl.zst",
-        "sha256": "fe6eae24ccbb47e5d53034db5f6fef800c166318eb1b6b44a1baa435c732b2e6",
-        "size": 38279098
+        "sha256": "1dfe17344af9b6c6b39c686137051a8222cf94c9de935ad748f31d59083d1446",
+        "size": 38564665
       },
       "Linux-riscv64": {
         "artifact": "buck2-riscv64gc-unknown-linux-gnu.zst",
-        "sha256": "11f8b5488fd3c93655bd473fea853acd5d907d9f010294a43a75efcfc77009ec",
-        "size": 40491804
+        "sha256": "0e45b641cb0ede67afacaca4dbd4e24f15362eec5779e7881f3c00534f8a49e7",
+        "size": 40779392
       },
       "Linux-x86_64": {
         "artifact": "buck2-x86_64-unknown-linux-musl.zst",
-        "sha256": "83a6c914dbd2be6add4a5e305d93dfe0a7d777287c304f51f20a28aade732aed",
-        "size": 39759331
+        "sha256": "52f2cae0bad108836747a6cb436de5b6f6a0c0f8c89f4e77feab059339ca53d9",
+        "size": 40017572
       }
     }
   },
   "starlark-fmt": {
     "repository": "daandemeyer/buck2",
-    "release": "2026-09-23-15.23.16",
+    "release": "2026-09-29-12.11.25",
     "platforms": {
       "arm64": {
         "artifact": "starlark_fmt-aarch64-unknown-linux-musl.zst",
-        "sha256": "b4195eb01a83b9c8bfcc8eabcc7cac73726decc854a76588765be805cf6c748a",
-        "size": 2495293
+        "sha256": "ce7b66a592c3aff7add4d1f06f4f48b33c033745d2d930fbf76961df7ca55edb",
+        "size": 2492255
       },
       "x86_64": {
         "artifact": "starlark_fmt-x86_64-unknown-linux-musl.zst",
-        "sha256": "32e48631791a561ef8d6048413ccba09a9a1beeaee35175f7897fd7ec21b1871",
-        "size": 2613039
+        "sha256": "b8f8c9a918187791afb41079924a4e8317a2d63ad63ded3acbf3a4e764969dd0",
+        "size": 2613003
       }
     }
   },
@@ -126,17 +126,17 @@
   },
   "seaweedfs": {
     "repository": "seaweedfs/seaweedfs",
-    "release": "4.47",
+    "release": "4.48",
     "platforms": {
       "arm64": {
         "artifact": "linux_arm64.tar.gz",
-        "sha256": "ba5c9def9ff98f78becdf309a50a9f906922f6383a7c4c772d01ede3cc012e16",
-        "size": 40359016
+        "sha256": "557e92c38c5c7d180748eb8e2b2b45e426f8e5282a4caca8e098a90d09f03a07",
+        "size": 40558283
       },
       "x86_64": {
         "artifact": "linux_amd64.tar.gz",
-        "sha256": "31fb804858885f9e7f18b6d3b1da09e824baac3e6a55b5a62c3c4c77e6ed6d7d",
-        "size": 45801355
+        "sha256": "4a7d108384d044d95212d1342cdda9533fa55842c1c9b41f606ca3c8a9561124",
+        "size": 46067365
       }
     }
   }
