@@ -7,11 +7,13 @@ load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 load(":system.bzl", "PackageSystemInfo")
 
-# What verifies one repository's packages for one consumer: the keyring of the repository's declared
-# keys, the package system's verify program run in the consumer's box, and the repository's pinned
-# metadata, for a system whose signatures travel in the database rather than the package.
+# What verifies one repository's packages for one consumer: the declared keys, the package system's
+# verify program run in the consumer's box, and the repository's pinned metadata, for a system whose
+# signatures travel in the database rather than the package.
 Verifier = record(
-    keyring = Artifact,
+    # What the verify spec names the keys by: the `keyring` built from them, or for a system that
+    # builds none, the declared `keys` as they are and the `time` to judge them as of.
+    keys = dict[str, typing.Any],
     verify = RunInfo,
     repository = Artifact,
 )
@@ -31,19 +33,23 @@ def repository_verifier(
     The keyring is built from the declared keys, any others are refused. None for a repository without
     declared keys. Repositories declaring the same keys share one keyring: `keyrings` is the caller's
     cache of those built so far, one per consumer and package system, so the same key set is not
-    imported and certified once per repository that trusts it.
+    imported and certified once per repository that trusts it. A system whose verify program reads
+    key files as they are has no keyring driver, and is handed the declared ones.
 
-    `pinned_at` is when the repository's snapshot was published: the keyring judges key expiry as of
-    then, so a pinned snapshot verifies the same way however long after it is built.
+    `pinned_at` is when the repository's snapshot was published: signatures are judged as of then,
+    so a pinned snapshot verifies the same way however long after it is built.
     """
     if not signing_keys:
         return None
     system = package_system[PackageSystemInfo]
-    if system.verify == None or system.keyring == None:
+    if system.verify == None:
         fail("repository '{}': package system {} verifies no signatures".format(id, package_system.label))
     missing = [fingerprint for fingerprint, file in signing_keys.items() if file == None]
     if missing:
         fail("repository '{}': signing key(s) {} are not in the catalog yet; run refresh-catalog".format(id, missing))
+    verify = box_run(box = box, exe = system.verify)
+    if system.keyring == None:
+        return Verifier(keys = {"keys": signing_keys, "time": pinned_at}, verify = verify, repository = directory)
 
     fingerprints = sorted(signing_keys)
     key = str(package_system.label) + " " + str(pinned_at) + " " + " ".join(fingerprints)
@@ -66,7 +72,7 @@ def repository_verifier(
             identifier = name,
         )
         keyrings[key] = keyring
-    return Verifier(keyring = keyring, verify = box_run(box = box, exe = system.verify), repository = directory)
+    return Verifier(keys = {"keyring": keyring}, verify = verify, repository = directory)
 
 def verify_packages(
     actions: AnalysisActions,
@@ -84,11 +90,11 @@ def verify_packages(
                 actions,
                 name + "." + id + ".verify.spec.json",
                 {
-                    "keyring": verifier.keyring,
                     "out": out.as_output(),
                     "packages": packages,
                     "repository": verifier.repository,
-                },
+                }
+                | verifier.keys,
             ),
         ),
         category = "verify",

@@ -455,7 +455,8 @@ A repository that declares signing keys verifies package signatures after fetchi
 cannot verify them itself, because that takes a box and the box a release names is built from the
 release's own repositories; so the package manager or the box rule declares the verification with the box
 it has: one keyring per set of declared key files (validated against the committed fingerprints), shared by
-the repositories declaring that set, and the selector then verifies what a transaction selects from that
+the repositories declaring that set, or the key files themselves for a system whose verify program reads
+them as they are, and the selector then verifies what a transaction selects from that
 repository in one action, publishing the closure's copies of those packages. One action per closure and
 repository, as the overhead of launching the sandbox and `rpmverify` per package is unbearably high. A
 derived manager inherits the verifier. The unverified pool is only being used by the repository
