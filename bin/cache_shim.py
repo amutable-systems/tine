@@ -314,7 +314,9 @@ def start(cache: CacheSettings, buck: list[str]) -> None:
     with log.open("wb") as out:
         process = subprocess.Popen(
             # Report building the box, but suppress status, so that it's quiet on a warm cache.
-            [*buck, "run", "-v", "0,actions", SHIM, "--", *expected],
+            # Buck fails an action outright when the cache it was configured with does not answer. We
+            # are the thing that answers, so our own build must never try to access the cache.
+            [*buck, "run", "-v", "0,actions", "--no-remote-cache", SHIM, "--", *expected],
             stdin=subprocess.DEVNULL,
             stdout=out,
             stderr=out,

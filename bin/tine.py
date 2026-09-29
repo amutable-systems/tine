@@ -1768,20 +1768,18 @@ def before_shim(
     root: Path,
     config: dict[str, dict[str, str]],
     settings: dict[str, dict[str, object]],
+    cache: cache_shim.CacheSettings,
     isolation: str | None,
 ) -> list[str]:
     """Ready Buck to build and start the shim, and return the Buck command to do it with.
 
-    Buck fails an action outright when the cache it was configured with does not answer, so the
-    daemon that builds the shim must know no address: the generated block is written without one,
-    and a daemon that has read one is replaced. Once the shim serves, `buck` writes the address and
-    replaces that daemon in turn.
+    The address in the generated block is the one this shim is about to answer on, so it can stay
+    where it is: the build that produces the shim is told on its command line not to use the cache,
+    rather than by taking the address away from a daemon and killing it for a shim start.
     """
     binary = buck2_binary(settings, wrapper_cell_root())
     assert binary is not None
-    if RE_CLIENT in read_generated_buckconfig(root / LOCAL):
-        kill_daemon(binary, isolation)
-    refresh_local_buckconfig(root, collect_project_ignores(root, config, [], {}), None)
+    refresh_local_buckconfig(root, collect_project_ignores(root, config, [], {}), cache)
     return [str(binary), *([FLAG_ISOLATION, isolation] if isolation else [])]
 
 
@@ -1791,6 +1789,8 @@ def buck_command(argv: list[str]) -> None:
     settings = project_settings(root)
     command = parse_buck_command(argv)
     cache = cache_shim.settings(settings, root, SETTINGS)
+    # What a daemon may already have read, taken before a shim start can write an address over it.
+    published = read_generated_buckconfig(root / LOCAL).get(RE_CLIENT, {})
     if cache is not None:
         config = read_project_buckconfig(root)
         # Reserved rather than merged: the generated block comes first, so a project's own section
@@ -1801,7 +1801,7 @@ def buck_command(argv: list[str]) -> None:
         # runs. The cost is that its pin comes from the outer checkout rather than a mounted cell's.
         # MARKER means entering the namespace already re-executed this, which ensured it once.
         if command.subcommand not in BUCK_COMMAND_NO_ACTION and not os.environ.get(MARKER):
-            cache_shim.ensure(cache, lambda: before_shim(root, config, settings, command.isolation))
+            cache_shim.ensure(cache, lambda: before_shim(root, config, settings, cache, command.isolation))
     # A completing shell must neither download nor rewrite shared configuration on a keypress.
     config, mounts = prepare_buck(
         root, settings, ["buck", *argv], refresh_config=command.subcommand != "complete"
@@ -1814,7 +1814,7 @@ def buck_command(argv: list[str]) -> None:
         # The daemon reads the cache address only at startup, so a changed one has to replace it.
         # Not `daemon_buster`: Buck takes startup constraints from the root `.buckconfig` without
         # following includes, and the mount digest owns that slot.
-        if read_generated_buckconfig(root / LOCAL).get(RE_CLIENT, {}) != cache_client(cache):
+        if published != cache_client(cache):
             kill_daemon(binary, command.isolation)
         gitdirs = namespace_gitdirs(root) if mounts else {}
         refresh_local_buckconfig(root, collect_project_ignores(root, config, mounts, gitdirs), cache)

@@ -322,8 +322,7 @@ A shim that refuses uploading would cause `WARN ... Cache upload for <digest> fa
 from the `[cache]` settings, and `platforms/defs.bzl` gates the executor's `allow_cache_uploads` on it.
 
 Buck2 fails an action outright when the cache it was configured with does not answer, rather than
-treating it as a miss. So `tine buck` brings the shim up through a Buck that knows no cache address, and
-only then writes the address and replaces the daemon.
+treating it as a miss. So `tine buck` brings the shim up through a Buck with `--no-remote-cache`.
 
 ## Running it
 
