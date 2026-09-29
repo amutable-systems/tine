@@ -72,7 +72,7 @@ package_system = rule(
         "keyring": attrs.option(
             attrs.exec_dep(providers = [RunInfo]),
             default = None,
-            doc = "build the keyring of a repository's declared signing keys that `verify` checks against",
+            doc = "build the keyring of a repository's declared signing keys that `verify` checks against; unset where `verify` reads the declared key files as they are",
         ),
         "metadata_vouches": attrs.bool(
             default = False,
