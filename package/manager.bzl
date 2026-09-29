@@ -27,6 +27,9 @@ _REMOTE_REPOSITORY_PRIORITY = 99
 
 def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     system = ctx.attrs.package_system[PackageSystemInfo]
+    if system.index == None:
+        fail("package system {} indexes no local repositories".format(ctx.attrs.package_system.label))
+
     # Every consumer of a promised artifact would have to assert a content-based path; keep the plain one.
     repo = ctx.actions.declare_output("repo", dir = True, has_content_based_path = False)
     index = cmd_args(

@@ -11,7 +11,7 @@ PackageSystemInfo = provider(
         "database_format": provider_field(str),
         "database_paths": provider_field(list[str]),
         "extract": provider_field(Dependency),
-        "index": provider_field(Dependency),
+        "index": provider_field(Dependency | None),
         "install": provider_field(Dependency),
         "keyring": provider_field(Dependency | None),
         "metadata_vouches": provider_field(bool),
@@ -63,7 +63,11 @@ package_system = rule(
             doc = "image-root-relative paths the installed package database occupies",
         ),
         "extract": attrs.exec_dep(providers = [RunInfo], doc = "bootstrap payload extractor"),
-        "index": attrs.exec_dep(providers = [RunInfo], doc = "write repository metadata"),
+        "index": attrs.option(
+            attrs.exec_dep(providers = [RunInfo]),
+            default = None,
+            doc = "write the metadata of a repository of locally built packages",
+        ),
         "install": attrs.exec_dep(providers = [RunInfo], doc = "install packages into a root"),
         "keyring": attrs.option(
             attrs.exec_dep(providers = [RunInfo]),
