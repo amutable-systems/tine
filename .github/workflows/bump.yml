@@ -34,6 +34,6 @@ jobs:
         run: |
           python3 tools/bot_pr.py --name bump \
               --label-description 'automatic version bumps' \
-              --command 'bin/tine buck run tine//tools:bump -- --all --commit' \
+              --command 'bin/tine buck run tine//bump -- --all --commit' \
               --repo '${{ github.repository }}' \
               --token '${{ github.token }}'

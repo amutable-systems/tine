@@ -10,7 +10,7 @@ load(":defs.bzl", "http_tool")
 
 _RELEASE = "tine//catalog:fedora.rawhide.release"
 
-# Every pinned tool is declared in //:tine.lock.json and refreshed by `bump` (see docs/user/images.md). Buck
+# Every pinned tool is declared in //:tine.lock.json and refreshed by `tine//bump` (see docs/user/images.md). Buck
 # fetches and verifies every tool except Buck2, which `bin/tine` fetches.
 
 # Relocatable bootstrap Python; 3.14 provides stdlib zstd for RPM payloads.
@@ -25,7 +25,7 @@ http_tool(
 )
 
 # The Starlark formatter is published as a bare zstd-compressed binary in the releases of Buck2.
-# tine.lock.json pins the formatter and Buck2, so one `bump` run keeps them on the same release.
+# tine.lock.json pins the formatter and Buck2, so one `tine//bump` run keeps them on the same release.
 http_tool(
     name = "starlark-fmt",
     compressed = True,
@@ -146,32 +146,6 @@ box.python_test(
     name = "catalog-test",
     box = ":dev.box",
     srcs = ["catalog.py", "catalog_test.py"],
-    deps = ["//:util"],
-)
-
-# PUBLIC: a consuming project runs this driver with `--data` to bump its own tine.lock.json.
-tine_python_binary(
-    name = "bump-driver",
-    main = "bump.py",
-    deps = ["//:util"],
-    visibility = ["PUBLIC"],
-)
-
-# bump gets the ty configuration as a label. If `ty.toml` moves or is renamed, the analysis of this
-# target fails, and not the next bump run.
-command_alias(
-    name = "bump",
-    args = ["--data", "$(location //:tine.lock.json)", "--ty-config", "$(location_exec //:ty-config)"],
-    exe = ":bump-driver",
-)
-
-box.python_test(
-    name = "bump-test",
-    box = ":dev.box",
-    srcs = [
-        "bump.py",
-        "bump_test.py",
-    ],
     deps = ["//:util"],
 )
 

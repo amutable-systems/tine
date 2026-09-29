@@ -3,7 +3,7 @@
 
 """Tests for the pin bumper
 
-    buck test tine//tools:bump-test
+    buck test tine//bump:test
 
 The GitHub API is stubbed for the release pins, so both kinds of pin are covered offline.
 """
