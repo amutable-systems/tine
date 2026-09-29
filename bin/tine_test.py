@@ -1935,7 +1935,10 @@ class TestBuckCommand(unittest.TestCase):
         with contextlib.ExitStack() as patches:
             patch = unittest.mock.patch.object
             patches.enter_context(patch(tine, "kill_daemon", side_effect=lambda *a: self.killed.append(a)))
-            patches.enter_context(patch(cache_shim, "ensure", side_effect=lambda *a: self.served.append(a)))
+            # Like the real one with nothing serving yet: what it readies is what Buck would start.
+            patches.enter_context(
+                patch(cache_shim, "ensure", side_effect=lambda _, ready: self.served.append(ready()))
+            )
             patches.enter_context(patch(tine, "buck2_binary", return_value=self.binary))
             patches.enter_context(patch(os, "execve", side_effect=lambda *a: execve.extend(a)))
             yield execve
@@ -1982,23 +1985,33 @@ class TestBuckCommand(unittest.TestCase):
             tine.read_generated_buckconfig(self.root / tine.LOCAL)[tine.RE_CLIENT], tine.cache_client(cache)
         )
 
-    def test_starting_the_shim_takes_the_address_out_first(self) -> None:
-        """Buck fails outright on a cache that does not answer, so the Buck starting it must know none."""
+    def test_starting_the_shim_leaves_the_address_where_it_is(self) -> None:
+        """The build that produces the shim is the one told not to use the cache, on its own line."""
         cache = self.configure_cache()
         tine.refresh_local_buckconfig(self.root, [], cache)
         with self.running():
             buck = tine.before_shim(
-                self.root, tine.read_project_buckconfig(self.root), tine.project_settings(self.root), "x"
+                self.root,
+                tine.read_project_buckconfig(self.root),
+                tine.project_settings(self.root),
+                cache,
+                "x",
             )
         self.assertEqual(buck, [str(self.binary), tine.FLAG_ISOLATION, "x"])
-        self.assertEqual(self.killed, [(self.binary, "x")])
-        self.assertNotIn(tine.RE_CLIENT, tine.read_generated_buckconfig(self.root / tine.LOCAL))
-        # With no daemon that could have read an address, none is replaced.
-        with self.running():
-            tine.before_shim(
-                self.root, tine.read_project_buckconfig(self.root), tine.project_settings(self.root), None
-            )
         self.assertEqual(self.killed, [])
+        self.assertEqual(
+            tine.read_generated_buckconfig(self.root / tine.LOCAL)[tine.RE_CLIENT], tine.cache_client(cache)
+        )
+
+    def test_a_changed_address_replaces_the_daemon_holding_the_old_one(self) -> None:
+        """Starting a shim writes the new address, so what a daemon could have read is taken first."""
+        self.configure_cache()
+        with self.running():
+            tine.buck_command(["build", "//..."])
+            self.killed.clear()
+            (self.root / tine.LOCAL_SETTINGS).write_text("[cache]\nunsigned = true\nport = 21000\n")
+            tine.buck_command(["build", "//..."])
+        self.assertEqual(self.killed, [(self.binary, None)])
 
     def test_a_project_may_not_name_the_cache_address_itself(self) -> None:
         self.configure_cache()

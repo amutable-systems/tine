@@ -251,7 +251,8 @@ class TestLifecycle(SocketCase):
     def serving(self) -> list[str]:
         return self.fake(
             "clients = []\n"
-            'report = lambda: {"pid": os.getpid(), "argv": args, "clients": clients}\n'
+            'flags = sys.argv[1 : sys.argv.index("--")]\n'
+            'report = lambda: {"pid": os.getpid(), "argv": args, "flags": flags, "clients": clients}\n'
             "with status.serving(store, report, clients.append):\n    time.sleep(60)"
         )
 
@@ -262,6 +263,13 @@ class TestLifecycle(SocketCase):
         report = cache_shim.ask(self.cache.dir)
         assert report is not None
         self.assertEqual(report["argv"], cache_shim.arguments(self.cache))
+
+    def test_the_build_that_produces_it_is_told_not_to_use_the_cache(self) -> None:
+        """Nothing answers the configured address until this build is over, and Buck fails on that."""
+        cache_shim.ensure(self.cache, unittest.mock.Mock(return_value=self.serving()))
+        report = cache_shim.ask(self.cache.dir)
+        assert report is not None
+        self.assertIn("--no-remote-cache", cast(list[str], report["flags"]))
 
     def test_the_build_that_wants_it_is_registered_with_it(self) -> None:
         """The shim times out on its own, and this process is the one that becomes Buck."""
