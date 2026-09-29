@@ -238,7 +238,7 @@ Target completion and `tine completion` select the configured wrapper without re
 configuration. Target completion uses the selected checkout's cached Buck2 without downloading. tine
 rewrites Buck2's completion script so target queries run through `tine buck` too.
 
-The selected tine checkout pins Buck2 in `tools/tools.json`. Projects can override the pin in the
+The selected tine checkout pins Buck2 in `tine.lock.json`. Projects can override the pin in the
 `[buck2]` table of `tine.toml` or `tine.local.toml`, with per-platform fields under
 `[buck2.platforms.<platform>]`.
 

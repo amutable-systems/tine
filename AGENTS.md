@@ -40,7 +40,7 @@ Cell layout and architecture: [the design plan](docs/design/architecture.md). Us
 ## Commands
 
 **Every `buck` below means `tine buck`**: nothing else on this machine is the Buck2 this project pins.
-`mise.toml` puts `./bin` and `./tools` on `PATH`; every pinned tool is declared in `tools/tools.json`.
+`mise.toml` puts `./bin` and `./tools` on `PATH`; every pinned tool is declared in `tine.lock.json`.
 `tine buck` runs Buck with the mounts declared by `tine mount` in `.buck/tine-mounts.toml`.
 
 - **Build everything:** `buck build tine//...`, which runs no tests.

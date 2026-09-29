@@ -56,7 +56,7 @@ VCS_IGNORES = ("**/.git", "**/.jj", "**/.hg", "**/.svn")
 DEV = "dev"
 GITDIRS = "gitdirs"
 
-PINS = "tools/tools.json"
+PINS = "tine.lock.json"
 
 # Buck-visible version fields need a plain section which `audit config` can address. `[buck2]` is
 # Buck2's own, while tine's Buck pin overrides live in the separate TOML configuration.

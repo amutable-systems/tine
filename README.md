@@ -170,7 +170,7 @@ so an image build rebuilds exactly the affected packages.
 
 ## Pinned dependencies
 
-[`tools/tools.json`](tools/tools.json) declares the supported Buck2 and every other tool tine uses
+[`tine.lock.json`](tine.lock.json) declares the supported Buck2 and every other tool tine uses
 internally. `tine//tools:bump` updates those pins. tine depends on fixes in its Buck2 fork, so running
 another Buck2 is unsupported.
 
