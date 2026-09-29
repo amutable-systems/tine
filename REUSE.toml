@@ -11,8 +11,8 @@ path = [
     "examples/image/marker.txt",
     "examples/image/tree/**",
     "examples/package/rpm/hello.source/rpm/packaging-marker",
+    "tine.lock.json",
     "tools/starlark-fmt.json",
-    "tools/tools.json",
 ]
 SPDX-FileCopyrightText = "Amutable GmbH <https://amutable.com/>"
 SPDX-License-Identifier = "MPL-2.0"

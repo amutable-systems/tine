@@ -21,6 +21,15 @@ export_file(
     visibility = ["PUBLIC"],
 )
 
+# bump rewrites tine.lock.json in the source tree. The default mode copies the file to buck-out, and
+# bump would rewrite the copy.
+export_file(
+    name = "tine.lock.json",
+    src = "tine.lock.json",
+    mode = "reference",
+    visibility = ["//tools/..."],
+)
+
 export_file(
     name = "buckconfig",
     src = ".buckconfig",

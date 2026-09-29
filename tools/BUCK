@@ -3,15 +3,15 @@
 
 """Pinned tool binaries and development commands fetched by Buck."""
 
+load("//:tine.lock.json", _pins = "value")
 load("//box:defs.bzl", "box")
 load("//python:defs.bzl", "tine_python_binary")
 load(":defs.bzl", "http_tool")
-load(":tools.json", _pins = "value")
 
 _RELEASE = "tine//catalog:fedora.rawhide.release"
 
-# Every pinned tool is declared in ./tools.json and refreshed by `bump` (see docs/user/images.md). Buck
-# fetches and verifies all but one: `bin/tine` fetches Buck2 itself.
+# Every pinned tool is declared in //:tine.lock.json and refreshed by `bump` (see docs/user/images.md). Buck
+# fetches and verifies every tool except Buck2, which `bin/tine` fetches.
 
 # Relocatable bootstrap Python; 3.14 provides stdlib zstd for RPM payloads.
 # PUBLIC: the toolchain reaching it is `tine//:python_bootstrap`, and a project that declares a
@@ -24,8 +24,8 @@ http_tool(
     visibility = ["PUBLIC"],
 )
 
-# Starlark formatter, published as a bare zstd-compressed binary alongside Buck itself; both are
-# declared in tools.json, so one `bump` run keeps them from the same release.
+# The Starlark formatter is published as a bare zstd-compressed binary in the releases of Buck2.
+# tine.lock.json pins the formatter and Buck2, so one `bump` run keeps them on the same release.
 http_tool(
     name = "starlark-fmt",
     compressed = True,
@@ -149,7 +149,7 @@ box.python_test(
     deps = ["//:util"],
 )
 
-# PUBLIC: a consuming project bumps its own tools.json with this, passing --data.
+# PUBLIC: a consuming project runs this driver with `--data` to bump its own tine.lock.json.
 tine_python_binary(
     name = "bump-driver",
     main = "bump.py",
@@ -157,11 +157,11 @@ tine_python_binary(
     visibility = ["PUBLIC"],
 )
 
-# The ty configuration comes in by label rather than by a path bump works out from tools.json:
-# moving or renaming it then fails here, at analysis time, instead of in the next bump run.
+# bump gets the ty configuration as a label. If `ty.toml` moves or is renamed, the analysis of this
+# target fails, and not the next bump run.
 command_alias(
     name = "bump",
-    args = ["--data", "$(source tools.json)", "--ty-config", "$(location_exec //:ty-config)"],
+    args = ["--data", "$(location //:tine.lock.json)", "--ty-config", "$(location_exec //:ty-config)"],
     exe = ":bump-driver",
 )
 

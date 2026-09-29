@@ -94,7 +94,7 @@ def scratch(case: unittest.TestCase, prefix: str = "tine-test.") -> Path:
 
 
 def pins(cell: Path, spec: object | None = None) -> Path:
-    """The `tools.json` a cell declares its Buck2 in, holding a usable entry unless given one."""
+    """Write the `tine.lock.json` of a cell. It pins a usable Buck2 unless the caller passes `spec`."""
     path = cell / tine.PINS
     path.parent.mkdir(parents=True, exist_ok=True)
     default = {
@@ -1836,8 +1836,8 @@ sha256 = "{"b" * 64}"
         with self.assertRaisesRegex(SystemExit, "declares no buck2"):
             tine.buck2_binary({}, self.cell({"ruff": {}}))
 
-    def test_a_cell_with_no_tools_json(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "cannot read .*tools.json"):
+    def test_a_cell_with_no_pins(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "cannot read .*tine.lock.json"):
             tine.buck2_binary({}, scratch(self, "tine-test-cell."))
 
     def test_a_machine_buck2_is_not_published_for(self) -> None:
@@ -2519,7 +2519,7 @@ class TestRefreshProjectBuckconfig(unittest.TestCase):
 
 
 class TestInit(unittest.TestCase):
-    """The whole command, against a checkout that is a directory with a tools.json in it."""
+    """Tests for `init`. The checkout is a directory with a `tine.lock.json` and a `.buckconfig`."""
 
     @override
     def setUp(self) -> None:

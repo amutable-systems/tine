@@ -42,7 +42,7 @@ def http_tool(
 ) -> None:
     """Pin a raw binary or archive member for each supported CPU.
 
-    `spec` is the tools.json entry: a `repository`, a `release` tag, and per-CPU `artifact`, `sha256`
+    `spec` is the tine.lock.json entry: a `repository`, a `release` tag, and per-CPU `artifact`, `sha256`
     and `size` (+ optional `strip_prefix`). The download URL is derived from these. `path` selects a
     member of an archive; `compressed` decompresses a bare zstd-compressed binary, which Buck's http
     rules cannot unpack themselves.

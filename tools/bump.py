@@ -270,7 +270,7 @@ def _selected_names(args: argparse.Namespace, data: dict[str, Any]) -> list[str]
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=Path(__file__).with_name("tools.json"))
+    parser.add_argument("--data", type=Path, default=Path(__file__).parent.with_name("tine.lock.json"))
     parser.add_argument(
         "--ty-config",
         type=Path,

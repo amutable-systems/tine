@@ -111,7 +111,7 @@ class ReleasePin(unittest.TestCase):
         self.root = Path(directory.name)
         self.ty_config = self.root / "ty.toml"
         self.ty_config.write_text('[environment]\npython-version = "3.14"\n')
-        self.data = self.root / "tools.json"
+        self.data = self.root / "tine.lock.json"
 
     @staticmethod
     def asset(name: str, size: int = 1) -> dict[str, object]:
@@ -217,7 +217,7 @@ class ReleasePin(unittest.TestCase):
         self.assertEqual(data["syft"]["platforms"]["x86_64"]["artifact"], "syft_1.51.0_linux_amd64.tar.gz")
 
     def test_bumps_a_pin_needing_no_python_with_no_ty_config(self) -> None:
-        """What a consuming project does: its own tools.json, and no ty configuration to pass."""
+        """A consuming project passes its own `tine.lock.json` and no ty configuration."""
         release = {"tag_name": "v1.51.0", "assets": [self.asset("syft_1.51.0_linux_amd64.tar.gz")]}
         data = self.bump(self.syft(), release, ty_config=False)
         self.assertEqual(data["syft"]["release"], "v1.51.0")
