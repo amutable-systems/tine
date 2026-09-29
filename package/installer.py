@@ -33,6 +33,26 @@ hosts: files dns
 """
 
 
+# What documentation costs an image, and where the translations live.
+DOC_PATHS = ("usr/share/doc", "usr/share/man", "usr/share/groff", "usr/share/info", "usr/share/gtk-doc")
+LOCALES = "usr/share/locale"
+
+
+def path_rules(docs: bool, langs: list[str]) -> list[tuple[bool, str]]:
+    """Express what rpm's `nodocs` and `_install_langs` do, for a package manager that filters by path.
+
+    Each rule is whether to keep what a glob matches, relative to the root. A later rule wins,
+    which is how the kept languages are carved back out of the locales.
+    """
+    rules = []
+    if not docs:
+        rules += [(False, f"{path}/*") for path in DOC_PATHS]
+    if langs:
+        rules.append((False, f"{LOCALES}/*"))
+        rules += [(True, f"{LOCALES}/{lang}/*") for lang in langs]
+    return rules
+
+
 class InstallSpec(TypedDict):
     """The request `package/install.bzl`, `box/build.bzl` and an image layer all write."""
 
