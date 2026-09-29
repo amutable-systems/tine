@@ -24,14 +24,6 @@ from util import fail
 import alpm
 import installer
 
-DOC_PATHS = (
-    "usr/share/doc/*",
-    "usr/share/man/*",
-    "usr/share/groff/*",
-    "usr/share/info/*",
-    "usr/share/gtk-doc/*",
-)
-
 
 def _source_date_epoch() -> int:
     """The assembly epoch every install stamps its database with."""
@@ -51,13 +43,8 @@ def write_config(directory: Path, arch: str, langs: list[str], docs: bool) -> Pa
         # Package bytes are pinned by checksum, and no key material is available here anyway.
         "SigLevel = Never",
     ]
-    if not docs:
-        # This drops documentation only; the licenses every package ships stay installed.
-        lines += [f"NoExtract = {path}" for path in DOC_PATHS]
-    if langs:
-        lines.append("NoExtract = usr/share/locale/*")
-        # A later line wins, so the kept languages are carved back out of the exclusion.
-        lines += [f"NoExtract = !usr/share/locale/{lang}/*" for lang in langs]
+    # Arch ships licenses apart from the documentation, so dropping the one keeps the other.
+    lines += [f"NoExtract = {'!' if keep else ''}{glob}" for keep, glob in installer.path_rules(docs, langs)]
 
     config = directory / "pacman.conf"
     config.write_text("\n".join(lines) + "\n")
