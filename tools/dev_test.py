@@ -302,6 +302,19 @@ class TyPackages(unittest.TestCase):
             self.launch("cargo")
         self.assertFalse(manifest.exists())
 
+    def test_lint_rejects_a_package_without_a_manifest(self) -> None:
+        (self.root / "cargo/pyproject.toml").unlink()
+        labels = "\n".join(label for label in self.targets if label.endswith("-ty"))
+        with (
+            mock.patch.object(dev, "_cell_root", return_value=self.root),
+            mock.patch.object(dev, "_starlark_srcs", return_value=[]),
+            mock.patch.object(dev, "_orphan_tests", return_value=[]),
+            mock.patch.object(dev, "_run"),
+            mock.patch.object(dev, "buck_output", return_value=labels),
+            self.assertRaisesRegex(SystemExit, "cargo/pyproject.toml"),
+        ):
+            dev._lint(argparse.Namespace(buck="buck", ruff="ruff"))
+
     def test_refuses_to_overwrite_custom_zed_settings(self) -> None:
         settings = self.root / "cargo/.zed/settings.json"
         settings.parent.mkdir()
