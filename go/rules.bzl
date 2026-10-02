@@ -35,7 +35,7 @@ def _go_build_impl(
     # across reruns, so a dependency bump downloads only what is missing from it.
     module_cache = None
     if module["sum"] != None:
-        module_cache = actions.declare_output(_PRIVATE + "/module-cache", dir = True)
+        module_cache = project.kept_dir(actions, _PRIVATE + "/module-cache")
         actions.run(
             cmd_args(
                 fetch,
@@ -112,13 +112,13 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # The binaries go in one output directory rather than one file each. The build then needs a single
     # writable mount, and the rest of the project stays read-only.
-    bin = ctx.actions.declare_output(_PRIVATE + "/bin", dir = True)
+    bin = project.kept_dir(ctx.actions, _PRIVATE + "/bin")
     outputs = {name: bin.project(name) for name in names}
 
     # go's own build cache. An action's outputs are the only place it may leave state behind, and buck
     # clears them before rerunning it unless told not to. A declared output is also uploaded to the
     # cache, only do that for incremental builds; otherwise build in scratch space.
-    gocache = ctx.actions.declare_output(_PRIVATE + "/gocache", dir = True) if ctx.attrs.incremental else None
+    gocache = project.kept_dir(ctx.actions, _PRIVATE + "/gocache") if ctx.attrs.incremental else None
 
     workspace = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
     ctx.actions.run(

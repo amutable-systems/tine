@@ -41,6 +41,18 @@ def is_dev(
         return project_path in configured
     return _source_path(source) in configured
 
+def kept_dir(actions: AnalysisActions, name: str) -> Artifact:
+    """Declare a directory output that an action keeps across reruns, or that holds a binary."""
+
+    # Before each run, Buck copies a kept output with a content-based path back in full. The copied
+    # files get fresh timestamps. An incremental build then rebuilds everything. For an output that the
+    # driver empties first, the copy is wasted work.
+    # The path is not content-based outside dev mode either. If the kind of path changed with dev mode,
+    # a switch would leave the output of the old kind at this path. A kept action never removes that
+    # output.
+    return actions.declare_output(name, dir = True, has_content_based_path = False)
+
 project = struct(
     is_dev = is_dev,
+    kept_dir = kept_dir,
 )
