@@ -1014,7 +1014,9 @@ with `-o`.
 The unit of caching is the project, not the package: one action per package would mean modelling the
 package graph and the toolchain here, which is what rules_go exists for, and go's own content-keyed build
 cache gets most of that back for none of it. That cache follows the same rule as cargo's build directory
-above, and keys on file contents, so a mounted project's rerun recompiles only what actually changed.
+above, and keys on file contents, so a mounted project's rerun recompiles only what actually changed. The
+build runs on a volatile overlay of the sources, in a read-only project, with the declared outputs
+mounted beside it.
 
 The module cache is the one difference: `go_build` consumes it, so it is a declared output whatever the
 sources are. For a mount buck keeps it too, so a dependency bump downloads only what is missing; old

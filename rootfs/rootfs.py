@@ -6,6 +6,9 @@
 Buck cannot store device nodes, xattrs, or backslashes in paths, so deltas encode them as
 regular marker files. Sidecar layers reconstruct markers on entry; persisted uppers are
 captured back to the storage form after unmounting.
+
+Build drivers that mount no root use `source_overlay()` and `readonly_project()` to build on a
+disposable view of their sources in a read-only project.
 """
 
 import os
