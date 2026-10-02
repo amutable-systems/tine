@@ -395,7 +395,11 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
             # A re-encoding is publishable in its own right, so a release can gather the subtarget
             # rather than the disk; it is not in the disk's own set, which would build every
             # encoding whenever anything materializes the release.
-            PublishedInfo(artifacts = {conversion.image.basename: conversion.image}),
+            PublishedInfo(
+                artifacts = {conversion.image.basename: conversion.image},
+                image = basename,
+                kinds = {conversion.image.basename: conversion.format},
+            ),
             conversion,
         ]
 
@@ -411,16 +415,26 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         "{}.vmlinuz".format(basename): boot.kernel,
         raw.basename: raw,
     }
+    kinds = {
+        "{}.efi".format(basename): "uki",
+        "{}.initrd".format(basename): "initrd",
+        "{}.vmlinuz".format(basename): "kernel",
+        raw.basename: "disk",
+    }
     for partition in written:
         if partition.manifest != None:
-            name = partition.definition["name"]
-            artifacts["{}.{}.Uapi16Manifest".format(basename, name)] = partition.manifest
+            name = "{}.{}.Uapi16Manifest".format(basename, partition.definition["name"])
+            artifacts[name] = partition.manifest
+            kinds[name] = "listing"
     whole = disk.info.manifest
     if whole != None:
         artifacts[whole.basename] = whole
+        kinds[whole.basename] = "listing"
 
     published = PublishedInfo(
         artifacts = artifacts,
+        image = basename,
+        kinds = kinds,
         partitions = [partition for partition in disk.info.partitions if partition.definition["type"] != "esp"],
     )
 
