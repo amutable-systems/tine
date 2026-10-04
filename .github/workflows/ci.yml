@@ -5,7 +5,9 @@ name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,7 +20,6 @@ concurrency:
 
 jobs:
   build:
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       # One architecture failing says nothing about the other, and which of the two broke is the
       # first thing worth knowing.
