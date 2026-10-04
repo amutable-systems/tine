@@ -119,6 +119,8 @@ How the modules are pinned, fetched and verified is described under "Go source b
 - **The fetch is a network action**, one of the few build steps that reach out at all. It declares its own
   `GOPROXY` (`proxy.golang.org`, then `direct`) and checksum database rather than taking the box's,
   which a distribution patches.
+- **A build cannot `rename(2)` a directory of its sources.** It builds on an overlay of them, where that
+  fails with `EXDEV`, as it does in a container. `mv` works, since it copies instead.
 - **A local `go build` in the checkout wants `-o`.** A bare one writes its binary into the current
   directory. Since `src` is an action input, use `-o` to place that binary outside the source directory.
 - **A checkout is not the only way in.** The module is found in the built sources rather than at parse
