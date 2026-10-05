@@ -54,6 +54,7 @@ box.sh_test(
     args = [
         "$(source hello_dev_check.py)",
         "$(location :hello-dev)",
+        "$(location :hello-dev[build])",
     ],
 )
 

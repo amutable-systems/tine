@@ -16,7 +16,8 @@ import re
 import shutil
 import subprocess
 import sys
-from contextlib import nullcontext
+import tempfile
+from contextlib import ExitStack, nullcontext
 from pathlib import Path
 from typing import TypedDict
 
@@ -50,8 +51,9 @@ class Spec(TypedDict):
     source_date_epoch: int
     release: str
     out: str
-    # Declared binary subpackage -> its own output rpm path.
-    subpackages: dict[str, str]
+    # The declared binary subpackages, each emitted as `<name>.rpm` into `subpackages_out`.
+    subpackages: list[str]
+    subpackages_out: str
     # Extra switches for a build against `source_tree`, in addition to the common ones below.
     in_place_rpmbuild_options: list[str]
     rpmbuild_options: list[str]
@@ -59,41 +61,57 @@ class Spec(TypedDict):
     source_tree: str | None
 
 
-def build_rpm(spec: Spec, topdir: Path = Path("/var/tmp/topdir")) -> int:
+def build_rpm(spec: Spec) -> int:
     """Build the RPMs described by `spec` in action scratch space."""
-    with rootfs.capture_on_exit(topdir):
-        rc = _build_rpm(spec, topdir)
+    if not spec["lower"]:
+        util.fail("build_rpm: the buildroot stack cannot be empty")
+    # The sandbox points TMPDIR at /var/tmp, which it backs with the action's scratch space. Buck clears
+    # the scratch space before each execution, so the fixed names below are always free.
+    scratch = Path(tempfile.gettempdir())
+    topdir = scratch / "topdir"
+    # The outputs are mounted next to topdir and not inside it. capture_on_exit() rewrites topdir, and
+    # build_rpm() removes topdir after a successful build.
+    out, subpackages = scratch / "rpms", scratch / "subpackages"
+    with ExitStack() as stack:
+        outputs = {Path(spec["out"]): out, Path(spec["subpackages_out"]): subpackages}
+        if spec["build_dir"] is not None:
+            # The bind of topdir into the buildroot is recursive, so it includes this mount. Without
+            # the recursion, rpmbuild would write into the empty directory under the mount.
+            outputs[Path(spec["build_dir"])] = topdir / "BUILD"
+        stack.enter_context(rootfs.readonly_project(Path.cwd(), outputs))
+
+        with (
+            # Buck must be able to remove topdir and the persistent build directory after a failed
+            # build. The with statement exits its contexts in reverse order, so capture_on_exit() runs
+            # after source_overlay() has unmounted CHECKOUT. Otherwise capture() would walk the
+            # merged checkout and copy up every directory whose mode it changes.
+            rootfs.capture_on_exit(topdir),
+            rootfs.source_overlay(Path(spec["source_tree"]), topdir / "CHECKOUT")
+            if spec["source_tree"] is not None
+            else nullcontext(),
+        ):
+            rc = _build_rpm(spec, topdir, out, subpackages)
     if rc == 0:
         shutil.rmtree(topdir)
     return rc
 
 
-def _build_rpm(spec: Spec, topdir: Path) -> int:
-    if not spec["lower"]:
-        util.fail("build_rpm: the buildroot stack cannot be empty")
-
-    # Use action scratch space, which is what the sandbox backs /var/tmp with. Buck clears it
-    # before each execution, so a fixed name neither collides with a preserved failed tree nor
-    # accumulates across builds.
-    for d in ("SOURCES", "SPECS", "BUILD", "BUILDROOT", "RPMS", "SRPMS"):
+def _build_rpm(spec: Spec, topdir: Path, out: Path, subpackages: Path) -> int:
+    for d in ("SOURCES", "SPECS", "BUILDROOT", "RPMS", "SRPMS"):
         (topdir / d).mkdir(parents=True)
-    source_tree = spec["source_tree"]
-    if source_tree is not None:
-        # Inputs are immutable artifacts, while build-in-place projects routinely generate files in
-        # their checkout. Keep this writable copy separate from RPM's SOURCES archives and patches.
-        # Keep symlinks as symlinks: a tree may link a directory to its own parent, and following that
-        # copies it into itself until the path length runs out.
-        shutil.copytree(source_tree, topdir / "CHECKOUT", symlinks=True)
-
+    # readonly_project() already created BUILD if it mounted the persistent build directory there.
+    (topdir / "BUILD").mkdir(exist_ok=True)
     spec_file = Path(spec["spec_file"])
+    source_tree = spec["source_tree"]
+    checkout = topdir / "CHECKOUT"
     if source_tree is not None and spec_file.is_relative_to(source_tree):
         relative_spec = spec_file.relative_to(source_tree)
         if ".." in relative_spec.parts:
             util.fail(f"build_rpm: RPM spec must stay within the source tree: {relative_spec}")
-        staged_spec = topdir / "CHECKOUT" / relative_spec
+        staged_spec = checkout / relative_spec
         # Freezing runs before chroot: an escaping spec symlink must not write into the checkout
         # through another path in the outer sandbox.
-        if not staged_spec.resolve().is_relative_to((topdir / "CHECKOUT").resolve()):
+        if not staged_spec.resolve().is_relative_to(checkout.resolve()):
             util.fail(f"build_rpm: RPM spec symlink escapes the source tree: {relative_spec}")
         source_spec = staged_spec
         chroot_spec = Path("/build/CHECKOUT") / relative_spec
@@ -118,28 +136,16 @@ def _build_rpm(spec: Spec, topdir: Path) -> int:
     ) + source_spec.read_text()
     staged_spec.write_text(frozen)
 
-    binds = [(topdir, "/build")]
-    build_dir: Path | None = None
-    if spec["build_dir"] is not None:
-        # Buck supplies a project-relative output. Anchor it in the host namespace because mount(2)
-        # resolves the bind source before rootfs enters the buildroot.
-        build_dir = Path(spec["build_dir"]).absolute()
-        build_dir.mkdir(parents=True, exist_ok=True)
-        binds.append((build_dir, "/build/BUILD"))
+    incremental = spec["build_dir"] is not None
 
     # The ephemeral upper discards buildroot writes; use the package-specific epoch.
     env = os.environ | {"HOME": "/build", "SOURCE_DATE_EPOCH": str(spec["source_date_epoch"])}
-    # Both scratch and persistent outputs need to stay removable by Buck after failed builds.
-    # Capture after unmounting so package permissions remain intact while rpmbuild uses them.
-    with (
-        rootfs.capture_on_exit(build_dir) if build_dir is not None else nullcontext(),
-        rootfs.rootfs(
-            "/buildroot",
-            lowers=spec["lower"],
-            binds=binds,
-            apivfs=True,
-            chroot=True,
-        ),
+    with rootfs.rootfs(
+        "/buildroot",
+        lowers=spec["lower"],
+        binds=[(topdir, "/build")],
+        apivfs=True,
+        chroot=True,
     ):
         defines = [
             "--define", "_topdir /build",
@@ -150,10 +156,10 @@ def _build_rpm(spec: Spec, topdir: Path) -> int:
         ]  # fmt: skip
         if sourcedir is not None:
             defines += ["--define", f"_sourcedir {sourcedir}"]
-        if build_dir is not None:
+        if incremental:
             defines += ["--define", "_vpath_builddir /build/BUILD"]
         mode = ["-ba"]
-        options = spec["rpmbuild_options"] + (_INCREMENTAL_RPMBUILD_OPTIONS if build_dir is not None else [])
+        options = spec["rpmbuild_options"] + (_INCREMENTAL_RPMBUILD_OPTIONS if incremental else [])
         cwd = None
         if source_tree is not None:
             mode = ["-bb", "--noprep", "--build-in-place"]
@@ -176,10 +182,8 @@ def _build_rpm(spec: Spec, topdir: Path) -> int:
         return rc
 
     # Collect binary packages and, for a regular archive build, the source package.
-    out = Path(spec["out"])
-    out.mkdir(parents=True, exist_ok=True)
     # Buck keeps every output of an incremental action, not only its private build directory.
-    for previous in out.iterdir():
+    for previous in [*out.iterdir(), *subpackages.iterdir()]:
         previous.unlink()
     produced: dict[str, Path] = {}  # basename -> path of each binary rpm
     for sub in ("RPMS", "SRPMS"):
@@ -188,10 +192,10 @@ def _build_rpm(spec: Spec, topdir: Path) -> int:
             if not f.name.endswith(".src.rpm"):
                 produced[f.name] = f
     source_output = "" if source_tree is not None else " + srpm"
-    print(f"collected {len(produced)} binary rpms{source_output} into {out}", file=sys.stderr)
+    print(f"collected {len(produced)} binary rpms{source_output} into {spec['out']}", file=sys.stderr)
 
     if spec["subpackages"]:
-        _emit_subpackages(spec["subpackages"], produced)
+        _emit_subpackages({name: subpackages / f"{name}.rpm" for name in spec["subpackages"]}, produced)
 
     return 0
 
@@ -201,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     return build_rpm(specs.parse(Spec, "build_rpm", argv))
 
 
-def _emit_subpackages(declared: dict[str, str], produced: dict[str, Path]) -> None:
+def _emit_subpackages(declared: dict[str, Path], produced: dict[str, Path]) -> None:
     """Match declared subpackages to output NVRA names and verify the exact set."""
     names_by_len = sorted(declared, key=len, reverse=True)
     patterns = {name: re.compile(rf"^{re.escape(name)}-[^-]+-[^-]+\.[^.]+\.rpm$") for name in declared}
@@ -227,9 +231,7 @@ def _emit_subpackages(declared: dict[str, str], produced: dict[str, Path]) -> No
         )
 
     for name, out_path in declared.items():
-        op = Path(out_path)
-        op.parent.mkdir(parents=True, exist_ok=True)
-        util.clone_file(produced[matched[name]], op, allow_link=True)
+        util.clone_file(produced[matched[name]], out_path, allow_link=True)
     print(f"emitted {len(declared)} subpackage sub-targets", file=sys.stderr)
 
 

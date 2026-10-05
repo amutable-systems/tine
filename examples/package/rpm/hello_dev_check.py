@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 rpms = Path(sys.argv[1])
+build = Path(sys.argv[2])
 
 
 def query(package: Path, *args: str) -> str:
@@ -28,4 +29,8 @@ assert f"{markers}/spec-from-checkout" in files, files
 assert f"{markers}/profile-lto-disabled" in files, files
 assert f"{markers}/profile-annobin-disabled" in files, files
 assert not list(rpms.glob("hello-debuginfo-*.rpm")), sorted(rpms.iterdir())
+# The spec compiles hello into %{_vpath_builddir}, which is the persistent build directory. rpmbuild
+# writes hello there only if the bind of the rpmbuild tree into the buildroot includes the mount of the
+# persistent build directory.
+assert (build / "hello").is_file(), sorted(build.iterdir())
 print(f"hello: dev build, {len(files)} files")
