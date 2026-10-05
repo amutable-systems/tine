@@ -36,7 +36,6 @@ box.sh_test(
 rpm.package(
     name = "hello-dev",
     package = "hello",
-    spec = "hello/hello.spec",
     buildroot = _BUILDROOT,
     build_requires = ["gcc"],
     dev = True,
@@ -59,11 +58,10 @@ box.sh_test(
 )
 
 # The same checkout built for release from an in-tree dist-git rather than in dev mode.
-# This is the only one that gets into the shared cache.
+# Like the archive build, and unlike the two dev builds, it reaches the shared cache.
 rpm.package(
     name = "hello-tree",
     package = "hello",
-    spec = "hello/hello.spec",
     buildroot = _BUILDROOT,
     build_requires = ["gcc"],
     in_place_spec = "rpm/hello.spec",
