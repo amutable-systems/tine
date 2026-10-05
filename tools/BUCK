@@ -5,7 +5,7 @@
 
 load("//:tine.lock.json", _pins = "value")
 load("//box:defs.bzl", "box")
-load("//python:defs.bzl", "tine_python_binary")
+load("//python:defs.bzl", "box_python_binary", "tine_python_binary")
 load(":defs.bzl", "http_tool")
 
 _RELEASE = "tine//catalog:fedora.rawhide.release"
@@ -181,6 +181,25 @@ box.python_test(
 tine_python_binary(
     name = "bot-pr",
     main = "bot_pr.py",
+    visibility = ["PUBLIC"],
+)
+
+# setup-deploy-key gets its own box, as it runs rarely.
+box.new(
+    name = "deploy-key.box",
+    packages = [
+        "gh",
+        # ssh-keygen
+        "openssh-clients",
+    ],
+    release = _RELEASE,
+)
+
+# PUBLIC: run by repository admin once. Relaxed, it uses the host's gh login and checkout.
+box_python_binary(
+    name = "setup-deploy-key",
+    box = ":deploy-key.box",
+    main = "setup_deploy_key.py",
     visibility = ["PUBLIC"],
 )
 

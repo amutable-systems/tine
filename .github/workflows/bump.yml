@@ -10,7 +10,6 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
   issues: write
   pull-requests: write
 
@@ -21,9 +20,12 @@ jobs:
   bump:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: self
     steps:
       - name: Clone repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
 
       - name: GH runner setup
         uses: ./.github/actions/gh-runner-setup
