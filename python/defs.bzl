@@ -130,7 +130,7 @@ def tine_python_binary(
     ty_check(name = name + "-ty", srcs = [main], deps = deps, boxes = boxes)
 
 def _box_python_binary_impl(ctx: AnalysisContext) -> list[Provider]:
-    tree = ctx.actions.symlinked_dir("tree", flat_tree([ctx.attrs.main], ctx.attrs.deps))
+    tree = ctx.actions.copied_dir("tree", flat_tree([ctx.attrs.main], ctx.attrs.deps))
     command = cmd_args(
         box_run(ctx.attrs.box[BoxInfo], relaxed = True),
         "python3",
