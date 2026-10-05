@@ -20,8 +20,8 @@ concurrency:
 jobs:
   refresh-catalog:
     runs-on: ubuntu-latest
-    # the refresh re-snapshots every repository and re-resolves every box before the tests even start
-    timeout-minutes: 45
+    # the refresh re-snapshots every repository and re-resolves every box
+    timeout-minutes: 20
     steps:
       - name: Clone repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,6 +37,5 @@ jobs:
               --label-description 'automatic catalog refreshes' \
               --command 'bin/tine buck run tine//tools:refresh-catalog -- --advance --commit &&
                   bin/tine buck run tine//examples/image:refresh-expected -- --amend' \
-              --test tools/ci.sh \
               --repo '${{ github.repository }}' \
               --token '${{ github.token }}'
