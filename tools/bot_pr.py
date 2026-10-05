@@ -1,17 +1,17 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Make one automatic change, test it, and open the pull request for it.
+"""Make one automatic change and open the pull request for it.
 
 Only one run of each kind is ever in flight: while a pull request or a failure issue carrying the run's
 label is open, this does nothing.
 
  - If the command fails without generating a commit, open an issue and pass on the failing exit code.
- - If the command or test fails, open a draft PR with a note, and pass on the failing exit code.
- - Otherwise (everything succeeds), open a regular PR and exit zero.
+ - If the command fails after committing, open a draft PR with a note, and pass on the failing exit code.
+ - Otherwise, open a regular PR and exit zero.
 
 This is usually being called with the default GITHUB_TOKEN, which will not trigger further actions, in
-particular tests. Thus this script runs the tests directly.
+particular tests. They need to be approved manually by a reviewer.
 
 Everything a workflow decides is an option, so that `--help` is the whole contract. The rest comes from
 what Actions sets around the run: GITHUB_SERVER_URL and GITHUB_RUN_ID to link back to it, and
@@ -97,9 +97,9 @@ def open_pull_request(name: str, label: str, before: str, repository: str, draft
     span = f"{before}..HEAD"
     log = git("log", "--reverse", "--format=%s%n%n%b", span)
     title = "; ".join(git("log", "--reverse", "--format=%s", span).splitlines())
-    footer = f"{draft_note}\n\nOpened, untested, by" if draft_note else "Tested by"
+    note = f"{draft_note}\n\n" if draft_note else ""
     # The blank line matters: a commit body ending in a list would swallow the line after it.
-    body = f"{log}\n\n{footer} {run_url(repository)}.\n"
+    body = f"{log}\n\n{note}Opened by {run_url(repository)}.\n"
     base = os.environ["GITHUB_REF_NAME"]
     options = ["--head", name, "--base", base, "--label", label, "--title", title, "--body", body]
     url = gh("pr", "create", *options, *(["--draft"] if draft_note else []))
@@ -119,18 +119,11 @@ def main() -> None:
     parser.add_argument("--name", required=True, help="what this run is, e.g. bump")
     parser.add_argument("--label-description", required=True, help="what the label bot-<name> means")
     parser.add_argument("--command", required=True, metavar="COMMAND", help="how to make the change")
-    parser.add_argument("--test", required=True, metavar="COMMAND", help="how to test the change")
     parser.add_argument(
         "--command-fail-note",
         default="",
         metavar="TEXT",
         help="draft PR description if --command fails after committing (default: name its exit status)",
-    )
-    parser.add_argument(
-        "--test-fail-note",
-        default="",
-        metavar="TEXT",
-        help="draft PR description if the --test command fails (default: name its exit status)",
     )
     parser.add_argument("--repo", required=True, metavar="OWNER/REPO", help="the repository to work on")
     parser.add_argument("--token", required=True, help="token to reach the repository with")
@@ -156,14 +149,7 @@ def main() -> None:
         print(f"::notice::{args.name} found nothing to change")
         return
 
-    # A branch already known to be broken is not worth a test run, only a note saying so.
-    if status:
-        note = args.command_fail_note or f"The command failed with exit status {status}."
-    elif status := subprocess.run(args.test, shell=True, cwd=ROOT).returncode:
-        note = args.test_fail_note or f"The tests failed with exit status {status}."
-    else:
-        note = ""
-
+    note = (args.command_fail_note or f"The command failed with exit status {status}.") if status else ""
     pull_request = open_pull_request(args.name, label, before, args.repo, note)
     # A draft is a run that went wrong, so it is worth an annotation rather than a line in a log.
     kind = "::warning::opened draft" if note else "::notice::opened"

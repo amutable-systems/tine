@@ -20,7 +20,7 @@ concurrency:
 jobs:
   bump:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Clone repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,6 +33,5 @@ jobs:
           python3 tools/bot_pr.py --name bump \
               --label-description 'automatic version bumps' \
               --command 'bin/tine buck run tine//tools:bump -- --all --commit' \
-              --test tools/ci.sh \
               --repo '${{ github.repository }}' \
               --token '${{ github.token }}'
