@@ -10,8 +10,8 @@ label is open, this does nothing.
  - If the command fails after committing, open a draft PR with a note, and pass on the failing exit code.
  - Otherwise, open a regular PR and exit zero.
 
-This is usually being called with the default GITHUB_TOKEN, which will not trigger further actions, in
-particular tests. They need to be approved manually by a reviewer.
+It pushes to origin with the deploy key of tools/setup_deploy_key.py (so that CI starts), and opens the
+pull request with the given token (usually the default GITHUB_TOKEN).
 
 Everything a workflow decides is an option, so that `--help` is the whole contract. The rest comes from
 what Actions sets around the run: GITHUB_SERVER_URL and GITHUB_RUN_ID to link back to it, and
@@ -23,13 +23,14 @@ Needs only git, gh and a host python: it runs before the project's build system 
 import argparse
 import os
 import subprocess
+import time
 from pathlib import Path
 
 # Actions points this at the checkout. Everything below runs there rather than wherever the caller
 # happened to leave the working directory.
 ROOT = Path(os.environ.get("GITHUB_WORKSPACE", ".")).resolve()
 
-# github-actions[bot], the identity the pushing token belongs to.
+# The identity the bot's commits show.
 AUTHOR = ("github-actions[bot]", "noreply@amutable.com")
 
 
@@ -85,6 +86,28 @@ def commit_change(command: str) -> tuple[str | None, int]:
     return (before if git("rev-parse", "HEAD") != before else None), status
 
 
+def start_ci(name: str) -> None:
+    """Re-push the branch of a pull request with ssh, so that its CI runs.
+
+    A pull request opened with the default GITHUB_TOKEN does not start CI workflows.
+    """
+    # If we push before GitHub creates the approval-waiting run of the "opened" event, the PR only shows
+    # the latter. To avoid the race, wait for the `pull_request` event run to appear.
+    pushed = git("rev-parse", "HEAD")
+    runs = f"repos/{{owner}}/{{repo}}/actions/runs?head_sha={pushed}&event=pull_request"
+    deadline = time.monotonic() + 300
+    while not int(gh("api", runs, "--jq", ".total_count")):
+        if time.monotonic() > deadline:
+            raise SystemExit(f"bot_pr: no pull_request run for {pushed} after 5 minutes")
+        time.sleep(5)
+
+    # needs to change something to get a different SHA, so bump commit time
+    later = int(git("log", "-1", "--format=%ct")) + 1
+    amend = ["git", "commit", "--amend", "--no-edit"]
+    subprocess.run(amend, cwd=ROOT, check=True, env=os.environ | {"GIT_COMMITTER_DATE": f"{later} +0000"})
+    git("push", "--force", "origin", f"HEAD:refs/heads/{name}")
+
+
 def open_pull_request(name: str, label: str, before: str, repository: str, draft_note: str) -> str:
     """Push what the command committed to the branch this run owns, and open its pull request.
 
@@ -103,6 +126,9 @@ def open_pull_request(name: str, label: str, before: str, repository: str, draft
     base = os.environ["GITHUB_REF_NAME"]
     options = ["--head", name, "--base", base, "--label", label, "--title", title, "--body", body]
     url = gh("pr", "create", *options, *(["--draft"] if draft_note else []))
+    # A branch already known to be broken is not worth a CI run
+    if not draft_note:
+        start_ci(name)
     return url.rsplit("/", 1)[-1]
 
 
