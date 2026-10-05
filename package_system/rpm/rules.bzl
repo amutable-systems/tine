@@ -208,7 +208,7 @@ def rpm_package(
         package = package,
         spec = spec,
         configured_dev = project.is_dev(name, source = source_tree, override = dev),
-        source_tree = source_tree,
+        source_tree = project.source(source_tree) if source_tree != None else None,
         in_place_rpmbuild_options = in_place_rpmbuild_options,
         in_place_spec = in_place_spec,
         **kwargs,
