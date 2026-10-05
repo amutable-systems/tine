@@ -15,7 +15,7 @@ load("@tine//distribution:defs.bzl", "distribution")
 load("@tine//image:defs.bzl", "image")
 load("@tine//package:defs.bzl", "package")
 load("@tine//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
-load("@tine//python:defs.bzl", "tine_python_binary")
+load("@tine//python:defs.bzl", "box_python_binary")
 load("@tine//tests:defs.bzl", "tests")
 load(":expected.json", _expected = "value")
 
@@ -49,6 +49,11 @@ export_file(
 export_file(
     name = "manifest_check.py",
     src = "manifest_check.py",
+)
+
+export_file(
+    name = "reproducibility_check.py",
+    src = "reproducibility_check.py",
 )
 
 # Minimal install + ordered-ops demo. `:demo` is both the tar result and a logical image.
@@ -413,31 +418,34 @@ box.sh_test(
     + architecture.select({name: ["demo-ext_0_{}.sysext.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()}),
 )
 
+# [NAME, DIGEST, PATH] for each target expected.json tracks, per architecture. Sorted, so the command line
+# of reproducibility-test stays put when an entry is added and Buck reuses its cached run.
+_reproducibility_targets = {
+    arch: [(name, digests[name]["sha256"], "$(location :{})".format(name)) for name in sorted(digests)] for arch, digests in _expected.items()
+}
+
 # Compare the current builds to the checksums in ./expected.json to validate reproducibility: between
 # local developer machine and GitHub runner, at different times. Neither image has an external input
 # such as a git-derived version, so a digest only moves when the catalog pins a package the image
-# carries or a build rule changes what it writes. When one of those moved it legitimately, record the
-# new checksums with `buck run tine//examples/image:refresh-expected` and commit them with the change
-# that moved them. The refresh records the architecture it runs on.
+# carries or a build rule changes what it writes. When one of those moved it legitimately, take over
+# the digests a failure writes with `buck run tine//examples/image:refresh-expected` and commit them
+# with the change that moved them.
 box.sh_test(
     name = "reproducibility-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
-    # print sums for debugging failures
-    script = """
-for entry in "$@"; do
-    sha256sum "${entry#*  }"
-done
-printf "%s\\n" "$@" | sha256sum --check --strict --quiet
-""",
-    # Sorted, so the command line stays put when an entry is added and Buck reuses its cached run.
-    args = architecture.select(
-        {arch: ["{}  $(location :{})".format(digests[name]["sha256"], name) for name in sorted(digests)] for arch, digests in _expected.items()}
-    ),
+    script = 'python3 "$@"',
+    # the architecture, where a failure writes its actual digests, then the targets
+    args = ["$(location :reproducibility_check.py)"]
+    + architecture.select({
+        arch: [arch, "{}/actual.{}.json".format(package_name(), arch)] + [item for target in targets for item in target]
+        for arch, targets in _reproducibility_targets.items()
+    }),
 )
 
-tine_python_binary(
+box_python_binary(
     name = "refresh-expected",
+    box = "@tine//tools:dev.box",
     main = "expected.py",
     deps = ["@tine//:util"],
 )

@@ -16,6 +16,9 @@
 /tine.local.toml
 .claude/settings.local.json
 
+# Digests examples/image:reproducibility-test writes when it fails
+/examples/image/actual.*.json
+
 # Build output of a cargo build run by hand inside a checked-out Rust project
 target/
 
