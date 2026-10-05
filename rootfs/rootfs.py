@@ -225,7 +225,8 @@ def readonly_project(project: Path, outputs: Mapping[Path, Path]) -> Iterator[No
         for output, mounted in outputs.items():
             # A build of an older revision can have declared this output on a content-based path.
             # Buck then left a symlink to the content-based path at the plain path, and a kept action
-            # never removes that symlink. The bind would follow the symlink out of `project`.
+            # never removes that symlink. `kept_dir()` in project/defs.bzl describes the problem. The
+            # bind would follow the symlink out of `project`.
             if (project / output).is_symlink():
                 (project / output).unlink()
             # The bind and mkdir() follow a symlink in any component of the path, not only in the
