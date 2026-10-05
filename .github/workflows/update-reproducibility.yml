@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
+# Accept updated digests from examples/image:reproducibility-test by amending
+# the new checksums into the PR's topmost commit. If that's not the right one
+# (in a series), then manually download and apply the actual.*.json files from
+# the failed GitHub run and amend them to the correct commit, or let this
+# workflow do it and move the change to the correct commit afterwards.
+#
+# Trigger this by adding the "update-reproducibility" label.
+name: accept reproducibility digest changes
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-reproducibility-${{ github.event.pull_request.number }}
+
+jobs:
+  update:
+    # does not work on a fork: we only get a read-only token for that
+    if: github.event.label.name == 'update-reproducibility' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PULL_REQUEST: ${{ github.event.pull_request.number }}
+    steps:
+      # the commit CI ran on, rather than whatever the branch has moved on to since
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          # The amend keeps the parents of this commit, and in a clone of it alone it has none.
+          fetch-depth: 2
+
+      # refresh-expected runs in a box
+      - name: GH runner setup
+        uses: ./.github/actions/gh-runner-setup
+
+      - name: Find the failed CI run
+        id: ci
+        run: |
+          run=$(gh run list --workflow ci.yml --commit "$HEAD_SHA" --status failure --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -z "$run" ]; then
+              echo "::error::no failed ci run for $HEAD_SHA"
+              exit 1
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      # One artifact per failed architecture. Not with `gh run download`: it cannot download an
+      # unarchived artifact, https://github.com/cli/cli/issues/13012
+      - name: Download the digests of the failed CI run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.ci.outputs.run }}
+          pattern: actual.*.json
+          merge-multiple: true
+          path: examples/image
+
+      - name: Accept the digests
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'noreply@amutable.com'
+          bin/tine buck run tine//examples/image:refresh-expected -- --amend
+
+      - name: Update the branch
+        run: git push --force-with-lease="refs/heads/$HEAD_REF:$HEAD_SHA" origin "HEAD:refs/heads/$HEAD_REF"
+
+      - name: Remove the label
+        if: always()
+        run: gh pr edit "$PULL_REQUEST" --remove-label update-reproducibility
