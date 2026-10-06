@@ -187,8 +187,10 @@ def cargo_package(
     # contains files. The check therefore looks for `target/` in `hello` for a label of that form.
     checkout = directory.removeprefix(":").removesuffix(".git") if directory.startswith(":") else directory
 
-    # glob() returns nothing for a directory that Buck ignores. If Buck does not ignore target/,
-    # cargo's build output is a source of this build. Every local `cargo build` then reruns this build.
+    # glob() returns nothing for a directory that Buck ignores. If Buck does not ignore target/, Buck
+    # digests cargo's build output as a source of this build. Every local `cargo build` then reruns this
+    # build. An ignored target/ is still in the source directory that the build reads. The build sets
+    # CARGO_TARGET_DIR to another directory, so cargo does not read the ignored target/.
     if not project.is_label(checkout) and project.has_files(checkout + "/target"):
         fail(
             "cargo_package {}: {}/target is a source of the build; add `target/` to a .gitignore that covers it".format(
@@ -200,6 +202,6 @@ def cargo_package(
         name = name,
         binaries = binaries,
         incremental = project.is_dev(name, source = src, override = dev),
-        src = project.source(directory),
+        src = directory,
         **kwargs,
     )

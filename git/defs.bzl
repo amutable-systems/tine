@@ -9,11 +9,14 @@ load("//project:defs.bzl", "project")
 _MOUNT_TARGET_LABEL = "tine:mount-target"
 
 def _checkout_impl(ctx: AnalysisContext) -> list[Provider]:
-    # `src` is a single directory source rather than a glob(), because a glob() drops dotfiles. Archive
-    # packages depend on the implicit checkout target, so an unpopulated checkout outputs an empty
+    # `src` is a single directory source rather than a glob(), because a glob() leaves out tracked
+    # dotfiles, even in a clean checkout. A consumer reads a populated checkout in place. It therefore also
+    # reads the files that Buck ignores, such as build output. A clean checkout contains no ignored files,
+    # and releases and builds that upload to the shared cache run in a clean checkout.
+    # Archive packages depend on the implicit checkout target, so an unpopulated checkout outputs an empty
     # directory.
     name = ctx.label.name.removesuffix(".git")
-    tree = project.copy_source(ctx.actions, name, ctx.attrs.src) if ctx.attrs.src else ctx.actions.symlinked_dir(name, {})
+    tree = ctx.attrs.src if ctx.attrs.src else ctx.actions.symlinked_dir(name, {})
     return [
         DefaultInfo(
             default_output = tree,

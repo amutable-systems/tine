@@ -39,14 +39,9 @@ box.sh_test(
     name = "checkout-test",
     box = "tine//tools:dev.box",
     script = """
-        # Buck ignores `.hg`, so neither the checkout nor the fetch override may contain it.
         for tree in "$1" "$4"; do
             [[ "$(cat "$tree/input")" == source ]]
-            [[ ! -e "$tree/.hg" ]]
-            # An incremental build compares timestamps, so the copy must keep the timestamp of the
-            # committed file. The copy can be older than the committed file, because Buck does not copy a
-            # file again when only its timestamp changes.
-            [[ "$(stat -c %Y "$tree/input")" -le "$(stat -c %Y git/fixture/input)" ]]
+            [[ "$(cat "$tree/.dotfile")" == source ]]
         done
         [[ "$(cat "$2")" == source ]]
         [[ -d "$3" ]]

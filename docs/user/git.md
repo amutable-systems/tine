@@ -56,6 +56,10 @@ The override has a few constraints:
 - Every file not excluded by `.gitignore` or `[project] ignore` is a build input. tine merges both, plus
   VCS metadata directories, into the generated ignore list; put build outputs in `.gitignore` and
   anything Git tracks but Buck should not see in `[project] ignore`.
+- A build reads the checkout as it is on disk, including the files that Git ignores. Buck does not hash
+  an ignored file, so a stale build output or an editor backup can change what a build produces without
+  changing its cache key. Run release builds and builds that upload to the shared cache in a fresh clone,
+  or after `git clean -fdx`.
 - The local checkout is not checked against `rev`. Remove the mount before a release build to restore the
   pinned source.
 - A `BUCK` file in the checkout creates a package boundary that the source glob cannot cross. Projects

@@ -194,6 +194,6 @@ def go_package(
     _go_package(
         name = name,
         incremental = project.is_dev(name, source = src, override = dev),
-        src = project.source(src if src != None else name),
+        src = src if src != None else name,
         **kwargs,
     )
