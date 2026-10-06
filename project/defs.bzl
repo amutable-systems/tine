@@ -41,6 +41,13 @@ def is_dev(
         return project_path in configured
     return _source_path(source) in configured
 
+def populated(directory: str) -> bool:
+    """Whether `directory` in this package contains a file, or is mounted for dev mode."""
+
+    # A glob() pattern matches a file that starts with a dot, or a file in a directory that starts with
+    # a dot, only if the pattern itself contains that dot.
+    return bool(glob([directory + "/**", directory + "/**/.*", directory + "/**/.*/**"])) or is_dev(directory)
+
 def kept_dir(actions: AnalysisActions, name: str) -> Artifact:
     """Declare a directory output that an action keeps across reruns, or that holds a binary."""
 
@@ -55,4 +62,5 @@ def kept_dir(actions: AnalysisActions, name: str) -> Artifact:
 project = struct(
     is_dev = is_dev,
     kept_dir = kept_dir,
+    populated = populated,
 )

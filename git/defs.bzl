@@ -54,8 +54,7 @@ def fetch(name: str, repo: str, rev: str, sub_targets: list[str] = [], visibilit
     """Fetch `rev` unless this package contains a non-empty checkout named after the target."""
     directory = name.removesuffix(".git")
     labels = [_MOUNT_TARGET_LABEL] + labels
-    srcs = glob([directory + "/**"])
-    if srcs or project.is_dev(directory):
+    if project.populated(directory):
         _checkout(
             name = name,
             labels = labels,
@@ -72,8 +71,7 @@ def checkout(name: str, labels: list[str] = [], **kwargs) -> bool:
 
     Returns whether it currently holds anything.
     """
-    srcs = glob([name + "/**"])
-    populated = bool(srcs) or project.is_dev(name)
+    populated = project.populated(name)
     _checkout(name = name, labels = [_MOUNT_TARGET_LABEL] + labels, out = name, src = name if populated else None, **kwargs)
     return populated
 
@@ -83,7 +81,7 @@ def source(name: str, directory: str) -> str:
     Unlike `checkout()`, `source()` does not label the target as a mount target. A mount of
     `directory` goes to the path of `directory` itself.
     """
-    populated = bool(glob([directory + "/**"])) or project.is_dev(directory)
+    populated = project.populated(directory)
     _checkout(name = name, out = name, src = directory if populated else None)
     return ":" + name
 
