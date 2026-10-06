@@ -157,14 +157,6 @@ tine_python_binary(
     visibility = ["PUBLIC"],
 )
 
-# bump gets the ty configuration as a label. If `ty.toml` moves or is renamed, the analysis of this
-# target fails, and not the next bump run.
-command_alias(
-    name = "bump",
-    args = ["--data", "$(location //:tine.lock.json)", "--ty-config", "$(location_exec //:ty-config)"],
-    exe = ":bump-driver",
-)
-
 box.python_test(
     name = "bump-test",
     box = ":dev.box",

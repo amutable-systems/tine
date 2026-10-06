@@ -990,13 +990,13 @@ Update one or more pinned tools by name (`buck2`, `starlark-fmt`, `python3`, `ru
 `cargo-auditable`):
 
 ```sh
-tine buck run tine//tools:bump -- --tool ruff --tool ty
+tine buck run tine//:bump -- --tool ruff --tool ty
 ```
 
 Update all tools:
 
 ```sh
-tine buck run tine//tools:bump -- --all
+tine buck run tine//:bump -- --all
 ```
 
 Each tool is resolved to its latest upstream release and its `url` and `sha256` are rewritten in place.

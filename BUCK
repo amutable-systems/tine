@@ -21,13 +21,13 @@ export_file(
     visibility = ["PUBLIC"],
 )
 
-# bump rewrites tine.lock.json in the source tree. The default mode copies the file to buck-out, and
-# bump would rewrite the copy.
-export_file(
-    name = "tine.lock.json",
-    src = "tine.lock.json",
-    mode = "reference",
-    visibility = ["//tools/..."],
+# bump rewrites tine.lock.json in the source tree, which `$(source)` names only from this package.
+# It gets the ty configuration as a label. If `ty.toml` moves or is renamed, the analysis of this
+# target fails, and not the next bump run.
+command_alias(
+    name = "bump",
+    args = ["--data", "$(source tine.lock.json)", "--ty-config", "$(location_exec :ty-config)"],
+    exe = "//tools:bump-driver",
 )
 
 export_file(
