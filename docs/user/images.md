@@ -268,6 +268,10 @@ image.bootable_disk(
 )
 ```
 
+`image.copy()` copies a checkout path as it is on disk, including the files that Git ignores, such as build
+output or editor backups. The image then contains the ignored files. Build release images in a fresh
+clone, or after `git clean -fdx`.
+
 A target declaring its own `packages` is what keeps every image carrying it from having to know: they
 join the installing layer's own request, so two targets that both need packages compose without the
 caller merging anything. Any operation may be attached, not only copies, and the operations are spliced

@@ -42,8 +42,10 @@ what main built. But it can overwrite it through an action that reads something 
 declare: another file in the checkout, the network, or even the clock. Such an action produces a
 different output under an unchanged key, and a builder running the branch signs and publishes it under
 the key main uses. tine's sandbox removes the host and the network from what an action can read, but
-binds the whole checkout, so an undeclared project file is not caught; the guarantee rests on every rule
-declaring what it reads. Readers cannot cause any of this, since they never write.
+binds the whole checkout, so an undeclared project file is not caught. A source build also reads its
+source directory in place, including the files that Buck ignores and never digests, such as build output.
+The guarantee therefore requires that every rule declares what it reads, and that the builder's checkout
+contains no ignored files. Readers cannot cause any of this, since they never write.
 
 So a builder with a write key builds trusted branches, and pull requests only after review. Pull requests
 from anyone can be built on a builder without a write key: a malicious branch then costs compute, not the

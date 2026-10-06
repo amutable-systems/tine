@@ -112,7 +112,8 @@ How the crates are pinned, fetched and vendored is described under "Rust source 
 - **A local `cargo build` inside the checkout needs `target/` in `.gitignore`**. `tine init` writes it when
   it creates the `.gitignore`. If your project already had a `.gitignore`, add `target/` yourself. Buck
   reads every file that Git does not ignore as a source. While Git does not ignore `target/`,
-  `cargo.package()` fails and names the directory.
+  `cargo.package()` fails and names the directory. An ignored `target/` does not change what
+  `cargo.package()` produces, because cargo builds into a separate target directory.
 - **A cold daemon wants the network even when every crate is already cached**, because Buck asks the
   registry for sizes the lock does not record.
 - **Two projects sharing a crate download it twice.** Each project owns its downloads, and content-based

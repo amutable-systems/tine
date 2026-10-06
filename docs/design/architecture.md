@@ -1617,6 +1617,11 @@ belong to one package system are listed in its own section instead:
 - Buck preserves `buck-out` across daemon replacement. This is safe for hermetic actions because source
   changes produce new input digests. An action that reads an undeclared input can still reuse stale output
   after a mount change.
+- Source builds and checkouts read their source directory in place, including the files that Buck ignores,
+  such as build output or editor backups. Buck does not digest an ignored file, so the file can change what
+  a build produces without changing its action key. An image that copies a checkout path also copies the
+  ignored files below it. Releases and builds that upload to the shared cache therefore run in a clean
+  checkout.
 - Two native package systems are implemented, and only one of them can build packages.
 - A transaction describes packages to add. An install that would have to remove or replace something a
   lower layer carries is refused rather than expressed.
