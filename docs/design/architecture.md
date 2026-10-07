@@ -482,7 +482,9 @@ platform (tine has just one) rather than for the consumer's target. A target nam
 configured for the target platform instead, which would be a second build of the same box. To avoid that,
 `box.new` declares the box under a hidden name that is compatible with the execution configuration only,
 and the public name as an alias reaching it through an execution dependency, so `buck build`, `buck run`
-and ordinary dependencies all arrive at the same box.
+and ordinary dependencies all arrive at the same box. The alias is also what another box's `parent`
+names: it is configured like that box rather than for execution, so a `select()` over its packages
+follows the architecture the child box resolves for.
 
 A lockless box uses its resolver box, by default the one its release names, to produce its build
 transaction and perform the authoritative installation. Its target root therefore contains only the
