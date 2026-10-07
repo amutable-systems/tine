@@ -188,8 +188,7 @@ def cargo_package(
 
     # glob() returns nothing for a directory that Buck ignores. If Buck does not ignore target/, Buck
     # digests cargo's build output as a source of this build. Every local `cargo build` then reruns this
-    # build. An ignored target/ is still in the source directory that the build reads. The build sets
-    # CARGO_TARGET_DIR to another directory, so cargo does not read the ignored target/.
+    # build.
     if not project.is_label(checkout) and project.has_files(checkout + "/target"):
         fail(
             "cargo_package {}: {}/target is a source of the build; add `target/` to a .gitignore that covers it".format(

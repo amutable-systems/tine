@@ -269,3 +269,6 @@ How the modules are pinned, fetched and verified is described under "Go source b
   a path with `..` and a path through a symlink to a directory fail the build.
 - **A committed `go.work` is ignored**, because the build sets `GOWORK=off`. The module builds against its
   own `go.sum`.
+- **The build reads the source directory as it is on disk**, including the files that Buck ignores. An
+  ignored `.go` file, such as generated code, is compiled into the binary. See
+  [Building from a local checkout instead](git.md#building-from-a-local-checkout-instead).

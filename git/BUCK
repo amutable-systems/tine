@@ -39,10 +39,10 @@ box.sh_test(
     name = "checkout-test",
     box = "tine//tools:dev.box",
     script = """
-        for tree in "$1" "$4"; do
-            [[ "$(cat "$tree/input")" == source ]]
-            [[ "$(cat "$tree/.dotfile")" == source ]]
-        done
+        [[ "$(cat "$1/input")" == source ]]
+        [[ "$(cat "$1/.dotfile")" == source ]]
+        # The checkout directory overrides the fetch, so both targets output the same directory.
+        [[ "$4" == "$1" ]]
         [[ "$(cat "$2")" == source ]]
         [[ -d "$3" ]]
         [[ -z "$(ls -A "$3")" ]]

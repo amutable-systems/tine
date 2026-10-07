@@ -197,7 +197,9 @@ Each imported package has a `<package>.source` checkout slot beside its imported
 When populated, this tree replaces the source archives: rpmbuild skips `%prep`, so the checkout must
 already contain any patches or generated files that step normally supplies. The build runs on an overlay
 of the tree, where `rename(2)` on one of its directories fails with `EXDEV`, as it does in a container;
-`mv` works, since it copies instead.
+`mv` works, since it copies instead. The build reads the tree as it is on disk, including the files that
+Buck ignores, and `%install` can copy them into the RPMs. See
+[Building from a local checkout instead](git.md#building-from-a-local-checkout-instead).
 
 Two per-package maps in `_properties.json` can adapt the build to that checkout. `in_place_specs` selects
 an RPM spec by a path relative to the checkout root. The spec's directory also supplies its Source/Patch
