@@ -154,7 +154,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
             category = "extract",
         )
         installer_box = BoxInfo(
-            root = stage1,
+            layers = [stage1],
             sandbox = ctx.attrs._sandbox,
         )
 
@@ -196,7 +196,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     )
 
     info = BoxInfo(
-        root = stage2,
+        layers = [stage2],
         sandbox = ctx.attrs._sandbox,
     )
     sub_targets = {"transaction": [DefaultInfo(default_output = transaction)]}

@@ -296,8 +296,9 @@ The providers have deliberately narrow roles:
 - `LocalPackageUniverseInfo` describes a universe of locally built packages together with the imported
   runtime Requires/Provides metadata needed to select an install request's closure among them.
 - `BuildrootInfo` materializes the shared base root from explicit packages or a release package set.
-- `BoxInfo` contains a runnable root filesystem and the sandbox used to enter it. Its target label
-  establishes provenance; the box may serve compatible package managers for other releases.
+- `BoxInfo` contains a runnable root filesystem as a stack of layers, and the sandbox used to enter it.
+  Its target label establishes provenance; the box may serve compatible package managers for other
+  releases.
 
 Solver caches are anonymous targets keyed by resolver box, package system, configured repository,
 architecture, and execution platform. Matching boxes and package managers therefore consume one shared
@@ -531,7 +532,7 @@ The host contract is intentionally small; its short list of requirements is docu
 
 ### Execution isolation and target roots
 
-All build actions run through `box.run()` and `box/sandbox.py`. The sandbox binds the box's
+All build actions run through `box.run()` and `box/sandbox.py`. The sandbox mounts the box's
 userspace read-only over an otherwise isolated namespace, supplies API and temporary filesystems, clears the
 host environment, disables network by default, and gives build actions unprivileged fakeroot behavior. A
 build action runs as root, and its sync calls succeed without doing anything. When the sandbox maps only
