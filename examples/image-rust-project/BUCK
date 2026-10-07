@@ -33,7 +33,7 @@ cargo.package(
     box = ":rust.box",
 )
 
-# A project with no dependencies at all, which therefore commits no Cargo.lock.
+# A project with no dependencies. Its Cargo.lock lists only the project itself.
 cargo.package(
     name = "nodeps",
     binaries = ["nodeps"],

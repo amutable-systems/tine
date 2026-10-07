@@ -31,13 +31,12 @@ cargo.package(
   a source file or an artifact another target produced, and the rule takes the same shape either way.
 - `src` defaults to `<name>`: the checkout is expected in a directory named after the target. Pass `src`
   explicitly when it is called something else. Nothing needs to be added inside the checkout, i.e. a
-  pristine project clone works.
+  pristine clone of a project that commits its `Cargo.lock` works.
 - Use [`git.fetch()`](git.md) for a project that is not committed to this repository, and pass its work
   tree as `src`.
 - The outermost `Cargo.lock` in `src` marks the workspace cargo builds in; a lock below it, such as a
   vendored project's, is never cargo's and is left alone. Two locks side by side name no single
-  workspace, so narrow `src` then. A project that resolves nothing has no lock to commit; then its sole
-  `Cargo.toml` marks the root instead.
+  workspace, so narrow `src` then.
 - `binaries` names what to take out of `target/release`, and at least one is required: a crate that
   produces no binary has nothing an image could install. These are cargo binary names, which need not
   match the package. Each becomes a sub-target (`:hello[hello-cli]`), and together they are the target's
@@ -99,12 +98,12 @@ How the crates are pinned, fetched and vendored is described under "Rust source 
 - **Only crates.io registry sources work.** Another registry is rejected with the package named, rather
   than guessed at. A `Cargo.lock` older than version 3 is rejected too: it records no per-package
   checksums.
-- **A project with dependencies must commit its `Cargo.lock`.** This is good practice for a binary crate
-  anyway, for ensuring reproducibility and moving surprise failures from unrelated PRs to
+- **A project must commit its `Cargo.lock`**, even when it has no dependencies. This is good practice for
+  a binary crate anyway, for ensuring reproducibility and moving surprise failures from unrelated PRs to
   dependabot/renovate ones. The build passes `--locked`, so a lock that no longer agrees with `Cargo.toml`
-  fails the build instead of quietly resolving something else. A manifest that declares no dependency
-  table at all needs no lock, because there is nothing to pin and nothing for cargo to resolve; declaring
-  one without committing the lock is refused, naming the table it found.
+  fails the build instead of quietly resolving something else. The build also reads a `Cargo.lock` that git
+  does not track. A local build then passes where a build from a fresh clone fails. For a project from
+  `git.fetch()`, fetch a revision that contains the lock.
 - **The checkout must live in the consuming repository.** A Buck package can only glob its own cell, so a
   project registered as a separate workspace cell would have to carry a build file.
 - **A checkout's own `.cargo/config.toml` is refused.** Cargo would read it ahead of the configuration the

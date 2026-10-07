@@ -101,29 +101,22 @@ def resolve_workspace(target: str, source: Path) -> dict[str, Any]:
     if len(locks) > 1:
         fail(f"cargo_package {target}: src holds several Cargo.lock files: {[str(path) for path in locks]}")
 
-    manifests = named_files(source, "Cargo.toml")
-    if locks:
-        root = locks[0].parent
-        manifests = [manifest for manifest in manifests if manifest.parent == root]
-    elif not manifests:
+    if not locks:
+        if not named_files(source, "Cargo.toml"):
+            fail(
+                f"cargo_package {target}: src holds no Cargo.toml; by default the checkout is expected "
+                f"in the {target}/ directory, pass `src` when it lives elsewhere"
+            )
+        # The build passes --locked, and cargo refuses to create a missing lock under --locked.
         fail(
-            f"cargo_package {target}: src holds no Cargo.toml; by default the checkout is expected "
-            f"in the {target}/ directory, pass `src` when it lives elsewhere"
+            f"cargo_package {target}: src holds no Cargo.lock; commit the lock that cargo writes, "
+            "or fetch a revision that contains one"
         )
-    elif len(manifests) == 1:
-        root = manifests[0].parent
-    else:
-        fail(
-            f"cargo_package {target}: src holds no Cargo.lock and {len(manifests)} Cargo.toml files; "
-            "commit the lock"
-        )
-
-    if not manifests:
+    root = locks[0].parent
+    if not (source / root / "Cargo.toml").is_file():
         fail(f"cargo_package {target}: src holds no Cargo.toml beside the Cargo.lock")
 
-    lock: dict[str, Any] = {"package": []}
-    if locks:
-        lock = tomllib.loads((source / locks[0]).read_text(encoding="utf-8"))
+    lock = tomllib.loads((source / locks[0]).read_text(encoding="utf-8"))
     root_string = "" if root == Path(".") else str(root)
     return {
         "crates": crate_downloads(target, lock),

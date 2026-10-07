@@ -200,12 +200,15 @@ class TestLockDriver(unittest.TestCase):
             },
         )
 
-    def test_finds_a_lockless_workspace_inside_a_directory_artifact(self) -> None:
+    def test_rejects_a_workspace_without_a_lock(self) -> None:
         (self.checkout / "Cargo.toml").write_text(DEPLESS_MANIFEST, encoding="utf-8")
 
+        with self.assertRaises(SystemExit) as caught:
+            lock.resolve_workspace("nodeps", self.checkout)
         self.assertEqual(
-            lock.resolve_workspace("nodeps", self.checkout),
-            {"crates": [], "git": {}, "root": ""},
+            str(caught.exception),
+            "tine: cargo_package nodeps: src holds no Cargo.lock; commit the lock that cargo writes, "
+            "or fetch a revision that contains one",
         )
 
     def test_finds_a_nested_workspace(self) -> None:
@@ -245,6 +248,26 @@ class TestLockDriver(unittest.TestCase):
         for source in (self.checkout / "Cargo.toml", self.checkout / "missing"):
             with self.subTest(source=source), self.assertRaisesRegex(SystemExit, "src must be a directory"):
                 lock.resolve_workspace("hello", source)
+
+    def test_rejects_a_directory_without_a_manifest(self) -> None:
+        with self.assertRaises(SystemExit) as caught:
+            lock.resolve_workspace("hello", self.checkout)
+        self.assertEqual(
+            str(caught.exception),
+            "tine: cargo_package hello: src holds no Cargo.toml; by default the checkout is expected in the "
+            "hello/ directory, pass `src` when it lives elsewhere",
+        )
+
+    def test_rejects_a_lock_without_a_manifest_beside_it(self) -> None:
+        (self.checkout / "Cargo.lock").write_text(LOCK, encoding="utf-8")
+        (self.checkout / "nested").mkdir()
+        (self.checkout / "nested/Cargo.toml").write_text(MANIFEST, encoding="utf-8")
+        with self.assertRaises(SystemExit) as caught:
+            lock.resolve_workspace("hello", self.checkout)
+        self.assertEqual(
+            str(caught.exception),
+            "tine: cargo_package hello: src holds no Cargo.toml beside the Cargo.lock",
+        )
 
 
 class TestVendor(unittest.TestCase):

@@ -16,7 +16,6 @@ SBOM learns what went into it.
 import os
 import shutil
 import subprocess
-import tomllib
 from pathlib import Path
 from typing import TypedDict
 
@@ -48,34 +47,6 @@ class Spec(TypedDict):
     target: str | None
     # The unpacked crates the build resolves against.
     vendor: str
-
-
-# Any manifest table that can carry a dependency, including cargo's deprecated underscore spellings,
-# plus `target` and `workspace`, whose subtables can hide one. Deliberately too broad: a harmless match
-# only asks for a Cargo.lock the project could have committed anyway, while a miss would let it build
-# unlocked and fail later in cargo's own resolver.
-_DEPENDENCY_TABLES = (
-    "build-dependencies",
-    "build_dependencies",
-    "dependencies",
-    "dev-dependencies",
-    "dev_dependencies",
-    "target",
-    "workspace",
-)
-
-
-def _reject_unlocked_dependencies(workspace: Path) -> None:
-    """A manifest that names any dependency table must come with the lock cargo writes.
-
-    Without one there is nothing to build the vendored tree from, and the failure cargo itself
-    produces — offline resolution against an empty registry — points at the network rather than at
-    the missing file.
-    """
-    manifest = tomllib.loads((workspace / "Cargo.toml").read_text(encoding="utf-8"))
-    declared = [table for table in _DEPENDENCY_TABLES if manifest.get(table)]
-    if declared:
-        util.fail(f"cargo-build: [{declared[0]}] without a Cargo.lock; commit the lock cargo writes")
 
 
 def _reject_local_config(build: Path, workspace: Path) -> None:
@@ -163,12 +134,6 @@ def main(argv: list[str] | None = None) -> None:
         encoding="utf-8",
     )
 
-    # A project that resolves nothing carries no lock for --locked to hold cargo to. The empty
-    # vendored source and the unshared network are what keep such a build from resolving anything.
-    locked = ["--locked"]
-    if not (workspace / "Cargo.lock").exists():
-        _reject_unlocked_dependencies(workspace)
-        locked = []
     # Cargo refuses every git transfer under --offline, the file:// repositories included. That
     # flag is just belt-and-suspenders though: the action always runs in an unshared network
     # namespace, so cargo can never reach out to the actual internet.
@@ -179,7 +144,7 @@ def main(argv: list[str] | None = None) -> None:
             "auditable",
             "build",
             "--release",
-            *locked,
+            "--locked",
             *offline,
         ],
         check=True,

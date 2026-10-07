@@ -37,29 +37,6 @@ class TestCargoConfig(unittest.TestCase):
         )
 
 
-class TestRejectUnlockedDependencies(unittest.TestCase):
-    @override
-    def setUp(self) -> None:
-        self.workspace = Path(
-            self.enterContext(tempfile.TemporaryDirectory(prefix="cargo-build-test.", dir="/var/tmp"))
-        )
-
-    def test_a_manifest_with_nothing_to_resolve_needs_no_lock(self) -> None:
-        (self.workspace / "Cargo.toml").write_text('[package]\nname = "nodeps"\n', encoding="utf-8")
-        build._reject_unlocked_dependencies(self.workspace)
-
-    def test_rejects_a_missing_lock_when_dependencies_are_declared(self) -> None:
-        (self.workspace / "Cargo.toml").write_text(
-            '[package]\nname = "hello"\n\n[dependencies]\nlibc = "0.2"\n', encoding="utf-8"
-        )
-        with self.assertRaises(SystemExit) as caught:
-            build._reject_unlocked_dependencies(self.workspace)
-        self.assertEqual(
-            str(caught.exception),
-            "tine: cargo-build: [dependencies] without a Cargo.lock; commit the lock cargo writes",
-        )
-
-
 class TestTakeBinaries(unittest.TestCase):
     @override
     def setUp(self) -> None:
