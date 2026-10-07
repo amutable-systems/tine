@@ -505,7 +505,8 @@ two stages:
    or creating a package database. An extractor reads the packages its repository serves, whatever
    framing they carry, so the pool never has to derive a second form for the bootstrap.
 2. The package-system installer runs from `stage1` and properly installs the closure into `stage2`,
-   including scriptlets and the package database. `stage2` becomes the reusable `BoxInfo` root.
+   including scriptlets and the package database. `stage2` becomes the reusable `BoxInfo` root, a single
+   layer.
 
 Before that second stage, `stage1` verifies the same closure against the release's declared signing keys,
 the way a predecessor box verifies a successor's packages. That catches an unsigned or tampered package
@@ -529,6 +530,22 @@ unprivileged sandbox, and scriptlets.
 
 The host contract is intentionally small; its short list of requirements is documented in
 [images.md](../user/images.md).
+
+### Box layers
+
+If a box and its `parent` come from the same repositories, the box is a delta layer over its parent's
+layers, like with images. It enforces addition only, and fails if its lock would update or remove parent
+packages. One likely cause is an outdated committed lock, which needs a catalog refresh. The other is that
+resolving both package lists together picks other packages than the parent got, for example
+`libcurl` for a box that needs it where the parent has `libcurl-minimal`; `layered = False` then installs
+the box on its own.
+
+The sandbox merges the layers per top-level directory with a read-only overlay. Unlike `rootfs()`, it does
+not decode stored whiteout markers, as that would walk every layer on every action, so the installer refuses
+a box layer that deletes from the layers below.
+
+If the parent has different repositories, the box only shares the parent's package list and is installed
+on its own.
 
 ### Execution isolation and target roots
 

@@ -795,7 +795,7 @@ def _select_package_artifacts_impl(
     # Layering must be clean, otherwise the resolution is incompatible or the committed locks went out of sync.
     if below:
         fail(
-            "{}: the layer below has {} that the transaction does not; resolve both against the same snapshot (run refresh-catalog)".format(
+            "{}: the layer below has {} that the transaction does not. Either a lock is outdated (run refresh-catalog), or resolving both package lists together picked other packages (set layered=False)".format(
                 name,
                 ", ".join(sorted(below.values())),
             ),

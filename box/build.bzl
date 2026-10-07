@@ -47,6 +47,17 @@ def _effective_packages(packages: list[str], parent: Dependency | None, package_
         )
     return info.packages + packages
 
+# Layering information for a box that uses this one as a parent.
+_BoxRootInfo = provider(
+    fields = {
+        "repositories": provider_field(list[str]),
+        "transaction": provider_field(Artifact),
+    },
+)
+
+def _repository_labels(repositories: list[Dependency]) -> list[str]:
+    return sorted([str(repository.label.raw_target()) for repository in repositories])
+
 def _configure_repositories(
     ctx: AnalysisContext,
     repositories: list[Dependency],
@@ -158,6 +169,15 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
             sandbox = ctx.attrs._sandbox,
         )
 
+    # See "Box layers" in docs/design/architecture.md.
+    repository_labels = _repository_labels(repositories)
+    lower = []
+    installed = None
+    parent = ctx.attrs.parent
+    if parent != None and ctx.attrs.layered and parent[_BoxRootInfo].repositories == repository_labels:
+        lower = parent[BoxInfo].layers
+        installed = parent[_BoxRootInfo].transaction
+
     # The predecessor verifies its successor's packages. A root box has only its own stage1 for that,
     # which catches an unsigned or tampered package and a wrong key. But its verify program came out of
     # unverified files: a tampered `rpmkeys` could say "OK" to anything, so stage1 is no root of trust.
@@ -166,10 +186,12 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
         transaction,
         repositories = _configure_repositories(ctx, repositories, installer_box),
         suffix = system.package_suffix,
+        installed = installed,
     )
 
-    # Use the predecessor or bootstrapped root to produce the fully installed box.
+    # Use the predecessor or bootstrapped root to install the box, or its layer over the parent.
     stage2 = ctx.actions.declare_output("stage2", dir = True)
+    work = ctx.actions.declare_output("stage2.work", dir = True) if lower else None
     ctx.actions.run(
         cmd_args(
             box_run(
@@ -185,10 +207,10 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
                     "docs": True,
                     "installroot": None,
                     "langs": [],
-                    "lower": [],
+                    "lower": lower,
                     "packages_dir": packages,
                     "target": stage2.as_output(),
-                    "work": None,
+                    "work": work.as_output() if work != None else None,
                 },
             ),
         ),
@@ -196,18 +218,23 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     )
 
     info = BoxInfo(
-        layers = [stage2],
+        layers = lower + [stage2],
         sandbox = ctx.attrs._sandbox,
+    )
+    root = _BoxRootInfo(
+        repositories = repository_labels,
+        transaction = transaction,
     )
     sub_targets = {"transaction": [DefaultInfo(default_output = transaction)]}
 
-    return [DefaultInfo(default_output = stage2, sub_targets = sub_targets), info]
+    return [DefaultInfo(default_outputs = info.layers, sub_targets = sub_targets), info, root]
 
 _box = rule(
     impl = _box_impl,
     attrs = {
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
+        "layered": attrs.bool(default = True, doc = "layer over a parent from the same repositories instead of installing on its own"),
         "lock": attrs.option(
             attrs.source(),
             default = None,
@@ -321,7 +348,8 @@ def new(
     release names is built in the first place.
 
     A box with a `parent` adds its own `packages` on top of that box's. Both must use the same
-    package system.
+    package system. When both are installed from the same repositories, the box is a layer over
+    its parent unless `layered = False`; see "Box layers" in docs/design/architecture.md.
 
     `architectures` are the ones this box keeps a committed lock for: it is built for the host's
     alone, but refresh-catalog writes a lock per architecture, so a build on any of them has one to
@@ -331,6 +359,8 @@ def new(
         fail("box name must end with '.box': {}".format(name))
     if root and resolver_box != None:
         fail("box: a root box bootstraps itself and takes no resolver_box: {}".format(name))
+    if root and parent != None:
+        fail("box: a root box bootstraps itself and takes no parent: {}".format(name))
     if not root and resolver_box == None:
         if not release.endswith(".release"):
             fail("box: cannot derive a resolver box from release '{}'; pass resolver_box".format(release))
