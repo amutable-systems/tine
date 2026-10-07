@@ -68,6 +68,47 @@ class TestRun(unittest.TestCase):
                 with mock.patch.object(installer.specs, "parse", return_value=spec):
                     installer.run("install", install, [])
 
+    def test_a_box_layer_may_add_but_not_delete(self) -> None:
+        for deletes in (False, True):
+            with (
+                self.subTest(deletes=deletes),
+                tempfile.TemporaryDirectory(dir="/var/tmp") as scratch,
+                mock.patch.dict(os.environ),
+            ):
+                root = Path(scratch)
+                lower = root / "lower"
+                (lower / "etc").mkdir(parents=True)
+                (lower / "doomed").write_text("")
+                spec = installer.InstallSpec(
+                    arch="x86_64",
+                    packages_dir=str(root / "packages"),
+                    target=str(root / "target"),
+                    installroot=None,
+                    lower=[str(lower)],
+                    work=str(root / "work"),
+                    box_config=True,
+                    langs=[],
+                    docs=True,
+                )
+
+                def install(
+                    packages_dir: Path,
+                    installroot: Path,
+                    request: installer.InstallSpec,
+                    layered: bool,
+                    deletes: bool = deletes,
+                ) -> None:
+                    (installroot / "added").write_text("")
+                    if deletes:
+                        (installroot / "doomed").unlink()
+
+                with mock.patch.object(installer.specs, "parse", return_value=spec):
+                    if deletes:
+                        with self.assertRaisesRegex(SystemExit, r"cannot delete .*\.wh\.doomed"):
+                            installer.run("install", install, [])
+                    else:
+                        installer.run("install", install, [])
+
     def test_fresh_root_mount_owns_capture_after_an_install_failure(self) -> None:
         with tempfile.TemporaryDirectory(dir="/var/tmp") as scratch:
             root = Path(scratch)
