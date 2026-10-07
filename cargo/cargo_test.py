@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Tests for the Cargo.lock reader, the vendored crate tree, and the build driver's checks.
+"""Tests for the Cargo.lock reader and the vendored crate tree.
 
     buck test tine//cargo:test
 
@@ -19,7 +19,6 @@ import unittest
 from pathlib import Path
 from typing import override
 
-import build
 import lock
 import vendor
 
@@ -246,60 +245,6 @@ class TestLockDriver(unittest.TestCase):
         for source in (self.checkout / "Cargo.toml", self.checkout / "missing"):
             with self.subTest(source=source), self.assertRaisesRegex(SystemExit, "src must be a directory"):
                 lock.resolve_workspace("hello", source)
-
-
-class TestBuild(unittest.TestCase):
-    def _workspace(self, manifest: str) -> Path:
-        tmp = tempfile.TemporaryDirectory(prefix="cargo-build-test.")
-        self.addCleanup(tmp.cleanup)
-        (Path(tmp.name) / "Cargo.toml").write_text(manifest, encoding="utf-8")
-        return Path(tmp.name)
-
-    def test_a_manifest_with_nothing_to_resolve_needs_no_lock(self) -> None:
-        build._reject_unlocked_dependencies(self._workspace(DEPLESS_MANIFEST))
-
-    def test_rejects_a_missing_lock_when_dependencies_are_declared(self) -> None:
-        with self.assertRaises(SystemExit) as caught:
-            build._reject_unlocked_dependencies(self._workspace(MANIFEST))
-        self.assertEqual(
-            str(caught.exception),
-            "tine: cargo-build: [dependencies] without a Cargo.lock; commit the lock cargo writes",
-        )
-
-    def test_cargo_config(self) -> None:
-        """The registry points at the vendored tree, each git source at its fetched repository."""
-        git: dict[str, build.GitSource] = {
-            SD_CONF_COMMIT: {
-                "fields": {"git": SD_CONF_URL, "rev": "f8f381fe"},
-                "repo": "/repos/sd-conf/.git",
-            }
-        }
-        self.assertEqual(
-            build._cargo_config(Path("/vendor"), git),
-            '[source.crates-io]\nreplace-with = "vendored-sources"\n'
-            "\n"
-            '[source."git-f8f381feee21-upstream"]\n'
-            f'git = "{SD_CONF_URL}"\n'
-            'rev = "f8f381fe"\n'
-            'replace-with = "git-f8f381feee21"\n'
-            "\n"
-            "[source.git-f8f381feee21]\n"
-            'git = "file:///repos/sd-conf/.git"\n'
-            f'rev = "{SD_CONF_COMMIT}"\n'
-            "\n"
-            '[source.vendored-sources]\ndirectory = "/vendor"\n',
-        )
-
-    def test_rejects_a_binary_the_build_did_not_produce(self) -> None:
-        built = self._workspace(DEPLESS_MANIFEST)
-        (built / "hello-cli").write_text("elf", encoding="utf-8")
-        (built / "hello-cli").chmod(0o755)
-        with self.assertRaises(SystemExit) as caught:
-            build._take_binaries(built, ["hello"], built / "out")
-        self.assertEqual(
-            str(caught.exception),
-            "tine: cargo-build: no hello in target/release, which holds: hello-cli",
-        )
 
 
 class TestVendor(unittest.TestCase):

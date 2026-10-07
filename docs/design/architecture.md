@@ -1744,7 +1744,7 @@ Useful implementation entry points:
 - each package system's `rules.bzl` and drivers under `package_system/`, listed in its own section above
 - `box/{build,runtime}.bzl`, `box/sandbox.py`, and `rootfs/rootfs.py`
 - `image/{image,compose,defs,sign,vm}.bzl` and `image_format/{archive,boot,disk,sysext,uki}.bzl`
-- `cargo/{rules,lock,vendor}.bzl` and `cargo/{vendor,build}.py`
+- `cargo/{defs,rules,vendor}.bzl` and `cargo/{lock,vendor,build}.py`
 - `go/rules.bzl` and `go/{fetch,build}.py`
 - `tools/catalog.py` and `catalog/BUCK`
 - the generated `packages/*/*/BUCK` and the importer-facing Starlark that validates it

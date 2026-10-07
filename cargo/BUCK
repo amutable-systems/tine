@@ -38,6 +38,7 @@ box_python_test(
     box = "//tools:dev.box",
     srcs = [
         "build.py",
+        "build_test.py",
         "cargo_test.py",
         "lock.py",
         "vendor.py",
