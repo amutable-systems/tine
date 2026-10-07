@@ -68,6 +68,12 @@ def _classify(name: str) -> tuple[_Kind, str]:
     return _Kind.NORMAL, true
 
 
+def deletions(delta: Path) -> list[Path]:
+    """The marker files of a stored delta that delete from the layers below it."""
+    markers = (path for path in delta.rglob("*") if _classify(path.name)[0] is not _Kind.NORMAL)
+    return sorted(path.relative_to(delta) for path in markers)
+
+
 def _whiteout_marker(name: str) -> str:
     """Encode a possibly unstorable whiteout target."""
     return _escape(_WH + name)

@@ -288,5 +288,22 @@ class TestCaptureOnExit(unittest.TestCase):
             pass
 
 
+class TestDeletions(unittest.TestCase):
+    def test_lists_whiteouts_and_opaque_markers_only(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
+            delta = Path(directory)
+            (delta / "etc/opaque").mkdir(parents=True)
+            (delta / "etc/added").write_text("added")
+            (delta / "etc/.wh.removed").write_bytes(b"")
+            (delta / "etc/opaque/.wh..wh..opq").write_bytes(b"")
+            (delta / ".esc..wh.esc%5Caped").write_bytes(b"")
+            (delta / ".esc.back%5Cslash").write_text("kept")
+
+            self.assertEqual(
+                rootfs.deletions(delta),
+                [Path(".esc..wh.esc%5Caped"), Path("etc/.wh.removed"), Path("etc/opaque/.wh..wh..opq")],
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

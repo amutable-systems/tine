@@ -177,3 +177,9 @@ def run(
     with root:
         install(packages_dir, Path(BUILDROOT), spec, layered)
         _normalize(Path(BUILDROOT), spec)
+
+    # The sandbox stacks a box's layers as Buck stores them, without turning markers back into
+    # overlayfs whiteouts. Deletions are not supported at box runtime right now.
+    if layered and spec["box_config"] and (deleted := rootfs.deletions(target)):
+        markers = ", ".join(map(str, deleted))
+        fail(f"{prog}: a box layer cannot delete from the layers below it, but has {markers}")
