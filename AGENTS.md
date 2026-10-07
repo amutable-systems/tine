@@ -9,6 +9,8 @@ SPDX-License-Identifier: MPL-2.0
 
 - **Never touch `buck-out/` directly**: no `rm`, `mv`, or edits. To inspect an output, get its path from
   `buck build --show-output`/`--out` and read it read-only.
+- **Never call `buck2` directly**: `tine buck` is the only entry point; every `buck` here and in the docs
+  is shorthand for that.
 - **Never `buck build | tail`**: redirect the full output to a log file, print the path so the user can
   follow along, and check the exit status separately. `tine buck log what-ran --failed --show-std-err`
   prints the full stderr of the actions that failed in the last build, which the build output truncates.
@@ -39,7 +41,6 @@ Cell layout and architecture: [the design plan](docs/design/architecture.md). Us
 
 ## Commands
 
-**Every `buck` below means `tine buck`**: nothing else on this machine is the Buck2 this project pins.
 `mise.toml` puts `./bin` and `./tools` on `PATH`; every pinned tool is declared in `tine.lock.json`.
 `tine buck` runs Buck with the mounts declared by `tine mount` in `.buck/tine-mounts.toml`.
 
