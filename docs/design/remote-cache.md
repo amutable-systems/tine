@@ -225,7 +225,7 @@ write to the store if it configures an authority.
 One process holds the store at a time, and the store is disposable.
 
 The one gap of the eager fetch: Buck2 may ask for an output by digest in a later build, and if its bundle
-has left the bucket by then, that build fails with Buck2's "expired in the RE CAS" error; `buck2 clean`
+has left the bucket by then, that build fails with Buck2's "expired in the RE CAS" error; `buck clean`
 recovers. Rarer than with per-output storage, not gone.
 
 See `remote_cache/store.py` and its comments for details.

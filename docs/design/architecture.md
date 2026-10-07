@@ -969,7 +969,7 @@ Cargo's build directory then is a declared output that buck is told not to clear
 action, so cargo finds the previous one and recompiles only what changed, exactly as it does in a working
 copy. Nothing else survives: the source tree is copied afresh from the action's inputs on every run, with
 the modification times cargo compares them by. A build that finds no previous directory remains the
-reference, which is what CI and any `buck2 clean` produce.
+reference, which is what CI and any `buck clean` produce.
 
 Fetched or committed sources declare no build directory and build in scratch space: there is no edit
 cycle to speed up, and the large intermediate build artifacts are not uploaded to a shared cache.
@@ -1596,7 +1596,7 @@ The previous implementation declared the checkout as an external git cell, which
 other pinned repository. As a result, Buck could only see committed changes. Bind mounting the checkout
 at the cell root exposes the working copy, preserves file watching, and keeps Buck's declared paths
 unchanged. This only works on Linux with unprivileged user namespaces and only when the build runs through
-`bin/tine`; a direct `buck2 build` uses the checked-in path. Those constraints are acceptable for a local
+`bin/tine`; a build that bypasses it uses the checked-in path. Those constraints are acceptable for a local
 development feature.
 
 Using the namespace digest as the Buck2 isolation directory would avoid daemon replacement entirely, but

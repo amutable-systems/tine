@@ -111,7 +111,7 @@ How the modules are pinned, fetched and verified is described under "Go source b
 - **A project is one cache unit, and reruns are incremental for a `tine mount`.** Any change to its sources
   reruns the build action for the whole project, but go's build cache survives between runs, so it recompiles
   only what changed. Only changes to `go.mod`/`go.sum` rerun the fetch, whose module cache survives too, so a
-  dependency bump downloads only what is missing. `buck2 clean` is what forces a build from scratch.
+  dependency bump downloads only what is missing. `buck clean` is what forces a build from scratch.
 - **A fetched or committed project keeps neither cache between runs**. Its build cache never reaches the
   shared cache, only the binaries; the module cache does, refetched whole whenever the pins move.
 - **`go.mod` and `go.sum` must agree.** The build runs `-mod=readonly`, so a stale `go.sum` fails the
