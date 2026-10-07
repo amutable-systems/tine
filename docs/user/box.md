@@ -58,7 +58,7 @@ A project may declare as many boxes as it likes; each is its own target:
 $ tine buck run //tools:check.box -- make check
 ```
 
-The root a box is entered with is the same artifact build actions get. Its userspace is pinned and
+The root a box is entered with is the same one build actions get. Its userspace is pinned and
 read-only, while the relaxed entry mode exposes the host environment, devices, network, current directory,
 and filesystems. Commands run as the invoking user, and the project, including the shared `buck-out`,
 remains writable.

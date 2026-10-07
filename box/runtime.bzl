@@ -9,7 +9,7 @@ BoxInfo = provider(
     # Carry the configured sandbox through providers so anonymous targets can reuse it.
     doc = "A reusable execution environment built from one base OS release.",
     fields = {
-        "root": provider_field(Artifact),  # the box root
+        "layers": provider_field(list[Artifact]),  # the box root, as trees stacked lowest first
         "sandbox": provider_field(Dependency),
     },
 )
@@ -31,11 +31,9 @@ def box_run(
     argument such as an artifact's path. Both are for non-hermetic actions such as signing against
     an externally held key, never for build inputs.
     """
-    run = cmd_args(
-        box.sandbox[RunInfo],
-        "--tools",
-        box.root,
-    )
+    run = cmd_args(box.sandbox[RunInfo])
+    for layer in box.layers:
+        run.add("--tools", layer)
     if relaxed:
         run.add("--relaxed")
     else:
