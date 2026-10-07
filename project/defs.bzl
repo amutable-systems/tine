@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Project-wide build modes, exported as the `project` namespace."""
+"""Source directories, dev mode and build outputs of a project, exported as the `project` namespace."""
 
 _SECTION = "tine"
 _DEV = "dev"
@@ -57,7 +57,7 @@ def populated(directory: str) -> bool:
     return has_files(directory) or is_dev(directory)
 
 def kept_dir(actions: AnalysisActions, name: str) -> Artifact:
-    """Declare a directory output that an action keeps across reruns, or that holds a binary."""
+    """Declare a directory output that an action keeps across reruns."""
 
     # Before each run, Buck copies a kept output with a content-based path back in full. The copied
     # files get fresh timestamps. An incremental build then rebuilds everything. For an output that the
@@ -67,7 +67,39 @@ def kept_dir(actions: AnalysisActions, name: str) -> Artifact:
     # output.
     return actions.declare_output(name, dir = True, has_content_based_path = False)
 
+def binaries_dir(actions: AnalysisActions, name: str, binaries: list[str], owner: str) -> (Artifact, dict[str, Artifact]):
+    """Declare the kept directory `name` and an output in it for each name in `binaries`.
+
+    `owner` starts a failure message, and names the rule, the target and the attribute of `binaries`.
+    """
+    for index, binary in enumerate(binaries):
+        # A binary name is a path component and a sub-target name. A target pattern such as
+        # `:hello[hello-cli]` cannot name a sub-target that contains `:`, a bracket or a space.
+        if not binary or binary in [".", ".."] or [c for c in ["/", "\\", ":", "[", "]", " "] if c in binary]:
+            fail("{}: invalid output name {}".format(owner, repr(binary)))
+        if binary in binaries[:index]:
+            fail("{}: duplicate output name {}".format(owner, repr(binary)))
+
+    # The build driver makes the project read-only and needs a writable bind mount for each output
+    # directory. One directory for all binaries needs a single mount. A binary name also cannot collide
+    # with another output of the rule, because no other output is in that directory.
+    bin = kept_dir(actions, name)
+    return bin, {binary: bin.project(binary) for binary in binaries}
+
+def binaries_providers(outputs: dict[str, Artifact]) -> list[Provider]:
+    """Return the providers of a rule whose outputs are the binaries in `outputs`."""
+
+    # `buck run` runs a binary on the host, as a developer would after building it by hand. The box
+    # contains no runtime packages, so a dynamically linked binary would not run there either.
+    sub_targets = {name: [DefaultInfo(default_output = out), RunInfo(args = cmd_args(out))] for name, out in outputs.items()}
+    providers = [DefaultInfo(default_outputs = outputs.values(), sub_targets = sub_targets)]
+    if len(outputs) == 1:
+        providers.append(RunInfo(args = cmd_args(outputs.values()[0])))
+    return providers
+
 project = struct(
+    binaries_dir = binaries_dir,
+    binaries_providers = binaries_providers,
     has_files = has_files,
     is_dev = is_dev,
     is_label = is_label,
