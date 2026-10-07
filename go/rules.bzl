@@ -9,9 +9,6 @@ load("//project:defs.bzl", "project")
 
 _PRIVATE = "__tine"
 
-# Every output is under the private directory `__tine`, and the binaries have a directory of their
-# own in it. A binary name therefore cannot collide with an internal output.
-
 def _go_build_impl(
     actions: AnalysisActions,
     bin: OutputArtifact,
@@ -105,15 +102,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
     # Most projects hold one program. Its import path is only known once the sources are built, so
     # the binary takes the target's name; the driver refuses a module with more than one candidate.
     packages = ctx.attrs.packages or {ctx.label.name: "./..."}
-    names = packages.keys()
-    for name in names:
-        if not name or name in [".", ".."] or "/" in name or "\\" in name:
-            fail("go_package: invalid output name {}".format(repr(name)))
-
-    # The binaries go in one output directory rather than one file each. The build then needs a single
-    # writable mount, and the rest of the project stays read-only.
-    bin = project.kept_dir(ctx.actions, _PRIVATE + "/bin")
-    outputs = {name: bin.project(name) for name in names}
+    bin, outputs = project.binaries_dir(ctx.actions, _PRIVATE + "/bin", packages.keys(), "go_package {}: packages".format(ctx.label.name))
 
     # go's own build cache. An action's outputs are the only place it may leave state behind, and buck
     # clears them before rerunning it unless told not to. A declared output is also uploaded to the
@@ -154,13 +143,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             workspace = workspace,
         ),
     )
-    # Run on the host, as a developer would after `go build -o`. The box is a build environment and
-    # carries no runtime packages, so it is no better a place for a dynamically linked binary.
-    sub_targets = {name: [DefaultInfo(default_output = out), RunInfo(args = cmd_args(out))] for name, out in outputs.items()}
-    providers = [DefaultInfo(default_outputs = outputs.values(), sub_targets = sub_targets)]
-    if len(outputs) == 1:
-        providers.append(RunInfo(args = cmd_args(outputs.values()[0])))
-    return providers
+    return project.binaries_providers(outputs)
 
 _go_package = rule(
     impl = _go_package_impl,
