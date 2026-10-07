@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Development-box smoke target."""
+"""Development-box smoke targets."""
 
 load("@tine//box:defs.bzl", "box")
 
@@ -10,7 +10,42 @@ box.new(
     packages = [
         "bash",
         "coreutils",
-        "fish",
     ],
     release = "tine//catalog:fedora.rawhide.release",
+)
+
+# Same repositories as its parent, so it is a layer over it.
+box.new(
+    name = "demo-with-parent.box",
+    packages = ["fish"],
+    parent = ":demo.box",
+    release = "tine//catalog:fedora.rawhide.release",
+)
+
+box.new(
+    name = "demo-standalone.box",
+    layered = False,
+    packages = ["fish"],
+    parent = ":demo.box",
+    release = "tine//catalog:fedora.rawhide.release",
+)
+
+box.sh_test(
+    name = "layering-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    test = "layering.sh",
+    args = [
+        "$(location :demo.box)",
+        "$(location :demo-with-parent.box)",
+        "$(location :demo-standalone.box)",
+    ],
+)
+
+# The layered box runs: bash comes from its parent's layer, fish from its own.
+box.sh_test(
+    name = "layered-run-test",
+    labels = ["image"],
+    box = ":demo-with-parent.box",
+    script = "HOME=/tmp fish --command 'echo hello' | grep -qx hello",
 )

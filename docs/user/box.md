@@ -81,6 +81,14 @@ box.new(
 ```
 
 A `select()` in the parent's package list follows the architecture the child box is built or locked for.
-Both boxes have to use the same packaging system. Only the package list is shared, not the result: the
-box is resolved and installed on its own. A box with a committed lock keeps it when its parent's packages
-change, so refresh the catalog after bumping tine or editing the parent.
+Both boxes have to use the same packaging system.
+
+If both boxes come from the same release and repositories, the box is built as a layer over its parent:
+it shares the parent's installed root and only adds its own packages on top. Otherwise only the package
+list is shared: the box is resolved and installed on its own.
+
+A box with a committed lock keeps it when its parent's packages change, so refresh the catalog after
+editing the parent or bumping tine (if you derive from a tine box). A layered box refuses to build until
+you do. It also refuses when resolving both package lists together picks other packages than the parent
+got, for example `libcurl` where the parent has `libcurl-minimal`. Set `layered = False` to install such a
+box on its own.
