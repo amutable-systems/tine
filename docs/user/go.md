@@ -13,8 +13,8 @@ offline against that fetched cache.
 Go embeds the module list in every binary it links (`runtime/debug.BuildInfo`), so the image's SBOM reports
 those modules.
 
-`examples/image-go-project` is a complete worked example: a builder box, two projects checked out
-beside it, and an image carrying the resulting binaries.
+`examples/image-go-project` builds the Go projects checked out beside it in a box and copies two of their
+binaries into an image.
 
 ## Declaring a build
 
@@ -110,8 +110,10 @@ How the modules are pinned, fetched and verified is described under "Go source b
 
 - **A project is one cache unit, and reruns are incremental for a `tine mount`.** Any change to its sources
   reruns the build action for the whole project, but go's build cache survives between runs, so it recompiles
-  only what changed. Only changes to `go.mod`/`go.sum` rerun the fetch, whose module cache survives too, so a
-  dependency bump downloads only what is missing. `buck clean` is what forces a build from scratch.
+  only what changed. Only changes to `go.sum` and to the `go.mod` files the fetch reads rerun the fetch. Its
+  module cache is kept too, so a dependency bump downloads only what is missing. The fetch reads the
+  project's `go.mod` and the `go.mod` of each module that it replaces with a directory. `buck clean` is what
+  forces a build from scratch.
 - **A fetched or committed project keeps neither cache between runs**. Its build cache never reaches the
   shared cache, only the binaries; the module cache does, refetched whole whenever the pins move.
 - **`go.mod` and `go.sum` must agree.** The build runs `-mod=readonly`, so a stale `go.sum` fails the
@@ -127,5 +129,7 @@ How the modules are pinned, fetched and verified is described under "Go source b
 - **A committed `vendor/` tree is ignored**, because the build passes `-mod=readonly`, and an explicit
   `-mod` is what turns off go's habit of preferring a vendor directory. Every module comes from the
   `go.sum` either way.
+- **A `replace` directive must point inside `src`.** A `go.mod` that replaces a module with a directory
+  outside `src` fails the build, because the build would read files that are not among its inputs.
 - **A committed `go.work` is ignored**, because the build sets `GOWORK=off`. The module builds against its
   own `go.sum`.

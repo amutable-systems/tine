@@ -986,23 +986,26 @@ shared cache.
 
 ### Go source builds
 
-`go.package()` gives a checked-out Go project the same treatment, sources in and declared binaries out.
-The project carries no build file pointing at its own root, so a `go_workspace` action finds the `go.mod`
-among the built sources and a dynamic action declares the two steps below from what it reports; as with
-`cargo.package()`, that is what lets the sources be a fetched directory artifact rather than a checkout.
-Only the two files those steps read are taken back out of the sources, so the fetch still reruns for a
-dependency bump alone. But the pinning is delegated rather than translated: A `go.sum` records `h1:`
-dirhashes over each module's contents, not the hash of any bytes a proxy serves, so there is nothing a
-hash-verified `download_file` could check a download against. Deriving byte hashes would mean a second,
-generated lock to keep refreshed. Instead go itself is the verifier, and the build is two actions so the
-network stays confined to the first:
+`go.package()` gives a checked-out Go project the same treatment, sources in and declared binaries out. The
+project carries no build file pointing at its own root, so a `go_workspace` action finds the `go.mod` among
+the built sources and a dynamic action declares the two steps below from what it reports; as with
+`cargo.package()`, that is what lets the sources be a fetched directory artifact rather than a checkout. The
+fetch's inputs are the `go.mod`, the `go.sum` beside it, and the `go.mod` of each module that a `replace`
+directive points at a directory in the sources. A dependency bump reruns the fetch, and an edit to a Go
+source file does not. But the pinning is delegated rather than translated: A `go.sum` records `h1:` dirhashes
+over each module's contents, not the hash of any bytes a proxy serves, so there is nothing a hash-verified
+`download_file` could check a download against. Deriving byte hashes would mean a second, generated lock to
+keep refreshed. Instead go itself is the verifier, and the build is two actions so the network stays confined
+to the first:
 
-1. `go_fetch` is the online action: `go mod download` in the consumer's box with the network shared,
-   reading nothing but `go.mod` and `go.sum`, so editing sources never refetches. go checks a download
+1. `go_fetch` is the online action: `go mod download` in the consumer's box with the network shared, reading
+   only the fetch's inputs named above, so an edit to a Go source file never refetches. go checks a download
    against the committed `go.sum` where that pins it, and against the checksum database otherwise.
-   Downloading deliberately does not extend `go.sum`, so an unpinned module is fetched here and rejected
-   in the step below. The driver does reject a `go.sum` missing the module graph's `go.mod` hashes, which
-   is the one incompleteness that downloading repairs silently. The output is go's module cache.
+   Downloading deliberately does not extend `go.sum`, so an unpinned module is fetched here and rejected in
+   the step below. The driver does reject a `go.sum` missing the module graph's `go.mod` hashes, which is the
+   one incompleteness that downloading repairs silently. The output is go's module cache. The `go_workspace`
+   action finds the `replace` directives in the `go.mod` itself instead of running `go mod edit -json`,
+   because it runs on the host rather than in the box that provides go.
 2. `go_build` compiles offline. The `cache/download` half of a module cache is exactly the layout a
    module proxy serves, so the driver points `GOPROXY` at it as a `file://` URL and go re-extracts every
    module from it, verifying against `go.sum` a second time (the fetched artifact is never trusted
@@ -1032,7 +1035,7 @@ build runs in the source tree itself, in a read-only project, with the declared 
 The module cache is the one difference: `go_build` consumes it, so it is a declared output whatever the
 sources are. For a mount buck keeps it too, so a dependency bump downloads only what is missing; old
 module versions accumulate but are inert, since go takes only what `go.sum` names out of the proxy view.
-Otherwise buck clears it before the fetch, and what reaches the cache follows `go.mod` and `go.sum` alone.
+Otherwise buck clears it before the fetch, and the cache content depends only on the fetch's inputs.
 
 ### Filesystem layer representation
 

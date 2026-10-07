@@ -27,9 +27,10 @@ def _go_build_impl(
     """Declare what the project's go.mod asks for, once it has been found and can be read."""
     module = workspace.read_json()
 
-    # The one online step: go downloads what go.mod names and verifies it against go.sum. Its
-    # inputs are only those two files, so editing sources never refetches; and the cache is kept
-    # across reruns, so a dependency bump downloads only what is missing from it.
+    # The fetch is the one online step: go downloads the modules go.mod requires and verifies them
+    # against go.sum. The fetch reads only go.mod, go.sum and the go.mod of each module that go.mod
+    # replaces with a directory, so an edit to a Go source file does not rerun it. The module cache
+    # is kept across reruns, so a dependency bump downloads only the modules missing from it.
     module_cache = None
     if module["sum"] != None:
         module_cache = project.kept_dir(actions, _PRIVATE + "/module-cache")
@@ -40,8 +41,9 @@ def _go_build_impl(
                     actions,
                     _PRIVATE + "/go-fetch.spec.json",
                     {
-                        "mod": src.project(module["mod"]),
+                        "mod": module["mod"],
                         "module_cache_dir": module_cache.as_output(),
+                        "modules": {path: src.project(path) for path in module["modules"]},
                         "sum": src.project(module["sum"]),
                     },
                 ),

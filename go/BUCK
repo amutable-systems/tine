@@ -6,7 +6,7 @@
 load("//box:test.bzl", "box_python_test")
 load("//python:defs.bzl", "tine_python_binary")
 
-# The project's source artifacts in, the module root its go.mod marks out.
+# The project's source artifacts in; the module root, its pins and the go.mod files the fetch reads out.
 tine_python_binary(
     name = "workspace",
     main = "workspace.py",
@@ -14,7 +14,7 @@ tine_python_binary(
     deps = ["//:specs", "//:util"],
 )
 
-# Runs inside the box with the network: go.mod and go.sum in, the verified module cache out.
+# Runs inside the box with the network: go.mod and go.sum files in, the verified module cache out.
 tine_python_binary(
     name = "fetch",
     main = "fetch.py",
@@ -40,6 +40,8 @@ box_python_test(
     srcs = [
         "build.py",
         "build_test.py",
+        "fetch.py",
+        "fetch_test.py",
         "workspace.py",
         "workspace_test.py",
     ],
