@@ -78,6 +78,21 @@ box.sh_test(
     ],
 )
 
+# The go.mod replaces a module with a directory in the checkout, so the fetch reads the go.mod in
+# that directory too.
+go.package(
+    name = "local-replace",
+    box = ":go.box",
+)
+
+box.sh_test(
+    name = "local-replace-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = '[[ "$("$1")" == "local replacement: "* ]]',
+    args = ["$(exe :local-replace)"],
+)
+
 package.manager(
     name = "image.package-manager",
     base = "tine//catalog:fedora.rawhide.package-manager",

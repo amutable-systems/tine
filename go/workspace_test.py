@@ -24,26 +24,26 @@ class TestResolveWorkspace(unittest.TestCase):
         self.checkout = Path(tmp.name) / "checkout"
         self.checkout.mkdir()
 
-    def _write(self, *paths: str) -> None:
+    def _write(self, *paths: str, text: str = "") -> None:
         for path in paths:
             written = self.checkout / path
             written.parent.mkdir(parents=True, exist_ok=True)
-            written.touch()
+            written.write_text(text, encoding="utf-8")
 
     def test_finds_a_module_inside_a_directory_artifact(self) -> None:
         self._write("go.mod", "go.sum", "cmd/hello/main.go")
 
         self.assertEqual(
             workspace.resolve_workspace("hello", self.checkout),
-            {"mod": "go.mod", "root": "", "sum": "go.sum"},
+            {"mod": "go.mod", "modules": ["go.mod"], "root": "", "sum": "go.sum"},
         )
 
     def test_finds_a_nested_module(self) -> None:
-        self._write("hello/go.mod", "hello/go.sum", "hello/main.go")
+        self._write("hello/go.mod", "hello/go.sum")
 
         self.assertEqual(
             workspace.resolve_workspace("hello", self.checkout),
-            {"mod": "hello/go.mod", "root": "hello", "sum": "hello/go.sum"},
+            {"mod": "hello/go.mod", "modules": ["hello/go.mod"], "root": "hello", "sum": "hello/go.sum"},
         )
 
     def test_a_module_resolving_nothing_pins_nothing(self) -> None:
@@ -51,7 +51,7 @@ class TestResolveWorkspace(unittest.TestCase):
 
         self.assertEqual(
             workspace.resolve_workspace("nodeps", self.checkout),
-            {"mod": "go.mod", "root": "", "sum": None},
+            {"mod": "go.mod", "modules": ["go.mod"], "root": "", "sum": None},
         )
 
     def test_the_outermost_module_is_the_projects_own(self) -> None:
@@ -60,13 +60,42 @@ class TestResolveWorkspace(unittest.TestCase):
 
         self.assertEqual(
             workspace.resolve_workspace("hello", self.checkout),
-            {"mod": "go.mod", "root": "", "sum": "go.sum"},
+            {"mod": "go.mod", "modules": ["go.mod"], "root": "", "sum": "go.sum"},
         )
 
     def test_a_go_sum_below_the_root_is_not_the_projects_own(self) -> None:
         self._write("go.mod", "internal/tools/go.mod", "internal/tools/go.sum")
 
         self.assertIsNone(workspace.resolve_workspace("hello", self.checkout)["sum"])
+
+    def test_stages_the_go_mod_of_each_local_replacement_in_src(self) -> None:
+        self._write("go.sum", "internal/api/go.mod", "internal/tools/go.mod")
+        self._write(
+            "go.mod",
+            text="replace example.com/api => ./internal/api\nreplace example.com/missing => ./missing\n",
+        )
+
+        self.assertEqual(
+            workspace.resolve_workspace("hello", self.checkout)["modules"],
+            ["go.mod", "internal/api/go.mod"],
+        )
+
+    def test_rejects_replacements_outside_src(self) -> None:
+        for directory in ["../outside", "./internal/../../outside", "/srv/outside"]:
+            self._write("go.mod", text=f"replace example.com/outside => {directory}\n")
+            with (
+                self.subTest(directory=directory),
+                self.assertRaisesRegex(
+                    SystemExit, f"go.mod replaces a module with {directory}, which is outside src"
+                ),
+            ):
+                workspace.resolve_workspace("hello", self.checkout)
+
+    def test_a_module_resolving_nothing_stages_no_replacement(self) -> None:
+        self._write("api/go.mod")
+        self._write("go.mod", text="replace example.com/api => ./api\n")
+
+        self.assertEqual(workspace.resolve_workspace("hello", self.checkout)["modules"], ["go.mod"])
 
     def test_rejects_modules_that_are_not_one_project(self) -> None:
         self._write("first/go.mod", "second/go.mod")
@@ -101,5 +130,44 @@ class TestResolveWorkspace(unittest.TestCase):
 
         self.assertEqual(
             workspace.resolve_workspace("hello", self.checkout),
-            {"mod": "go.mod", "root": "", "sum": "go.sum"},
+            {"mod": "go.mod", "modules": ["go.mod"], "root": "", "sum": "go.sum"},
         )
+
+
+class TestLocalReplacements(unittest.TestCase):
+    def test_reads_directories_from_both_forms(self) -> None:
+        text = (
+            "module example.com/server\n"
+            "\n"
+            "require example.com/api v0.0.0\n"
+            "\n"
+            "replace example.com/api => ../api\n"
+            "replace example.com/slashes => ./a//b\n"
+            "replace(\n"
+            "\t// example.com/commented => ./commented\n"
+            '\texample.com/quoted => "./with space"\n'
+            "\texample.com/raw v1.2.3 => `./raw`\n"
+            "\texample.com/parent => .. // the parent module\n"
+            "\texample.com/absolute => /srv/absolute\n"
+            ")\n"
+        )
+
+        self.assertEqual(
+            workspace.local_replacements(text),
+            ["../api", "./a//b", "./with space", "./raw", "..", "/srv/absolute"],
+        )
+
+    def test_skips_modules_and_other_directives(self) -> None:
+        text = (
+            "module example.com/server\n"
+            "require (\n"
+            "\texample.com/api v0.0.0 // => ./api\n"
+            ")\n"
+            "replace example.com/fork => example.com/fork v1.0.0\n"
+            "replace example.com/versioned => ./versioned v1.0.0\n"
+            'replace example.com/unterminated => "./api\n'
+            "replace example.com/self => .\n"
+            "exclude example.com/old v0.1.0\n"
+        )
+
+        self.assertEqual(workspace.local_replacements(text), [])
