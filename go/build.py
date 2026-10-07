@@ -145,10 +145,7 @@ def build_go(spec: Spec) -> None:
         if spec["gocache"] is not None:
             outputs[Path(spec["gocache"])] = gocache
         stack.enter_context(rootfs.readonly_project(Path.cwd(), outputs))
-        # Buck keeps every output of an incremental action between runs. Remove the binaries of the
-        # last run, so that a binary that is no longer declared does not stay in `out`.
-        for previous in out.iterdir():
-            previous.unlink()
+        util.remove_previous_binaries(out)
 
         workspace = Path(spec["src"]) / spec["root"]
         for name, selector in spec["packages"].items():

@@ -34,8 +34,10 @@ class GitSource(TypedDict):
 class Spec(TypedDict):
     # The cargo-auditable wrapper cargo builds through.
     auditable: str
-    # Declared binary name -> the output to write it to.
-    binaries: dict[str, str]
+    # The output directory that contains the binaries.
+    bin: str
+    # The binaries to take out of the build.
+    binaries: list[str]
     # Locked commit -> the git source to replace with its fetched repository.
     git: dict[str, GitSource]
     # Where the workspace sits inside `src`, empty when the project is its own root.
@@ -115,6 +117,20 @@ def _cargo_config(vendor: Path, git: dict[str, GitSource]) -> str:
     return "\n".join(sections)
 
 
+def _take_binaries(built: Path, names: list[str], into: Path) -> None:
+    """Copy each declared binary out of cargo's `target/release` into the output directory."""
+    missing = [name for name in names if not (built / name).is_file()]
+    if missing:
+        # Everything executable in there, which after an earlier build of the same project may name
+        # more than this one produced.
+        entries = built.iterdir() if built.is_dir() else []
+        found = sorted(entry.name for entry in entries if entry.is_file() and os.access(entry, os.X_OK))
+        holds = f"which holds: {', '.join(found)}" if found else "which holds no executable"
+        util.fail(f"cargo-build: no {', '.join(missing)} in target/release, {holds}")
+    for name in names:
+        util.clone_file(built / name, into / name)
+
+
 def main(argv: list[str] | None = None) -> None:
     spec = specs.parse(Spec, "cargo-build", argv)
 
@@ -136,6 +152,10 @@ def main(argv: list[str] | None = None) -> None:
 
     workspace = build / spec["root"]
     _reject_local_config(build, workspace)
+
+    out = Path(spec["bin"])
+    out.mkdir(parents=True, exist_ok=True)
+    util.remove_previous_binaries(out)
 
     cargo_home.mkdir(parents=True)
     (cargo_home / "config.toml").write_text(
@@ -167,7 +187,7 @@ def main(argv: list[str] | None = None) -> None:
         env=os.environ | {"CARGO_HOME": str(cargo_home), "CARGO_TARGET_DIR": str(target)},
     )
 
-    util.take_binaries(target / "release", spec["binaries"], tool="cargo-build", where="target/release")
+    _take_binaries(target / "release", spec["binaries"], out)
 
 
 if __name__ == "__main__":
