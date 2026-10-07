@@ -19,8 +19,6 @@ import unittest
 from pathlib import Path
 from typing import override
 
-import util
-
 import build
 import lock
 import vendor
@@ -297,9 +295,7 @@ class TestBuild(unittest.TestCase):
         (built / "hello-cli").write_text("elf", encoding="utf-8")
         (built / "hello-cli").chmod(0o755)
         with self.assertRaises(SystemExit) as caught:
-            util.take_binaries(
-                built, {"hello": str(built / "out")}, tool="cargo-build", where="target/release"
-            )
+            build._take_binaries(built, ["hello"], built / "out")
         self.assertEqual(
             str(caught.exception),
             "tine: cargo-build: no hello in target/release, which holds: hello-cli",

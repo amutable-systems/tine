@@ -10,13 +10,11 @@ load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
 
 _PRIVATE = "__tine"
 
-# All machinery lives under one deliberately private output name. The public output namespace then
-# belongs to binaries, including names such as `git` that internals must not claim.
-
 def _cargo_build_impl(
     actions: AnalysisActions,
     auditable: cmd_args,
-    binaries: dict[str, OutputArtifact],
+    bin: OutputArtifact,
+    binaries: list[str],
     build: RunInfo,
     fetch: RunInfo,
     incremental: bool,
@@ -70,6 +68,7 @@ git --git-dir="$git_dir" config --bool core.bare true""",
                 _PRIVATE + "/cargo-build.spec.json",
                 {
                     "auditable": auditable,
+                    "bin": bin,
                     "binaries": binaries,
                     "git": repositories,
                     "root": workspace["root"],
@@ -89,7 +88,8 @@ _cargo_build = dynamic_actions(
     impl = _cargo_build_impl,
     attrs = {
         "auditable": dynattrs.value(cmd_args),
-        "binaries": dynattrs.dict(str, dynattrs.output()),
+        "bin": dynattrs.output(),
+        "binaries": dynattrs.value(list[str]),
         "build": dynattrs.value(RunInfo),
         "fetch": dynattrs.value(RunInfo),
         "incremental": dynattrs.value(bool),
@@ -102,15 +102,12 @@ _cargo_build = dynamic_actions(
 
 def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
     src = ctx.attrs.src
-    reserved = [name for name in ctx.attrs.binaries if name == _PRIVATE or name.startswith(_PRIVATE + "/")]
-    if reserved:
-        fail("cargo_package {}: binaries may not be named {}".format(ctx.label.name, reserved))
-    outputs = {name: ctx.actions.declare_output(name) for name in ctx.attrs.binaries}
+    bin, outputs = project.binaries_dir(ctx.actions, _PRIVATE + "/bin", ctx.attrs.binaries, "cargo_package {}: binaries".format(ctx.label.name))
 
     # Cargo's own build directory. An action's outputs are the only place it may leave state behind,
     # and buck clears them before rerunning it unless told not to. A declared output is also uploaded to
     # the cache, only do that for incremental builds; otherwise build in scratch space.
-    target = ctx.actions.declare_output(_PRIVATE + "/target", dir = True) if ctx.attrs.incremental else None
+    target = project.kept_dir(ctx.actions, _PRIVATE + "/target") if ctx.attrs.incremental else None
 
     resolved = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
     ctx.actions.run(
@@ -133,7 +130,8 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
     ctx.actions.dynamic_output_new(
         _cargo_build(
             auditable = executable(ctx.attrs._auditable),
-            binaries = {name: out.as_output() for name, out in outputs.items()},
+            bin = bin.as_output(),
+            binaries = ctx.attrs.binaries,
             build = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
             fetch = ctx.attrs._fetch[RunInfo],
             incremental = ctx.attrs.incremental,
@@ -143,13 +141,7 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
             vendor = ctx.attrs._vendor[RunInfo],
         ),
     )
-    # Run on the host, as a developer would after `cargo build`. The box is a build environment and
-    # carries no runtime packages, so it is no better a place for a dynamically linked binary.
-    sub_targets = {name: [DefaultInfo(default_output = out), RunInfo(args = cmd_args(out))] for name, out in outputs.items()}
-    providers = [DefaultInfo(default_outputs = outputs.values(), sub_targets = sub_targets)]
-    if len(outputs) == 1:
-        providers.append(RunInfo(args = cmd_args(outputs.values()[0])))
-    return providers
+    return project.binaries_providers(outputs)
 
 _cargo_package = rule(
     impl = _cargo_package_impl,
