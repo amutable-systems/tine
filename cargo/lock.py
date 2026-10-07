@@ -88,13 +88,28 @@ def git_sources(target: str, lock: dict[str, Any]) -> dict[str, dict[str, str]]:
     return sources
 
 
+def _workspace_files(source: Path, name: str) -> list[Path]:
+    """Find files called `name` under `source`, leaving out cargo's target directories."""
+    # The build reads the source directory as it is on disk, so an ignored target/ is still in it.
+    # `cargo package` copies the crate's Cargo.toml and Cargo.lock into target/package/. If the lock
+    # search found that copy, the build would build the copy instead of the crate.
+    return [
+        path
+        for path in named_files(source, name)
+        if not any(
+            parent.name == "target" and (source / parent.parent / "Cargo.toml").is_file()
+            for parent in path.parents
+        )
+    ]
+
+
 def resolve_workspace(target: str, source: Path) -> dict[str, Any]:
     """Return the workspace root and remote inputs resolved from its lock."""
     if not source.is_dir():
         fail(f"cargo_package {target}: src must be a directory")
     # Cargo only ever reads the lock at the workspace root, so one below another, a vendored project's
     # say, cannot be the workspace.
-    found = named_files(source, "Cargo.lock")
+    found = _workspace_files(source, "Cargo.lock")
     locks = [
         lock for lock in found if not any(other.parent in lock.parents for other in found if other != lock)
     ]
@@ -102,7 +117,7 @@ def resolve_workspace(target: str, source: Path) -> dict[str, Any]:
         fail(f"cargo_package {target}: src holds several Cargo.lock files: {[str(path) for path in locks]}")
 
     if not locks:
-        if not named_files(source, "Cargo.toml"):
+        if not _workspace_files(source, "Cargo.toml"):
             fail(
                 f"cargo_package {target}: src holds no Cargo.toml; by default the checkout is expected "
                 f"in the {target}/ directory, pass `src` when it lives elsewhere"

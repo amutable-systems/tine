@@ -56,12 +56,12 @@ The override has a few constraints:
 - Every file not excluded by `.gitignore` or `[project] ignore` is a build input. tine merges both, plus
   VCS metadata directories, into the generated ignore list; put build outputs in `.gitignore` and
   anything Git tracks but Buck should not see in `[project] ignore`.
-- A build reads the checkout as it is on disk, including the files that Git ignores. Buck does not hash
-  an ignored file, so a stale build output or an editor backup can change what a build produces without
-  changing its cache key. Run release builds and builds that upload to the shared cache in a fresh clone,
-  or after `git clean -fdx`.
+- A build reads the checkout as it is on disk, including the files that Buck ignores, such as build
+  output, `.git` and the files listed in `[project] ignore`. Buck does not hash an ignored file, so an
+  ignored file can change what a build produces without changing the cache key. Keep the files a build
+  reads out of `[project] ignore`.
 - The local checkout is not checked against `rev`. Remove the mount before a release build to restore the
-  pinned source.
+  pinned source, and build releases from a fresh clone of the project.
 - A `BUCK` file in the checkout creates a package boundary that the source glob cannot cross. Projects
   containing Buck packages must use the remote fetch.
 
@@ -71,3 +71,6 @@ The override has a few constraints:
 to commit sources into or to `tine mount` a checkout over. `rpm.package()` declares one per package,
 `<name>.source`, and builds from it in place of the source archives once it holds anything; see
 [Building from a source checkout](importer.md#building-from-a-source-checkout).
+
+A consumer reads a populated slot as it is on disk, like a mounted checkout. An `image.ops.copy()` of a
+path in the slot therefore also copies the files that Buck ignores below that path into the image.

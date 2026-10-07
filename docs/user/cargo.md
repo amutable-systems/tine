@@ -106,9 +106,9 @@ How the crates are pinned, fetched and vendored is described under "Rust source 
   `git.fetch()`, fetch a revision that contains the lock.
 - **The checkout must live in the consuming repository.** A Buck package can only glob its own cell, so a
   project registered as a separate workspace cell would have to carry a build file.
-- **A checkout's own `.cargo/config.toml` is refused.** Cargo would read it ahead of the configuration the
-  build writes; keep it out of `src`. A `.cargo/config.toml` or a workspace `Cargo.toml` elsewhere in the
-  consuming repository does not affect the build.
+- **A checkout's own `.cargo/config.toml` is refused**, even one that `.gitignore` excludes. Cargo would read
+  it ahead of the configuration the build writes; keep it out of `src`. A `.cargo/config.toml` or a workspace
+  `Cargo.toml` elsewhere in the consuming repository does not affect the build.
 - **A build script cannot write beside its sources.** The build mounts the sources read-only, so a
   `build.rs` that writes outside `OUT_DIR` fails with a read-only file system error (`EROFS`). Cargo's
   documentation says that a build script should write only into `OUT_DIR`. The vendored crates.io
@@ -118,8 +118,8 @@ How the crates are pinned, fetched and vendored is described under "Rust source 
 - **A local `cargo build` inside the checkout needs `target/` in `.gitignore`**. `tine init` writes it when
   it creates the `.gitignore`. If your project already had a `.gitignore`, add `target/` yourself. Buck
   reads every file that Git does not ignore as a source. While Git does not ignore `target/`,
-  `cargo.package()` fails and names the directory. An ignored `target/` does not change what
-  `cargo.package()` produces, because cargo builds into a separate target directory.
+  `cargo.package()` fails and names the directory. The build skips an ignored `target/` when it looks
+  for the project's `Cargo.lock`.
 - **A cold daemon wants the network even when every crate is already cached**, because Buck asks the
   registry for sizes the lock does not record.
 - **Two projects sharing a crate download it twice.** Each project owns its downloads, and content-based

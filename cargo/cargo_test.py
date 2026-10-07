@@ -243,6 +243,16 @@ class TestLockDriver(unittest.TestCase):
             {"crates": [], "git": {}, "root": ""},
         )
 
+    def test_skips_the_target_directory(self) -> None:
+        packaged = self.checkout / "target/package/nodeps-0.1.0"
+        packaged.mkdir(parents=True)
+        for directory in (self.checkout, packaged):
+            (directory / "Cargo.toml").write_text(DEPLESS_MANIFEST, encoding="utf-8")
+        (packaged / "Cargo.lock").write_text(LOCK, encoding="utf-8")
+
+        with self.assertRaisesRegex(SystemExit, "src holds no Cargo.lock"):
+            lock.resolve_workspace("nodeps", self.checkout)
+
     def test_rejects_individual_files_and_missing_inputs(self) -> None:
         (self.checkout / "Cargo.toml").write_text(DEPLESS_MANIFEST, encoding="utf-8")
         for source in (self.checkout / "Cargo.toml", self.checkout / "missing"):
