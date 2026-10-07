@@ -90,10 +90,9 @@ def _build_command(binary: Path, package: str, linker_flags: list[str]) -> list[
 
 
 def build_go(spec: Spec) -> None:
-    """Build a Go module on an overlay of its sources, and discard every write to the sources."""
+    """Build a Go module in its source directory, in a read-only project."""
     # The sandbox points TMPDIR at /var/tmp, which it backs with the action's scratch space.
     scratch = Path(tempfile.gettempdir())
-    build = scratch / "build"
     out = scratch / "bin"
 
     gocache = scratch / "gocache"
@@ -151,16 +150,15 @@ def build_go(spec: Spec) -> None:
         for previous in out.iterdir():
             previous.unlink()
 
-        with rootfs.source_overlay(Path(spec["src"]), build) as tree:
-            workspace = tree / spec["root"]
-            for name, selector in spec["packages"].items():
-                package = _package(selector, workspace, env)
-                subprocess.run(
-                    _build_command(out / name, package, spec["linker_flags"]),
-                    check=True,
-                    cwd=workspace,
-                    env=env,
-                )
+        workspace = Path(spec["src"]) / spec["root"]
+        for name, selector in spec["packages"].items():
+            package = _package(selector, workspace, env)
+            subprocess.run(
+                _build_command(out / name, package, spec["linker_flags"]),
+                check=True,
+                cwd=workspace,
+                env=env,
+            )
 
 
 def main(argv: list[str] | None = None) -> None:

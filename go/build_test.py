@@ -5,7 +5,7 @@
 
     buck test tine//go:test
 
-Exercise writable source views, package selection, and build commands. The box carries no Go toolchain.
+Exercise the read-only project, package selection, and build commands. The box carries no Go toolchain.
 """
 
 import errno
@@ -32,7 +32,7 @@ class TestBuildGo(unittest.TestCase):
         (self.source / "main.go").write_text("original", encoding="utf-8")
         (self.project / "outside").write_text("outside", encoding="utf-8")
 
-    def test_source_writes_are_disposable_and_kept_outputs_survive_failure(self) -> None:
+    def test_sources_are_read_only_and_kept_outputs_survive_failure(self) -> None:
         for iteration, fail in enumerate((False, True, False)):
             with self.subTest(iteration=iteration, fail=fail):
                 scratch = self.scratch / str(iteration)
@@ -63,12 +63,13 @@ class TestBuildGo(unittest.TestCase):
                     fails: bool = fail,
                 ) -> None:
                     self.assertTrue(check)
-                    (cwd / "main.go").write_text("changed", encoding="utf-8")
+                    self.assertEqual(cwd.resolve(), self.source.resolve())
                     # The driver runs in the project directory, so `outside` is a path in the project.
-                    # The build must find the project read-only.
-                    with self.assertRaises(OSError) as caught:
-                        Path("outside").write_text("changed", encoding="utf-8")
-                    self.assertEqual(caught.exception.errno, errno.EROFS)
+                    # The build must find the project read-only, including the sources.
+                    for path in (cwd / "main.go", Path("outside")):
+                        with self.assertRaises(OSError) as caught:
+                            path.write_text("changed", encoding="utf-8")
+                        self.assertEqual(caught.exception.errno, errno.EROFS)
 
                     state = Path(env["GOCACHE"]) / "state"
                     self.assertEqual(state.read_text() if state.exists() else "0", str(index))
@@ -92,7 +93,6 @@ class TestBuildGo(unittest.TestCase):
                         build.build_go(spec)
 
                 self.assertEqual((self.source / "main.go").read_text(encoding="utf-8"), "original")
-                self.assertEqual(list((scratch / "build").iterdir()), [])
                 output = self.project / spec["bin"] / "example"
                 if fail:
                     self.assertFalse(output.exists())
