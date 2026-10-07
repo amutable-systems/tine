@@ -708,6 +708,7 @@ def _closure_name(canonical_name: str, checksum: str, suffix: str) -> str:
 def _select_package_artifacts_impl(
     actions: AnalysisActions,
     tx: ArtifactValue,
+    installed: ArtifactValue | None,
     output: OutputArtifact,
     local_packages: dict[str, list[Artifact]],
     name: str,
@@ -719,6 +720,11 @@ def _select_package_artifacts_impl(
     entries = tx.read_json()
     if type(entries) != type([]):
         fail("transaction is not a list (a frozen transaction still seeded `{}`?); resolve or remove it")
+
+    below = {}
+    for entry in installed.read_json() if installed != None else []:
+        if entry.get("source") in ("local", "repo"):
+            below[entry["pkg_checksum"]] = entry["package_id"]
 
     by_repo = {rid: pool.providers[PackagePoolValueInfo].packages for rid, pool in pools.items()}
     artifacts = {}
@@ -750,6 +756,9 @@ def _select_package_artifacts_impl(
             fail("transaction entry has invalid repo/package_id: {}".format(entry))
         if type(checksum) != type("") or len(checksum) != 64 or checksum != checksum.lower() or not _contains_only(checksum, "0123456789abcdef"):
             fail("transaction entry has invalid pkg_checksum: {}".format(entry))
+        # Skip if it's already in the layer below.
+        if below.pop(checksum, None) != None:
+            continue
         if source == "local":
             package_dirs = local_packages.get(rid)
             if package_dirs == None:
@@ -783,6 +792,15 @@ def _select_package_artifacts_impl(
         package = by_repo[rid][checksum]
         selected.setdefault(rid, {})[_closure_name(package.name, checksum, suffix)] = package.artifact
 
+    # Layering must be clean, otherwise the resolution is incompatible or the committed locks went out of sync.
+    if below:
+        fail(
+            "{}: the layer below has {} that the transaction does not; resolve both against the same snapshot (run refresh-catalog)".format(
+                name,
+                ", ".join(sorted(below.values())),
+            ),
+        )
+
     for rid, packages in selected.items():
         if rid in verifiers:
             verified = verify_packages(actions, name, rid, verifiers[rid], packages)
@@ -794,6 +812,7 @@ def _select_package_artifacts_impl(
 _select_package_artifacts_action = dynamic_actions(
     impl = _select_package_artifacts_impl,
     attrs = {
+        "installed": dynattrs.option(dynattrs.artifact_value()),
         "local_packages": dynattrs.value(dict[str, list[Artifact]]),
         "name": dynattrs.value(str),
         "output": dynattrs.output(),
@@ -811,10 +830,14 @@ def select_package_artifacts(
     suffix: str,
     extra_packages: list[Artifact] = [],
     name: str = "install.closure",
+    installed: Artifact | None = None,
 ) -> Artifact:
     """Select each transaction package's artifact into a directory.
 
     For a repository configured with a verifier, the directory holds verified copies.
+
+    `installed` is the transaction the layers below this one were installed from. Its packages are
+    left out, and the transaction has to carry every one of them to avoid upgrades and removals.
     """
     output = ctx.actions.declare_output(name, dir = True)
     pools = {}
@@ -840,6 +863,7 @@ def select_package_artifacts(
     ctx.actions.dynamic_output_new(
         _select_package_artifacts_action(
             tx = tx,
+            installed = installed,
             output = output.as_output(),
             local_packages = local_packages,
             name = name,
