@@ -62,3 +62,25 @@ The root a box is entered with is the same artifact build actions get. Its users
 read-only, while the relaxed entry mode exposes the host environment, devices, network, current directory,
 and filesystems. Commands run as the invoking user, and the project, including the shared `buck-out`,
 remains writable.
+
+## Building on another box
+
+If your project needs a box that just needs to add a few packages on top of already existing box(es), you
+can inherit their package lists instead of copying them. Declare these in `include`:
+
+```Starlark
+box.new(
+    name = "dev.box",
+    include = ["tine//catalog:fedora.rawhide.box"],
+    packages = [
+        "gcc",
+        "git",
+    ],
+    release = "tine//catalog:fedora.rawhide.release",
+)
+```
+
+A `select()` in an included box's package list follows the architecture the including box is built or
+locked for. All boxes have to use the same packaging system. Only the package list is shared, not the
+result: the box is resolved and installed on its own. A box with a committed lock keeps it when an
+included box's packages change, so refresh the catalog after bumping tine or editing the included box.

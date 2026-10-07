@@ -22,6 +22,32 @@ load(":runtime.bzl", "BoxInfo", "box_run")
 
 _REPOSITORY_PRIORITY = 99
 
+BoxPackagesInfo = provider(
+    doc = "The box's declarations, for another box to include.",
+    fields = {
+        # The package system they are named in, which an including box must share.
+        "package_system": provider_field(Dependency),
+        # The top-level packages, its includes' among them, resolved for the configured architecture.
+        "packages": provider_field(list[str]),
+    },
+)
+
+def _effective_packages(packages: list[str], include: list[Dependency], package_system: Dependency) -> list[str]:
+    """`packages` plus those of each included box, which must name them in `package_system`."""
+    effective = list(packages)
+    for box in include:
+        info = box[BoxPackagesInfo]
+        if info.package_system.label.raw_target() != package_system.label.raw_target():
+            fail(
+                "box: cannot include {}: its packages are named for {}, not {}".format(
+                    box.label.raw_target(),
+                    info.package_system.label.raw_target(),
+                    package_system.label.raw_target(),
+                )
+            )
+        effective.extend(info.packages)
+    return effective
+
 def _configure_repositories(
     ctx: AnalysisContext,
     repositories: list[Dependency],
@@ -96,7 +122,8 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     if transaction == None:
         if ctx.attrs.resolver_box == None:
             fail("box: a root box has nothing to resolve with and requires a committed lock")
-        resolve = _solve(ctx, release, ctx.attrs.resolver_box, configured_repositories, ctx.attrs.packages, ctx.attrs._arch)
+        packages = _effective_packages(ctx.attrs.packages, ctx.attrs.include, release.package_system)
+        resolve = _solve(ctx, release, ctx.attrs.resolver_box, configured_repositories, packages, ctx.attrs._arch)
         transaction = ctx.actions.declare_output("transaction.json")
         resolve.add("--out", transaction.as_output())
         ctx.actions.run(resolve, category = "box_resolve", allow_cache_upload = True)
@@ -182,6 +209,7 @@ _box = rule(
     attrs = {
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
+        "include": attrs.list(attrs.dep(providers = [BoxPackagesInfo]), default = [], doc = "boxes whose packages this one adds to"),
         "lock": attrs.option(
             attrs.source(),
             default = None,
@@ -215,9 +243,10 @@ def _box_lock_impl(ctx: AnalysisContext) -> list[Provider]:
         ),
         None,
     )
+    packages = _effective_packages(ctx.attrs.packages, ctx.attrs.include, release.package_system)
     return [
         DefaultInfo(),
-        RunInfo(args = _solve(ctx, release, ctx.attrs.resolver_box, repositories, ctx.attrs.packages, ctx.attrs._arch)),
+        RunInfo(args = _solve(ctx, release, ctx.attrs.resolver_box, repositories, packages, ctx.attrs._arch)),
     ]
 
 # What a box is made of, resolved for one architecture. The repositories come in under the target
@@ -228,6 +257,7 @@ _box_lock = rule(
     attrs = {
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
+        "include": attrs.list(attrs.dep(providers = [BoxPackagesInfo]), default = [], doc = "add packages of these boxes"),
         "labels": attrs.list(attrs.string(), default = []),
         "packages": attrs.list(attrs.string(), doc = "the box's top-level package names"),
         "release": attrs.dep(providers = [OsReleaseInfo], doc = "base OS release for the box root"),
@@ -243,15 +273,24 @@ def _box_alias_impl(ctx: AnalysisContext) -> list[Provider]:
     # entry. Build actions never reach it: they take BoxInfo and construct their own hermetic
     # box_run.
     relaxed = box_run(ctx.attrs.actual[BoxInfo], relaxed = True, name = ctx.label.name.removesuffix(".box"))
-    return ctx.attrs.actual.providers + [relaxed]
+    package_system = ctx.attrs.release[OsReleaseInfo].package_system
+    packages = BoxPackagesInfo(
+        packages = _effective_packages(ctx.attrs.packages, ctx.attrs.include, package_system),
+        package_system = package_system,
+    )
+    return ctx.attrs.actual.providers + [relaxed, packages]
 
 # The box's public name. An indirection to build the box only once, regardless of the caller's target
 # configuration; see "Box bootstrap" in docs/design/architecture.md.
+#
 _box_alias = rule(
     impl = _box_alias_impl,
     attrs = {
         "actual": attrs.exec_dep(providers = [BoxInfo]),
+        "include": attrs.list(attrs.dep(providers = [BoxPackagesInfo]), default = []),
         "labels": attrs.list(attrs.string(), default = []),
+        "packages": attrs.list(attrs.string()),
+        "release": attrs.dep(providers = [OsReleaseInfo]),
     },
 )
 
@@ -270,6 +309,7 @@ def new(
     architectures: list[str] = [],
     disable_repository_groups: list[str] | None = None,
     enable_repository_groups: list[str] | None = None,
+    include: list[str] | None = None,
     resolver_box: str | None = None,
     root: bool = False,
     labels: list[str] = [],
@@ -281,6 +321,9 @@ def new(
     A release names its own box beside it, so an unset `resolver_box` resolves through that sibling.
     A `root` box has none: it bootstraps by extracting its transaction, which is how the box a
     release names is built in the first place.
+
+    The packages of all boxes named in `include` get added on top of its own `packages`. They must all
+    use the same package system.
 
     `architectures` are the ones this box keeps a committed lock for: it is built for the host's
     alone, but refresh-catalog writes a lock per architecture, so a build on any of them has one to
@@ -311,6 +354,7 @@ def new(
         resolver_box = resolver_box,
         disable_repository_groups = disable_repository_groups,
         enable_repository_groups = enable_repository_groups,
+        include = include,
         lock = architecture.select(locks) if locks else None,
         target_compatible_with = [_EXECUTION_CONFIGURATION],
         **kwargs,
@@ -318,7 +362,10 @@ def new(
     _box_alias(
         name = name,
         actual = ":" + name + ".exec",
+        include = include,
         labels = labels,
+        packages = packages,
+        release = release,
         visibility = visibility,
     )
 
@@ -333,6 +380,7 @@ def new(
             resolver_box = ":" + name if root else resolver_box,
             disable_repository_groups = disable_repository_groups,
             enable_repository_groups = enable_repository_groups,
+            include = include,
             incoming_transition = "tine//platforms:" + arch,
             labels = ["tine:box-lock"],
         )
