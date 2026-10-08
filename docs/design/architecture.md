@@ -531,8 +531,10 @@ The host contract is intentionally small; its short list of requirements is docu
 
 All build actions run through `box.run()` and `box/sandbox.py`. The sandbox binds the box's
 userspace read-only over an otherwise isolated namespace, supplies API and temporary filesystems, clears the
-host environment, disables network by default, and offers unprivileged fakeroot behavior
-(`--suppress-chown`, `--suppress-sync`, and `--become-root`).
+host environment, disables network by default, and gives build actions unprivileged fakeroot behavior. A
+build action runs as root, and its sync calls succeed without doing anything. When the sandbox maps only
+one user ID, for example when tine runs as an unprivileged user, the action's chown calls also succeed
+without doing anything.
 
 The project is mounted at `/tine/project` and the action runs there, rather than at the path it is checked
 out under. A checkout is then free to live anywhere, including under a directory the box populates
