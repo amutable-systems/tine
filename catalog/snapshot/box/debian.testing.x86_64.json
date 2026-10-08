@@ -560,6 +560,14 @@
     "url": "https://snapshot.debian.org/archive/debian/20261003T204240Z/pool/main/n/ngtcp2/libngtcp2-crypto-ossl0_1.24.0-1_amd64.deb"
   },
   {
+    "package_id": "libnss-systemd_262-1_amd64",
+    "repo": "debian.testing.main.repository",
+    "pkg_checksum": "5903088dee5c8ded1be149f058f570e4e869b29a70d14ba789cc3d324ecb2b1d",
+    "source": "repo",
+    "size": 245568,
+    "url": "https://snapshot.debian.org/archive/debian/20261003T204240Z/pool/main/s/systemd/libnss-systemd_262-1_amd64.deb"
+  },
+  {
     "package_id": "libpam-modules-bin_1.7.0-8_amd64",
     "repo": "debian.testing.main.repository",
     "pkg_checksum": "6e11f923ab8189838263b24aa3c8f3c83e20a036527b03fea7850c7a08b046c1",

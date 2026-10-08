@@ -51,6 +51,9 @@ box.new(
         "ca-certificates",
         # the uki driver resolves module dependencies through libkmod
         "kmod-libs",
+        # The relaxed sandbox binds the host's nsswitch.conf. Without libnss_systemd, getpwuid() cannot find
+        # a systemd-homed caller, and ssh-keygen aborts.
+        "systemd-libs",
         "systemd-udev",
         "systemd-ukify",
         # ukify needs these to sign UKIs and parse PEs, but they are only weak dependencies
@@ -117,6 +120,9 @@ box.new(
         "kmod",
         # udev, repart, tmpfiles, sysusers and bootctl all ship here
         "systemd",
+        # The relaxed sandbox binds the host's nsswitch.conf. Without libnss_systemd, getpwuid() cannot find
+        # a systemd-homed caller, and ssh-keygen aborts.
+        "systemd-libs",
         "systemd-ukify",
         # ukify needs these to sign UKIs and parse PEs, but they are only optional dependencies
         "python-cryptography",
@@ -160,6 +166,9 @@ box.new(
         "kmod",
         # image/kmod.py loads libkmod.so.2 with dlopen(), and no package in this list depends on it.
         "libkmod2",
+        # The relaxed sandbox binds the host's nsswitch.conf. Without libnss_systemd, getpwuid() cannot find
+        # a systemd-homed caller, and ssh-keygen aborts.
+        "libnss-systemd",
         "libseccomp2",
         "mtools",
         "python3",
