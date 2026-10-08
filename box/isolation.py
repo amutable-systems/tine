@@ -739,27 +739,32 @@ class Overlay(_Mount):
     def __init__(
         self,
         lowerdirs: tuple[StrPath, ...],
-        upperdir: StrPath,
-        workdir: StrPath,
+        # Without an upperdir and a workdir, the kernel mounts the overlay read-only.
+        upperdir: StrPath | None,
+        workdir: StrPath | None,
         target: StrPath,
         *,
         # Set to False if you need to access upperdir right after unmounting
         lazy_unmount: bool,
     ) -> None:
         super().__init__(target)
+        if (upperdir is None) != (workdir is None):
+            raise ValueError("Overlay takes an upperdir and a workdir, or neither")
+        if upperdir is None and len(lowerdirs) < 2:
+            raise ValueError("a read-only Overlay needs at least two lowerdirs")
         self.lowerdirs = tuple(os.fspath(path) for path in lowerdirs)
-        self.upperdir = os.fspath(upperdir)
-        self.workdir = os.fspath(workdir)
+        self.upperdir = None if upperdir is None else os.fspath(upperdir)
+        self.workdir = None if workdir is None else os.fspath(workdir)
         self._unmount_flags = MNT_DETACH if lazy_unmount else 0
 
     @override
     def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> str:
         lowers = tuple(_resolve(old_root, path) for path in self.lowerdirs)
-        upper = _resolve(old_root, self.upperdir)
-        work = _resolve(old_root, self.workdir)
+        upper_and_work = (self.upperdir, self.workdir)
+        writable = tuple(_resolve(old_root, path) for path in upper_and_work if path is not None)
         target = _resolve(new_root, self.target)
 
-        for path in (*lowers, upper, work):
+        for path in (*lowers, *writable):
             if not os.path.exists(path):
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), path)
 
@@ -770,18 +775,13 @@ class Overlay(_Mount):
         def escape(path: str) -> str:
             return path.replace("\\", "\\\\").replace(",", "\\,").replace(":", "\\:")
 
-        options = ",".join(
-            (
-                f"lowerdir={':'.join(escape(path) for path in lowers)}",
-                f"upperdir={escape(upper)}",
-                f"workdir={escape(work)}",
-                "userxattr",
-                "index=off",
-                "metacopy=off",
-            )
-        )
+        options = [f"lowerdir={':'.join(escape(path) for path in lowers)}"]
+        if writable:
+            upper, work = writable
+            options += [f"upperdir={escape(upper)}", f"workdir={escape(work)}"]
+        options += ["userxattr", "index=off", "metacopy=off"]
 
-        mount("overlayfs", target, "overlay", options=options)
+        mount("overlayfs", target, "overlay", options=",".join(options))
         return target
 
 

@@ -201,6 +201,28 @@ class TestMountContexts(unittest.TestCase):
                 (target / "generated").write_text("output")
             self.assertEqual((upper / "generated").read_text(), "output")
 
+    def test_overlay_without_an_upper_is_read_only(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
+            root = Path(directory)
+            top, bottom = root / "top", root / "bottom"
+            for path in (top, bottom):
+                path.mkdir()
+            (top / "shadowed").write_text("from the top")
+            (bottom / "shadowed").write_text("from the bottom")
+            (bottom / "underneath").write_text("underneath")
+            target = root / "target"
+            with isolation.Overlay((top, bottom), None, None, target, lazy_unmount=False):
+                self.assertEqual((target / "shadowed").read_text(), "from the top")
+                self.assertEqual((target / "underneath").read_text(), "underneath")
+                with self.assertRaises(OSError) as raised:
+                    (target / "generated").write_text("output")
+                self.assertEqual(raised.exception.errno, errno.EROFS)
+
+    def test_overlay_needs_a_workdir_with_its_upper_and_two_lowers_without(self) -> None:
+        for lowers, upper, work in ((("lower",), "upper", None), (("lower",), None, None)):
+            with self.subTest(lowers=lowers, upper=upper, work=work), self.assertRaises(ValueError):
+                isolation.Overlay(lowers, upper, work, "target", lazy_unmount=False)
+
     def test_overlay_parent_keeps_its_mode_with_a_permissive_umask(self) -> None:
         with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
             root = Path(directory)
