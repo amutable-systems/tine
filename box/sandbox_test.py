@@ -18,7 +18,7 @@ from contextlib import contextmanager, redirect_stdout, suppress
 from pathlib import Path
 
 import sandbox
-from isolation import Bind, Devices, Filesystem, Symlink, Tmpfs
+from isolation import Bind, Devices, Filesystem, Overlay, Stage, Symlink, Tmpfs
 from sandbox import _PROJECT
 
 
@@ -55,7 +55,9 @@ def _project() -> Iterator[tuple[Path, Path]]:
 
 
 def _launch(*args: str) -> sandbox.Launch:
-    return sandbox._launch(sandbox._parse(list(args)))
+    options = sandbox._parse(list(args))
+    tools = os.path.realpath(options.tools[-1])
+    return sandbox._launch(options, tools, Stage(Bind(tools, tools, readonly=True)))
 
 
 def _unshare(*args: str) -> unittest.mock.MagicMock:
@@ -109,7 +111,7 @@ class TestRequest(unittest.TestCase):
                 args = sandbox._parse(argv)
 
                 self.assertEqual(argv, original)
-                self.assertEqual(args.tools, "tools")
+                self.assertEqual(args.tools, ["tools"])
                 self.assertEqual(args.ro_bind, [("/src", "/dst"), ("/other", "/elsewhere")])
                 self.assertEqual(args.setenv, {"KEY": "value=with=equals", "EMPTY": ""})
                 self.assertEqual(args.source_date_epoch, -1)
@@ -133,7 +135,7 @@ class TestRequest(unittest.TestCase):
                 self.assertEqual(sandbox._parse(argv).cmd, command)
                 self.assertEqual(argv, original)
 
-    def test_repeated_values_keep_the_last_scalar_and_all_binds(self) -> None:
+    def test_repeated_values_keep_the_last_scalar_and_all_binds_and_layers(self) -> None:
         args = sandbox._parse(
             [
                 "--tools=first",
@@ -153,7 +155,7 @@ class TestRequest(unittest.TestCase):
             ]
         )
 
-        self.assertEqual(args.tools, "second")
+        self.assertEqual(args.tools, ["first", "second"])
         self.assertEqual(args.source_date_epoch, -2)
         self.assertEqual(args.setenv, {"KEY": "second=last"})
         self.assertEqual(args.ro_bind, [("/first", "/dst"), ("/second", "/dst")])
@@ -168,7 +170,7 @@ class TestRequest(unittest.TestCase):
         for value in ("-", "-tools", "--tools"):
             with self.subTest(value=value):
                 argument = [f"--tools={value}"] if value.startswith("--") else ["--tools", value]
-                self.assertEqual(sandbox._parse([*argument, "--", "true"]).tools, value)
+                self.assertEqual(sandbox._parse([*argument, "--", "true"]).tools, [value])
 
     def test_default_arguments_come_from_sys_argv(self) -> None:
         with unittest.mock.patch.object(sys, "argv", ["sandbox", "--tools=tools", "--", "true"]):
@@ -389,6 +391,137 @@ class TestRelaxed(unittest.TestCase):
         self.assertEqual(launch.command, ())
 
 
+def _layer(tools: Path) -> Path:
+    layer = tools.parent / "layer"
+    (layer / "usr/bin").mkdir(parents=True)
+    (layer / "usr/bin/tool").write_text("from the layer\n")
+    (layer / "etc").mkdir()
+    (layer / "etc/passwd").write_text("layered:x:1:1::/:/bin/sh\n")
+    (layer / "srv").mkdir()
+    return layer
+
+
+def _runnable(tools: Path) -> Path:
+    # The test layers contain no programs, so a command runs the test box's shell, bound in from /usr.
+    # The lib and lib64 links point into that bound /usr, so the dynamic loader finds the libraries
+    # of the shell.
+    host = tools.parent / "host-usr"
+    for name in ("lib", "lib64"):
+        (tools / name).symlink_to(host / name)
+    # Relaxed mode binds files over /etc/passwd, /etc/group and /etc/resolv.conf for every command,
+    # even for a command that reads none of the files. The tools tree's /etc is bound read-only, so
+    # the sandbox cannot create a missing mount point in it. enter_sandbox() then fails with EROFS.
+    for name in ("passwd", "group", "resolv.conf"):
+        (tools / "etc" / name).touch()
+    (tools / "usr/bin/base").write_text("from the base\n")
+    return host
+
+
+def _run_relaxed(layers: tuple[Path, ...], host: Path, script: str) -> subprocess.CompletedProcess[str]:
+    # The hermetic mode loads libseccomp, and the test box does not install it. Run the sandbox in
+    # relaxed mode instead.
+    return subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            "import sys; sys.path.insert(0, sys.argv[1]); import sandbox; sandbox.main(sys.argv[2:])",
+            str(Path(sandbox.__file__).parent),
+            *(word for layer in layers for word in ("--tools", str(layer))),
+            *("--relaxed", "--ro-bind", f"/usr:{host}"),
+            *("--", str(host / "bin/sh"), "-c", script),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+
+class TestLayers(unittest.TestCase):
+    def test_launch_reads_the_merged_tree(self) -> None:
+        with _project() as (_, tools):
+            layer = _layer(tools)
+            with Overlay((layer, tools), None, None, layer, lazy_unmount=False):
+                hermetic = _launch("--tools", str(layer), "--", "true")
+                relaxed = _launch("--tools", str(layer), "--relaxed", "--", "true")
+
+            self.assertIn(("usr/bin", "/bin"), [(link.source, link.target) for link in _symlinks(hermetic)])
+            self.assertIn((layer / "srv", Path("/srv"), True, False), _bind_specs(hermetic))
+            self.assertIn((layer / "home", Path("/home"), True, False), _bind_specs(hermetic))
+            passwd = next(bind for bind in _binds(relaxed) if bind.target == "/etc/passwd")
+            self.assertTrue(Path(passwd.source).read_text().startswith("layered:"))
+
+    def test_main_mounts_the_merged_tree_only_while_it_plans(self) -> None:
+        for layers in (["/top"], ["/base", "/top"]):
+            with self.subTest(layers=layers):
+                calls = unittest.mock.MagicMock()
+                launch = sandbox.Launch(filesystems=(), chdir=None, command=("true",), environment={})
+                calls._launch.return_value = launch
+                argv = [word for layer in layers for word in ("--tools", layer)] + ["--", "true"]
+
+                with (
+                    unittest.mock.patch.object(sandbox, "unshare_sandbox", calls.unshare_sandbox),
+                    unittest.mock.patch.object(sandbox, "Overlay", calls.Overlay),
+                    unittest.mock.patch.object(sandbox, "_launch", calls._launch),
+                    unittest.mock.patch.object(sandbox, "enter_sandbox", calls.enter_sandbox),
+                    unittest.mock.patch.object(os, "execvpe"),
+                    self.assertRaises(SystemExit),
+                ):
+                    sandbox.main(argv)
+
+                stage = calls._launch.call_args.args[2]
+                if len(layers) == 1:
+                    expected = ["unshare_sandbox", "_launch", "enter_sandbox"]
+                    self.assertIsInstance(stage.filesystem, Bind)
+                    self.assertEqual((stage.filesystem.source, stage.filesystem.target), ("/top", "/top"))
+                else:
+                    expected = [
+                        "unshare_sandbox",
+                        "Overlay",
+                        "Overlay().__enter__",
+                        "_launch",
+                        "Overlay().__exit__",
+                        "enter_sandbox",
+                    ]
+                    calls.Overlay.assert_called_once_with(
+                        ("/top", "/base"), None, None, "/top", lazy_unmount=True
+                    )
+                    self.assertIs(stage.filesystem, calls.Overlay.return_value)
+                self.assertEqual([call[0] for call in calls.mock_calls], expected)
+                self.assertEqual(calls._launch.call_args.args[1], "/top")
+                calls.enter_sandbox.assert_called_once_with((), None)
+
+    def test_a_command_sees_a_single_layer(self) -> None:
+        with _project() as (_, tools):
+            host = _runnable(tools)
+
+            process = _run_relaxed((tools,), host, f"{host}/bin/cat /usr/bin/base")
+
+        self.assertEqual(process.returncode, 0, process.stderr)
+        self.assertEqual(process.stdout, "from the base\n")
+
+    def test_a_command_sees_the_merged_layers_and_the_top_layer_itself(self) -> None:
+        with _project() as (_, tools):
+            layer = _layer(tools)
+            host = _runnable(tools)
+
+            # Relaxed mode binds the host's /var, which contains the top layer. The ls command reads the
+            # top layer through it. Its output contains only the files of the top layer.
+            script = (
+                f"{host}/bin/cat /usr/bin/base /usr/bin/tool; {host}/bin/ls {layer}/usr/bin; "
+                f"{host}/bin/cat /proc/self/mountinfo"
+            )
+            process = _run_relaxed((tools, layer), host, script)
+
+        self.assertEqual(process.returncode, 0, process.stderr)
+        lines = process.stdout.splitlines()
+        self.assertEqual(lines[:3], ["from the base", "from the layer", "tool"])
+        # Only the binds of the tools tree show the merged tree. The overlay that the sandbox mounts in
+        # its scratch directory must not appear anywhere else, for example below the host's /var.
+        merged = {line.split()[4] for line in lines[3:] if " - overlay " in line and str(layer) in line}
+        self.assertEqual(merged, {"/usr", "/etc"})
+
+
 class TestBoxEnvironment(unittest.TestCase):
     def test_nested_box_depth(self) -> None:
         for previous, depth in (
@@ -468,7 +601,8 @@ class TestStartup(unittest.TestCase):
                     "-B",
                     "-c",
                     "import sys; sys.path.insert(0, sys.argv[1]); import sandbox; "
-                    "sandbox._launch(sandbox._parse(['--tools', sys.argv[2], '--', 'true'])); "
+                    "sandbox._launch(sandbox._parse(['--tools', sys.argv[2], '--', 'true']), sys.argv[2], "
+                    "sandbox.Stage()); "
                     "print('\\n'.join(sys.modules))",
                     str(Path(sandbox.__file__).parent),
                     str(tools),
@@ -542,7 +676,9 @@ class TestInteractiveShell(unittest.TestCase):
             return "/bin/bash"
 
         with (
-            unittest.mock.patch.object(sandbox, "_parse"),
+            unittest.mock.patch.object(
+                sandbox, "_parse", return_value=sandbox._parse(["--tools=/tools", "--", "true"])
+            ),
             unittest.mock.patch.object(sandbox, "_launch", return_value=launch),
             unittest.mock.patch.object(sandbox, "unshare_sandbox"),
             unittest.mock.patch.object(sandbox, "enter_sandbox", side_effect=enter),
