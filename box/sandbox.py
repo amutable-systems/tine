@@ -15,7 +15,16 @@ import os
 import sys
 import warnings  # noqa: F401 (os.execvpe imports it after the host Python is no longer reachable)
 
-from isolation import Bind, Devices, Filesystem, Sandbox, SandboxOSError, Symlink, Tmpfs, enter
+from isolation import (
+    Bind,
+    Devices,
+    Filesystem,
+    SandboxOSError,
+    Symlink,
+    Tmpfs,
+    enter_sandbox,
+    unshare_sandbox,
+)
 
 TYPE_CHECKING = False
 
@@ -78,10 +87,17 @@ def _prompt_prefix(name: str, previous: str, prefix: str) -> str:
 
 
 class Launch:
-    """Pair one sandbox description with the process it launches."""
+    """Pair the sandbox's filesystems with the process it launches."""
 
-    def __init__(self, sandbox: Sandbox, command: tuple[str, ...], environment: dict[str, str]) -> None:
-        self.sandbox = sandbox
+    def __init__(
+        self,
+        filesystems: tuple[Filesystem, ...],
+        chdir: str | None,
+        command: tuple[str, ...],
+        environment: dict[str, str],
+    ) -> None:
+        self.filesystems = filesystems
+        self.chdir = chdir
         self.command = command
         self.environment = environment
 
@@ -394,25 +410,20 @@ def _launch(args: Options) -> Launch:
         )
         filesystems.append(Bind("/run", "/run", readonly=True))
 
-    return Launch(
-        sandbox=Sandbox(
-            filesystems=tuple(filesystems),
-            chdir=chdir,
-            become_root=not args.relaxed,
-            isolate_network=not args.relaxed and not args.network,
-            suppress_chown=not args.relaxed,
-            suppress_sync=not args.relaxed,
-        ),
-        command=command,
-        environment=environment,
-    )
+    return Launch(filesystems=tuple(filesystems), chdir=chdir, command=command, environment=environment)
 
 
 def main(argv: list[str] | None = None) -> NoReturn:
     args = _parse(argv)
     launch = _launch(args)
     try:
-        enter(launch.sandbox)
+        unshare_sandbox(
+            become_root=not args.relaxed,
+            isolate_network=not args.relaxed and not args.network,
+            suppress_chown=not args.relaxed,
+            suppress_sync=not args.relaxed,
+        )
+        enter_sandbox(launch.filesystems, launch.chdir)
     except SandboxOSError as error:
         print(error.message, file=sys.stderr)
         raise

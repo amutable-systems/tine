@@ -14,11 +14,11 @@ import tempfile
 import unittest
 import unittest.mock
 from collections.abc import Iterator
-from contextlib import contextmanager, redirect_stdout
+from contextlib import contextmanager, redirect_stdout, suppress
 from pathlib import Path
 
 import sandbox
-from isolation import Bind, Devices, Sandbox, Symlink, Tmpfs
+from isolation import Bind, Devices, Filesystem, Symlink, Tmpfs
 from sandbox import _PROJECT
 
 
@@ -58,8 +58,20 @@ def _launch(*args: str) -> sandbox.Launch:
     return sandbox._launch(sandbox._parse(list(args)))
 
 
+def _unshare(*args: str) -> unittest.mock.MagicMock:
+    unshare = unittest.mock.MagicMock()
+    with (
+        unittest.mock.patch.object(sandbox, "unshare_sandbox", unshare),
+        unittest.mock.patch.object(sandbox, "enter_sandbox"),
+        unittest.mock.patch.object(os, "execvpe"),
+        suppress(SystemExit),
+    ):
+        sandbox.main(list(args))
+    return unshare
+
+
 def _binds(launch: sandbox.Launch) -> list[Bind]:
-    return [filesystem for filesystem in launch.sandbox.filesystems if isinstance(filesystem, Bind)]
+    return [filesystem for filesystem in launch.filesystems if isinstance(filesystem, Bind)]
 
 
 def _bind_specs(launch: sandbox.Launch) -> list[tuple[Path, Path, bool, bool]]:
@@ -67,11 +79,11 @@ def _bind_specs(launch: sandbox.Launch) -> list[tuple[Path, Path, bool, bool]]:
 
 
 def _symlinks(launch: sandbox.Launch) -> list[Symlink]:
-    return [filesystem for filesystem in launch.sandbox.filesystems if isinstance(filesystem, Symlink)]
+    return [filesystem for filesystem in launch.filesystems if isinstance(filesystem, Symlink)]
 
 
 def _tmpfs(launch: sandbox.Launch) -> list[Tmpfs]:
-    return [filesystem for filesystem in launch.sandbox.filesystems if isinstance(filesystem, Tmpfs)]
+    return [filesystem for filesystem in launch.filesystems if isinstance(filesystem, Tmpfs)]
 
 
 class TestRequest(unittest.TestCase):
@@ -269,7 +281,7 @@ class TestHermetic(unittest.TestCase):
             self.assertIn((Path("/proc"), Path("/proc"), False, False), _bind_specs(launch))
             self.assertIn(
                 ("/dev", None),
-                [(fs.target, fs.tty) for fs in launch.sandbox.filesystems if isinstance(fs, Devices)],
+                [(fs.target, fs.tty) for fs in launch.filesystems if isinstance(fs, Devices)],
             )
             self.assertEqual([tmpfs.target for tmpfs in _tmpfs(launch)], ["/run", "/tmp", "/var/tmp"])
 
@@ -278,7 +290,7 @@ class TestHermetic(unittest.TestCase):
             launch = _launch("--tools", str(tools), "--bind-cwd", "--", "true")
 
             self.assertIn((project, Path(_PROJECT), False, False), _bind_specs(launch))
-            self.assertEqual(launch.sandbox.chdir, _PROJECT)
+            self.assertEqual(launch.chdir, _PROJECT)
 
     def test_tools_directory_on_the_project_path_is_bound_like_any_other(self) -> None:
         with _project() as (project, tools):
@@ -339,9 +351,10 @@ class TestHermetic(unittest.TestCase):
 
     def test_network_replaces_the_unshared_namespace(self) -> None:
         with _project() as (_, tools):
-            launch = _launch("--tools", str(tools), "--network", "--", "true")
+            args = ("--tools", str(tools), "--network", "--", "true")
+            launch = _launch(*args)
 
-            self.assertFalse(launch.sandbox.isolate_network)
+            self.assertFalse(_unshare(*args).call_args.kwargs["isolate_network"])
             self.assertIn((Path("/run"), Path("/run"), True, False), _bind_specs(launch))
             self.assertIn(
                 (Path("/etc/resolv.conf"), Path("/etc/resolv.conf"), True, True),
@@ -350,22 +363,24 @@ class TestHermetic(unittest.TestCase):
 
     def test_builds_get_fakeroot_semantics(self) -> None:
         with _project() as (_, tools):
-            launch = _launch("--tools", str(tools), "--", "true")
+            namespaces = _unshare("--tools", str(tools), "--", "true").call_args.kwargs
 
-            self.assertTrue(launch.sandbox.become_root)
-            self.assertTrue(launch.sandbox.suppress_chown)
-            self.assertTrue(launch.sandbox.suppress_sync)
+            self.assertTrue(namespaces["become_root"])
+            self.assertTrue(namespaces["suppress_chown"])
+            self.assertTrue(namespaces["suppress_sync"])
 
 
 class TestRelaxed(unittest.TestCase):
     def test_userspace_comes_from_tools_and_the_rest_from_the_host(self) -> None:
         with _project() as (project, tools):
-            launch = _launch("--tools", str(tools), "--relaxed", "--", "true")
+            args = ("--tools", str(tools), "--relaxed", "--", "true")
+            launch = _launch(*args)
 
             self.assertIn((tools / "usr", Path("/usr"), True, False), _bind_specs(launch))
-            self.assertEqual(launch.sandbox.chdir, str(project))
-            self.assertFalse(launch.sandbox.isolate_network)
-            self.assertFalse(launch.sandbox.become_root)
+            self.assertEqual(launch.chdir, str(project))
+            namespaces = _unshare(*args).call_args.kwargs
+            self.assertFalse(namespaces["isolate_network"])
+            self.assertFalse(namespaces["become_root"])
 
     def test_a_development_box_may_choose_its_shell_after_entry(self) -> None:
         with _project() as (_, tools):
@@ -515,10 +530,10 @@ class TestInteractiveShell(unittest.TestCase):
             sandbox._interactive_shell({"PATH": "/box/bin"})
 
     def test_shell_is_chosen_after_entering_the_box(self) -> None:
-        launch = sandbox.Launch(sandbox=Sandbox(filesystems=()), command=(), environment={})
+        launch = sandbox.Launch(filesystems=(), chdir=None, command=(), environment={})
         entered = False
 
-        def enter(_sandbox: Sandbox) -> None:
+        def enter(_filesystems: tuple[Filesystem, ...], _chdir: str | None) -> None:
             nonlocal entered
             entered = True
 
@@ -529,7 +544,8 @@ class TestInteractiveShell(unittest.TestCase):
         with (
             unittest.mock.patch.object(sandbox, "_parse"),
             unittest.mock.patch.object(sandbox, "_launch", return_value=launch),
-            unittest.mock.patch.object(sandbox, "enter", side_effect=enter),
+            unittest.mock.patch.object(sandbox, "unshare_sandbox"),
+            unittest.mock.patch.object(sandbox, "enter_sandbox", side_effect=enter),
             unittest.mock.patch.object(sandbox, "_interactive_shell", side_effect=shell),
             unittest.mock.patch.object(os, "execvpe") as execute,
             self.assertRaises(SystemExit) as raised,
