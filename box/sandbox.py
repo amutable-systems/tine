@@ -19,7 +19,9 @@ from isolation import (
     Bind,
     Devices,
     Filesystem,
+    Overlay,
     SandboxOSError,
+    Stage,
     Symlink,
     Tmpfs,
     enter_sandbox,
@@ -63,7 +65,8 @@ _HELP = """\
 usage: sandbox --tools TOOLS [OPTIONS...] [--] COMMAND [ARGUMENTS...]
 
   -h, --help                 Show this help
-  --tools TOOLS              Read-only pinned tools tree (required)
+  --tools TOOLS              Read-only pinned tools tree (required); repeat to
+                             stack layers, lowest first
   --ro-bind SRC:DST          Add a read-only bind mount (repeatable)
   --setenv K=V               Set an environment variable (repeatable)
   --source-date-epoch EPOCH   Set SOURCE_DATE_EPOCH
@@ -104,7 +107,7 @@ class Launch:
 
 class Options:
     def __init__(self) -> None:
-        self.tools: str | None = None
+        self.tools: list[str] = []
         self.ro_bind: list[tuple[str, str]] = []
         self.setenv: dict[str, str] = {}
         self.source_date_epoch: int | None = None
@@ -127,19 +130,19 @@ def _relocate(value: str, cwd: str) -> str:
     return value.replace(cwd + "/", _PROJECT + "/")
 
 
-def _relaxed(tools: str) -> list[Filesystem]:
+def _relaxed(tools: str, stage: Stage) -> list[Filesystem]:
     """Mount pinned userspace over a host-integrated root."""
     out: list[Filesystem] = []
     for name in _TOOLS_DIRS:
         entry = os.path.join(tools, name)
         if os.path.isdir(entry):
-            out.append(Bind(entry, "/" + name, readonly=True))
+            out.append(Bind(entry, "/" + name, readonly=True, stage=stage))
     for name in _TOOLS_LINKS:
         entry = os.path.join(tools, name)
         if os.path.islink(entry):
             out.append(Symlink(os.readlink(entry), "/" + name))
         elif os.path.isdir(entry):
-            out.append(Bind(entry, "/" + name, readonly=True))
+            out.append(Bind(entry, "/" + name, readonly=True, stage=stage))
     for name in sorted(os.listdir("/")):
         if name in _HOST_SKIP:
             continue
@@ -149,7 +152,7 @@ def _relaxed(tools: str) -> list[Filesystem]:
         else:
             out.append(Bind(entry, entry))
     if os.path.isdir(etc := os.path.join(tools, "etc")):
-        out.append(Bind(etc, "/etc", readonly=True))
+        out.append(Bind(etc, "/etc", readonly=True, stage=stage))
     for f in _HOST_ETC:
         host = os.path.join("/etc", f)
         if os.path.exists(host) and os.path.exists(os.path.join(etc, f)):
@@ -240,7 +243,7 @@ def _parse(argv: list[str] | None) -> Options:
 
         option = argument.partition("=")[0]
         if option == "--tools":
-            args.tools = _value(argument, argv)
+            args.tools.append(_value(argument, argv))
         elif option == "--ro-bind":
             source, separator, target = _value(argument, argv).partition(":")
             if not source or not separator or not os.path.isabs(target):
@@ -269,7 +272,7 @@ def _parse(argv: list[str] | None) -> Options:
             _fail(f"unrecognized option: {argument}")
 
     args.cmd = list(reversed(argv))
-    if args.tools is None:
+    if not args.tools:
         _fail("--tools is required")
     if not args.cmd and not args.box:
         _fail("no command given (expected `-- cmd ...`)")
@@ -318,16 +321,18 @@ def _interactive_shell(environment: dict[str, str]) -> str:
     _fail("no shell installed in box ($SHELL and bash were not found)")
 
 
-def _launch(args: Options) -> Launch:
-    """Translate the command-line request into the Python sandbox interface."""
+def _launch(args: Options, tools: str, stage: Stage) -> Launch:
+    """Translate the command-line request into the Python sandbox interface.
+
+    `tools` is the path of the tools tree that `_launch()` reads. The binds of the tools tree take
+    their sources from `stage`.
+    """
     filesystems: list[Filesystem] = []
     cwd = os.getcwd() if args.bind_cwd else None
 
     # Recreate usr-merge symlinks instead of binding through them.
-    assert args.tools is not None
-    tools = os.path.realpath(args.tools)
     if args.relaxed:
-        filesystems += _relaxed(tools)
+        filesystems += _relaxed(tools, stage)
     else:
         for name in sorted(os.listdir(tools)):
             if name in _PROVIDED:
@@ -337,7 +342,7 @@ def _launch(args: Options) -> Launch:
             if os.path.islink(entry):
                 filesystems.append(Symlink(os.readlink(entry), dest))
             elif os.path.isdir(entry):
-                filesystems.append(Bind(entry, dest, readonly=True))
+                filesystems.append(Bind(entry, dest, readonly=True, stage=stage))
 
     for src, dest in args.ro_bind:
         filesystems.append(Bind(_abs(src), dest, readonly=True))
@@ -415,7 +420,10 @@ def _launch(args: Options) -> Launch:
 
 def main(argv: list[str] | None = None) -> NoReturn:
     args = _parse(argv)
-    launch = _launch(args)
+    # `layers` lists the layers of the tools tree top first, which is the order of overlayfs lower
+    # directories.
+    layers = tuple(os.path.realpath(layer) for layer in reversed(args.tools))
+    tools = layers[0]
     try:
         unshare_sandbox(
             become_root=not args.relaxed,
@@ -423,6 +431,17 @@ def main(argv: list[str] | None = None) -> NoReturn:
             suppress_chown=not args.relaxed,
             suppress_sync=not args.relaxed,
         )
+        if len(layers) == 1:
+            launch = _launch(args, tools, Stage(Bind(tools, tools, readonly=True)))
+        else:
+            # _launch() reads the merged tools tree, so mount the overlay over the top layer while it
+            # runs. The top layer is also the first lower directory of the overlay. The kernel resolves
+            # every lower directory before it mounts the overlay, so the overlay can cover the top
+            # layer. The overlay needs the sandbox's mount namespace, so it is mounted after
+            # unshare_sandbox(). enter_sandbox() mounts the same overlay again in its scratch directory.
+            merged = Overlay(layers, None, None, tools, lazy_unmount=True)
+            with merged:
+                launch = _launch(args, tools, Stage(merged))
         enter_sandbox(launch.filesystems, launch.chdir)
     except SandboxOSError as error:
         print(error.message, file=sys.stderr)
