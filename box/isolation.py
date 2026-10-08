@@ -56,6 +56,8 @@ LINUX_CAPABILITY_VERSION_3 = 0x20080522
 MNT_DETACH = 2
 UMOUNT_NOFOLLOW = 8
 MOUNT_ATTR_RDONLY = 0x00000001
+MOUNT_ATTR_NOSUID = 0x00000002
+MOUNT_ATTR_NODEV = 0x00000004
 MOUNT_ATTR_SIZE_VER0 = 32
 MOVE_MOUNT_F_EMPTY_PATH = 0x00000004
 MS_BIND = 4096
@@ -452,9 +454,14 @@ def _open_tree(path: StrPath, *, recursive: bool) -> int:
     return result
 
 
-def _mount_setattr(fd: int, *, readonly: bool, recursive: bool) -> None:
+def _mount_setattr(
+    fd: int, *, readonly: bool, recursive: bool, nosuid: bool = False, nodev: bool = False
+) -> None:
     flags = AT_EMPTY_PATH | (AT_RECURSIVE if recursive else 0)
-    attributes = _MountAttributes(attr_set=MOUNT_ATTR_RDONLY if readonly else 0)
+    attr_set = MOUNT_ATTR_RDONLY if readonly else 0
+    attr_set |= MOUNT_ATTR_NOSUID if nosuid else 0
+    attr_set |= MOUNT_ATTR_NODEV if nodev else 0
+    attributes = _MountAttributes(attr_set=attr_set)
 
     try:
         function = _LIBC.mount_setattr
@@ -597,7 +604,7 @@ class _Mount:
         self.target = os.fspath(target)
         self._mounted_target: str | None = None
 
-    def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> str:
+    def mount(self, root: StrPath = _ROOT) -> str:
         """Mount permanently and return the actual mount point."""
         raise NotImplementedError
 
@@ -614,31 +621,56 @@ class _Mount:
         self._mounted_target = None
 
 
+class Stage:
+    """A directory tree that filesystems take their sources from.
+
+    enter_sandbox() creates a directory in its scratch directory, mounts `filesystem` with its target
+    resolved under that directory, and sets `root` to the directory. No bind of the project or of a
+    host directory covers the scratch directory, so the tree only appears where a filesystem takes a
+    source from it.
+    """
+
+    def __init__(self, filesystem: _Mount | None = None) -> None:
+        self.filesystem = filesystem
+        self.root = _ROOT
+
+
+# HOST is the stage of the host's root directory. It has no filesystem. enter_sandbox() moves the
+# host's root to /oldroot and updates `HOST.root`.
+HOST = Stage()
+
+
 class Bind(_Mount):
     # A bind mount clones its source recursively, and submounts inherited across a user namespace are
     # locked, so an individual unmount of one fails with EINVAL. Unmounting only works lazily.
     _unmount_flags = MNT_DETACH
 
     def __init__(
-        self, source: StrPath, target: StrPath, readonly: bool = False, nofollow: bool = False
+        self,
+        source: StrPath,
+        target: StrPath,
+        readonly: bool = False,
+        nofollow: bool = False,
+        stage: Stage = HOST,
     ) -> None:
         super().__init__(target)
         self.source = os.fspath(source)
         self.readonly = readonly
         self.nofollow = nofollow
+        self.stage = stage
 
     @override
-    def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> str:
-        source = _resolve(old_root, self.source, nofollow=self.nofollow)
+    def mount(self, root: StrPath = _ROOT) -> str:
+        source = _resolve(self.stage.root, self.source, nofollow=self.nofollow)
         source_is_link = self.nofollow and os.path.islink(source)
         source_is_directory = os.path.isdir(source) and not source_is_link
-        unresolved_target = _resolve(new_root, self.target, nofollow=True)
+        unresolved_target = _resolve(root, self.target, nofollow=True)
 
         if not source_is_directory and os.path.islink(unresolved_target):
             _bind_mount(source, unresolved_target, readonly=self.readonly)
             return unresolved_target
 
-        target = _resolve(new_root, self.target)
+        target = _resolve(root, self.target)
         if not os.path.exists(target):
             os.makedirs(os.path.dirname(target), mode=0o755, exist_ok=True)
             if source_is_link or os.path.isfile(source):
@@ -670,19 +702,19 @@ class Devices(_Mount):
         self.tty = None if tty is None else os.fspath(tty)
 
     @override
-    def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> str:
-        target = _resolve(new_root, self.target)
+    def mount(self, root: StrPath = _ROOT) -> str:
+        target = _resolve(root, self.target)
         os.makedirs(target, mode=0o755, exist_ok=True)
         mount("tmpfs", target, "tmpfs", options="mode=0755")
 
         with _UnmountOnError(target):
             # A later device bind can fail after the parent tmpfs is already mounted.
-            self._populate(old_root, target)
+            self._populate(target)
         return target
 
-    def _populate(self, old_root: StrPath, target: str) -> None:
+    def _populate(self, target: str) -> None:
         for name in ("null", "zero", "full", "random", "urandom", "tty", "fuse"):
-            source = _under(old_root, "/dev/" + name)
+            source = _under(HOST.root, "/dev/" + name)
             if name == "fuse" and not os.path.exists(source):
                 continue
 
@@ -703,15 +735,15 @@ class Devices(_Mount):
         if self.tty is not None:
             destination = os.path.join(target, "console")
             _touch(destination)
-            mount(_under(old_root, self.tty), destination, flags=MS_BIND)
+            mount(_under(HOST.root, self.tty), destination, flags=MS_BIND)
 
 
 class Tmpfs(_Mount):
     _unmount_flags = MNT_DETACH
 
     @override
-    def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> str:
-        target = _resolve(new_root, self.target)
+    def mount(self, root: StrPath = _ROOT) -> str:
+        target = _resolve(root, self.target)
         os.makedirs(target, mode=0o755, exist_ok=True)
 
         options = None if os.path.basename(target) == "tmp" else "mode=0755"
@@ -724,8 +756,8 @@ class Symlink:
         self.source = os.fspath(source)
         self.target = os.fspath(target)
 
-    def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> None:
-        target = _resolve(new_root, self.target, nofollow=True)
+    def mount(self, root: StrPath = _ROOT) -> None:
+        target = _resolve(root, self.target, nofollow=True)
         os.makedirs(os.path.dirname(target) or ".", mode=0o755, exist_ok=True)
 
         try:
@@ -758,11 +790,11 @@ class Overlay(_Mount):
         self._unmount_flags = MNT_DETACH if lazy_unmount else 0
 
     @override
-    def mount(self, old_root: StrPath = _ROOT, new_root: StrPath = _ROOT) -> str:
-        lowers = tuple(_resolve(old_root, path) for path in self.lowerdirs)
+    def mount(self, root: StrPath = _ROOT) -> str:
+        lowers = tuple(_resolve(HOST.root, path) for path in self.lowerdirs)
         upper_and_work = (self.upperdir, self.workdir)
-        writable = tuple(_resolve(old_root, path) for path in upper_and_work if path is not None)
-        target = _resolve(new_root, self.target)
+        writable = tuple(_resolve(HOST.root, path) for path in upper_and_work if path is not None)
+        target = _resolve(root, self.target)
 
         for path in (*lowers, *writable):
             if not os.path.exists(path):
@@ -868,8 +900,21 @@ def enter_sandbox(filesystems: tuple[Filesystem, ...], chdir: StrPath | None = N
         os.chdir(".")
         umount2("oldroot/tmp", MNT_DETACH)
 
+    HOST.root = "/oldroot"
+    stages = dict.fromkeys(fs.stage for fs in filesystems if isinstance(fs, Bind) and fs.stage is not HOST)
+    for index, stage in enumerate(stages):
+        assert stage.filesystem is not None
+        stage.root = f"/stage{index}"
+        os.mkdir(stage.root, mode=0o755)
+        target = stage.filesystem.mount(stage.root)
+        # A bind copies the flags of the host mount it comes from, for example nosuid and nodev. An
+        # overlay is a new mount and has neither flag. Set both on every stage, so that a tree gets
+        # the same flags whether it is a bind or an overlay.
+        with _Close(os.open(target, os.O_PATH | os.O_CLOEXEC | os.O_DIRECTORY)) as fd:
+            _mount_setattr(fd, readonly=True, recursive=True, nosuid=True, nodev=True)
+
     for filesystem in sorted(filesystems, key=_filesystem_key):
-        filesystem.mount("/oldroot", "/newroot")
+        filesystem.mount("/newroot")
 
     os.chdir("newroot")
     if _LIBC.pivot_root(b".", b".") < 0:

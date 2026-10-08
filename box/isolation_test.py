@@ -163,7 +163,7 @@ class TestPaths(unittest.TestCase):
             outside.mkdir()
             (root / "alias").symlink_to(outside)
 
-            isolation.Symlink("target", "/alias/link").mount(new_root=root)
+            isolation.Symlink("target", "/alias/link").mount(root=root)
 
             self.assertFalse((outside / "link").is_symlink())
             self.assertEqual((inside / "link").readlink(), Path("target"))
