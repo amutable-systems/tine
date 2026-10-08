@@ -788,24 +788,6 @@ class Overlay(_Mount):
 Filesystem = Bind | Devices | Tmpfs | Symlink | Overlay
 
 
-class Sandbox:
-    def __init__(
-        self,
-        filesystems: tuple[Filesystem, ...],
-        chdir: StrPath | None = None,
-        become_root: bool = False,
-        isolate_network: bool = False,
-        suppress_chown: bool = False,
-        suppress_sync: bool = False,
-    ) -> None:
-        self.filesystems = filesystems
-        self.chdir = None if chdir is None else os.fspath(chdir)
-        self.become_root = become_root
-        self.isolate_network = isolate_network
-        self.suppress_chown = suppress_chown
-        self.suppress_sync = suppress_sync
-
-
 def _filesystem_key(filesystem: Filesystem) -> tuple[tuple[str, ...], bool]:
     parts = tuple(part for part in filesystem.target.split("/") if part and part != ".")
     return parts, isinstance(filesystem, Bind)
@@ -824,23 +806,30 @@ def _loopback_up() -> None:
         fcntl.ioctl(probe, SIOCSIFFLAGS, struct.pack("16sH22x", b"lo", flags | IFF_UP))
 
 
-def enter(sandbox: Sandbox) -> None:
-    for filesystem in sandbox.filesystems:
-        if not os.path.isabs(filesystem.target):
-            raise ValueError(f"sandbox destination must be absolute: {filesystem.target}")
+def unshare_sandbox(
+    *,
+    become_root: bool = False,
+    isolate_network: bool = False,
+    suppress_chown: bool = False,
+    suppress_sync: bool = False,
+) -> None:
+    """Enter the namespaces of a sandbox without replacing the root.
 
+    A mount that the caller makes between this call and `enter_sandbox()` is only visible inside the
+    sandbox's mount namespace.
+    """
     user_namespace = _acquire_privileges(
-        become_root=sandbox.become_root,
-        network=sandbox.isolate_network,
+        become_root=become_root,
+        network=isolate_network,
     )
 
     namespaces = CLONE_NEWNS
-    if sandbox.isolate_network and _has_capability(CAP_NET_ADMIN):
+    if isolate_network and _has_capability(CAP_NET_ADMIN):
         namespaces |= CLONE_NEWNET
 
     _suppress_syscalls(
-        chown=sandbox.suppress_chown and (user_namespace or _single_user_namespace()),
-        sync=sandbox.suppress_sync,
+        chown=suppress_chown and (user_namespace or _single_user_namespace()),
+        sync=suppress_sync,
     )
 
     try:
@@ -858,6 +847,13 @@ def enter(sandbox: Sandbox) -> None:
     if not user_namespace:
         mount(None, _ROOT, flags=MS_SLAVE | MS_REC)
 
+
+def enter_sandbox(filesystems: tuple[Filesystem, ...], chdir: StrPath | None = None) -> None:
+    """Replace the root with `filesystems`. Call `unshare_sandbox()` first."""
+    for filesystem in filesystems:
+        if not os.path.isabs(filesystem.target):
+            raise ValueError(f"sandbox destination must be absolute: {filesystem.target}")
+
     mount("tmpfs", "/tmp", "tmpfs")
     os.chdir("/tmp")
 
@@ -872,7 +868,7 @@ def enter(sandbox: Sandbox) -> None:
         os.chdir(".")
         umount2("oldroot/tmp", MNT_DETACH)
 
-    for filesystem in sorted(sandbox.filesystems, key=_filesystem_key):
+    for filesystem in sorted(filesystems, key=_filesystem_key):
         filesystem.mount("/oldroot", "/newroot")
 
     os.chdir("newroot")
@@ -881,5 +877,5 @@ def enter(sandbox: Sandbox) -> None:
 
     umount2(".", MNT_DETACH)
 
-    if sandbox.chdir is not None:
-        os.chdir(sandbox.chdir)
+    if chdir is not None:
+        os.chdir(chdir)
