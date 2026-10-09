@@ -44,11 +44,14 @@ _DEBIAN_PACKAGE_SETS = {
         "bash",
         "coreutils",
         "dbus-broker",
-        # systemd loads libfdisk and the tpm2-tss libraries with dlopen(), so the systemd packages
-        # declare no dependency on them. systemd-repart needs libfdisk. Measured boot and TPM2
-        # unlocking need tpm2-tss. The package name of a tpm2-tss library contains its soname, so
-        # a soname bump renames the package and the solve fails. Run `apt-cache search
-        # libtss2-esys` in the box to find the new name.
+        # systemd loads libcryptsetup, libfdisk and the tpm2-tss libraries with dlopen(), so the
+        # systemd packages declare no dependency on them. Without libcryptsetup, systemd-sysext and
+        # portablectl cannot set up the verity partitions of a DDI and fail with "Operation not
+        # supported". systemd-repart needs libfdisk. Measured boot and TPM2 unlocking need
+        # tpm2-tss. The package name of a tpm2-tss library contains its soname, so a soname bump
+        # renames the package and the solve fails. Run `apt-cache search libtss2-esys` in the box to
+        # find the new name.
+        "libcryptsetup12",
         "libfdisk1",
         "libtss2-esys-3.0.2-0t64",
         "libtss2-mu-4.0.1-0t64",
