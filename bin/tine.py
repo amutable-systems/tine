@@ -47,14 +47,8 @@ MOUNT_CONFIG = f"{HOME}/tine-mounts.toml"
 MOUNT_TARGET_LABEL = "tine:mount-target"
 TINE_MOUNTS_ENV = "TINE_MOUNTS"
 MOUNT_LOCK = f"{HOME}/tine-mount.lock"
-PRIVATE_MOUNTS = ".buckconfig.d/tine-mounts"
-PRIVATE_CONFIG = f"{PRIVATE_MOUNTS}/config"
-DAEMON_BUSTER = "daemon_buster"
-BUSTER_PREFIX = "tine-mounts-"
 PROJECT_IGNORE = "ignore"
 VCS_IGNORES = ("**/.git", "**/.jj", "**/.hg", "**/.svn")
-DEV = "dev"
-GITDIRS = "gitdirs"
 
 PINS = "tine.lock.json"
 
@@ -308,15 +302,6 @@ def _parse_buckconfig_lines(
     return section
 
 
-def read_generated_buckconfig(path: Path) -> dict[str, dict[str, str]]:
-    """What the block this owns says, as against what the project configures for itself."""
-    config: dict[str, dict[str, str]] = {}
-    _parse_buckconfig_lines(
-        _logical_buckconfig_lines(_split_generated_block(path)[1]), config, "", path.parent
-    )
-    return config
-
-
 def read_project_buckconfig(
     root: Path, overrides: dict[str, dict[str, str]] | None = None
 ) -> dict[str, dict[str, str]]:
@@ -450,24 +435,6 @@ def declared_mounts(root: Path) -> dict[str, str]:
                 fail(f"mount {target}: overlaps mount {other}")
         mounts[target] = source
     return mounts
-
-
-def mount_digest(root: Path, mounts: dict[str, str]) -> str:
-    """Identify the mounts a daemon inherited, including replaced source directories.
-
-    After mounting, read the target inode: the source path may already name a replacement directory.
-    Omit the device because btrfs can assign a new one each time a subvolume is mounted.
-    """
-    import hashlib
-
-    digest = hashlib.sha256()
-    for target, source in sorted(mounts.items()):
-        try:
-            info = (root / target).stat()
-        except OSError as error:
-            fail(f"mount {target}: cannot read {root / target}: {error}")
-        digest.update(f"{target}\0{source}\0{info.st_ino}\0".encode())
-    return digest.hexdigest()[:16]
 
 
 def _git_bytes(*args: str, directory: Path) -> bytes:
@@ -820,58 +787,53 @@ def ensure_buck2_binary(config: Mapping[str, object], cell: Path, *, fetch: bool
     return True
 
 
-def mount_namespace_marker(digest: str) -> str:
-    """Build the environment marker for a mount digest and namespace.
+def encode_mount_table(targets: list[str], gitdirs: dict[str, str]) -> str:
+    """Encode the namespace's mount table for re-entries and nested invocations.
 
-    Include the namespace to distinguish a marker inherited from the current build from a stale or
-    manually exported value.
+    The table travels by process inheritance, exactly like membership in the namespace itself,
+    so a process holding it is in the namespace that set it.
     """
+    import json
+
+    return json.dumps({"dev": sorted(targets), "gitdirs": gitdirs}, sort_keys=True)
+
+
+def decode_mount_table() -> dict[str, object] | None:
+    """Decode the mount table, if this invocation runs inside a namespace tine prepared."""
+    import json
+
+    value = os.environ.get(TINE_MOUNTS_ENV)
+    if not value:
+        return None
     try:
-        namespace = os.readlink("/proc/self/ns/mnt")
-    except OSError:
-        namespace = None
-    return f"{digest} {namespace}"
+        payload = json.loads(value)
+    except ValueError:
+        fail(f"{TINE_MOUNTS_ENV} is not valid JSON")
+    if not isinstance(payload, dict):
+        fail(f"{TINE_MOUNTS_ENV} is not a JSON table")
+    return cast(dict[str, object], payload)
 
 
-def namespace_mount_targets(root: Path) -> list[str] | None:
-    """Recover mounted targets without rereading mutable declarations or source paths."""
-    value = os.environ.get(TINE_MOUNTS_ENV, "")
-    digest = value.partition(" ")[0]
-    if not is_hex(digest, 16) or value != mount_namespace_marker(digest):
+def namespace_mount_targets() -> list[str] | None:
+    """Recover mounted targets without rereading declarations another command may have changed."""
+    payload = decode_mount_table()
+    if payload is None:
         return None
-    path = root / PRIVATE_CONFIG
-    config = read_generated_buckconfig(path)
-    if DAEMON_BUSTER not in config.get("buck2", {}):
-        return None
-    if config.get("buck2", {}).get(DAEMON_BUSTER) != BUSTER_PREFIX + digest:
-        fail(f"{path}: does not match this invocation's mount namespace")
-    return [target.strip() for target in config.get(SECTION, {}).get(DEV, "").split(",") if target.strip()]
+    targets = payload.get("dev")
+    if not isinstance(targets, list) or not all(isinstance(target, str) for target in targets):
+        fail(f"{TINE_MOUNTS_ENV}: invalid mounted-path list")
+    return cast(list[str], targets)
 
 
 def namespace_gitdirs(root: Path) -> dict[Path, str]:
     """Map mounted gitfile checkouts to their saved Git metadata directories."""
-    import json
-
-    path = root / PRIVATE_CONFIG
-    value = read_generated_buckconfig(path).get(SECTION, {}).get(GITDIRS, "{}")
-    try:
-        gitdirs = string_table(json.loads(value), str(path))
-        return {root / target: gitdir for target, gitdir in gitdirs.items()}
-    except ValueError as error:
-        fail(f"{path}: invalid private Git directories: {error}")
+    payload = decode_mount_table() or {}
+    gitdirs = string_table(payload.get("gitdirs", {}), f"gitdirs in {TINE_MOUNTS_ENV}")
+    return {root / target: gitdir for target, gitdir in gitdirs.items()}
 
 
 def create_mount_namespace(root: Path, mounts: dict[str, str]) -> str:
-    """Keep the mount identity private while the project's ordinary config stays live."""
-    import json
-
-    private = root / PRIVATE_MOUNTS
-    if resolved(private) != private:
-        fail(f"{private}: the private config directory must not be a symlink")
-    try:
-        private.mkdir(parents=True, exist_ok=True)
-    except OSError as error:
-        fail(f"cannot prepare {private}: {error}")
+    """Build the declared mounts in a private namespace and encode their table."""
     try:
         # Always create a user namespace, even with CAP_SYS_ADMIN, to scope mount authority to this
         # invocation. It must precede the mount namespace to grant a non-root caller mount permission.
@@ -895,28 +857,7 @@ def create_mount_namespace(root: Path, mounts: dict[str, str]) -> str:
         except OSError as error:
             fail(f"mount {target}: cannot build it from {source}: {error}")
 
-    digest = mount_digest(root, mounts)
-    # Buck reads startup settings from every root-cell config layer, but does not follow includes
-    # or apply command-line overrides there. A private fragment prevents another client from
-    # relabelling these mounts between our setup and Buck's first config read.
-    content = "\n".join(
-        [
-            BLOCK_BEGIN,
-            "[buck2]",
-            f"{DAEMON_BUSTER} = {BUSTER_PREFIX}{digest}",
-            f"[{SECTION}]",
-            f"{DEV} = {', '.join(sorted(mounts))}",
-            *([f"{GITDIRS} = {json.dumps(gitdirs, sort_keys=True)}"] if gitdirs else []),
-            BLOCK_END,
-            "",
-        ]
-    )
-    try:
-        isolation.mount(Path("tmpfs"), private, "tmpfs", options="mode=0755")
-        (root / PRIVATE_CONFIG).write_text(content)
-    except OSError as error:
-        fail(f"cannot prepare the private mount config: {error}")
-    return digest
+    return encode_mount_table(sorted(mounts), gitdirs)
 
 
 def cells_of(config: dict[str, dict[str, str]]) -> dict[str, str]:
@@ -1002,8 +943,7 @@ def reexec_configured_wrapper(
     environment = dict(os.environ)
     if mounts:
         working = cwd()
-        digest = create_mount_namespace(root, mounts)
-        environment[TINE_MOUNTS_ENV] = mount_namespace_marker(digest)
+        environment[TINE_MOUNTS_ENV] = create_mount_namespace(root, mounts)
         try:
             os.chdir(working)
         except OSError as error:
@@ -1413,7 +1353,6 @@ fi
 GITIGNORE = f"""/buck-out
 **/buck-out
 /.buckconfig.*.tmp
-/{PRIVATE_MOUNTS}
 /{LOCAL}
 /{LOCAL}.*.tmp
 /{LOCAL_SETTINGS}
@@ -1434,13 +1373,6 @@ def buckconfig_overrides(settings: dict[str, dict[str, object]], source: Path) -
             if not re.fullmatch(r"[\w.-]+", key) or not buckconfig_value_round_trips(value) or "\0" in value:
                 fail(f"{description} {key!r} cannot be written to .buckconfig as it stands")
     return config
-
-
-def validate_mount_config(config: dict[str, dict[str, str]]) -> None:
-    """Keep higher-precedence project settings from overriding the private mount identity."""
-    for section, key in (("buck2", DAEMON_BUSTER), (SECTION, DEV)):
-        if key in config.get(section, {}):
-            fail(f"[{section}] {key} is reserved while mounts are declared")
 
 
 def render_project_buckconfig(source: Path, overrides: dict[str, dict[str, str]]) -> str:
@@ -1656,9 +1588,6 @@ def mount_command(root: Path, arguments: list[str]) -> None:
                 and target not in graph_mount_targets(root)
             ):
                 fail(f"mount {target}: not a valid target; `tine mount list` lists valid targets")
-            validate_mount_config(
-                read_project_buckconfig(root, buckconfig_overrides(project_settings(root), root / CONFIG))
-            )
             for other in declared:
                 if target != other and mount_targets_overlap(target, other):
                     fail(f"mount {target}: overlaps mount {other}")
@@ -1758,15 +1687,13 @@ def prepare_buck(
     root: Path, settings: dict[str, dict[str, object]], argv: list[str], *, refresh_config: bool = True
 ) -> tuple[dict[str, dict[str, str]], list[str]]:
     """Select mounts and the wrapper before refreshing defaults from its checkout."""
-    mounts = namespace_mount_targets(root)
+    mounts = namespace_mount_targets()
     overrides = buckconfig_overrides(settings, root / CONFIG)
     declared = declared_mounts(root) if mounts is None else {}
     reexec_configured_wrapper(root, read_project_buckconfig(root, overrides), declared, argv)
     if refresh_config:
         refresh_project_buckconfig(root, overrides)
     config = read_project_buckconfig(root)
-    if mounts:
-        validate_mount_config(config)
     return config, mounts or []
 
 

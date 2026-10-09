@@ -97,7 +97,7 @@ A cell root must be project-relative, so Buck cannot point a cell directly at an
 `tine mount` records local overrides in `.buck/tine-mounts.toml`, mapping project-relative targets to
 absolute source directories. Targets are cell roots or local-checkout slots declared by `git_fetch()`.
 They cannot overlap or cover `.buck/` or `.buckconfig.d/`: nested mounts would depend on application
-order, and those directories hold the mount table and private configuration. Invalid declarations stop
+order, and those directories hold the mount table and configuration layers. Invalid declarations stop
 the command rather than silently falling back to the checked-in directory.
 
 For example, `tine mount` can make `/work/lib` appear at `vendor/lib` inside a project. tine sets up the
@@ -110,57 +110,27 @@ the command, rules, and Buck2 pin come from the same checkout. After creating mo
 re-executes: a mount may have replaced the wrapper at the same path. A configured cell without
 `bin/tine` is an error, not a reason to keep running another checkout's wrapper.
 
-#### Carrying the mount identity
+#### Carrying the mount table
 
 Every `tine buck` command runs Buck's daemon as a thread of its own process, with `--no-buckd`. The
 daemon starts inside the namespace the command just created and dies with it, so a command always builds
 with the mounts it declared, and no daemon survives to serve a later command an old copy of any setting.
-tine gives each set of mounts a label, called the mount digest, using the `[buck2] daemon_buster`
-setting, which nested invocations use to recover the mounts they inherited.
 
-Previously, tine put that label in a private copy of `.buckconfig`. This also hid later edits to ordinary
-settings. For example, if the copy said `build.threads = 4` and the project changed it to `8`, processes
-using that copy would still read `4`. Only the mount information needs to be private, not the whole
-project config.
+What remains to carry is the mount table itself. A nested Buck inside a run target inherits the
+namespace, and it must use the mounts as they are rather than reread declarations that another command
+may have changed since. tine records the mounted project paths and the saved Git metadata locations in
+the `TINE_MOUNTS` environment variable. The variable travels by process inheritance, exactly like
+membership in the namespace itself, so it reaches precisely the processes that are in the namespace it
+describes, and dies with them. A value that does not decode is an error, not a reason to quietly build
+the namespace again: the holder is already mounted, and remounting would reread declarations that the
+holding command deliberately froze.
 
-Putting the label in a shared file would introduce a different problem. Suppose two commands overlap,
-with no daemon running yet:
-
-1. Command A mounts `/work/lib-old` at `vendor/lib`, then pauses before starting its Buck client. Call
-   the label for these mounts "old".
-2. The mount declaration changes to `/work/lib-new`. Command B prepares those mounts and writes their
-   "new" label to the shared config, but has not started its Buck client yet.
-3. A's Buck client starts first. It reads "new" from the shared config and passes that label to a new
-   daemon. The daemon saves "new", but inherits A's mounts, which still point at `/work/lib-old`.
-4. B's Buck client reads "new" from the shared config and compares it with the label reported by the
-   daemon. Both say "new", so B's client reuses that daemon and builds against `/work/lib-old` by mistake.
-
-There is no mismatch for either client to detect. Killing mismatched daemons cannot help when the daemon
-has already been given the wrong label. The build can succeed while using the wrong checkout.
-
-Keep the label and the list of mounted project paths in a small private file,
-`.buckconfig.d/tine-mounts/config`. Each command sees its own version of this file: A sees "old" and B
-sees "new", even though the filename is the same. A private in-memory mount (`tmpfs`) provides that
-separation. The ordinary `.buckconfig` and `.buckconfig.local` files stay shared
-rather than being frozen with the mounts. They still follow the refresh rules described under
-[Shared configuration and nested commands](#shared-configuration-and-nested-commands).
-
-The root-cell config layers are read in order: `.buckconfig.d/`, `.buckconfig`, then `.buckconfig.local`.
-tine rejects project-owned `[buck2] daemon_buster` and `[tine] dev` while mounts are declared so that a
-higher-precedence setting cannot replace the private label or mounted-path list.
-
-#### Identifying the mounted directory
-
-The label must describe the directory that was actually mounted. For example, after mounting `/work/lib`
-at `vendor/lib`, someone could move `/work/lib` to `/work/lib-retired` and put a new checkout at
-`/work/lib`. The existing mount still points to the original directory. Looking at `/work/lib` now would
-describe the replacement instead. Calculate the label after mounting, using the directory reached
-through `vendor/lib`. The digest includes the target path, source path, and mounted directory's inode.
-It omits the device number because btrfs can assign a new one each time a subvolume is mounted.
-
-Re-executing inside an existing mount namespace preserves both the namespace and its saved list of
+Re-executing inside an existing mount namespace preserves both the namespace and its recorded list of
 mounted paths. tine does not reread declarations that another command may already have changed. Git
-ignores are read through the mounted paths too, so they describe the checkout the build will use.
+ignores are read through the mounted paths too, so they describe the checkout the build will use. The
+ordinary `.buckconfig` and `.buckconfig.local` files stay shared rather than being frozen with the
+mounts. They still follow the refresh rules described under
+[Shared configuration and nested commands](#shared-configuration-and-nested-commands).
 
 #### Git metadata in mounted checkouts
 
@@ -169,11 +139,10 @@ example, `/work/main/lib/.git` might contain `gitdir: ../.git/modules/lib`, refe
 `/work/main/.git/modules/lib`. After mounting that checkout at `vendor/lib`, the same pointer would look
 under `vendor/.git/modules/lib` instead.
 
-Before mounting, tine resolves each gitfile with `git rev-parse --absolute-git-dir` and saves the result
-under `[tine] gitdirs` in `.buckconfig.d/tine-mounts/config`, as a JSON map from mount targets to absolute
-metadata paths. Both relative and absolute gitfile pointers are recorded. Ordinary `.git` directories
-remain accessible through the bind mount and need no saved path. Neither directories nor gitfiles are
-rewritten.
+Before mounting, tine resolves each gitfile with `git rev-parse --absolute-git-dir` and records the
+result in the `TINE_MOUNTS` variable, as a map from mount targets to absolute metadata paths. Both
+relative and absolute gitfile pointers are recorded. Ordinary `.git` directories remain accessible
+through the bind mount and need no saved path. Neither directories nor gitfiles are rewritten.
 
 Ignore queries run from the mounted checkout with `--git-dir=<saved path>` and `--work-tree=.`. The
 explicit worktree matters because a submodule's `core.worktree` can still name its original source path.
@@ -181,10 +150,9 @@ If that path now holds a replacement checkout, following it would read the wrong
 Git both paths keeps the query on the mounted tree while retaining the saved metadata's `info/exclude`
 rules and tracked-file index, so tracked files are not mistaken for ignored build output.
 
-During configuration refresh, tine reads the map once from the project's private config and passes it
-to both the project and tine-cell ignore queries, keyed by mounted checkout paths. With no mounts, it
-skips this read. A mounted tine checkout's own private config is unrelated to this invocation and must
-not supply this map; malformed Git-directory data there must not break the build.
+During configuration refresh, tine reads the map once from the variable and passes it to both the
+project and tine-cell ignore queries, keyed by mounted checkout paths. With no mounts, it skips this
+read.
 
 #### Lock scope
 
@@ -1632,10 +1600,10 @@ unchanged. This only works on Linux with unprivileged user namespaces and only w
 `bin/tine`; a build that bypasses it uses the checked-in path. Those constraints are acceptable for a local
 development feature.
 
-Using the namespace digest as the Buck2 isolation directory would avoid daemon replacement entirely, but
-each mount set would also get a separate `buck-out`. Keeping one isolation directory preserves build
-outputs when switching between checkouts, while `daemon_buster` lets Buck compare the digest and replace
-the daemon under its native lifecycle lock.
+Deriving the Buck2 isolation directory from the mount set would keep those sets fully apart, but each
+set would also get a separate `buck-out`. Keeping one isolation directory preserves build outputs when
+switching between checkouts; with every command running its own daemon, nothing else tells the mount
+sets apart, and the `TINE_MOUNTS` variable only names the one a nested invocation inherited.
 
 ## Operating the current system
 
