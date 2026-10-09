@@ -108,12 +108,9 @@ class Seaweed:
         raise AssertionError(f"{url} never answered; see {self.log}")
 
     def close(self) -> None:
-        self.process.terminate()
-        try:
-            self.process.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            # A graceful stop flushes its volumes first, which a loaded machine can stretch past
-            # any patience; nothing in the temporary directory is worth waiting for.
-            self.process.kill()
-            self.process.wait()
+        # weed keeps running for more than a minute after SIGTERM, because its filer retries a
+        # metadata write that fails once the volume server has stopped. The caller removes the
+        # directory afterwards, so nothing in it needs a graceful stop.
+        self.process.kill()
+        self.process.wait()
         self.output.close()
