@@ -396,7 +396,7 @@ def _layer(tools: Path) -> Path:
     (layer / "usr/bin").mkdir(parents=True)
     (layer / "usr/bin/tool").write_text("from the layer\n")
     (layer / "etc").mkdir()
-    (layer / "etc/passwd").touch()
+    (layer / "etc/passwd").write_text("layered:x:1:1::/:/bin/sh\n")
     (layer / "srv").mkdir()
     return layer
 
@@ -408,7 +408,7 @@ def _runnable(tools: Path) -> Path:
     host = tools.parent / "host-usr"
     for name in ("lib", "lib64"):
         (tools / name).symlink_to(host / name)
-    # Relaxed mode binds the host's /etc/passwd, /etc/group and /etc/resolv.conf for every command,
+    # Relaxed mode binds files over /etc/passwd, /etc/group and /etc/resolv.conf for every command,
     # even for a command that reads none of the files. The tools tree's /etc is bound read-only, so
     # the sandbox cannot create a missing mount point in it. enter_sandbox() then fails with EROFS.
     for name in ("passwd", "group", "resolv.conf"):
@@ -448,10 +448,8 @@ class TestLayers(unittest.TestCase):
             self.assertIn(("usr/bin", "/bin"), [(link.source, link.target) for link in _symlinks(hermetic)])
             self.assertIn((layer / "srv", Path("/srv"), True, False), _bind_specs(hermetic))
             self.assertIn((layer / "home", Path("/home"), True, False), _bind_specs(hermetic))
-            # The base tools tree lacks etc/passwd, and only the layer contains it. Relaxed mode binds the
-            # host's /etc/passwd only when the tools tree contains etc/passwd. The bind therefore shows that
-            # _launch() read the merged tree.
-            self.assertIn((Path("/etc/passwd"), Path("/etc/passwd"), True, False), _bind_specs(relaxed))
+            passwd = next(bind for bind in _binds(relaxed) if bind.target == "/etc/passwd")
+            self.assertTrue(Path(passwd.source).read_text().startswith("layered:"))
 
     def test_main_mounts_the_merged_tree_only_while_it_plans(self) -> None:
         for layers in (["/top"], ["/base", "/top"]):
