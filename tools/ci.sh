@@ -134,7 +134,7 @@ secureboot_pkcs11() {
     "${buck[@]}" build tine//tools:swtpm-signing.box
 
     pkcs11_dir=$(mktemp -d)
-    "${buck[@]}" run tine//tools:signing-server -- "$pkcs11_dir" > "$pkcs11_dir/log" 2>&1 &
+    bin/tine exec tine//tools:signing-server -- "$pkcs11_dir" > "$pkcs11_dir/log" 2>&1 &
     server_pid=$!
     trap pkcs11_cleanup EXIT
     until [ -S "$pkcs11_dir/sock/pkcs11" ]; do
