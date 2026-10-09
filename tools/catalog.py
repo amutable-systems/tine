@@ -17,7 +17,7 @@ system's own tools.
 
 The host orchestrator discovers refresh targets and takes each result from the driver's stdout,
 so refreshing and verifying run one command and only the host decides where an output belongs.
-Nested Buck reuses the invoking daemon through the inherited isolation directory.
+Nested Buck runs daemon-less in the inherited isolation directory, one invocation per command.
 """
 
 import argparse

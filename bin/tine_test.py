@@ -1999,7 +1999,7 @@ class TestBuckCommand(unittest.TestCase):
                 cache,
                 "x",
             )
-        self.assertEqual(buck, [str(self.binary), tine.FLAG_ISOLATION, "x"])
+        self.assertEqual(buck, [str(self.binary), "--no-buckd", tine.FLAG_ISOLATION, "x"])
         self.assertEqual(self.killed, [])
         self.assertEqual(
             tine.read_generated_buckconfig(self.root / tine.LOCAL)[tine.RE_CLIENT], tine.cache_client(cache)
@@ -2032,7 +2032,9 @@ class TestBuckCommand(unittest.TestCase):
         with self.running() as execve:
             tine.buck_command(["build", "//x"])
         binary, argv = execve
-        self.assertEqual((binary, argv), (str(self.binary), [str(self.binary), "build", "//x"]))
+        self.assertEqual(
+            (binary, argv), (str(self.binary), [str(self.binary), "--no-buckd", "build", "//x"])
+        )
         self.assertTrue((self.root / tine.LOCAL).is_file())
 
     def test_no_mounts_skip_private_git_metadata(self) -> None:

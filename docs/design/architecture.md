@@ -110,17 +110,13 @@ the command, rules, and Buck2 pin come from the same checkout. After creating mo
 re-executes: a mount may have replaced the wrapper at the same path. A configured cell without
 `bin/tine` is an error, not a reason to keep running another checkout's wrapper.
 
-#### Matching clients and daemons
+#### Carrying the mount identity
 
-A build needs a daemon with the right mounts, but it should not be stuck with an old copy of every
-project setting. The Buck client sends build requests to a background process, the daemon. The daemon
-keeps the mounts it started with. Changing a mount declaration does not change that daemon's mounts.
-
-tine gives each set of mounts a label, called the mount digest, using the `[buck2] daemon_buster` setting.
-The Buck client reads that setting from its config files. If it starts a daemon, it passes the label to
-that daemon in its startup arguments. The daemon keeps that label and reports it to clients; it does not
-reread the config to update it. Each later client reads its own config and compares its label with the
-daemon's saved label before reusing the daemon.
+Every `tine buck` command runs Buck's daemon as a thread of its own process, with `--no-buckd`. The
+daemon starts inside the namespace the command just created and dies with it, so a command always builds
+with the mounts it declared, and no daemon survives to serve a later command an old copy of any setting.
+tine gives each set of mounts a label, called the mount digest, using the `[buck2] daemon_buster`
+setting, which nested invocations use to recover the mounts they inherited.
 
 Previously, tine put that label in a private copy of `.buckconfig`. This also hid later edits to ordinary
 settings. For example, if the copy said `build.threads = 4` and the project changed it to `8`, processes
@@ -145,8 +141,7 @@ has already been given the wrong label. The build can succeed while using the wr
 Keep the label and the list of mounted project paths in a small private file,
 `.buckconfig.d/tine-mounts/config`. Each command sees its own version of this file: A sees "old" and B
 sees "new", even though the filename is the same. A private in-memory mount (`tmpfs`) provides that
-separation. The Buck client reads this file before deciding whether to reuse a daemon, and passes the
-label along if it starts a new one. The ordinary `.buckconfig` and `.buckconfig.local` files stay shared
+separation. The ordinary `.buckconfig` and `.buckconfig.local` files stay shared
 rather than being frozen with the mounts. They still follow the refresh rules described under
 [Shared configuration and nested commands](#shared-configuration-and-nested-commands).
 
@@ -202,10 +197,6 @@ A build can read either the old or new table, but cannot see a partly written on
 directory does not have to go through `tine mount`, so locking mount-table edits cannot prevent the
 source-replacement case above.
 
-The Buck client can still replace a daemon when the labels really do differ, interrupting its connected
-clients as usual. Replacement does not remove `buck-out`; the decision to retain one output directory
-is explained under [Use bind mounts for out-of-tree content](#use-bind-mounts-for-out-of-tree-content).
-
 #### Shared configuration and nested commands
 
 For a consuming project, an ordinary `tine buck` command regenerates the entire project `.buckconfig`
@@ -231,8 +222,8 @@ The version components live under `[tine]` as `version-base`, `version-count`, `
 `version-commit`, and, for uncommitted work, `version-dirty`. Each image renders those components against
 its own label budget; see "Image versioning" in [images.md](../user/images.md).
 
-Generated settings go into a file rather than command-line flags because the daemon's file watcher
-reads its ignores from configuration files at startup, without command-line overrides. A file also
+Generated settings go into a file rather than command-line flags because Buck reads project ignores
+from configuration files at startup, without command-line overrides. A file also
 avoids the 128 KiB limit on a single argument, and `buck2 complete` accepts no configuration flags.
 Target completion and `tine completion` select the configured wrapper without refreshing shared
 configuration. Target completion uses the selected checkout's cached Buck2 without downloading. tine
@@ -1044,7 +1035,7 @@ links. syft catalogs these as `pkg:golang` components in the image SBOM. The dec
 [go.md](../user/go.md).
 
 A local `go build` inside the checkout leaves no build tree behind: go's cache lives outside it, so there
-is no `target/` equivalent for Buck's ignores and the daemon's watcher to exclude. It does drop the
+is no `target/` equivalent for Buck's ignores to exclude. It does drop the
 binary it built into the current directory, which then is a source like any other file there, so a
 project is better built with `-o`.
 
@@ -1656,7 +1647,7 @@ Host requirements, the wrapper commands, and representative smoke builds are doc
 These are properties of the implementation today, not merely ideas for future optimization. Limitations that
 belong to one package system are listed in its own section instead:
 
-- Buck preserves `buck-out` across daemon replacement. This is safe for hermetic actions because source
+- Buck preserves `buck-out` across mount changes. This is safe for hermetic actions because source
   changes produce new input digests. An action that reads an undeclared input can still reuse stale output
   after a mount change.
 - Source builds and checkouts read their source directory in place, including the files that Buck ignores,

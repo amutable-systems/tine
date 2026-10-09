@@ -313,8 +313,11 @@ def buck2_argv(*args: str) -> list[str]:
 
     `tine` exports the Buck2 it resolved as `BUCK2_BINARY`. Running a driver outside tine is
     unsupported, so the variable is hard requirement.
+
+    Every invocation is daemon-less. Buck ignores the flag for a command that never starts a daemon,
+    so we can add it unconditionally.
     """
-    return [os.environ["BUCK2_BINARY"], *args]
+    return [os.environ["BUCK2_BINARY"], "--no-buckd", *args]
 
 
 def buck_output(*args: str) -> str:
