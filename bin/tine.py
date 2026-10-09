@@ -1687,7 +1687,11 @@ def parse_buck_command(argv: list[str]) -> BuckCommand:
         elif not word.startswith("-") and subcommand is None:
             subcommand = word
         rest = rest[2:] if word in VALUE_FLAGS else rest[1:]
-    return BuckCommand(subcommand=subcommand, isolation=isolation)
+    return BuckCommand(
+        subcommand=subcommand,
+        # The flag's own fallback, which Buck honors wherever the flag may appear.
+        isolation=isolation or os.environ.get("BUCK_ISOLATION_DIR"),
+    )
 
 
 def glob_literal(value: str) -> str:

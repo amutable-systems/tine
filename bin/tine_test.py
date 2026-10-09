@@ -3183,6 +3183,11 @@ class TestParseBuckCommand(unittest.TestCase):
         self.assertIsNone(tine.parse_buck_command([]).subcommand)
         self.assertIsNone(tine.parse_buck_command(["--", "build"]).subcommand)
 
+    def test_isolation_falls_back_to_bucks_environment_variable(self) -> None:
+        with unittest.mock.patch.dict(os.environ, {"BUCK_ISOLATION_DIR": "elsewhere"}):
+            self.assertEqual(tine.parse_buck_command(["build", "//x"]).isolation, "elsewhere")
+            self.assertEqual(tine.parse_buck_command(["--isolation-dir", "x", "build"]).isolation, "x")
+
     def test_option_separator(self) -> None:
         self.assertIsNone(
             tine.parse_buck_command(["run", "//x", "--", "--isolation-dir", "other"]).isolation
