@@ -1960,6 +1960,31 @@ class TestBuckCommand(unittest.TestCase):
                     ", ".join(tine.VCS_IGNORES),
                 )
 
+    def test_completing_runs_in_its_own_isolation_dir(self) -> None:
+        """A keypress must never queue on the daemon-less slot of a running build."""
+        with unittest.mock.patch.dict(os.environ, {"BUCK_ISOLATION_DIR": "elsewhere"}):
+            with self.running() as execve:
+                tine.buck_command(["complete", "--target=//x"])
+        self.assertEqual(
+            execve[1],
+            [
+                str(self.binary),
+                "--no-buckd",
+                tine.FLAG_ISOLATION,
+                tine.ISOLATION_COMPLETE,
+                "complete",
+                "--target=//x",
+            ],
+        )
+
+    def test_completing_respects_a_callers_own_isolation_dir(self) -> None:
+        with self.running() as execve:
+            tine.buck_command([tine.FLAG_ISOLATION, "x", "complete", "--target=//x"])
+        self.assertEqual(
+            execve[1],
+            [str(self.binary), "--no-buckd", tine.FLAG_ISOLATION, "x", "complete", "--target=//x"],
+        )
+
     def test_tine_cell_uses_its_own_gitignores(self) -> None:
         isolate_git(self)
         checkout = self.root / "vendor" / "tine"
@@ -3044,6 +3069,12 @@ class TestParseBuckCommand(unittest.TestCase):
         self.assertIsNone(
             tine.parse_buck_command(["run", "//x", "--", "--isolation-dir", "other"]).isolation
         )
+
+    def test_a_callers_own_isolation_dir(self) -> None:
+        """Only a flag in the vector itself is the caller's; the environment is a fallback."""
+        self.assertTrue(tine.parse_buck_command(["--isolation-dir", "x", "complete"]).own_isolation)
+        with unittest.mock.patch.dict(os.environ, {"BUCK_ISOLATION_DIR": "elsewhere"}):
+            self.assertFalse(tine.parse_buck_command(["complete", "--target=//x"]).own_isolation)
 
 
 class TestProjectIgnores(unittest.TestCase):

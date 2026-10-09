@@ -73,6 +73,10 @@ SHELLS = ("bash", "fish", "zsh")
 
 FLAG_ISOLATION = "--isolation-dir"
 
+# Completion's own isolation dir, so a keypress never queues on the daemon-less slot of a build.
+# This never actually gets read or written, it's just an unique identifier.
+ISOLATION_COMPLETE = "tine-complete"
+
 # Buck subcommands that run no action, and so need no cache shim. Naming the inert ones rather than
 # the active ones, so that forgetting one here errs on the side of starting an unnecessary shim.
 BUCK_COMMAND_NO_ACTION = (None, "clean", "complete", "help", "kill", "killall", "log", "root", "status")
@@ -1609,6 +1613,8 @@ def mount_command(root: Path, arguments: list[str]) -> None:
 class BuckCommand:
     subcommand: str | None
     isolation: str | None
+    # Whether the isolation came from the argument vector itself rather than the environment.
+    own_isolation: bool
 
 
 def parse_buck_command(argv: list[str]) -> BuckCommand:
@@ -1631,6 +1637,7 @@ def parse_buck_command(argv: list[str]) -> BuckCommand:
         subcommand=subcommand,
         # The flag's own fallback, which Buck honors wherever the flag may appear.
         isolation=isolation or os.environ.get("BUCK_ISOLATION_DIR"),
+        own_isolation=isolation is not None,
     )
 
 
@@ -1748,6 +1755,11 @@ def buck_command(argv: list[str]) -> None:
                 checkout,
                 collect_project_ignores(checkout, read_project_buckconfig(checkout), [], gitdirs),
             )
+    # A completing shell must never queue on the daemon-less slot of a running build, so completion
+    # gets an isolation dir of its own. Suggestions come from the same source tree wherever they
+    # run, so even an inherited BUCK_ISOLATION_DIR is overridden.
+    if command.subcommand == "complete" and not command.own_isolation:
+        argv = [FLAG_ISOLATION, ISOLATION_COMPLETE, *argv]
     buck = buck2_argv(*argv)
     try:
         os.execv(buck[0], buck)
