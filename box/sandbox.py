@@ -48,12 +48,7 @@ _PROVIDED = frozenset({"proc", "sys", "dev", "run", "tmp", "boot"})
 _TOOLS_DIRS = ("usr", "opt")
 _TOOLS_LINKS = ("bin", "sbin", "lib", "lib32", "lib64")
 _HOST_SKIP = frozenset({"proc", "nix", "etc", *_TOOLS_DIRS, *_TOOLS_LINKS})
-# Relaxed mode maps only the caller's uid and gid into the user namespace. No file or process in the sandbox
-# can belong to another user from the box's /etc/passwd. The box's /etc/passwd lacks the caller, and
-# ssh-keygen aborts when getpwuid() cannot find the caller. The host's nsswitch.conf can name an NSS module
-# that the box does not install, such as sss. glibc skips a missing module and queries the next one, such
-# as systemd. The systemd module reaches the host's userdb through the bound /run.
-_HOST_ETC = ("group", "machine-id", "nsswitch.conf", "passwd")
+_HOST_ETC = ("machine-id",)
 
 # Deterministic environment replacing the sandbox's inherited host environment.
 _BASE_ENV = {
@@ -162,6 +157,43 @@ def _relaxed(tools: str, stage: Stage) -> list[Filesystem]:
         host = os.path.join("/etc", f)
         if os.path.exists(host) and os.path.exists(os.path.join(etc, f)):
             out.append(Bind(host, host, readonly=True))
+    return out + _identity(tools)
+
+
+def _identity(tools: str) -> list[Filesystem]:
+    """Make the invoking uid/gid resolvable inside the sandbox.
+
+    Relaxed /etc comes from the tools tree, which lists only system users. On a host the caller's uid
+    is resolved by nss-systemd via the bound /run, but where that is unavailable (e.g. a CI runner
+    whose uid is served by neither files nor userdb) getpwuid() fails and callers like ssh-keygen
+    abort. Append an entry for the caller to the passwd/group tables and bind them over /etc; a file
+    bind stacks over the read-only /etc mount, which a plain write could not.
+    """
+    uid, gid = os.getuid(), os.getgid()
+    name = os.environ.get("USER") or ""
+    home = os.environ.get("HOME") or ""
+    if not name or not name.isascii() or ":" in name or "\n" in name:
+        name = f"u{uid}"
+    if not home or ":" in home or "\n" in home:
+        home = "/root"
+    tables = {
+        "passwd": f"{name}:x:{uid}:{gid}::{home}:/bin/sh\n",
+        "group": f"{name}:x:{gid}:\n",
+    }
+    out: list[Filesystem] = []
+    for base, entry in tables.items():
+        source = os.path.join(tools, "etc", base)
+        content = ""
+        if os.path.exists(source):
+            with open(source, encoding="utf-8") as handle:
+                content = handle.read()
+        # Deterministic per-uid path: overwritten each run rather than accumulated, and O_NOFOLLOW so
+        # a pre-planted symlink can't redirect the write.
+        path = f"/var/tmp/.tine-sandbox-{base}-{uid}"
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content + entry)
+        out.append(Bind(path, "/etc/" + base, readonly=True))
     return out
 
 
