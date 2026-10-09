@@ -622,11 +622,6 @@ def main(argv: list[str] | None = None) -> None:
         help=f"catalog package to refresh (default: {DEFAULT_CATALOG})",
     )
     p.add_argument(
-        "--buck",
-        default=nested_buck(),
-        help="buck binary to nest (default: $BUCK2_BINARY, else PATH)",
-    )
-    p.add_argument(
         "--box",
         action="append",
         help="only (re)resolve these boxes and snapshot the repositories they depend on; default: all",
@@ -647,6 +642,7 @@ def main(argv: list[str] | None = None) -> None:
         help="commit the refreshed catalog",
     )
     args = p.parse_args(argv)
+    buck = nested_buck()
     if args.commit and args.verify:
         p.error("--verify leaves the checkout as it found it, so there is nothing to commit")
     if args.advance and args.verify:
@@ -654,15 +650,15 @@ def main(argv: list[str] | None = None) -> None:
     catalog = _catalog_pattern(args.catalog)
 
     # Run nested commands from the project root so wrappers resolve consistently.
-    with contextlib.chdir(buck_output(args.buck, "root", "--kind", "project")) as _:
-        catalog_dir, snapshots, resolves = _plan(args.buck, catalog, args.box)
+    with contextlib.chdir(buck_output(buck, "root", "--kind", "project")) as _:
+        catalog_dir, snapshots, resolves = _plan(buck, catalog, args.box)
         # Lazy: nothing is snapshotted until the loop below asks, after the pins have moved.
-        regenerated = _regenerate(args.buck, catalog_dir, snapshots, resolves)
+        regenerated = _regenerate(buck, catalog_dir, snapshots, resolves)
         if not args.verify:
             checkout = _Checkout()
             try:
                 if args.advance:
-                    _advance_snapshots(checkout, args.buck, catalog, catalog_dir, snapshots)
+                    _advance_snapshots(checkout, buck, catalog, catalog_dir, snapshots)
                 for path, content in regenerated:
                     checkout.write(path, content)
             except BaseException:
