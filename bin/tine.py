@@ -1011,6 +1011,7 @@ def reexec_configured_wrapper(
 VERBS = {
     "buck": "run the pinned Buck2, which every other command configures",
     "box": "run the project's root box target",
+    "exec": "build a runnable target and run its command outside of the Buck daemon",
     "mount": "manage external directories mounted over project paths",
     "cache-status": "report on the shim serving the shared build cache",
     "init": "write the configuration a project needs to build against a checkout of the tine cell",
@@ -1850,6 +1851,47 @@ def buck_command(argv: list[str]) -> None:
         fail(f"cannot run {binary}: {error}")
 
 
+def parse_exec_command(argv: list[str]) -> tuple[str, list[str], list[str]]:
+    """Split `tine exec` arguments into the target, Buck options, and the command's own arguments."""
+    if not argv or argv[0].startswith("-"):
+        fail("usage: tine exec <target> [buck options] [-- arguments]")
+    target, *options = argv
+    arguments: list[str] = []
+    if "--" in options:
+        boundary = options.index("--")
+        options, arguments = options[:boundary], options[boundary + 1 :]
+    return target, options, arguments
+
+
+def exec_command(argv: list[str]) -> None:
+    """Build a runnable target, then exec its command line outside of Buck.
+
+    `--emit-shell` yields the argv that `buck run` would exec, so the command runs the same, but
+    from a plain process: it owns its pid for signals and runs independently of the Buck daemon.
+    The environment differs: `buck run` additions (BUCK_RUN_BUILD_ID) and tine's nested-Buck
+    variables are not set, so a Buck inside the command is its own top-level invocation.
+    """
+    import shlex
+    import subprocess
+
+    target, options, arguments = parse_exec_command(argv)
+    buck_argv = [*options, "-v", "0", "run", "--emit-shell", target, "--", *arguments]
+    binary = setup_buck(buck_argv, ["exec", *argv])
+    assert binary is not None  # only shell completion skips the fetch
+    environment = os.environ | {"BUCK2_ARG0": "tine buck"}
+    build = subprocess.run([str(binary), *buck_argv], stdout=subprocess.PIPE, text=True, env=environment)
+    if build.returncode != 0:
+        # Buck reported the failure on the inherited stderr.
+        raise SystemExit(build.returncode)
+    command = shlex.split(build.stdout)
+    if not command:
+        fail(f"{target} resolved to an empty command")
+    try:
+        os.execvpe(command[0], command, dict(os.environ))
+    except OSError as error:
+        fail(f"cannot run {command[0]}: {error}")
+
+
 def completion_command(arguments: list[str]) -> None:
     """Print the pinned Buck completion script in the configured namespace."""
     if len(arguments) != 1 or arguments[0] not in SHELLS:
@@ -1914,6 +1956,8 @@ def main(argv: list[str]) -> None:
         buck_command(rest)
     elif name == "box":
         buck_command(["-v", "0", "run", "//:box", *rest])
+    elif name == "exec":
+        exec_command(rest)
     elif name == "mount":
         mount_command(project_root(cwd()), rest)
     elif name == "cache-status":

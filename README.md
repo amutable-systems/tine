@@ -122,6 +122,7 @@ Buck reads the checkout in place, so a branch or an uncommitted edit is active i
 ```sh
 tine buck <arguments>    # run the pinned Buck2, passing <arguments> verbatim
 tine box                 # run the project's root box target
+tine exec <target>       # run a target outside of the Buck daemon
 tine mount <verb>        # manage external directories mounted over project paths
 tine cache-status        # report on the shim serving the shared build cache
 tine init [<path>]       # write the configuration a project needs, for the checkout this command is in
@@ -129,6 +130,9 @@ tine completion <shell>  # print the completion script for bash, fish or zsh
 ```
 
 Use `tine buck` instead of running Buck2 directly so that builds use your selected checkouts.
+
+`tine exec` is for running a long-lived process from a target (like a background service) without it
+staying tied to a `buck run` client and its daemon. Arguments after `--` go to the target's command.
 
 ## Shell completion
 

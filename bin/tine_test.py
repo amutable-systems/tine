@@ -2178,6 +2178,92 @@ defer_write_actions = true
 """
 
 
+class TestParseExecCommand(unittest.TestCase):
+    """The target comes first, so Buck options never need disambiguating from it."""
+
+    def test_bare_target(self) -> None:
+        self.assertEqual(tine.parse_exec_command(["//:box"]), ("//:box", [], []))
+
+    def test_options_and_arguments(self) -> None:
+        self.assertEqual(
+            tine.parse_exec_command(["//t:service", "--no-buckd", "--", "--flag", "argument"]),
+            ("//t:service", ["--no-buckd"], ["--flag", "argument"]),
+        )
+
+    def test_separator_without_arguments(self) -> None:
+        self.assertEqual(tine.parse_exec_command(["//t:service", "--"]), ("//t:service", [], []))
+
+    def test_rejects_a_leading_option(self) -> None:
+        with self.assertRaises(SystemExit):
+            tine.parse_exec_command(["--no-buckd", "//t:service"])
+
+    def test_rejects_no_target(self) -> None:
+        with self.assertRaises(SystemExit):
+            tine.parse_exec_command([])
+
+
+class TestExecCommand(unittest.TestCase):
+    """`tine exec` resolves a target's run command through Buck and execs it outside the daemon."""
+
+    @override
+    def setUp(self) -> None:
+        self.root = scratch(self)
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\n")
+        self.addCleanup(os.chdir, Path.cwd())
+        os.chdir(self.root)
+        self.binary = self.root / "buck2"
+        self.binary.write_text("")
+
+    @contextlib.contextmanager
+    def running(self, emitted: str, returncode: int = 0) -> collections.abc.Iterator[dict[str, object]]:
+        outcome: dict[str, object] = {}
+
+        def resolve(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            outcome.update(build=argv)
+            return subprocess.CompletedProcess(argv, returncode=returncode, stdout=emitted)
+
+        with contextlib.ExitStack() as patches:
+            patch = unittest.mock.patch.object
+            patches.enter_context(patch(tine, "buck2_binary", return_value=self.binary))
+            patches.enter_context(patch(tine, "kill_daemon", side_effect=AssertionError))
+            patches.enter_context(patch(subprocess, "run", side_effect=resolve))
+            patches.enter_context(
+                patch(
+                    os,
+                    "execvpe",
+                    side_effect=lambda file, argv, _env: outcome.update(file=file, argv=argv),
+                )
+            )
+            yield outcome
+
+    def test_execs_the_emitted_command(self) -> None:
+        with self.running("python3 -B sandbox.py --relaxed -- serve 'a dir'\n") as outcome:
+            tine.exec_command(["//:service", "--", "argument"])
+        self.assertEqual(
+            outcome["build"],
+            [str(self.binary), "-v", "0", "run", "--emit-shell", "//:service", "--", "argument"],
+        )
+        self.assertEqual(
+            outcome["argv"], ["python3", "-B", "sandbox.py", "--relaxed", "--", "serve", "a dir"]
+        )
+        self.assertEqual(outcome["file"], "python3")
+
+    def test_buck_options_precede_the_run(self) -> None:
+        with self.running("command\n") as outcome:
+            tine.exec_command(["//:service", "--isolation-dir", "alternate"])
+        build = cast(list[str], outcome["build"])
+        self.assertEqual(build[1:3], ["--isolation-dir", "alternate"])
+
+    def test_a_failed_build_propagates_its_exit_code(self) -> None:
+        with self.assertRaises(SystemExit) as caught, self.running("", returncode=3):
+            tine.exec_command(["//:service"])
+        self.assertEqual(caught.exception.code, 3)
+
+    def test_an_empty_command_is_an_error(self) -> None:
+        with self.assertRaises(SystemExit), self.running("\n"):
+            tine.exec_command(["//:service"])
+
+
 class TestRenderProjectBuckconfig(unittest.TestCase):
     """What a project's configuration takes from the cell's own, and what it decides for itself."""
 
