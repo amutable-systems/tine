@@ -1,38 +1,38 @@
 {
   "buck2": {
     "repository": "daandemeyer/buck2",
-    "release": "2026-09-29-12.11.25",
+    "release": "2026-10-09-10.09.32",
     "platforms": {
       "Linux-aarch64": {
         "artifact": "buck2-aarch64-unknown-linux-musl.zst",
-        "sha256": "1dfe17344af9b6c6b39c686137051a8222cf94c9de935ad748f31d59083d1446",
-        "size": 38564665
+        "sha256": "c31e77e4b6d478353f2eb8ef6b038e367c39ab982232996f6a3550f294144bf1",
+        "size": 38995929
       },
       "Linux-riscv64": {
         "artifact": "buck2-riscv64gc-unknown-linux-gnu.zst",
-        "sha256": "0e45b641cb0ede67afacaca4dbd4e24f15362eec5779e7881f3c00534f8a49e7",
-        "size": 40779392
+        "sha256": "fc931b5fb63cdb4d3a6ed541b99359ac9af384621a409b4bb62cfea6b6130ffe",
+        "size": 41247196
       },
       "Linux-x86_64": {
         "artifact": "buck2-x86_64-unknown-linux-musl.zst",
-        "sha256": "52f2cae0bad108836747a6cb436de5b6f6a0c0f8c89f4e77feab059339ca53d9",
-        "size": 40017572
+        "sha256": "c22807610e5590fc260405560514e9b482e68af80be2332f29a56ee6a99d16bf",
+        "size": 40512547
       }
     }
   },
   "starlark-fmt": {
     "repository": "daandemeyer/buck2",
-    "release": "2026-09-29-12.11.25",
+    "release": "2026-10-09-10.09.32",
     "platforms": {
       "arm64": {
         "artifact": "starlark_fmt-aarch64-unknown-linux-musl.zst",
-        "sha256": "ce7b66a592c3aff7add4d1f06f4f48b33c033745d2d930fbf76961df7ca55edb",
-        "size": 2492255
+        "sha256": "36e91011c6a2961707acd6bbc3c91fddbcefcef2969e897f6a82a47ea6906dcc",
+        "size": 2491609
       },
       "x86_64": {
         "artifact": "starlark_fmt-x86_64-unknown-linux-musl.zst",
-        "sha256": "b8f8c9a918187791afb41079924a4e8317a2d63ad63ded3acbf3a4e764969dd0",
-        "size": 2613003
+        "sha256": "74bf8656211a54d6ae3414f61a1320fa8bd1d13c1ab500f7c1fcea72e7b2cbba",
+        "size": 2613863
       }
     }
   },
@@ -92,17 +92,17 @@
   },
   "syft": {
     "repository": "anchore/syft",
-    "release": "v1.54.0",
+    "release": "v1.54.1",
     "platforms": {
       "arm64": {
-        "artifact": "syft_1.54.0_linux_arm64.tar.gz",
-        "sha256": "ee6d4566373a05b344bc6b5f1706f14419bf9338ba39ff686e247deefe9b8818",
-        "size": 26697817
+        "artifact": "syft_1.54.1_linux_arm64.tar.gz",
+        "sha256": "dfdf0537610113edbefe1f1fc6548bc957b2d77439636ec824fcf0e10d46d054",
+        "size": 28276172
       },
       "x86_64": {
-        "artifact": "syft_1.54.0_linux_amd64.tar.gz",
-        "sha256": "54a87372498168b2d033e876fd41fa4e8035b872699e525a57046e1f2f09c860",
-        "size": 29217540
+        "artifact": "syft_1.54.1_linux_amd64.tar.gz",
+        "sha256": "c069905b391cc4c20a5ba65ad5c10be2a7ba074f8ea6ad203e24d14e303dad47",
+        "size": 30968256
       }
     }
   },
