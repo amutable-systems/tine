@@ -34,6 +34,17 @@ tine_python_binary(
     ],
 )
 
+# Runs inside the box offline. It runs each test binary that the build compiled in the binary's package directory.
+tine_python_binary(
+    name = "runner",
+    main = "runner.py",
+    visibility = ["PUBLIC"],
+    deps = [
+        "//:specs",
+        "//rootfs:rootfs",
+    ],
+)
+
 box_python_test(
     name = "test",
     box = "//tools:dev.box",
@@ -42,6 +53,8 @@ box_python_test(
         "build_test.py",
         "fetch.py",
         "fetch_test.py",
+        "runner.py",
+        "runner_test.py",
         "workspace.py",
         "workspace_test.py",
     ],

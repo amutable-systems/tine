@@ -100,6 +100,41 @@ go.package(
 )
 ```
 
+## Running a project's tests
+
+Set `test_packages` on the `go.package()` to compile the project's tests in its build, and declare a
+`go.test()` that runs them:
+
+```Starlark
+go.package(
+    name = "hello",
+    box = ":go.box",
+    packages = {"hello-cli": "./cmd/hello-cli"},
+    test_packages = ["./..."],
+)
+
+go.test(
+    name = "hello-test",
+    package = ":hello",
+)
+```
+
+`buck test :hello-test` runs the tests in the package's box, without network.
+
+- `test_packages` lists Go package patterns relative to the module root, such as `["./..."]` or
+  `["./pkg/...", "./internal/store"]`. The build compiles one test binary for each matched package that has
+  `_test.go` files, with the same tags, cgo setting and `linker_flags` as the binaries. Building the
+  binaries also compiles the tests.
+- A test that does not compile fails the build of the `go.package()`, and with it the binaries. go's vet
+  checks do not run, so a vet finding fails neither the build nor the tests.
+- A pattern that matches a package outside `src`, such as a dependency's package, fails the build.
+- Each test binary runs in its package's directory, as with `go test`, so a test finds its `testdata/`.
+  The sources are read-only while the tests run, so a test that writes into its package directory fails.
+- `args` passes arguments to every test binary. A test binary takes the `-test.` form of the `go test`
+  flags, such as `["-test.short", "-test.skip=TestNetwork"]`. Each binary has a timeout of 10 minutes,
+  which `-test.timeout` overrides.
+- `labels` are passed to the test runner, so `buck test --exclude <label>` can leave the test out.
+
 ## What the builder box needs
 
 ```Starlark
