@@ -3229,10 +3229,10 @@ class TestMain(unittest.TestCase):
             tine.main(["init", "--help"])
         self.assertIn("usage: tine init", printed.getvalue())
 
-    def test_box_quietly_runs_the_root_box_target(self) -> None:
-        with unittest.mock.patch.object(tine, "buck_command") as buck:
+    def test_box_runs_the_root_box_target_through_exec(self) -> None:
+        with unittest.mock.patch.object(tine, "exec_command") as execed:
             tine.main(["box", "--", "pytest", "-q"])
-        buck.assert_called_once_with(["-v", "0", "run", "//:box", "--", "pytest", "-q"])
+        execed.assert_called_once_with(["//:box", "--", "pytest", "-q"])
 
     def test_no_such_command(self) -> None:
         with self.assertRaisesRegex(SystemExit, "no such command: nope"):

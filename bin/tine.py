@@ -1955,7 +1955,7 @@ def main(argv: list[str]) -> None:
     if name == "buck":
         buck_command(rest)
     elif name == "box":
-        buck_command(["-v", "0", "run", "//:box", *rest])
+        exec_command(["//:box", *rest])
     elif name == "exec":
         exec_command(rest)
     elif name == "mount":
