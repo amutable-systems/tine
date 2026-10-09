@@ -1770,16 +1770,6 @@ def prepare_buck(
     return config, mounts or []
 
 
-def kill_daemon(isolation: str | None) -> None:
-    import subprocess
-
-    print("tine: replacing the Buck daemon, which reads the cache address only at startup", file=sys.stderr)
-    command = buck2_argv(*([FLAG_ISOLATION, isolation] if isolation else []), "kill")
-    proc = subprocess.run(command, capture_output=True, text=True)
-    if proc.returncode != 0:
-        fail(f"cannot replace the Buck daemon: {(proc.stderr or proc.stdout).strip()}")
-
-
 def before_shim(
     root: Path,
     config: dict[str, dict[str, str]],
@@ -1790,8 +1780,7 @@ def before_shim(
     """Ready Buck to build and start the shim, and return the Buck command to do it with.
 
     The address in the generated block is the one this shim is about to answer on, so it can stay
-    where it is: the build that produces the shim is told on its command line not to use the cache,
-    rather than by taking the address away from a daemon and killing it for a shim start.
+    where it is: the build that produces the shim is told on its command line not to use the cache.
     """
     ensure_buck2_binary(settings, wrapper_cell_root())
     refresh_local_buckconfig(root, collect_project_ignores(root, config, [], {}), cache)
@@ -1804,8 +1793,6 @@ def buck_command(argv: list[str]) -> None:
     settings = project_settings(root)
     command = parse_buck_command(argv)
     cache = cache_shim.settings(settings, root, SETTINGS)
-    # What a daemon may already have read, taken before a shim start can write an address over it.
-    published = read_generated_buckconfig(root / LOCAL).get(RE_CLIENT, {})
     if cache is not None:
         config = read_project_buckconfig(root)
         # Reserved rather than merged: the generated block comes first, so a project's own section
@@ -1825,11 +1812,6 @@ def buck_command(argv: list[str]) -> None:
     if not ensure_buck2_binary(settings, wrapper_cell_root(), fetch=command.subcommand != "complete"):
         return
     if command.subcommand != "complete":
-        # The daemon reads the cache address only at startup, so a changed one has to replace it.
-        # Not `daemon_buster`: Buck takes startup constraints from the root `.buckconfig` without
-        # following includes, and the mount digest owns that slot.
-        if published != cache_client(cache):
-            kill_daemon(command.isolation)
         gitdirs = namespace_gitdirs(root) if mounts else {}
         refresh_local_buckconfig(root, collect_project_ignores(root, config, mounts, gitdirs), cache)
         if (cell := cells_of(config).get(CELL)) is not None and (checkout := root / cell) != root:

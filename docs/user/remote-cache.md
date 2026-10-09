@@ -60,8 +60,8 @@ running: a single action can take much longer than that, and the lookup after it
 answered. `tine cache-status` shows what serves the store and what it has been doing; the shim's log is
 under `~/.cache/tine/cache-shim/`.
 
-A daemon reads the cache address when it starts. After changing `port` or `dir`, a daemon in another
-isolation dir still holds the old one. Run `tine buck --isolation-dir <dir> kill` to adjust.
+A changed `port` or `dir` takes effect on the next command: each one runs its own daemon, which
+reads the current configuration.
 
 ## The keys
 

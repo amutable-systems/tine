@@ -1932,11 +1932,9 @@ class TestBuckCommand(unittest.TestCase):
     @contextlib.contextmanager
     def running(self) -> collections.abc.Iterator[list[object]]:
         execve: list[object] = []
-        self.killed: list[object] = []
         self.served: list[object] = []
         with contextlib.ExitStack() as patches:
             patch = unittest.mock.patch.object
-            patches.enter_context(patch(tine, "kill_daemon", side_effect=lambda *a: self.killed.append(a)))
             # Like the real one with nothing serving yet: what it readies is what Buck would start.
             patches.enter_context(
                 patch(cache_shim, "ensure", side_effect=lambda _, ready: self.served.append(ready()))
@@ -1956,7 +1954,6 @@ class TestBuckCommand(unittest.TestCase):
         with self.running():
             tine.buck_command(["build", "//..."])
         self.assertEqual(self.served, [])
-        self.assertEqual(self.killed, [])
 
     def test_a_subcommand_that_runs_no_action_starts_nothing(self) -> None:
         """`tine buck kill` starting a cache that then idles for fifteen minutes reads as a fault."""
@@ -1979,10 +1976,6 @@ class TestBuckCommand(unittest.TestCase):
         with self.running():
             tine.buck_command(["build", "//..."])
             self.assertEqual(len(self.served), 1, "the shim buck is about to talk to has to exist")
-            self.assertEqual(len(self.killed), 1, "a daemon predating the address has to go")
-            self.killed.clear()
-            tine.buck_command(["build", "//..."])
-            self.assertEqual(self.killed, [], "an unchanged address is no reason to kill anything")
         self.assertEqual(
             tine.read_generated_buckconfig(self.root / tine.LOCAL)[tine.RE_CLIENT], tine.cache_client(cache)
         )
@@ -2000,20 +1993,21 @@ class TestBuckCommand(unittest.TestCase):
                 "x",
             )
         self.assertEqual(buck, [str(self.binary), "--no-buckd", tine.FLAG_ISOLATION, "x"])
-        self.assertEqual(self.killed, [])
         self.assertEqual(
             tine.read_generated_buckconfig(self.root / tine.LOCAL)[tine.RE_CLIENT], tine.cache_client(cache)
         )
 
-    def test_a_changed_address_replaces_the_daemon_holding_the_old_one(self) -> None:
-        """Starting a shim writes the new address, so what a daemon could have read is taken first."""
+    def test_a_changed_address_reaches_the_next_invocation(self) -> None:
+        """Each command's daemon reads the current configuration, so a new address only needs writing."""
         self.configure_cache()
         with self.running():
             tine.buck_command(["build", "//..."])
-            self.killed.clear()
             (self.root / tine.LOCAL_SETTINGS).write_text("[cache]\nunsigned = true\nport = 21000\n")
             tine.buck_command(["build", "//..."])
-        self.assertEqual(self.killed, [(None,)])
+        self.assertEqual(
+            tine.read_generated_buckconfig(self.root / tine.LOCAL)[tine.RE_CLIENT]["address"],
+            "127.0.0.1:21000",
+        )
 
     def test_a_project_may_not_name_the_cache_address_itself(self) -> None:
         self.configure_cache()
@@ -2026,7 +2020,6 @@ class TestBuckCommand(unittest.TestCase):
         with self.running() as execve:
             tine.buck_command(["build", "//..."])
         self.assertTrue(execve)
-        self.assertEqual(self.killed, [])
 
     def test_it_configures_then_hands_over(self) -> None:
         with self.running() as execve:
