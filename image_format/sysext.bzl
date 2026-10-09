@@ -161,7 +161,13 @@ def sysext_published(info: SysextImageInfo) -> PublishedInfo:
             info.image.basename: info.image,
             info.manifest.basename: info.manifest,
             info.root_hash.basename: info.root_hash,
-        }
+        },
+        image = info.basename,
+        kinds = {
+            info.image.basename: "sysext",
+            info.manifest.basename: "listing",
+            info.root_hash.basename: "roothash",
+        },
     )
 
 def sysext_subtargets(info: SysextImageInfo) -> dict[str, list[Provider]]:
