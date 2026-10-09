@@ -1787,7 +1787,15 @@ def before_shim(
     return [str(binary), *([FLAG_ISOLATION, isolation] if isolation else [])]
 
 
-def buck_command(argv: list[str]) -> None:
+def setup_buck(argv: list[str], reexec: list[str]) -> Path | None:
+    """Set up Buck to run `argv`: cache shim, mounts, configuration, and the pinned binary.
+
+    A project's tine cell may be a different checkout than the running one; its bin/tine then takes
+    over, re-entering with the `reexec` command line.
+
+    Returns the buck2 binary path. Returns None only for the `complete` subcommand if the pinned binary
+    is not fetched yet; shell completion must not trigger a download.
+    """
     root = project_root(cwd())
     ensure_home(root)
     settings = project_settings(root)
@@ -1807,13 +1815,11 @@ def buck_command(argv: list[str]) -> None:
         if command.subcommand not in BUCK_COMMAND_NO_ACTION and not os.environ.get(MARKER):
             cache_shim.ensure(cache, lambda: before_shim(root, config, settings, cache, command.isolation))
     # A completing shell must neither download nor rewrite shared configuration on a keypress.
-    config, mounts = prepare_buck(
-        root, settings, ["buck", *argv], refresh_config=command.subcommand != "complete"
-    )
+    config, mounts = prepare_buck(root, settings, reexec, refresh_config=command.subcommand != "complete")
     # Hand over first so wrapper_cell_root() reads the configured checkout's pin.
     binary = buck2_binary(settings, wrapper_cell_root(), fetch=command.subcommand != "complete")
     if binary is None:
-        return
+        return None
     if command.subcommand != "complete" and not os.environ.get("BUCK2_BINARY"):
         # The daemon reads the cache address only at startup, so a changed one has to replace it.
         # Not `daemon_buster`: Buck takes startup constraints from the root `.buckconfig` without
@@ -1829,6 +1835,13 @@ def buck_command(argv: list[str]) -> None:
                 checkout,
                 collect_project_ignores(checkout, read_project_buckconfig(checkout), [], gitdirs),
             )
+    return binary
+
+
+def buck_command(argv: list[str]) -> None:
+    binary = setup_buck(argv, ["buck", *argv])
+    if binary is None:
+        return
     # BUCK2_BINARY lets a tool nest a Buck2 command without refreshing config under its build.
     environment = {"BUCK2_ARG0": "tine buck", "BUCK2_BINARY": str(binary)}
     try:
