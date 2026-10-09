@@ -7,8 +7,9 @@ Load the `go` namespace from here; the modules behind it are implementation stru
 rearranged.
 """
 
-load("//go:rules.bzl", "go_package")
+load("//go:rules.bzl", "go_package", "go_test")
 
 go = struct(
     package = go_package,
+    test = go_test,
 )

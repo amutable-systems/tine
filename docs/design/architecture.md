@@ -1059,6 +1059,14 @@ sources are. For a mount buck keeps it too, so a dependency bump downloads only 
 module versions accumulate but are inert, since go takes only what `go.sum` names out of the proxy view.
 Otherwise buck clears it before the fetch, and the cache content depends only on the fetch's inputs.
 
+A `go.package()` that sets `test_packages` also compiles the tests of those packages in `go_build`, with
+`go test -c`, one test binary per package. The test binaries use go's build cache of the same action, so the
+project's packages compile once for the binaries and the tests. A test that does not compile fails the
+build. The test compile runs without vet, because a vet finding would fail the build too. `go.test()` runs
+each test binary under `buck test` in the package's box, in the package's directory, with the sources
+read-only. A pattern in `test_packages` that matches a package outside `src` fails the build, because that
+package's directory does not exist when the tests run.
+
 ### Filesystem layer representation
 
 Buck directory artifacts cannot faithfully store overlay whiteout devices, opaque-directory xattrs, or a

@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 from contextlib import ExitStack
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 
 import specs
 import util
@@ -45,36 +45,89 @@ class Spec(TypedDict):
     src: str
     # The build tags gating which of the project's files compile.
     tags: list[str]
+    # The Go package patterns whose tests to compile, or None to compile no tests.
+    test_packages: list[str] | None
+    # The output directory for the test binaries and their manifest, or None to compile no tests.
+    tests: str | None
 
 
-def _package(selector: str, workspace: Path, env: dict[str, str]) -> str:
-    """Resolve a selector to exactly one main package before building an executable."""
-    if not selector or selector.startswith("-") or selector.endswith(".go"):
-        util.fail(f"go-build: invalid package selection {selector!r}")
+class Test(TypedDict):
+    # The test binary's file name in the tests directory.
+    binary: str
+    # The package's import path.
+    package: str
+    # The package's directory relative to src. go test runs a test binary in this directory.
+    dir: str
+
+
+def _list(patterns: list[str], fields: str, workspace: Path, env: dict[str, str]) -> list[dict[str, Any]]:
+    """Return the packages that `patterns` match, as go list reports them."""
+    for pattern in patterns:
+        if not pattern or pattern.startswith("-") or pattern.endswith(".go"):
+            util.fail(f"go-build: invalid package selection {pattern!r}")
     listed = subprocess.run(
-        ["go", "list", "-json=ImportPath,Name", selector],
+        ["go", "list", f"-json={fields}", *patterns],
         check=True,
         cwd=workspace,
         env=env,
         stdout=subprocess.PIPE,
         text=True,
     )
-    # go prints one object per package, back to back. A pattern such as the `./...` an undeclared
-    # `packages` stands for also matches the libraries beside the program, which are not candidates.
+    # go prints one object per package, back to back.
     decoder = json.JSONDecoder()
-    mains: list[str] = []
+    packages: list[dict[str, Any]] = []
     rest = listed.stdout.lstrip()
     while rest:
-        package, end = cast(tuple[dict[str, str], int], decoder.raw_decode(rest))
-        if package["Name"] == "main":
-            mains.append(package["ImportPath"])
+        package, end = cast(tuple[dict[str, Any], int], decoder.raw_decode(rest))
+        packages.append(package)
         rest = rest[end:].lstrip()
+    return packages
+
+
+def _package(selector: str, workspace: Path, env: dict[str, str]) -> str:
+    """Resolve a selector to exactly one main package before building an executable."""
+    # A pattern such as the `./...` an undeclared `packages` stands for also matches the libraries
+    # beside the program, which are not candidates.
+    mains = [
+        package["ImportPath"]
+        for package in _list([selector], "ImportPath,Name", workspace, env)
+        if package["Name"] == "main"
+    ]
     if len(mains) != 1:
         util.fail(
             f"go-build: package selection {selector!r} must resolve to exactly one main package, "
             f"found {mains}"
         )
-    return mains[0]
+    return cast(str, mains[0])
+
+
+def _test_packages(
+    patterns: list[str], workspace: Path, src: Path, env: dict[str, str]
+) -> list[tuple[str, str]]:
+    """Return the import path and the directory relative to `src` of each matched package that has tests."""
+    found: list[tuple[str, str]] = []
+    fields = "ImportPath,Dir,TestGoFiles,XTestGoFiles"
+    for package in _list(patterns, fields, workspace, env):
+        if not package.get("TestGoFiles") and not package.get("XTestGoFiles"):
+            continue
+        # A pattern can name a package of a dependency, which go extracts into the module cache in
+        # the scratch space. go.test runs each test binary in its package directory, and that
+        # directory does not exist when the tests run.
+        directory = Path(package["Dir"]).resolve()
+        if not directory.is_relative_to(src.resolve()):
+            util.fail(f"go-build: test package {package['ImportPath']} is not in src")
+        found.append((package["ImportPath"], str(directory.relative_to(src.resolve()))))
+    return found
+
+
+def _test_command(binary: Path, package: str, linker_flags: list[str]) -> list[str]:
+    """Compile the tests of one package into a test binary."""
+    # go test runs a subset of go vet before it compiles the tests, also with -c. A vet finding would
+    # fail the build of the project's binaries along with the tests.
+    cmd = ["go", "test", "-c", "-vet=off", "-o", str(binary)]
+    if linker_flags:
+        cmd.append("-ldflags=" + " ".join(linker_flags))
+    return cmd + [package]
 
 
 def _build_command(binary: Path, package: str, linker_flags: list[str]) -> list[str]:
@@ -140,10 +193,14 @@ def build_go(spec: Spec) -> None:
         # enough to need a C compiler in the box and to link the binary dynamically.
         env["CGO_ENABLED"] = "1" if spec["cgo"] else "0"
 
+    tests = scratch / "tests"
+
     with ExitStack() as stack:
         outputs = {Path(spec["bin"]): out}
         if spec["gocache"] is not None:
             outputs[Path(spec["gocache"])] = gocache
+        if spec["tests"] is not None:
+            outputs[Path(spec["tests"])] = tests
         stack.enter_context(rootfs.readonly_project(Path.cwd(), outputs))
         util.remove_previous_binaries(out)
 
@@ -156,6 +213,26 @@ def build_go(spec: Spec) -> None:
                 cwd=workspace,
                 env=env,
             )
+
+        if spec["tests"] is None or spec["test_packages"] is None:
+            return
+        util.remove_previous_binaries(tests)
+        # The tests compile in this action because it already has go's build cache filled with the
+        # project's packages. A separate action would compile the packages again.
+        manifest: list[Test] = []
+        for index, (package, directory) in enumerate(
+            _test_packages(spec["test_packages"], workspace, Path(spec["src"]), env)
+        ):
+            # Two packages can have the same name, so the binaries are numbered.
+            binary = f"{index}.test"
+            subprocess.run(
+                _test_command(tests / binary, package, spec["linker_flags"]),
+                check=True,
+                cwd=workspace,
+                env=env,
+            )
+            manifest.append(Test(binary=binary, package=package, dir=directory))
+        (tests / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -30,6 +30,13 @@ go.package(
     name = "hello",
     box = ":go.box",
     packages = {"hello-cli": "./cmd/hello-cli"},
+    test_packages = ["./..."],
+)
+
+go.test(
+    name = "hello-test",
+    labels = ["image"],
+    package = ":hello",
 )
 
 # A project with no dependencies at all, which therefore commits no go.sum and fetches nothing.
@@ -37,6 +44,13 @@ go.package(
 go.package(
     name = "nodeps",
     box = ":go.box",
+    test_packages = ["./..."],
+)
+
+go.test(
+    name = "nodeps-test",
+    labels = ["image"],
+    package = ":nodeps",
 )
 
 # The local checkout must override this fetch, so its revision is deliberately a placeholder.
