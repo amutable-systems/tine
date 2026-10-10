@@ -130,14 +130,12 @@ class TyPackages(unittest.TestCase):
     def launch(self, package: str) -> tuple[list[str], dict[str, str]]:
         args = argparse.Namespace(
             package=package,
-            buck="buck",
             python=os.environ["TY_TEST_PYTHON"],
             ty=os.environ["TY_TEST_BINARY"],
             arguments=["server"],
         )
 
-        def buck_output(buck: str, command: str, *arguments: str) -> str:
-            self.assertEqual(buck, "buck")
+        def buck_output(command: str, *arguments: str) -> str:
             if command == "uquery":
                 return json.dumps(self.targets)
             self.assertEqual(
@@ -163,18 +161,16 @@ class TyPackages(unittest.TestCase):
             for package in (".", "cargo", "go"):
                 with self.subTest(package=package):
                     self.assertEqual(
-                        dev._ty_environment("buck", self.root, Path(package), python),
+                        dev._ty_environment(self.root, Path(package), python),
                         {"python": str(python)},
                     )
             buck.assert_not_called()
             (self.root / "go/pyproject.toml").write_text(
                 '[tool.tine.ty]\nbox = "tine//catalog:fedora.rawhide.box"\n'
             )
-            self.assertEqual(
-                dev._ty_environment("buck", self.root, Path("go"), python), {"python": "/box/usr"}
-            )
+            self.assertEqual(dev._ty_environment(self.root, Path("go"), python), {"python": "/box/usr"})
             buck.assert_called_once_with(
-                "buck", "build", "--show-full-simple-output", "tine//catalog:fedora.rawhide.box"
+                "build", "--show-full-simple-output", "tine//catalog:fedora.rawhide.box"
             )
 
     def test_rejects_invalid_packages(self) -> None:
@@ -306,6 +302,7 @@ class TyPackages(unittest.TestCase):
         (self.root / "cargo/pyproject.toml").unlink()
         labels = "\n".join(label for label in self.targets if label.endswith("-ty"))
         with (
+            mock.patch.dict(os.environ, {"BUCK2_BINARY": "buck2"}),
             mock.patch.object(dev, "_cell_root", return_value=self.root),
             mock.patch.object(dev, "_starlark_srcs", return_value=[]),
             mock.patch.object(dev, "_orphan_tests", return_value=[]),
@@ -313,7 +310,7 @@ class TyPackages(unittest.TestCase):
             mock.patch.object(dev, "buck_output", return_value=labels),
             self.assertRaisesRegex(SystemExit, "cargo/pyproject.toml"),
         ):
-            dev._lint(argparse.Namespace(buck="buck", ruff="ruff"))
+            dev._lint(argparse.Namespace(ruff="ruff"))
 
     def test_refuses_to_overwrite_custom_zed_settings(self) -> None:
         settings = self.root / "cargo/.zed/settings.json"

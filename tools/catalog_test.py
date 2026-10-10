@@ -160,7 +160,7 @@ class NewestRpmrepoSnapshot(unittest.TestCase):
         patched = mock.patch.object(
             catalog,
             "_pinned_snapshot",
-            side_effect=lambda buck, pin, architecture: SERVED[(pin.target, architecture)],
+            side_effect=lambda pin, architecture: SERVED[(pin.target, architecture)],
         )
         patched.start()
         self.addCleanup(patched.stop)
@@ -174,7 +174,7 @@ class NewestRpmrepoSnapshot(unittest.TestCase):
     def test_moves_the_datestamp_and_keeps_the_placeholder(self) -> None:
         with self.enumerating("t9-x86_64-rolling-20260202"):
             newest = catalog._newest_rpmrepo_snapshot(
-                "buck", [pin("t9-$basearch-rolling-20260101", x86_64="t9-x86_64-rolling-20260101")]
+                [pin("t9-$basearch-rolling-20260101", x86_64="t9-x86_64-rolling-20260101")]
             )
         self.assertEqual(newest, "t9-$basearch-rolling-20260202")
 
@@ -182,7 +182,7 @@ class NewestRpmrepoSnapshot(unittest.TestCase):
         with self.enumerating(
             "t9-aarch64-rolling-20260202", "t9-x86_64-rolling-20260202"
         ) as newest_snapshot:
-            catalog._newest_rpmrepo_snapshot("buck", [two_architectures("t9-$basearch-rolling-20260101")])
+            catalog._newest_rpmrepo_snapshot([two_architectures("t9-$basearch-rolling-20260101")])
         self.assertEqual(
             [call.args[2] for call in newest_snapshot.call_args_list],
             ["t9-aarch64-rolling", "t9-x86_64-rolling"],
@@ -191,9 +191,7 @@ class NewestRpmrepoSnapshot(unittest.TestCase):
     def test_refuses_architectures_on_different_days(self) -> None:
         with self.enumerating("t9-aarch64-rolling-20260201", "t9-x86_64-rolling-20260202"):
             with self.assertRaises(SystemExit) as raised:
-                catalog._newest_rpmrepo_snapshot(
-                    "buck", [two_architectures("t9-$basearch-rolling-20260101")]
-                )
+                catalog._newest_rpmrepo_snapshot([two_architectures("t9-$basearch-rolling-20260101")])
         self.assertIn("one pin cannot advance to several snapshots", str(raised.exception))
         self.assertIn("(arm64) offers t9-aarch64-rolling-20260201", str(raised.exception))
 
@@ -202,11 +200,10 @@ class NewestRpmrepoSnapshot(unittest.TestCase):
         with self.enumerating("t9-x86_64-rolling-20260201", "t9-x86_64-rolling-20260202"):
             with self.assertRaises(SystemExit) as raised:
                 catalog._newest_rpmrepo_snapshot(
-                    "buck",
                     [
                         pin(shared, name="test.core", x86_64="t9-x86_64-rolling-20260101"),
                         pin(shared, name="test.extra", x86_64="t9-x86_64-rolling-20260101"),
-                    ],
+                    ]
                 )
         self.assertIn("one pin cannot advance to several snapshots", str(raised.exception))
 

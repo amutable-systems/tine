@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import cast
 
 import cache_shim
-from util import buck_output, fail, nested_buck
+from util import buck2_argv, buck_output, fail
 
 import seaweed
 
@@ -207,8 +207,7 @@ def main() -> None:
     parser.add_argument("--weed", type=Path, required=True, help="the SeaweedFS binary")
     arguments = parser.parse_args()
 
-    buck = nested_buck()
-    root = Path(buck_output(buck, "root", "--kind", "project"))
+    root = Path(buck_output("root", "--kind", "project"))
     if (root / LOCAL_SETTINGS).exists():
         fail(f"{root / LOCAL_SETTINGS} exists, and this writes one of its own; move it away first")
 
@@ -218,7 +217,7 @@ def main() -> None:
         stack.callback(weed.close)
         # Create CA/leaf keys. No settings yet, so no shim is started.
         subprocess.run(
-            [buck, "-v", "0", "run", "tine//remote_cache:test-ca", "--", str(scratch)], check=True
+            [*buck2_argv("-v", "0", "run", "tine//remote_cache:test-ca"), "--", str(scratch)], check=True
         )
         run = RoundTrip(root, scratch, weed)
         stack.callback(run.teardown)
