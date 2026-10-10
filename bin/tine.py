@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import cast
 
 import cache_shim
-from util import cache_home, fail, object_table, resolved, write_if_changed
+from util import buck2_argv, cache_home, fail, object_table, resolved, write_if_changed
 
 import isolation
 
@@ -802,12 +802,22 @@ def _pinned_binary(
     return _download_binary(url, sha256, binary, compressed=compressed)
 
 
-def buck2_binary(config: Mapping[str, object], cell: Path, *, fetch: bool = True) -> Path | None:
-    """The pinned Buck2 binary. The pin is this cell's, overridable key by key in `[buck2]`."""
+def ensure_buck2_binary(config: Mapping[str, object], cell: Path, *, fetch: bool = True) -> bool:
+    """Resolve and export the pinned Buck2. The pin is this cell's, overridable key by key in `[buck2]`.
+
+    Call this once at the beginning, then all Buck2 invocations go via util.buck2_argv().
+    Without `fetch`, an uncached pin does not download and returns False.
+    """
     platform = _host_platform()
     pin = declared_pin(cell, BUCK2, platform) | buck2_pin_overrides(config, platform)
     source = f"{cell / PINS} and [{BUCK2}] in {SETTINGS}"
-    return _pinned_binary(pin, BUCK2, platform, source, compressed=True, fetch=fetch)
+    binary = _pinned_binary(pin, BUCK2, platform, source, compressed=True, fetch=fetch)
+    if binary is None:
+        return False
+    os.environ["BUCK2_BINARY"] = str(binary)
+    # buck2 reports BUCK2_ARG0 as its own name, so messages match how the user invoked it.
+    os.environ["BUCK2_ARG0"] = "tine buck"
+    return True
 
 
 def mount_namespace_marker(digest: str) -> str:
@@ -1191,13 +1201,14 @@ def _replace_completion_fragment(script: str, old: str, new: str) -> str:
     return script.replace(old, new)
 
 
-def _buck2_completion_script(binary: Path, shell: str) -> str:
+def _buck2_completion_script(shell: str) -> str:
     import subprocess
 
+    command = buck2_argv("completion", shell)
     try:
-        proc = subprocess.run([binary, "completion", shell], stdout=subprocess.PIPE, text=True)
+        proc = subprocess.run(command, stdout=subprocess.PIPE, text=True)
     except OSError as error:
-        fail(f"cannot run {binary}: {error}")
+        fail(f"cannot run {command[0]}: {error}")
     if proc.returncode != 0:
         raise SystemExit(proc.returncode)
     return proc.stdout
@@ -1759,14 +1770,12 @@ def prepare_buck(
     return config, mounts or []
 
 
-def kill_daemon(binary: Path, isolation: str | None) -> None:
+def kill_daemon(isolation: str | None) -> None:
     import subprocess
 
-    command = [str(binary)]
-    if isolation:
-        command += [FLAG_ISOLATION, isolation]
     print("tine: replacing the Buck daemon, which reads the cache address only at startup", file=sys.stderr)
-    proc = subprocess.run([*command, "kill"], capture_output=True, text=True)
+    command = buck2_argv(*([FLAG_ISOLATION, isolation] if isolation else []), "kill")
+    proc = subprocess.run(command, capture_output=True, text=True)
     if proc.returncode != 0:
         fail(f"cannot replace the Buck daemon: {(proc.stderr or proc.stdout).strip()}")
 
@@ -1784,10 +1793,9 @@ def before_shim(
     where it is: the build that produces the shim is told on its command line not to use the cache,
     rather than by taking the address away from a daemon and killing it for a shim start.
     """
-    binary = buck2_binary(settings, wrapper_cell_root())
-    assert binary is not None
+    ensure_buck2_binary(settings, wrapper_cell_root())
     refresh_local_buckconfig(root, collect_project_ignores(root, config, [], {}), cache)
-    return [str(binary), *([FLAG_ISOLATION, isolation] if isolation else [])]
+    return buck2_argv(*([FLAG_ISOLATION, isolation] if isolation else []))
 
 
 def buck_command(argv: list[str]) -> None:
@@ -1814,15 +1822,14 @@ def buck_command(argv: list[str]) -> None:
         root, settings, ["buck", *argv], refresh_config=command.subcommand != "complete"
     )
     # Hand over first so wrapper_cell_root() reads the configured checkout's pin.
-    binary = buck2_binary(settings, wrapper_cell_root(), fetch=command.subcommand != "complete")
-    if binary is None:
+    if not ensure_buck2_binary(settings, wrapper_cell_root(), fetch=command.subcommand != "complete"):
         return
     if command.subcommand != "complete":
         # The daemon reads the cache address only at startup, so a changed one has to replace it.
         # Not `daemon_buster`: Buck takes startup constraints from the root `.buckconfig` without
         # following includes, and the mount digest owns that slot.
         if published != cache_client(cache):
-            kill_daemon(binary, command.isolation)
+            kill_daemon(command.isolation)
         gitdirs = namespace_gitdirs(root) if mounts else {}
         refresh_local_buckconfig(root, collect_project_ignores(root, config, mounts, gitdirs), cache)
         if (cell := cells_of(config).get(CELL)) is not None and (checkout := root / cell) != root:
@@ -1832,12 +1839,11 @@ def buck_command(argv: list[str]) -> None:
                 checkout,
                 collect_project_ignores(checkout, read_project_buckconfig(checkout), [], gitdirs),
             )
-    # BUCK2_BINARY is the resolved Buck2 a tool nests through util.buck2_argv().
-    environment = {"BUCK2_ARG0": "tine buck", "BUCK2_BINARY": str(binary)}
+    buck = buck2_argv(*argv)
     try:
-        os.execve(binary, [str(binary), *argv], os.environ | environment)
+        os.execv(buck[0], buck)
     except OSError as error:
-        fail(f"cannot run {binary}: {error}")
+        fail(f"cannot run {buck[0]}: {error}")
 
 
 def completion_command(arguments: list[str]) -> None:
@@ -1853,10 +1859,9 @@ def completion_command(arguments: list[str]) -> None:
     settings = project_settings(root)
     prepare_buck(root, settings, ["completion", *arguments], refresh_config=False)
     configured = validate_commands(settings.get(COMMANDS, {}), str(root / CONFIG))
-    binary = buck2_binary(settings, wrapper_cell_root())
-    assert binary is not None
+    ensure_buck2_binary(settings, wrapper_cell_root())
     print(
-        rewrite_completion_script(_buck2_completion_script(binary, arguments[0]), arguments[0], configured),
+        rewrite_completion_script(_buck2_completion_script(arguments[0]), arguments[0], configured),
         end="",
     )
 
