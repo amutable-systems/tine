@@ -308,30 +308,30 @@ def write_if_changed(path: Path, text: str) -> None:
         fail(f"cannot write {path}: {error}")
 
 
-def nested_buck() -> str:
-    """The Buck a tool running under Buck has to nest.
+def buck2_argv(*args: str) -> list[str]:
+    """Build an argv for invoking our pinned Buck2.
 
-    `tine` exports the Buck2 it resolved, so a nested command runs that one and not the wrapper:
-    refreshing configuration under a command already holding it deadlocks.
+    `tine` exports the Buck2 it resolved as `BUCK2_BINARY`. Running a driver outside tine is
+    unsupported, so the variable is hard requirement.
     """
-    return os.environ.get("BUCK2_BINARY", "buck")
+    return [os.environ["BUCK2_BINARY"], *args]
 
 
-def buck_output(buck: str, *args: str) -> str:
+def buck_output(*args: str) -> str:
     """One nested Buck command, its stdout stripped."""
 
     # `-v 0` mutes Buck's own chatter on success
     return subprocess.run(
-        [buck, "-v", "0", *args], check=True, stdout=subprocess.PIPE, text=True
+        buck2_argv("-v", "0", *args), check=True, stdout=subprocess.PIPE, text=True
     ).stdout.strip()
 
 
-def package_directory(buck: str, package: str) -> Path:
+def package_directory(package: str) -> Path:
     """Where a `cell//path` package label lives on disk, asked of Buck rather than assumed."""
     cell, separator, path = package.partition("//")
     if not separator or not cell or ":" in package or "..." in package:
         fail(f"expected a cell-relative package label, got {package!r}")
-    return Path(buck_output(buck, "audit", "cell", cell, "--paths-only")) / path
+    return Path(buck_output("audit", "cell", cell, "--paths-only")) / path
 
 
 def _record_paths(directory: Path, pathspec: str, how: list[str], message: str | None) -> bool:

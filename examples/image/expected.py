@@ -13,7 +13,7 @@ import argparse
 import json
 import sys
 
-from util import amend_paths, atomic_write_text, fail, nested_buck, package_directory
+from util import amend_paths, atomic_write_text, fail, package_directory
 
 PACKAGE = "tine//examples/image"
 EXPECTATIONS = "expected.json"
@@ -26,7 +26,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
-    directory = package_directory(nested_buck(), PACKAGE)
+    directory = package_directory(PACKAGE)
     path = directory / EXPECTATIONS
     actual = sorted(directory.glob("actual.*.json"))
     if not actual:

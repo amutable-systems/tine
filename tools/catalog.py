@@ -24,7 +24,6 @@ import argparse
 import base64
 import contextlib
 import difflib
-import functools
 import itertools
 import json
 import subprocess
@@ -37,10 +36,10 @@ from typing import cast
 
 from util import (
     atomic_write_text,
+    buck2_argv,
     buck_output,
     commit_paths,
     fail,
-    nested_buck,
     package_directory,
     urlopen,
     with_retries,
@@ -72,20 +71,20 @@ def _catalog_pattern(catalog: str) -> str:
     return f"{package}:"
 
 
-def _targets_with_label(buck: str, catalog: str, label: str) -> list[str]:
+def _targets_with_label(catalog: str, label: str) -> list[str]:
     """Targets carrying `label` in the selected catalog package."""
-    return sorted(buck_output(buck, "uquery", f"attrfilter(labels, '{label}', {catalog})").split())
+    return sorted(buck_output("uquery", f"attrfilter(labels, '{label}', {catalog})").split())
 
 
 def _name_of(target: str) -> str:
     return target.rsplit(":", 1)[1]
 
 
-def _catalog_directory(buck: str, targets: list[str]) -> Path:
+def _catalog_directory(targets: list[str]) -> Path:
     packages = {target.rsplit(":", 1)[0] for target in targets}
     if len(packages) != 1:
         fail(f"catalog: expected targets in one package, found {sorted(packages)}")
-    return package_directory(buck, packages.pop())
+    return package_directory(packages.pop())
 
 
 def _lock_path(kind: str, stem: str, architecture: str) -> Path:
@@ -117,7 +116,7 @@ def _box_lock_path(target: str) -> Path:
     return _lock_path("box", box.removesuffix(".box"), architecture)
 
 
-def _run(buck: str, target: str) -> str:
+def _run(target: str) -> str:
     """Run a refresh target, returning what it wrote to stdout.
 
     Buck execs the target rather than piping it, and its own output is on stderr, so stdout is
@@ -125,7 +124,7 @@ def _run(buck: str, target: str) -> str:
     the project and nothing else, so a path outside it would land in the sandbox's own tmpfs.
     """
     # Mute nested Buck while preserving driver progress on stderr.
-    command = [buck, "-v", "0", "run", target, "--console", "none", "--", "--out", "-"]
+    command = buck2_argv("-v", "0", "run", target, "--console", "none", "--", "--out", "-")
     return subprocess.run(command, check=True, stdout=subprocess.PIPE, encoding="utf-8").stdout
 
 
@@ -146,10 +145,9 @@ class Pin:
         return _name_of(self.target)
 
 
-def _pinned_repositories(buck: str, catalog: str, label: str, prefix: str) -> list[Pin]:
+def _pinned_repositories(catalog: str, label: str, prefix: str) -> list[Pin]:
     """The repositories in `catalog` whose base URLs come from a `<prefix>.*` mirror pin."""
     out = buck_output(
-        buck,
         "uquery",
         "--json",
         "--output-attribute=^(architectures|metadata)$",
@@ -208,10 +206,9 @@ class _Checkout:
             raise failed
 
 
-def _served_architectures(buck: str, repositories: list[str]) -> dict[str, tuple[str, ...]]:
+def _served_architectures(repositories: list[str]) -> dict[str, tuple[str, ...]]:
     """The architectures each repository's mirror serves, and so the locks it keeps."""
     out = buck_output(
-        buck,
         "uquery",
         "--json",
         "--output-attribute=^architectures$",
@@ -290,7 +287,7 @@ def _datestamp(snapshot: str) -> str:
     return snapshot.rsplit("-", 1)[1]
 
 
-def _pinned_snapshot(buck: str, pin: Pin, architecture: str) -> str:
+def _pinned_snapshot(pin: Pin, architecture: str) -> str:
     """The snapshot id one architecture of a pinned repository is served from, as the mirror spells it.
 
     The rule that expands the pin's placeholder writes it into that architecture's snapshot spec,
@@ -298,12 +295,12 @@ def _pinned_snapshot(buck: str, pin: Pin, architecture: str) -> str:
     """
     # Keep the subtarget name in sync with `_manifest_subtarget` in package/repository.bzl.
     subtarget = f"{pin.target}[manifest.{architecture}]"
-    manifest = buck_output(buck, "build", "--show-full-simple-output", subtarget)
+    manifest = buck_output("build", "--show-full-simple-output", subtarget)
     spec = cast(dict[str, str], json.loads(Path(manifest).read_text(encoding="utf-8")))
     return spec["baseurl"].rsplit("/", 1)[1]
 
 
-def _newest_rpmrepo_snapshot(buck: str, pins: list[Pin]) -> str:
+def _newest_rpmrepo_snapshot(pins: list[Pin]) -> str:
     """The newest snapshot every repository and architecture sharing one rpmrepo pin can move to.
 
     The answer is a pin like the one read, placeholder and all: a refresh moves the datestamp and
@@ -311,7 +308,7 @@ def _newest_rpmrepo_snapshot(buck: str, pins: list[Pin]) -> str:
     """
     offers = {
         f"{pin.name} ({architecture})": _newest_snapshot(
-            pin.name, pin.mirror, _series(_pinned_snapshot(buck, pin, architecture))
+            pin.name, pin.mirror, _series(_pinned_snapshot(pin, architecture))
         )
         for pin in pins
         for architecture in pin.architectures
@@ -393,9 +390,7 @@ def _newest_debian_snapshot(pins: list[Pin]) -> str:
     return max(with_retries("archive: timestamps", timestamps), pin.snapshot)
 
 
-def _advance_snapshots(
-    checkout: _Checkout, buck: str, catalog: str, catalog_dir: Path, selected: list[str]
-) -> None:
+def _advance_snapshots(checkout: _Checkout, catalog: str, catalog_dir: Path, selected: list[str]) -> None:
     """Advance the selected mirror-pinned repositories to the newest snapshot their mirror offers.
 
     Advancing a pin without re-snapshotting the repository it belongs to would leave a base URL
@@ -406,16 +401,11 @@ def _advance_snapshots(
     wanted = set(selected)
     advanced = 0
     for label, prefix, attribute, newest in (
-        (
-            RPM_REMOTE_REPOSITORY_LABEL,
-            "rpmrepo",
-            "rpmrepo_snapshot",
-            functools.partial(_newest_rpmrepo_snapshot, buck),
-        ),
+        (RPM_REMOTE_REPOSITORY_LABEL, "rpmrepo", "rpmrepo_snapshot", _newest_rpmrepo_snapshot),
         (PACMAN_REMOTE_REPOSITORY_LABEL, "archlinux", "archive_snapshot", _newest_archive_snapshot),
         (DEB_REMOTE_REPOSITORY_LABEL, "debian", "archive_snapshot", _newest_debian_snapshot),
     ):
-        pinned = _pinned_repositories(buck, catalog, label, prefix)
+        pinned = _pinned_repositories(catalog, label, prefix)
         advanced += _advance(checkout, pinned, wanted, newest, declaration, attribute)
     if not advanced:
         # Asked for and not done is worth a line: every selected pin is either newest already or
@@ -423,10 +413,9 @@ def _advance_snapshots(
         print("==> no pin advanced", file=sys.stderr)
 
 
-def _declared_signing_keys(buck: str, repositories: list[str]) -> dict[str, str]:
+def _declared_signing_keys(repositories: list[str]) -> dict[str, str]:
     """Where each signing key the given repositories declare is fetched from, by fingerprint."""
     out = buck_output(
-        buck,
         "uquery",
         "--json",
         "--output-attribute=^signing_keys$",
@@ -485,33 +474,29 @@ def _fetch_signing_key(fingerprint: str, url: str) -> str:
     fail(f"catalog: {url} is not an OpenPGP public key, armored or binary")
 
 
-def _signing_keys(
-    buck: str,
-    catalog_dir: Path,
-    repositories: list[str],
-) -> Iterator[tuple[Path, str]]:
+def _signing_keys(catalog_dir: Path, repositories: list[str]) -> Iterator[tuple[Path, str]]:
     """Fetch the declared signing keys the catalog does not hold yet."""
-    for fingerprint, url in sorted(_declared_signing_keys(buck, repositories).items()):
+    for fingerprint, url in sorted(_declared_signing_keys(repositories).items()):
         path = catalog_dir / SIGNING_KEY_DIRECTORY / (fingerprint + SIGNING_KEY_SUFFIX)
         if not path.exists():
             yield path, _fetch_signing_key(fingerprint, url)
 
 
-def _snapshot(buck: str, target: str, architecture: str) -> str:
+def _snapshot(target: str, architecture: str) -> str:
     """One repository's current pure metadata, for one architecture.
 
     Keep the subtarget name in sync with `_snapshot_subtarget` in package/repository.bzl.
     """
     subtarget = f"{target}[snapshot.{architecture}]"
     print(f"==> snapshotting {_name_of(target)} for {architecture} (via {subtarget})", file=sys.stderr)
-    return _run(buck, subtarget)
+    return _run(subtarget)
 
 
-def _resolve(buck: str, target: str) -> str:
+def _resolve(target: str) -> str:
     """What one box is made of, for the architecture its lock target resolves."""
     box, architecture = _box_lock_parts(target)
     print(f"==> resolving {box} for {architecture} (via {target})", file=sys.stderr)
-    return _run(buck, target)
+    return _run(target)
 
 
 def _select_boxes(all_resolves: list[str], selected_boxes: list[str] | None) -> list[str]:
@@ -529,59 +514,50 @@ def _select_boxes(all_resolves: list[str], selected_boxes: list[str] | None) -> 
     return [target for target in all_resolves if _box_lock_parts(target)[0] in selected]
 
 
-def _repositories_for_boxes(buck: str, boxes: list[str]) -> list[str]:
+def _repositories_for_boxes(boxes: list[str]) -> list[str]:
     """Remote repository targets reachable from the given box targets."""
     box_set = " ".join(boxes)
     query = f"attrfilter(labels, '{REMOTE_REPOSITORY_LABEL}', deps(set({box_set})))"
-    return sorted(buck_output(buck, "uquery", query).split())
+    return sorted(buck_output("uquery", query).split())
 
 
-def _plan(
-    buck: str,
-    catalog: str,
-    selected_boxes: list[str] | None,
-) -> tuple[Path, list[str], list[str]]:
+def _plan(catalog: str, selected_boxes: list[str] | None) -> tuple[Path, list[str], list[str]]:
     """Pick what to refresh.
 
     Selecting boxes also scopes the snapshotted repositories to those the boxes depend on, so a
     partial refresh or verify never touches a repository outside the selection.
     """
-    all_resolves = _targets_with_label(buck, catalog, BOX_LOCK_LABEL)
+    all_resolves = _targets_with_label(catalog, BOX_LOCK_LABEL)
     resolves = _select_boxes(all_resolves, selected_boxes)
 
     if selected_boxes is None:
-        snapshots = _targets_with_label(buck, catalog, REMOTE_REPOSITORY_LABEL)
+        snapshots = _targets_with_label(catalog, REMOTE_REPOSITORY_LABEL)
     else:
-        snapshots = _repositories_for_boxes(buck, resolves)
+        snapshots = _repositories_for_boxes(resolves)
     targets = all_resolves + snapshots
     if not targets:
         fail(f"catalog: no repository/box refresh targets found in {catalog}")
-    return _catalog_directory(buck, targets), snapshots, resolves
+    return _catalog_directory(targets), snapshots, resolves
 
 
-def _regenerate(
-    buck: str,
-    catalog_dir: Path,
-    snapshots: list[str],
-    resolves: list[str],
-) -> Iterator[tuple[Path, str]]:
+def _regenerate(catalog_dir: Path, snapshots: list[str], resolves: list[str]) -> Iterator[tuple[Path, str]]:
     """Fetch keys, snapshot repositories and resolve boxes, yielding each result and where it belongs.
 
     Nothing is written here, so a verify regenerates through the same commands a refresh does and
     still leaves the checkout exactly as it found it.
     """
-    yield from _signing_keys(buck, catalog_dir, snapshots)
+    yield from _signing_keys(catalog_dir, snapshots)
 
-    served = _served_architectures(buck, snapshots)
+    served = _served_architectures(snapshots)
     for target in snapshots:
         for architecture in served[target]:
             yield (
                 catalog_dir / _repository_lock_path(target, architecture),
-                _snapshot(buck, target, architecture),
+                _snapshot(target, architecture),
             )
 
     for target in resolves:
-        yield catalog_dir / _box_lock_path(target), _resolve(buck, target)
+        yield catalog_dir / _box_lock_path(target), _resolve(target)
 
 
 def _commit(catalog_dir: Path) -> None:
@@ -642,7 +618,6 @@ def main(argv: list[str] | None = None) -> None:
         help="commit the refreshed catalog",
     )
     args = p.parse_args(argv)
-    buck = nested_buck()
     if args.commit and args.verify:
         p.error("--verify leaves the checkout as it found it, so there is nothing to commit")
     if args.advance and args.verify:
@@ -650,15 +625,15 @@ def main(argv: list[str] | None = None) -> None:
     catalog = _catalog_pattern(args.catalog)
 
     # Run nested commands from the project root so wrappers resolve consistently.
-    with contextlib.chdir(buck_output(buck, "root", "--kind", "project")) as _:
-        catalog_dir, snapshots, resolves = _plan(buck, catalog, args.box)
+    with contextlib.chdir(buck_output("root", "--kind", "project")) as _:
+        catalog_dir, snapshots, resolves = _plan(catalog, args.box)
         # Lazy: nothing is snapshotted until the loop below asks, after the pins have moved.
-        regenerated = _regenerate(buck, catalog_dir, snapshots, resolves)
+        regenerated = _regenerate(catalog_dir, snapshots, resolves)
         if not args.verify:
             checkout = _Checkout()
             try:
                 if args.advance:
-                    _advance_snapshots(checkout, buck, catalog, catalog_dir, snapshots)
+                    _advance_snapshots(checkout, catalog, catalog_dir, snapshots)
                 for path, content in regenerated:
                     checkout.write(path, content)
             except BaseException:
