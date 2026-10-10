@@ -1748,11 +1748,10 @@ def prepare_buck(
 ) -> tuple[dict[str, dict[str, str]], list[str]]:
     """Select mounts and the wrapper before refreshing defaults from its checkout."""
     mounts = namespace_mount_targets(root)
-    nested = bool(os.environ.get("BUCK2_BINARY"))
     overrides = buckconfig_overrides(settings, root / CONFIG)
-    declared = declared_mounts(root) if mounts is None and not nested else {}
+    declared = declared_mounts(root) if mounts is None else {}
     reexec_configured_wrapper(root, read_project_buckconfig(root, overrides), declared, argv)
-    if refresh_config and not nested:
+    if refresh_config:
         refresh_project_buckconfig(root, overrides)
     config = read_project_buckconfig(root)
     if mounts:
@@ -1818,7 +1817,7 @@ def buck_command(argv: list[str]) -> None:
     binary = buck2_binary(settings, wrapper_cell_root(), fetch=command.subcommand != "complete")
     if binary is None:
         return
-    if command.subcommand != "complete" and not os.environ.get("BUCK2_BINARY"):
+    if command.subcommand != "complete":
         # The daemon reads the cache address only at startup, so a changed one has to replace it.
         # Not `daemon_buster`: Buck takes startup constraints from the root `.buckconfig` without
         # following includes, and the mount digest owns that slot.
@@ -1833,7 +1832,7 @@ def buck_command(argv: list[str]) -> None:
                 checkout,
                 collect_project_ignores(checkout, read_project_buckconfig(checkout), [], gitdirs),
             )
-    # BUCK2_BINARY lets a tool nest a Buck2 command without refreshing config under its build.
+    # BUCK2_BINARY is the resolved Buck2 a tool nests through util.buck2_argv().
     environment = {"BUCK2_ARG0": "tine buck", "BUCK2_BINARY": str(binary)}
     try:
         os.execve(binary, [str(binary), *argv], os.environ | environment)
