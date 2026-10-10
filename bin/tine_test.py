@@ -1044,12 +1044,6 @@ class TestMountUpdates(MountTestCase):
             self.assertIn("mount sub: not a valid target", stderr)
         self.assertEqual(self.declared(), {})
 
-    def test_builds_can_update_mount_declarations(self) -> None:
-        # Builds hold no lock, so their nested mount commands must remain allowed.
-        with unittest.mock.patch.dict(os.environ, {"BUCK2_BINARY": "buck2"}):
-            self.mount("add", str(self.root / "sub"), str(self.source))
-        self.assertEqual(self.declared(), {"sub": str(self.source)})
-
     def test_lock_parent_creation_error_is_reported(self) -> None:
         (self.root / tine.HOME).touch()
         with self.assertRaisesRegex(SystemExit, "cannot prepare .* for locking"):
@@ -1560,7 +1554,6 @@ class TestReexecConfiguredWrapper(MountTestCase):
         self.addCleanup(created.stop)
         patched = unittest.mock.patch.dict(os.environ)
         patched.start()
-        os.environ.pop("BUCK2_BINARY", None)
         os.environ.pop(tine.MARKER, None)
         self.addCleanup(patched.stop)
 
@@ -1623,25 +1616,18 @@ class TestReexecConfiguredWrapper(MountTestCase):
                     tine.prepare_buck(self.root, {}, ["buck", "build"], refresh_config=False)
                 self.assertEqual((self.made, execve), ([], []))
 
-    def test_nested_and_mounted_invocations_still_select_the_wrapper(self) -> None:
+    def test_mounted_invocations_still_select_the_wrapper(self) -> None:
         command = wrapper_command(self.root / "sub")
         (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = sub\n")
-        for environment, targets in (
-            ({"BUCK2_BINARY": "/somewhere/buck2"}, None),
-            ({tine.MARKER: tine.mount_namespace_marker("a" * 16)}, ["sub"]),
+        with (
+            unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker("a" * 16)}),
+            unittest.mock.patch.object(tine, "namespace_mount_targets", return_value=["sub"]),
+            unittest.mock.patch.object(tine, "declared_mounts", side_effect=AssertionError("reread mounts")),
+            unittest.mock.patch.object(os, "execve", side_effect=SystemExit("handover")) as execve,
         ):
-            with (
-                self.subTest(environment=environment),
-                unittest.mock.patch.dict(os.environ, environment),
-                unittest.mock.patch.object(tine, "namespace_mount_targets", return_value=targets),
-                unittest.mock.patch.object(
-                    tine, "declared_mounts", side_effect=AssertionError("reread mounts")
-                ),
-                unittest.mock.patch.object(os, "execve", side_effect=SystemExit("handover")) as execve,
-            ):
-                with self.assertRaisesRegex(SystemExit, "handover"):
-                    self.prepare()
-                execve.assert_called_once_with(command, [str(command), "buck", "build"], dict(os.environ))
+            with self.assertRaisesRegex(SystemExit, "handover"):
+                self.prepare()
+            execve.assert_called_once_with(command, [str(command), "buck", "build"], dict(os.environ))
         self.assertEqual(self.made, [])
 
     def test_completion_uses_the_configured_wrapper(self) -> None:
@@ -1687,16 +1673,6 @@ class TestReexecConfiguredWrapper(MountTestCase):
             self.assertRaisesRegex(SystemExit, f"cannot run {re.escape(str(command))}: not executable"),
         ):
             self.prepare()
-
-    def test_buck_child_process_is_already_inside(self) -> None:
-        self.declare_one()
-        with (
-            unittest.mock.patch.dict(os.environ, {"BUCK2_BINARY": "/somewhere/buck2"}),
-            unittest.mock.patch.object(tine, "declared_mounts", side_effect=AssertionError("reread mounts")),
-            self.running() as execve,
-        ):
-            self.prepare()
-        self.assertEqual((self.made, execve), ([], []))
 
     def test_matching_current_namespace_needs_no_handover(self) -> None:
         digest = self.declare_one()
@@ -2456,7 +2432,7 @@ class TestRefreshProjectBuckconfig(unittest.TestCase):
             tine.collect_project_ignores(self.root, self.config(), [], {}), ["custom", *tine.VCS_IGNORES]
         )
 
-    def test_completion_and_nested_builds_do_not_refresh_defaults(self) -> None:
+    def test_completion_does_not_refresh_defaults(self) -> None:
         before = self.path.read_bytes()
         self.source.write_text(self.updated)
         with (
@@ -2465,9 +2441,6 @@ class TestRefreshProjectBuckconfig(unittest.TestCase):
             unittest.mock.patch.object(os, "execve"),
         ):
             tine.buck_command(["complete"])
-            self.assertEqual(self.path.read_bytes(), before)
-            with unittest.mock.patch.dict(os.environ, {"BUCK2_BINARY": "active"}):
-                tine.buck_command(["build", "tine//..."])
             self.assertEqual(self.path.read_bytes(), before)
             self.assertFalse((self.root / tine.LOCAL).exists())
 

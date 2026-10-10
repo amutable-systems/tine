@@ -242,9 +242,9 @@ The selected tine checkout pins Buck2 in `tine.lock.json`. Projects can override
 `[buck2]` table of `tine.toml` or `tine.local.toml`, with per-platform fields under
 `[buck2.platforms.<platform>]`.
 
-tine exports the pinned binary's path as `BUCK2_BINARY`. A nested Buck command still selects the
-configured wrapper, but inherits the current mounts and skips refreshing shared configuration
-underneath the build that started it.
+tine exports the pinned binary's path as `BUCK2_BINARY`. A tool running under a build never invokes the
+`tine` wrapper, but directly calls the exported binary (`util.buck2_argv()`), inherits the current
+mounts, and runs against the shared configuration the invoking command already wrote.
 
 ### Component model
 
