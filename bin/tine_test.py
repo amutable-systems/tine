@@ -1210,7 +1210,9 @@ class TestNamespaces(MountTestCase):
             self.assertEqual(config["buck2"][tine.DAEMON_BUSTER], tine.BUSTER_PREFIX + digest)
             self.assertEqual(config["tine"][tine.DEV], "sub")
             self.assertNotIn(tine.DAEMON_BUSTER, tine.read_project_buckconfig(self.root).get("buck2", {}))
-            with unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}):
+            with unittest.mock.patch.dict(
+                os.environ, {tine.TINE_MOUNTS_ENV: tine.mount_namespace_marker(digest)}
+            ):
                 self.assertEqual(tine.namespace_mount_targets(self.root), ["sub"])
             self.assertNotIn(tine.MOUNTS, config["tine"])
             for path, content in before.items():
@@ -1242,7 +1244,7 @@ class TestNamespaces(MountTestCase):
                 second_mounts = tine.declared_mounts(self.root)
                 digest = tine.create_mount_namespace(self.root, second_mounts)
                 with unittest.mock.patch.dict(
-                    os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}
+                    os.environ, {tine.TINE_MOUNTS_ENV: tine.mount_namespace_marker(digest)}
                 ):
                     _, prepared = tine.prepare_buck(self.root, {}, ["buck", "build"])
                 self.assertEqual(prepared, sorted(second_mounts))
@@ -1254,7 +1256,7 @@ class TestNamespaces(MountTestCase):
             # Resume A only after B has prepared its replacement, at the point where a shared
             # buster used to make A advertise B's digest while retaining A's checkout.
             with unittest.mock.patch.dict(
-                os.environ, {tine.MARKER: tine.mount_namespace_marker(first_digest)}
+                os.environ, {tine.TINE_MOUNTS_ENV: tine.mount_namespace_marker(first_digest)}
             ):
                 _, prepared = tine.prepare_buck(self.root, {}, ["buck", "build"])
             self.assertEqual(prepared, sorted(mounts))
@@ -1303,7 +1305,9 @@ class TestNamespaces(MountTestCase):
         def mounted() -> str:
             digest = tine.create_mount_namespace(self.root, {"sub": str(self.source)})
             with (
-                unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}),
+                unittest.mock.patch.dict(
+                    os.environ, {tine.TINE_MOUNTS_ENV: tine.mount_namespace_marker(digest)}
+                ),
                 unittest.mock.patch.object(tine, "COMMAND_PATH", self.root / cell / tine.COMMAND),
             ):
                 config, targets = tine.prepare_buck(
@@ -1365,7 +1369,9 @@ class TestNamespaces(MountTestCase):
             digest = tine.create_mount_namespace(self.root, {"sub": str(self.source)})
             self.source.rename(retired)
             replacement.rename(self.source)
-            with unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}):
+            with unittest.mock.patch.dict(
+                os.environ, {tine.TINE_MOUNTS_ENV: tine.mount_namespace_marker(digest)}
+            ):
                 config, targets = tine.prepare_buck(self.root, {}, ["buck", "build"])
             ignores = tine.collect_project_ignores(
                 self.root, config, targets, tine.namespace_gitdirs(self.root)
@@ -1399,7 +1405,9 @@ class TestNamespaces(MountTestCase):
             self.source.rename(retired)
             replacement.rename(self.source)
             declare(self.root, {})
-            with unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}):
+            with unittest.mock.patch.dict(
+                os.environ, {tine.TINE_MOUNTS_ENV: tine.mount_namespace_marker(digest)}
+            ):
                 _, targets = tine.prepare_buck(self.root, {}, ["buck", "build"])
             ignores = tine.collect_project_ignores(
                 self.root, {"cells": {"root": "."}}, targets, tine.namespace_gitdirs(self.root)
@@ -1460,7 +1468,7 @@ class TestNamespaces(MountTestCase):
                 unittest.mock.patch.dict(
                     os.environ,
                     {
-                        tine.MARKER: tine.mount_namespace_marker(digest),
+                        tine.TINE_MOUNTS_ENV: tine.mount_namespace_marker(digest),
                         "BUCK2_BINARY": str(self.root / "buck2"),
                     },
                 ),
@@ -1560,7 +1568,7 @@ class TestReexecConfiguredWrapper(MountTestCase):
         self.addCleanup(created.stop)
         patched = unittest.mock.patch.dict(os.environ)
         patched.start()
-        os.environ.pop(tine.MARKER, None)
+        os.environ.pop(tine.TINE_MOUNTS_ENV, None)
         self.addCleanup(patched.stop)
 
     @contextlib.contextmanager
@@ -1628,7 +1636,9 @@ class TestReexecConfiguredWrapper(MountTestCase):
         command = wrapper_command(self.root / "sub")
         (self.root / ".buckconfig").write_text("[cells]\nroot = .\ntine = sub\n")
         with (
-            unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker("a" * 16)}),
+            unittest.mock.patch.dict(
+                os.environ, {tine.TINE_MOUNTS_ENV: tine.mount_namespace_marker("a" * 16)}
+            ),
             unittest.mock.patch.object(tine, "namespace_mount_targets", return_value=["sub"]),
             unittest.mock.patch.object(tine, "declared_mounts", side_effect=AssertionError("reread mounts")),
             unittest.mock.patch.object(os, "execve", side_effect=SystemExit("handover")) as execve,
@@ -1685,7 +1695,9 @@ class TestReexecConfiguredWrapper(MountTestCase):
     def test_matching_current_namespace_needs_no_handover(self) -> None:
         digest = self.declare_one()
         with (
-            unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}),
+            unittest.mock.patch.dict(
+                os.environ, {tine.TINE_MOUNTS_ENV: tine.mount_namespace_marker(digest)}
+            ),
             unittest.mock.patch.object(tine, "namespace_mount_targets", return_value=["sub"]),
             self.running() as execve,
         ):
@@ -1707,7 +1719,7 @@ class TestReexecConfiguredWrapper(MountTestCase):
         # A manually exported or inherited marker does not prove that this process is in its namespace.
         digest = self.declare_one()
         with (
-            unittest.mock.patch.dict(os.environ, {tine.MARKER: f"{digest} wrong-namespace"}),
+            unittest.mock.patch.dict(os.environ, {tine.TINE_MOUNTS_ENV: f"{digest} wrong-namespace"}),
             self.running() as execve,
         ):
             self.prepare()
@@ -1722,7 +1734,7 @@ class TestReexecConfiguredWrapper(MountTestCase):
         _, argv, environment = execve
         self.assertEqual(argv, [str(TOOL_PATH.absolute()), "buck", "build"])
         assert isinstance(environment, dict)
-        self.assertEqual(environment[tine.MARKER], tine.mount_namespace_marker(digest))
+        self.assertEqual(environment[tine.TINE_MOUNTS_ENV], tine.mount_namespace_marker(digest))
 
 
 class TestBuck2Binary(unittest.TestCase):
