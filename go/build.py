@@ -26,6 +26,8 @@ import rootfs
 class Spec(TypedDict):
     # The output directory holding one binary per package.
     bin: str
+    # go's -buildmode, or None to leave the toolchain's default alone.
+    build_mode: str | None
     # Whether to force cgo on or off, or None to leave the box toolchain's default alone.
     cgo: bool | None
     # Extra flags for the C compiler of a cgo build, on top of the -O2 -g always passed.
@@ -167,6 +169,9 @@ def build_go(spec: Spec) -> None:
     # go.mod/go.sum, making a stale pin a build failure rather than a silent re-resolution.
     # -modcacherw so that buck can clean the scratch space.
     flags = ["-buildvcs=false", "-mod=readonly", "-modcacherw", "-trimpath"]
+    # go test -c also reads GOFLAGS, so the test binaries are linked in the same build mode as the binaries.
+    if spec["build_mode"] is not None:
+        flags.append("-buildmode=" + spec["build_mode"])
     if spec["tags"]:
         flags.append("-tags=" + ",".join(spec["tags"]))
     env = os.environ | {

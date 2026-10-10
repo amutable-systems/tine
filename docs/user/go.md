@@ -71,6 +71,9 @@ go.package(
   `go build` run in the checkout by hand; that default is on. `cgo = False` builds static binaries and
   needs no C compiler, taking Go's own resolver and user lookup instead of the system's. `cgo = True`
   turns a missing C compiler into a build failure, rather than that same silent switch.
+- `build_mode` sets go's `-buildmode` to `"exe"` or `"pie"`. `"pie"` builds position-independent
+  executables, which the kernel loads at a random address on each run. Unset, the box toolchain's default
+  applies, which is `"exe"` on x86-64 and AArch64 Linux.
 
 The binaries are ordinary artifacts, so an image installs one with an `image.copy()` operation; see the
 example.
@@ -123,8 +126,8 @@ go.test(
 
 - `test_packages` lists Go package patterns relative to the module root, such as `["./..."]` or
   `["./pkg/...", "./internal/store"]`. The build compiles one test binary for each matched package that has
-  `_test.go` files, with the same tags, cgo setting and `linker_flags` as the binaries. Building the
-  binaries also compiles the tests.
+  `_test.go` files, with the same tags, cgo setting, `build_mode` and `linker_flags` as the binaries.
+  Building the binaries also compiles the tests.
 - A test that does not compile fails the build of the `go.package()`, and with it the binaries. go's vet
   checks do not run, so a vet finding fails neither the build nor the tests.
 - A pattern that matches a package outside `src`, such as a dependency's package, fails the build.

@@ -24,6 +24,7 @@ def _go_build_impl(
     actions: AnalysisActions,
     bin: OutputArtifact,
     build: RunInfo,
+    build_mode: str | None,
     cgo: bool | None,
     cgo_cflags: list[str],
     fetch: RunInfo,
@@ -75,6 +76,7 @@ def _go_build_impl(
                 _PRIVATE + "/go-build.spec.json",
                 {
                     "bin": bin,
+                    "build_mode": build_mode,
                     "cgo": cgo,
                     "cgo_cflags": cgo_cflags,
                     "gocache": gocache,
@@ -100,6 +102,7 @@ _go_build = dynamic_actions(
     attrs = {
         "bin": dynattrs.output(),
         "build": dynattrs.value(RunInfo),
+        "build_mode": dynattrs.value(str | None),
         "cgo": dynattrs.value(bool | None),
         "cgo_cflags": dynattrs.value(list[str]),
         "fetch": dynattrs.value(RunInfo),
@@ -159,6 +162,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
         _go_build(
             bin = bin.as_output(),
             build = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
+            build_mode = ctx.attrs.build_mode,
             cgo = ctx.attrs.cgo,
             cgo_cflags = ctx.attrs.cgo_cflags,
             fetch = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._fetch, network = True),
@@ -179,6 +183,9 @@ _go_package = rule(
     impl = _go_package_impl,
     attrs = {
         "box": attrs.exec_dep(providers = [BoxInfo], doc = "box carrying the Go toolchain"),
+        "build_mode": attrs.option(
+            attrs.enum(["exe", "pie"]), default = None, doc = "go's -buildmode for the binaries and tests, the toolchain default when unset"
+        ),
         "cgo": attrs.option(attrs.bool(), default = None, doc = "force cgo on or off, box toolchain default when unset"),
         "cgo_cflags": attrs.list(attrs.string(), default = [], doc = "extra C compiler flags for a cgo build"),
         "incremental": attrs.bool(doc = "keep go's caches across dev-mode rebuilds"),
