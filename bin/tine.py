@@ -45,7 +45,7 @@ COMMAND_PATH = Path(__file__).with_suffix("")
 MOUNTS = "mounts"
 MOUNT_CONFIG = f"{HOME}/tine-mounts.toml"
 MOUNT_TARGET_LABEL = "tine:mount-target"
-MARKER = "TINE_MOUNTS"
+TINE_MOUNTS_ENV = "TINE_MOUNTS"
 MOUNT_LOCK = f"{HOME}/tine-mount.lock"
 PRIVATE_MOUNTS = ".buckconfig.d/tine-mounts"
 PRIVATE_CONFIG = f"{PRIVATE_MOUNTS}/config"
@@ -835,7 +835,7 @@ def mount_namespace_marker(digest: str) -> str:
 
 def namespace_mount_targets(root: Path) -> list[str] | None:
     """Recover mounted targets without rereading mutable declarations or source paths."""
-    value = os.environ.get(MARKER, "")
+    value = os.environ.get(TINE_MOUNTS_ENV, "")
     digest = value.partition(" ")[0]
     if not is_hex(digest, 16) or value != mount_namespace_marker(digest):
         return None
@@ -1003,7 +1003,7 @@ def reexec_configured_wrapper(
     if mounts:
         working = cwd()
         digest = create_mount_namespace(root, mounts)
-        environment[MARKER] = mount_namespace_marker(digest)
+        environment[TINE_MOUNTS_ENV] = mount_namespace_marker(digest)
         try:
             os.chdir(working)
         except OSError as error:
@@ -1814,8 +1814,8 @@ def buck_command(argv: list[str]) -> None:
             fail(f"[{RE_CLIENT}] is reserved while [{cache_shim.SECTION}] in {SETTINGS} configures a cache")
         # Before entering the namespace, or the shim would hold every mount in it for as long as it
         # runs. The cost is that its pin comes from the outer checkout rather than a mounted cell's.
-        # MARKER means entering the namespace already re-executed this, which ensured it once.
-        if command.subcommand not in BUCK_COMMAND_NO_ACTION and not os.environ.get(MARKER):
+        # TINE_MOUNTS means entering the namespace already re-executed this, which ensured it once.
+        if command.subcommand not in BUCK_COMMAND_NO_ACTION and not os.environ.get(TINE_MOUNTS_ENV):
             cache_shim.ensure(cache, lambda: before_shim(root, config, settings, cache, command.isolation))
     # A completing shell must neither download nor rewrite shared configuration on a keypress.
     config, mounts = prepare_buck(
