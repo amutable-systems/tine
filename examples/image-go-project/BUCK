@@ -78,6 +78,24 @@ go.package(
     src = "nodeps",
 )
 
+go.package(
+    name = "pie",
+    box = ":go.box",
+    build_mode = "pie",
+    src = "nodeps",
+)
+
+# The ELF header stores the file type as a 16-bit value at offset 16. A PIE binary has type 3 (ET_DYN).
+# A binary linked at a fixed address has type 2 (ET_EXEC). The dev box contains no readelf, so the test reads
+# the value with od.
+box.sh_test(
+    name = "pie-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = '[[ $(od -An -tu2 -j16 -N2 "$1") -eq 3 ]]',
+    args = ["$(location :pie[pie])"],
+)
+
 # This checkout has a go.mod at its root and the server module in server/. The server's go.mod
 # replaces the module in api/ with that directory. The root module does not require the server.
 # Without `module_root`, the build selects the root module, which contains no Go package.

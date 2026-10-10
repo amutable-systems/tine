@@ -40,6 +40,7 @@ class TestBuildGo(unittest.TestCase):
                 scratch.mkdir()
                 spec = build.Spec(
                     bin=f"bin-{iteration}",
+                    build_mode=None,
                     cgo=None,
                     cgo_cflags=[],
                     gocache="gocache",
@@ -120,6 +121,7 @@ class TestCompileTests(unittest.TestCase):
     def test_writes_a_binary_and_a_manifest_entry_per_package(self) -> None:
         spec = build.Spec(
             bin="bin",
+            build_mode="pie",
             cgo=None,
             cgo_cflags=[],
             gocache=None,
@@ -139,6 +141,7 @@ class TestCompileTests(unittest.TestCase):
 
         def run(command: list[str], *, check: bool, cwd: Path, env: dict[str, str]) -> None:
             commands.append(command)
+            self.assertIn("-buildmode=pie", env["GOFLAGS"].split())
             Path(command[command.index("-o") + 1]).write_text("compiled", encoding="utf-8")
 
         packages = [("example.com/a", "a"), ("example.com/b/a", "b/a")]
