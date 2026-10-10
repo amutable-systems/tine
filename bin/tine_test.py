@@ -1457,13 +1457,19 @@ class TestNamespaces(MountTestCase):
             digest = tine.create_mount_namespace(self.root, {"sub": str(source)})
             with (
                 contextlib.chdir(self.root),
-                unittest.mock.patch.dict(os.environ, {tine.MARKER: tine.mount_namespace_marker(digest)}),
+                unittest.mock.patch.dict(
+                    os.environ,
+                    {
+                        tine.MARKER: tine.mount_namespace_marker(digest),
+                        "BUCK2_BINARY": str(self.root / "buck2"),
+                    },
+                ),
                 unittest.mock.patch.object(tine, "COMMAND_PATH", self.root / "sub" / tine.COMMAND),
-                unittest.mock.patch.object(tine, "buck2_binary", return_value=self.root / "buck2"),
+                unittest.mock.patch.object(tine, "ensure_buck2_binary", return_value=True),
                 unittest.mock.patch.object(
                     tine, "namespace_gitdirs", wraps=tine.namespace_gitdirs
                 ) as gitdirs,
-                unittest.mock.patch.object(os, "execve") as execve,
+                unittest.mock.patch.object(os, "execv") as execve,
             ):
                 tine.buck_command(["build", "tine//..."])
             execve.assert_called_once()
@@ -1586,7 +1592,9 @@ class TestReexecConfiguredWrapper(MountTestCase):
         with (
             contextlib.chdir(self.root),
             unittest.mock.patch.object(os, "execve", side_effect=SystemExit("handover")) as execve,
-            unittest.mock.patch.object(tine, "buck2_binary", side_effect=AssertionError("read outer pin")),
+            unittest.mock.patch.object(
+                tine, "ensure_buck2_binary", side_effect=AssertionError("read outer pin")
+            ),
             self.assertRaisesRegex(SystemExit, "handover"),
         ):
             tine.main(arguments)
@@ -1744,18 +1752,20 @@ class TestBuck2Binary(unittest.TestCase):
 
     def test_the_cell_declares_the_pin(self) -> None:
         home = self.cache("a" * 64)
+        binary = home / "tine" / "buck2" / ("a" * 64) / "buck2"
         with unittest.mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(home)}):
-            self.assertEqual(
-                tine.buck2_binary({}, self.cell()), home / "tine" / "buck2" / ("a" * 64) / "buck2"
-            )
+            self.assertTrue(tine.ensure_buck2_binary({}, self.cell()))
+            self.assertEqual(os.environ["BUCK2_BINARY"], str(binary))
+            self.assertEqual(os.environ["BUCK2_ARG0"], "tine buck")
 
     def test_a_project_pin_overrides_the_cell_key_by_key(self) -> None:
         platform = tine._host_platform()
         home = self.cache("b" * 64)
         config = {"buck2": {"platforms": {platform: {"sha256": "b" * 64}}}}
         with unittest.mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(home)}):
-            binary = tine.buck2_binary(config, self.cell())
-        self.assertEqual(binary, home / "tine" / "buck2" / ("b" * 64) / "buck2")
+            self.assertTrue(tine.ensure_buck2_binary(config, self.cell()))
+            binary = os.environ["BUCK2_BINARY"]
+        self.assertEqual(binary, str(home / "tine" / "buck2" / ("b" * 64) / "buck2"))
 
     def test_the_override_is_read_from_tine_toml(self) -> None:
         platform = tine._host_platform()
@@ -1806,25 +1816,25 @@ sha256 = "{"b" * 64}"
 
     def test_an_uncached_pin_is_nothing_to_complete_with(self) -> None:
         with unittest.mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(scratch(self))}):
-            self.assertIsNone(tine.buck2_binary(self.pin(), self.cell(), fetch=False))
+            self.assertFalse(tine.ensure_buck2_binary(self.pin(), self.cell(), fetch=False))
 
     def test_a_cell_declaring_no_buck2(self) -> None:
         with self.assertRaisesRegex(SystemExit, "declares no buck2"):
-            tine.buck2_binary({}, self.cell({"ruff": {}}))
+            tine.ensure_buck2_binary({}, self.cell({"ruff": {}}))
 
     def test_a_cell_with_no_pins(self) -> None:
         with self.assertRaisesRegex(SystemExit, "cannot read .*tine.lock.json"):
-            tine.buck2_binary({}, scratch(self, "tine-test-cell."))
+            tine.ensure_buck2_binary({}, scratch(self, "tine-test-cell."))
 
     def test_a_machine_buck2_is_not_published_for(self) -> None:
         uname = os.uname_result(("Linux", "host", "7.0", "#1", "m68k"))
         with unittest.mock.patch.object(os, "uname", return_value=uname):
             with self.assertRaisesRegex(SystemExit, "unsupported platform: Linux-m68k"):
-                tine.buck2_binary(self.pin(), scratch(self, "tine-test-cell."))
+                tine.ensure_buck2_binary(self.pin(), scratch(self, "tine-test-cell."))
 
     def test_a_pin_that_is_not_a_sha256(self) -> None:
         with self.assertRaisesRegex(SystemExit, "64 lowercase hexadecimal"):
-            tine.buck2_binary(self.pin("abc"), self.cell())
+            tine.ensure_buck2_binary(self.pin("abc"), self.cell())
 
 
 class TestDownload(unittest.TestCase):
@@ -1902,6 +1912,10 @@ class TestBuckCommand(unittest.TestCase):
         os.chdir(self.root)
         self.binary = self.root / "buck2"
         self.binary.write_text("")
+        # As under a real wrapper run: resolution exported the environment before anything here runs.
+        environment = unittest.mock.patch.dict(os.environ, {"BUCK2_BINARY": str(self.binary)})
+        environment.start()
+        self.addCleanup(environment.stop)
 
     @contextlib.contextmanager
     def running(self) -> collections.abc.Iterator[list[object]]:
@@ -1915,8 +1929,8 @@ class TestBuckCommand(unittest.TestCase):
             patches.enter_context(
                 patch(cache_shim, "ensure", side_effect=lambda _, ready: self.served.append(ready()))
             )
-            patches.enter_context(patch(tine, "buck2_binary", return_value=self.binary))
-            patches.enter_context(patch(os, "execve", side_effect=lambda *a: execve.extend(a)))
+            patches.enter_context(patch(tine, "ensure_buck2_binary", return_value=True))
+            patches.enter_context(patch(os, "execv", side_effect=lambda *a: execve.extend(a)))
             yield execve
 
     def configure_cache(self) -> cache_shim.CacheSettings:
@@ -1987,7 +2001,7 @@ class TestBuckCommand(unittest.TestCase):
             self.killed.clear()
             (self.root / tine.LOCAL_SETTINGS).write_text("[cache]\nunsigned = true\nport = 21000\n")
             tine.buck_command(["build", "//..."])
-        self.assertEqual(self.killed, [(self.binary, None)])
+        self.assertEqual(self.killed, [(None,)])
 
     def test_a_project_may_not_name_the_cache_address_itself(self) -> None:
         self.configure_cache()
@@ -2005,11 +2019,8 @@ class TestBuckCommand(unittest.TestCase):
     def test_it_configures_then_hands_over(self) -> None:
         with self.running() as execve:
             tine.buck_command(["build", "//x"])
-        binary, argv, environment = execve
-        self.assertEqual((binary, argv), (self.binary, [str(self.binary), "build", "//x"]))
-        assert isinstance(environment, dict)
-        self.assertEqual(environment["BUCK2_BINARY"], str(self.binary))
-        self.assertEqual(environment["BUCK2_ARG0"], "tine buck")
+        binary, argv = execve
+        self.assertEqual((binary, argv), (str(self.binary), [str(self.binary), "build", "//x"]))
         self.assertTrue((self.root / tine.LOCAL).is_file())
 
     def test_no_mounts_skip_private_git_metadata(self) -> None:
@@ -2107,10 +2118,8 @@ class TestBuckCommand(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, environment, clear=True):
             with self.running() as execve:
                 tine.buck_command(["build", "//x"])
+            self.assertTrue(execve)
             self.assertEqual(os.environ["HOME"], str(self.root / tine.HOME))
-        home = execve[2]
-        assert isinstance(home, dict)
-        self.assertEqual(home["HOME"], str(self.root / tine.HOME))
         self.assertTrue((self.root / tine.HOME).is_dir())
 
     def test_a_run_with_a_home_keeps_it(self) -> None:
@@ -2437,8 +2446,9 @@ class TestRefreshProjectBuckconfig(unittest.TestCase):
         self.source.write_text(self.updated)
         with (
             contextlib.chdir(self.root),
-            unittest.mock.patch.object(tine, "buck2_binary", return_value=self.root / "buck2"),
-            unittest.mock.patch.object(os, "execve"),
+            unittest.mock.patch.dict(os.environ, {"BUCK2_BINARY": str(self.root / "buck2")}),
+            unittest.mock.patch.object(tine, "ensure_buck2_binary", return_value=True),
+            unittest.mock.patch.object(os, "execv"),
         ):
             tine.buck_command(["complete"])
             self.assertEqual(self.path.read_bytes(), before)
@@ -2449,7 +2459,7 @@ class TestRefreshProjectBuckconfig(unittest.TestCase):
         self.source.write_text(self.updated)
         with (
             contextlib.chdir(self.root),
-            unittest.mock.patch.object(tine, "buck2_binary", return_value=self.root / "buck2"),
+            unittest.mock.patch.object(tine, "ensure_buck2_binary", return_value=True),
             unittest.mock.patch.object(tine, "_buck2_completion_script", return_value="script"),
             unittest.mock.patch.object(tine, "rewrite_completion_script", return_value="rendered"),
             contextlib.redirect_stdout(io.StringIO()) as output,
