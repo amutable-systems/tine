@@ -6,3 +6,7 @@ python-version = "3.14"
 
 [rules]
 all = "error"
+
+# ty 0.0.86 flags hundreds of `if x:` on `T | None`; these are annoying and bureaucratic on an
+# existing large code base, and also largely irrelevant
+truthiness-test-of-none-union = "ignore"
