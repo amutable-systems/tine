@@ -272,9 +272,9 @@ def main(argv: list[str] | None = None) -> None:
     written = [
         WrittenPartition(
             Definition.parse(entry["definition"]),
-            Path(entry["blocks"]) if entry["blocks"] else None,
-            Path(entry["metadata"]) if entry["metadata"] else None,
-            Path(entry["manifest"]) if entry["manifest"] else None,
+            Path(entry["blocks"]) if entry["blocks"] is not None else None,
+            Path(entry["metadata"]) if entry["metadata"] is not None else None,
+            Path(entry["manifest"]) if entry["manifest"] is not None else None,
         )
         for entry in spec["definitions"]
     ]
@@ -283,7 +283,7 @@ def main(argv: list[str] | None = None) -> None:
             Definition.parse(partition["definition"]),
             Path(partition["blocks"]),
             Path(partition["metadata"]),
-            Path(partition["manifest"]) if partition["manifest"] else None,
+            Path(partition["manifest"]) if partition["manifest"] is not None else None,
         )
         for partition in spec["partitions"]
     ]
@@ -294,7 +294,7 @@ def main(argv: list[str] | None = None) -> None:
         for partition in written
         if partition.blocks is not None and partition.metadata is not None
     ]
-    if not spec["out"] and not splits:
+    if spec["out"] is None and not splits:
         util.fail("repart: specify a disk output, split outputs, or both")
 
     binds: list[tuple[str | Path, str | Path]] = [
@@ -323,7 +323,7 @@ def main(argv: list[str] | None = None) -> None:
         # An imported partition was listed by the invocation that filled it, and this one holds
         # what it copies itself, so between them they list the whole disk. Imported first: a
         # partition this invocation mounts over a directory another one holds is the one on top.
-        if spec["manifest"]:
+        if spec["manifest"] is not None:
             imported = [it.manifest for it in partitions if it.manifest is not None]
             manifest.merge(imported + listings, Path(spec["manifest"]))
 
@@ -339,10 +339,10 @@ def main(argv: list[str] | None = None) -> None:
 
         seed = (
             uuid.UUID(spec["seed"])
-            if spec["seed"]
+            if spec["seed"] is not None
             else _derived_seed(spec["identity"], raw_definitions, partitions)
         )
-        out = Path(spec["out"]) if spec["out"] else None
+        out = Path(spec["out"]) if spec["out"] is not None else None
         # A split artifact is named after the image repart writes, so the scratch file carries the
         # published basename even when only the partitions leave this invocation.
         disk = scratch / f"{spec['basename']}.raw" if splits else out
@@ -374,11 +374,11 @@ def main(argv: list[str] | None = None) -> None:
 
         for name, blocks, metadata in splits:
             _copy_partition(_partition_row(rows, files[name]), name, blocks, metadata)
-        if spec["root_hash_out"]:
+        if spec["root_hash_out"] is not None:
             repart.write_root_hash(rows, Path(spec["root_hash_out"]))
         if out and splits:
             shutil.copyfile(disk, out)
-        if out and spec["output_size"]:
+        if out and spec["output_size"] is not None:
             _grow(out, spec["output_size"])
 
     artifacts = []

@@ -12,6 +12,7 @@ record their input location. `make-cache` amortizes metadata parsing across solv
 
 import argparse
 import sys
+from collections.abc import Sequence
 from contextlib import ExitStack
 from pathlib import Path
 
@@ -49,7 +50,7 @@ def load_base(
     cachedir: Path,
     installroot: Path | None,
     arch: str,
-    seeds: list[Path] | None = None,
+    seeds: Sequence[Path] = (),
 ) -> libdnf5.base.Base:
     """Load pinned repositories, optionally seeding libdnf5's parsed metadata cache."""
     base = libdnf5.base.Base()

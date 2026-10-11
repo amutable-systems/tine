@@ -402,7 +402,7 @@ def is_published(koji: xmlrpc.client.ServerProxy, distro: str, branch: str, buil
         logging.debug("koji: %s tagged %s -> published", build["nvr"], sorted(tags))
         return True
     bodhi = DISTROS[distro].get("bodhi")
-    assert bodhi, f"{distro} has no bodhi configured"
+    assert bodhi is not None, f"{distro} has no bodhi configured"
     updates = json.loads(urlopen_retry(f"{bodhi}?builds={build['nvr']}"))["updates"]
     logging.debug("bodhi: %s -> %d update(s)", build["nvr"], len(updates))
     return bool(updates)
@@ -421,7 +421,7 @@ def latest_published_commit(
 
     Restricted to commits after `since`, when given.
     """
-    revs = f"{since}..HEAD" if since else "HEAD"
+    revs = f"{since}..HEAD" if since is not None else "HEAD"
     for c in git("rev-list", "--first-parent", revs, cwd=clone).split():
         build = find_build(koji, distro, packagename, url, c, branch)
         if build and is_published(koji, distro, branch, build):
@@ -782,7 +782,7 @@ def import_upstream(distro: str, branch: str, packagename: str, sha: str | None)
     with tempfile.TemporaryDirectory() as tmp:
         clone = Path(tmp) / "clone"
         git_net("clone", "--quiet", "--branch", branch, "--single-branch", url, str(clone))
-        if sha:
+        if sha is not None:
             build = find_build(koji, distro, packagename, url, sha, branch)
             if not (build and is_published(koji, distro, branch, build)):
                 raise SystemExit(
@@ -792,7 +792,7 @@ def import_upstream(distro: str, branch: str, packagename: str, sha: str | None)
         else:
             # Default target: the newest published build (skip unbuilt/staged tip commits).
             sha = latest_published_commit(koji, clone, distro, packagename, url, branch)
-            assert sha, f"no published build for {packagename} on {branch}"
+            assert sha is not None, f"no published build for {packagename} on {branch}"
         git("checkout", "--quiet", sha, cwd=clone)
         import_commits(koji, wt, distro, packagename, branch, url, clone, [sha])
     logging.info("imported %s/%s/%s onto upstream-rpm", distro, branch, packagename)
@@ -827,7 +827,7 @@ def update_upstreams() -> None:
             clone = Path(tmp) / "clone"
             git_net("clone", "--quiet", "--branch", branch, "--single-branch", url, str(clone))
             target = latest_published_commit(koji, clone, distro, packagename, url, branch, since=last)
-            if not target:
+            if target is None:
                 logging.info("%s/%s/%s: new commits, but none published yet", distro, branch, packagename)
                 continue
             commits = git("rev-list", "--reverse", "--first-parent", f"{last}..{target}", cwd=clone).split()
@@ -929,7 +929,7 @@ def import_(packagename: str, distro: str | None, branch: str | None) -> None:
     only it; selecting on the dir alone would drop those.
     """
     wt = ensure_worktree()
-    if not (distro and branch):
+    if distro is None or branch is None:
         matches = [p for p in (wt / "packages").glob(f"*/*/{packagename}") if p.is_dir()]
         assert matches, f"{packagename} not on upstream-rpm"
         assert len(matches) == 1, (
@@ -954,7 +954,7 @@ def resolve_main(packagename: str, distro: str | None = None, branch: str | None
     distro/branch coordinates (e.g. fedora/f44 and fedora/rawhide); pass distro and branch to
     disambiguate. Raises a readable error if the package is absent or ambiguous.
     """
-    if distro and branch:
+    if distro is not None and branch is not None:
         rel = f"packages/{distro}/{branch}/{packagename}"
         if not (_root() / rel).is_dir():
             raise SystemExit(f"{distro}/{branch}/{packagename}: not on this branch")
@@ -1242,7 +1242,7 @@ def rebuild(packagename: str, reason: str, distro: str | None = None, branch: st
     prev = local_bump(rel)
 
     vr = build_vr(meta)
-    assert vr, f"{rel}: no version-release in srcpkg.json"
+    assert vr is not None, f"{rel}: no version-release in srcpkg.json"
     old_release = vr.rsplit("-", 1)[1]
     new_release = bumped_release(old_release, prev)
     # Bump the release in the package's own NEVRs (self-provides + versioned sibling deps end in
@@ -1294,7 +1294,7 @@ def build_vr(meta: SrcpkgMetadata) -> str | None:
     """
     for arch in meta["binaries"].values():
         for name, binmeta in arch.items():
-            if vr := self_provide_vr(name, binmeta):
+            if (vr := self_provide_vr(name, binmeta)) is not None:
                 return vr
     return None
 
@@ -1311,7 +1311,7 @@ def arch_vr_skew(meta: SrcpkgMetadata) -> list[str]:
     vrs: dict[str, dict[str, str]] = {}  # binary name -> arch -> V-R
     for arch, bucket in meta["binaries"].items():
         for name, binmeta in bucket.items():
-            if vr := self_provide_vr(name, binmeta):
+            if (vr := self_provide_vr(name, binmeta)) is not None:
                 vrs.setdefault(name, {})[arch] = vr
     return [
         f"{name} version-release skew: " + ", ".join(f"{a} has {vr}" for a, vr in sorted(per.items()))
@@ -1326,7 +1326,7 @@ def build_dist(meta: SrcpkgMetadata) -> str | None:
     A predicted main-side release ('.fc44aos') still yields '.fc44' here, which callers re-suffix.
     """
     vr = build_vr(meta)
-    if vr and (d := re.search(r"\.(?:fc|el|hum)\d+", vr)):
+    if vr is not None and (d := re.search(r"\.(?:fc|el|hum)\d+", vr)):
         return d.group()
     return None
 
@@ -1339,7 +1339,7 @@ def native_dist(rel: str) -> str:
     """
     metafile = _root() / f"{rel}.json"
     if metafile.exists():
-        if d := build_dist(cast(SrcpkgMetadata, json.loads(metafile.read_text()))):
+        if (d := build_dist(cast(SrcpkgMetadata, json.loads(metafile.read_text())))) is not None:
             return d + NATIVE_DIST
     return "." + NATIVE_DIST
 
@@ -1357,7 +1357,7 @@ def build_version(meta: SrcpkgMetadata) -> str:
     What the rule's subpackage-NVR fidelity gate matches against (rpm filenames carry no epoch).
     """
     vr = build_vr(meta)
-    if not vr:
+    if vr is None:
         raise SystemExit('no "<binary> = version-release" self-provide in metadata')
     return vr.split(":", 1)[-1].rsplit("-", 1)[0]  # drop epoch, then release
 
@@ -1369,7 +1369,7 @@ def build_release(meta: SrcpkgMetadata, dist: str) -> str:
     hermetically (no rpmautospec/git in the buildroot, like the srpm verb's freeze).
     """
     vr = build_vr(meta)
-    if not vr:
+    if vr is None:
         raise SystemExit('no "<binary> = version-release" self-provide in metadata')
     return vr.split(":", 1)[-1].rsplit("-", 1)[1].removesuffix(dist)  # drop epoch + version, strip dist
 
@@ -1384,7 +1384,7 @@ def project_build_fields(meta: SrcpkgMetadata, source_date_epoch: int) -> None:
     bucket; each source's http_file `out` is its URL basename).
     """
     d = build_dist(meta)
-    dist = d + NATIVE_DIST if d else "." + NATIVE_DIST
+    dist = d + NATIVE_DIST if d is not None else "." + NATIVE_DIST
     meta["version"] = build_version(meta)
     meta["release"] = build_release(meta, dist)
     meta["dist"] = dist
@@ -1740,7 +1740,7 @@ def check_commit(c: str) -> list[str]:
     # A local source change must be an %autorelease package or bump Release: per the release rules
     # (incl. native packages).
     if not upstream and dir_changed and not reset and not autorel:
-        if err := release_bump_error(c, rel):
+        if (err := release_bump_error(c, rel)) is not None:
             bad(err)
     # A *local* metadata-only change is only legitimate as an %autorelease rebuild. An imported
     # one is fine as-is: upstream's rpmautospec mass rebuilds are empty dist-git commits
@@ -1764,7 +1764,7 @@ def check_commit(c: str) -> list[str]:
     # import (its count reaches past our import boundary, even past the %autorelease switch), the
     # raw Version: text is often a macro that never changes, and -b/-e/-p offsets defeat counting
     # altogether. The imported release is ground truth off the koji build's NEVR.
-    if autorel and meta and build_vr(meta):
+    if autorel and meta and build_vr(meta) is not None:
         got = build_release(meta, (build_dist(meta) or ".") + NATIVE_DIST)
         if upstream:
             # An import either carries the previous build's metadata forward (unbuilt commit, V-R
@@ -1775,7 +1775,7 @@ def check_commit(c: str) -> list[str]:
                 prev = cast(SrcpkgMetadata, json.loads(git("show", f"{c}^:{jrel}", cwd=ROOT)))
                 pgot = build_release(prev, (build_dist(prev) or ".") + NATIVE_DIST)
                 if (
-                    build_vr(prev)
+                    build_vr(prev) is not None
                     and build_version(prev) == build_version(meta)
                     and got != pgot
                     and got.isdigit()
@@ -1836,7 +1836,7 @@ def check(start_ref: str | None = None) -> list[str]:
     here -- only a rebuild can confirm that (packages.md).
     """
     ensure_branch()  # check_commit resolves X-Upstream-Commit: trailers against it
-    revs = f"{start_ref}..HEAD" if start_ref else "HEAD"
+    revs = f"{start_ref}..HEAD" if start_ref is not None else "HEAD"
     errors: list[str] = []
     for c in git("rev-list", revs, cwd=ROOT).split():
         errors += check_commit(c)

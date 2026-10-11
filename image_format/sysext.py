@@ -125,7 +125,7 @@ def main(argv: list[str] | None = None) -> None:
 
         seed = (
             uuid.UUID(spec["seed"])
-            if spec["seed"]
+            if spec["seed"] is not None
             else _derived_seed(spec["identity"], spec["name"], release)
         )
         cmd = [

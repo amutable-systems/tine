@@ -255,7 +255,7 @@ def build_rpms(
         f"dist {dist}",
         *(options or []),
     ]
-    if target:
+    if target is not None:
         cmd += ["--target", target]
     for k, v in defines.items():
         cmd += ["--define", f"{k} {v}"]
@@ -300,7 +300,7 @@ class FakeKoji:
         return [
             {k: v for k, v in b.items() if not k.startswith("_")}
             for b in self._builds
-            if source and source.endswith("#" + b["_sha"])
+            if source is not None and source.endswith("#" + b["_sha"])
         ]
 
     def listBuildRPMs(self, build_id: int) -> list[dict[str, Any]]:
@@ -496,7 +496,7 @@ class PackagesTestCase(unittest.TestCase):
         local change and `check` enforces (an %autorelease spec has no Release: line to bump, so only
         the metadata moves). Tests that don't run `check` can leave it out.
         """
-        if addfile:
+        if addfile is not None:
             (self.monorepo / rel / addfile).write_text(f"# {addfile}\n")
         spec = self.monorepo / rel / f"{Path(rel).name}.spec"
         spec.write_text(spec.read_text().replace(old, new))

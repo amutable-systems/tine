@@ -60,7 +60,7 @@ def _github_json(url: str) -> object:
         "User-Agent": "tine-bump",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    token = os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")
+    token = os.getenv("GH_TOKEN", "") or os.getenv("GITHUB_TOKEN", "")
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(url, headers=headers)

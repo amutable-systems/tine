@@ -134,9 +134,9 @@ def _provider_options(key: Key) -> list[str]:
     passes only the one option, and ukify reads the certificate the way it reads any file.
     """
     options = []
-    if key["private_key_source"]:
+    if key["private_key_source"] is not None:
         options += ["--signing-provider", _provider(key["private_key_source"])]
-    if key["certificate_source"]:
+    if key["certificate_source"] is not None:
         options += ["--certificate-provider", _provider(key["certificate_source"])]
     return options
 
@@ -155,7 +155,7 @@ def _ukify_options() -> set[str]:
 
 def _splash_arguments(splash: str | None, tree: Path) -> list[str]:
     """ukify's argument for the splash: a build artifact as is, an absolute path inside the image."""
-    if not splash:
+    if splash is None:
         return []
     if splash.startswith("/"):
         path = tree / splash.lstrip("/")
@@ -238,7 +238,7 @@ def _signing_arguments(
         # /usr/lib/nvpcr definitions gets past the boot's first TPM step.
         if "--sign-initrd-pcrs" in options:
             signing += ["--sign-initrd-pcrs"]
-        if pcr["private_key_source"]:
+        if pcr["private_key_source"] is not None:
             # Only the provider path passes the certificate: ukify's systemd-measure call requires
             # one there. Everywhere else ukify derives the public key section (.pcrpkey) from the
             # private key, which cannot mismatch, and passing the certificate instead would be a

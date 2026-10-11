@@ -256,7 +256,7 @@ class Kmod:
 
     def _each(self, head: Handle | None) -> Iterator[Handle]:
         entry = head
-        while entry:
+        while entry is not None:
             yield entry
             entry = cast(Handle | None, self._lib.kmod_list_next(head, entry))
 
@@ -310,7 +310,7 @@ class Kmod:
             return []
         names: list[str] = []
         for head in (pre, post):
-            if not head.value:
+            if head.value is None:
                 continue
             try:
                 names += [self._named(entry) for entry in self._each(head.value)]

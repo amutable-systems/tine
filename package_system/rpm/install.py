@@ -14,6 +14,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 from typing import override
 
@@ -56,7 +57,7 @@ class TransactionCallbacks(libdnf5.rpm.TransactionCallbacks):
         print(error, file=sys.stderr)
 
 
-def limit_langs(langs: list[str]) -> None:
+def limit_langs(langs: Sequence[str]) -> None:
     """Restrict the `%lang()`-marked files rpm installs to the given languages.
 
     libdnf5 exposes neither a macro API nor an equivalent option, so this has to arrive through
@@ -77,7 +78,7 @@ def install(
     cachedir: Path,
     *,
     system: bool = False,
-    langs: list[str] | None = None,
+    langs: Sequence[str] = (),
     docs: bool = True,
 ) -> None:
     if langs:
@@ -165,7 +166,7 @@ def install_into_root(
     installroot: Path,
     *,
     system: bool,
-    langs: list[str] | None = None,
+    langs: Sequence[str] = (),
     docs: bool = True,
 ) -> None:
     with installer.fresh_machine_id(installroot):

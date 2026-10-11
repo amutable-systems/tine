@@ -251,7 +251,7 @@ def socket_path(store: Path) -> Path:
     and a test holds the two together.
     """
     named = _digest(str(store.resolve()))
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "")
     if runtime:
         return Path(runtime) / f"tine-cache-{named}.sock"
     private = Path(tempfile.gettempdir()) / f"tine-cache-{os.getuid()}"

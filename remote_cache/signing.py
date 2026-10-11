@@ -129,7 +129,9 @@ class Signer:
         self.public = key.public_key()
         self.id = key_id(self.public)
         self.certificate_pem = certificate.read_text(encoding="utf-8") if certificate else None
-        self.certificate = load_certificate(self.certificate_pem) if self.certificate_pem else None
+        self.certificate = (
+            load_certificate(self.certificate_pem) if self.certificate_pem is not None else None
+        )
         if self.certificate is not None and key_id(self.certificate.public_key()) != self.id:
             raise ValueError(f"{certificate} is not a certificate for signing key {self.id.hex()}")
 

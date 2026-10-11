@@ -373,7 +373,7 @@ class Alpm:
 
     def _depend(self, depend: ctypes.c_void_p | None) -> str:
         wanted = ctypes.cast(self._lib.alpm_dep_compute_string(depend), ctypes.c_char_p) if depend else None
-        return wanted.value.decode() if wanted and wanted.value else "?"
+        return wanted.value.decode() if wanted and wanted.value is not None else "?"
 
     def _unsatisfied(self, missing: ctypes._Pointer[_List]) -> list[str]:
         """Name what a failed prepare could not satisfy, and for whom."""
@@ -402,7 +402,10 @@ class Alpm:
             return self._conflicting(data)
         if error == _ERR_PKG_INVALID_ARCH:
             names = [ctypes.cast(entry, ctypes.c_char_p).value for entry in self._each(data)]
-            return [f"{name.decode() if name else '?'} is not built for this architecture" for name in names]
+            return [
+                f"{name.decode() if name is not None else '?'} is not built for this architecture"
+                for name in names
+            ]
         return []
 
     @contextmanager

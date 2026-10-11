@@ -181,7 +181,7 @@ def main() -> None:
     kind = "::warning::opened draft" if note else "::notice::opened"
     print(f"{kind} #{pull_request}")
     # What a caller with something left to do about the pull request reads.
-    step_output = os.environ.get("GITHUB_OUTPUT")
+    step_output = os.environ.get("GITHUB_OUTPUT", "")
     if step_output:
         with Path(step_output).open("a") as handle:
             handle.write(f"pull-request={pull_request}\ndraft={str(bool(note)).lower()}\n")

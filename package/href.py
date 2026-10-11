@@ -15,7 +15,7 @@ from util import fail
 
 def relative_href(rid: str, what: str, href: str | None) -> str:
     """Check that `href` is a plain repository-relative path, and return it unchanged."""
-    if not href:
+    if href is None or href == "":
         fail(f"{rid}: {what} has an empty location")
     parsed = urlsplit(href)
 

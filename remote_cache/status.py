@@ -51,7 +51,7 @@ def socket_path(root: Path) -> Path:
     the name there first, and then answer `ask` with whatever they liked.
     """
     named = hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:16]
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "")
     if runtime:
         return Path(runtime) / f"tine-cache-{named}.sock"
     private = Path(tempfile.gettempdir()) / f"tine-cache-{os.getuid()}"

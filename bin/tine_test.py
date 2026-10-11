@@ -355,7 +355,7 @@ class TestRenderLocalConfigBlock(RepositoryTestCase):
     def cache(self, authority: list[str] | None = None) -> cache_shim.CacheSettings:
         """Cache settings trusting the given authority, otherwise allowing unsigned."""
 
-        trust: dict[str, object] = {"authority": authority} if authority else {"unsigned": True}
+        trust: dict[str, object] = {"authority": authority} if authority is not None else {"unsigned": True}
         table = {"read_url": "https://cache.example"} | trust
         cache = cache_shim.settings({"cache": table}, self.repo, tine.SETTINGS)
         assert cache is not None

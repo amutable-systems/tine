@@ -178,7 +178,7 @@ class RoundTrip:
             fail(f"nothing serves {self.cache.dir} after a build that needed it")
         counts = cast(dict[str, int], report["counts"])
         print(f"shim counters: {counts}", file=sys.stderr, flush=True)
-        if noisy := [f"{what} {counts[what]}" for what in QUIET if counts.get(what)]:
+        if noisy := [f"{what} {counts[what]}" for what in QUIET if counts.get(what, 0)]:
             fail(f"the shim reports trouble: {', '.join(noisy)}; see {cache_shim.log_path(self.cache)}")
 
     def stop_shim(self) -> None:

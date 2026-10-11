@@ -199,7 +199,7 @@ def _identity(tools: str) -> list[Filesystem]:
 
 def _box(name: str) -> dict[str, str]:
     """Announce the box in the environment, counting depth when boxes nest."""
-    previous = os.environ.get("TINE_BOX", "") if os.environ.get("TINE_IN_BOX") else ""
+    previous = os.environ.get("TINE_BOX", "") if os.environ.get("TINE_IN_BOX", "") else ""
     if previous:
         _, separator, level = previous.rpartition(":")
         nested = separator and level.isascii() and level.isdecimal() and level[0] != "0"
@@ -207,7 +207,7 @@ def _box(name: str) -> dict[str, str]:
     out = {"TINE_BOX": name, "TINE_IN_BOX": "1"}
 
     # Starship owns the prompt layout; TINE_BOX is rendered through its env_var module instead.
-    if os.environ.get("STARSHIP_SHELL"):
+    if os.environ.get("STARSHIP_SHELL", ""):
         return out
     prefix = os.environ.get("SHELL_PROMPT_PREFIX", "")
     out["SHELL_PROMPT_PREFIX"] = _prompt_prefix(name, previous, prefix)
@@ -274,11 +274,11 @@ def _parse(argv: list[str] | None) -> Options:
     args.cmd = list(reversed(argv))
     if not args.tools:
         _fail("--tools is required")
-    if not args.cmd and not args.box:
+    if not args.cmd and args.box is None:
         _fail("no command given (expected `-- cmd ...`)")
     if args.relaxed and args.bind_cwd:
         _fail("--bind-cwd is for hermetic builds; --relaxed sees the host cwd already")
-    if args.box and not args.relaxed:
+    if args.box is not None and not args.relaxed:
         _fail("--box describes an interactive host-integrated shell; it requires --relaxed")
     return args
 
@@ -306,15 +306,15 @@ def _which(command: str, path: str) -> str | None:
 def _interactive_shell(environment: dict[str, str]) -> str:
     """Choose an executable shell from the mounted box."""
     path = environment.get("PATH", os.defpath)
-    preferred = environment.get("SHELL")
+    preferred = environment.get("SHELL", "")
     if preferred and (shell := _which(preferred, path)) is not None:
         return shell
     if (shell := _which("bash", path)) is not None:
         environment["SHELL"] = shell
         # Starship belongs to the unavailable host shell. Let fallback bash use the standard marker.
         if environment.pop("STARSHIP_SHELL", None) is not None:
-            previous = os.environ.get("TINE_BOX", "") if os.environ.get("TINE_IN_BOX") else ""
-            if name := environment.get("TINE_BOX"):
+            previous = os.environ.get("TINE_BOX", "") if os.environ.get("TINE_IN_BOX", "") else ""
+            if name := environment.get("TINE_BOX", ""):
                 prefix = environment.get("SHELL_PROMPT_PREFIX", "")
                 environment["SHELL_PROMPT_PREFIX"] = _prompt_prefix(name, previous, prefix)
         return shell
@@ -349,7 +349,7 @@ def _launch(args: Options, tools: str, stage: Stage) -> Launch:
 
     chdir: str | None = None
     command = tuple(args.cmd)
-    if cwd:
+    if cwd is not None:
         filesystems.append(Bind(cwd, _PROJECT))
         chdir = _PROJECT
 
@@ -374,7 +374,7 @@ def _launch(args: Options, tools: str, stage: Stage) -> Launch:
         # on one of its lock targets, and every `buck test`. Those keep a tmpfs here too, which dies
         # with the mount namespace.
         staging = None
-        if cwd and "BUCK_SCRATCH_PATH" in os.environ:
+        if cwd is not None and "BUCK_SCRATCH_PATH" in os.environ:
             staging = os.path.join(cwd, os.environ["BUCK_SCRATCH_PATH"])
         if staging is None:
             filesystems.append(Tmpfs("/var/tmp"))
@@ -389,7 +389,7 @@ def _launch(args: Options, tools: str, stage: Stage) -> Launch:
     if args.source_date_epoch is not None:
         environment["SOURCE_DATE_EPOCH"] = str(args.source_date_epoch)
     environment.update(args.setenv)
-    if args.box:
+    if args.box is not None:
         environment.update(_box(args.box))
     if args.relaxed:
         # Resolve through the host /run while keeping the tools tree's /etc.

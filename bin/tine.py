@@ -132,7 +132,7 @@ def project_root(start: Path) -> Path:
     """The furthest ancestor holding a .buckconfig, the same root Buck itself resolves to."""
     root = None
     # The only home directory Buck knows: it never falls back to the password database.
-    home = os.environ.get("HOME")
+    home = os.environ.get("HOME", "")
     for directory in [start, *start.parents]:
         if (directory / ".buckconfig").is_file():
             # `~/.buckconfig` configures every project, so Buck stops rather than taking the home
@@ -152,7 +152,7 @@ def ensure_home(root: Path) -> None:
 
     Buck2, git, the tools a build runs and any nested Buck2 all read it and all have to agree.
     """
-    if os.environ.get("HOME"):
+    if os.environ.get("HOME", ""):
         return
     path = (root / HOME).absolute()
     try:
@@ -755,10 +755,10 @@ def _pinned_binary(
     Cached by its own hash, so a bumped pin lands beside the old one and going back finds it there.
     Without `fetch`, None.
     """
-    repository = pin.get("repository")
-    release = pin.get("release")
-    artifact = pin.get("artifact")
-    sha256 = pin.get("sha256")
+    repository = pin.get("repository", "")
+    release = pin.get("release", "")
+    artifact = pin.get("artifact", "")
+    sha256 = pin.get("sha256", "")
     if not (repository and release and artifact and sha256):
         fail(f"{source} pins no whole {tool} for {platform}")
     if not is_hex(sha256, 64):
@@ -806,7 +806,7 @@ def decode_mount_table() -> dict[str, object] | None:
     """Decode the mount table, if this invocation runs inside a namespace tine prepared."""
     import json
 
-    value = os.environ.get(TINE_MOUNTS_ENV)
+    value = os.environ.get(TINE_MOUNTS_ENV, "")
     if not value:
         return None
     try:
@@ -1636,7 +1636,7 @@ def parse_buck_command(argv: list[str]) -> BuckCommand:
     return BuckCommand(
         subcommand=subcommand,
         # The flag's own fallback, which Buck honors wherever the flag may appear.
-        isolation=isolation or os.environ.get("BUCK_ISOLATION_DIR"),
+        isolation=isolation or os.environ.get("BUCK_ISOLATION_DIR") or None,
         own_isolation=isolation is not None,
     )
 
@@ -1718,7 +1718,7 @@ def before_shim(
     """
     ensure_buck2_binary(settings, wrapper_cell_root())
     refresh_local_buckconfig(root, collect_project_ignores(root, config, [], {}), cache)
-    return buck2_argv(*([FLAG_ISOLATION, isolation] if isolation else []))
+    return buck2_argv(*([FLAG_ISOLATION, isolation] if isolation is not None else []))
 
 
 def buck_command(argv: list[str]) -> None:
@@ -1736,7 +1736,7 @@ def buck_command(argv: list[str]) -> None:
         # Before entering the namespace, or the shim would hold every mount in it for as long as it
         # runs. The cost is that its pin comes from the outer checkout rather than a mounted cell's.
         # TINE_MOUNTS means entering the namespace already re-executed this, which ensured it once.
-        if command.subcommand not in BUCK_COMMAND_NO_ACTION and not os.environ.get(TINE_MOUNTS_ENV):
+        if command.subcommand not in BUCK_COMMAND_NO_ACTION and not os.environ.get(TINE_MOUNTS_ENV, ""):
             cache_shim.ensure(cache, lambda: before_shim(root, config, settings, cache, command.isolation))
     # A completing shell must neither download nor rewrite shared configuration on a keypress.
     config, mounts = prepare_buck(

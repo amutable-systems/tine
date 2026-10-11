@@ -103,7 +103,7 @@ def integer(value: str, what: str, *, minimum: int) -> int:
 
 def required(stanza: dict[str, str], field: str, what: str) -> str:
     """Return a field of a stanza, and fail if the field is missing or empty."""
-    value = stanza.get(field)
+    value = stanza.get(field, "")
     if not value:
         util.fail(f"{what}: missing {field}")
     return value

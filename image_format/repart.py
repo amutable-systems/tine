@@ -24,9 +24,9 @@ def key_arguments(signing: KeySpec | None) -> list[str]:
     if signing is None:
         return []
     arguments = ["--private-key", signing["private_key"], "--certificate", signing["certificate"]]
-    if signing["private_key_source"]:
+    if signing["private_key_source"] is not None:
         arguments += ["--private-key-source", signing["private_key_source"]]
-    if signing["certificate_source"]:
+    if signing["certificate_source"] is not None:
         arguments += ["--certificate-source", signing["certificate_source"]]
     return arguments
 
