@@ -10,6 +10,11 @@ be reached as `exec_dep`. They cannot execute target platform code.
 
 load("@prelude//cfg/exec_platform:marker.bzl", "get_exec_platform_marker")
 
+# A target specific to the execution platform instead of its caller's configuration marks
+# itself as `target_compatible_with = [EXECUTION_CONFIGURATION]`. It must only be reachable through an
+# `exec_dep` then. This avoids building it multiple times (we just have one exec platform).
+EXECUTION_CONFIGURATION = "prelude//cfg/exec_platform/marker:is_exec_platform[true]"
+
 def _target_platform_impl(ctx: AnalysisContext) -> list[Provider]:
     constraints = dict()
     for configuration in ctx.attrs.configurations:

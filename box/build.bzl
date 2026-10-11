@@ -18,6 +18,7 @@ load("//package:solver.bzl", "solve_command", "solver_cache")
 load("//package:system.bzl", "PackageSystemInfo")
 load("//package:verify.bzl", "repository_verifier")
 load("//platforms:architecture.bzl", "architecture")
+load("//platforms:defs.bzl", "EXECUTION_CONFIGURATION")
 load(":runtime.bzl", "BoxInfo", "box_run")
 
 _REPOSITORY_PRIORITY = 99
@@ -319,10 +320,6 @@ _box_alias = rule(
     },
 )
 
-# Avoid rebuilding boxes for different caller configurations (they are independent of that), only build
-# them for different execution platforms (we just have one).
-_EXECUTION_CONFIGURATION = "prelude//cfg/exec_platform/marker:is_exec_platform[true]"
-
 # Every in-box driver runs on the box's own interpreter. Arch names the package `python`, which
 # provides this.
 _DEFAULT_PACKAGES = ["python3"]
@@ -384,7 +381,7 @@ def new(
         enable_repository_groups = enable_repository_groups,
         parent = parent,
         lock = architecture.select(locks) if locks else None,
-        target_compatible_with = [_EXECUTION_CONFIGURATION],
+        target_compatible_with = [EXECUTION_CONFIGURATION],
         **kwargs,
     )
     _box_alias(
