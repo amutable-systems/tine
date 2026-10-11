@@ -464,12 +464,12 @@ def _add_repository(
 ) -> None:
     repo = repository[PackageRepositoryInfo]
     rid = repository.label.name
-    if repo.package_system.label != package_system.label:
+    if repo.package_system.label.raw_target() != package_system.label.raw_target():
         fail(
             "repository '{}' uses package system {}, expected {}".format(
                 rid,
-                repo.package_system.label,
-                package_system.label,
+                repo.package_system.label.raw_target(),
+                package_system.label.raw_target(),
             ),
         )
     previous = by_id.get(rid)
