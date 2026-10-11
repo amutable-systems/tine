@@ -18,7 +18,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, NoReturn, TextIO, cast
@@ -244,7 +244,7 @@ def remove_path(path: Path, with_parents: bool = False) -> None:
 
 
 @contextmanager
-def atomic_text_writer(path: Path) -> Iterator[TextIO]:
+def atomic_text_writer(path: Path) -> Generator[TextIO]:
     """Yield a UTF-8 stream and atomically replace its destination on success."""
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
@@ -261,7 +261,7 @@ def atomic_text_writer(path: Path) -> Iterator[TextIO]:
 
 
 @contextmanager
-def text_destination(path: Path) -> Iterator[TextIO]:
+def text_destination(path: Path) -> Generator[TextIO]:
     """Yield a UTF-8 stream for a path, or for stdout when the caller named `-`.
 
     A driver published as a run target is asked for its output by a caller that has nowhere to put

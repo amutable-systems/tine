@@ -974,7 +974,7 @@ class TestDeclaredMounts(MountTestCase):
 
 class TestMountUpdates(MountTestCase):
     @contextlib.contextmanager
-    def process(self, code: str, *args: str) -> collections.abc.Iterator[subprocess.Popen[str]]:
+    def process(self, code: str, *args: str) -> collections.abc.Generator[subprocess.Popen[str]]:
         prefix = f"import sys\nsys.path[:] = {sys.path!r}\nimport tine\n"
         with subprocess.Popen(
             [sys.executable, "-c", prefix + textwrap.dedent(code), str(self.root), *args],
@@ -1485,7 +1485,7 @@ class TestReexecConfiguredWrapper(MountTestCase):
         self.addCleanup(patched.stop)
 
     @contextlib.contextmanager
-    def running(self) -> collections.abc.Iterator[list[object]]:
+    def running(self) -> collections.abc.Generator[list[object]]:
         execve: list[object] = []
         with unittest.mock.patch.object(os, "execve", side_effect=lambda *a: execve.extend(a)):
             yield execve
@@ -1824,7 +1824,7 @@ class TestBuckCommand(unittest.TestCase):
         self.addCleanup(environment.stop)
 
     @contextlib.contextmanager
-    def running(self) -> collections.abc.Iterator[list[object]]:
+    def running(self) -> collections.abc.Generator[list[object]]:
         execve: list[object] = []
         self.served: list[object] = []
         with contextlib.ExitStack() as patches:

@@ -14,7 +14,7 @@ import contextlib
 import shutil
 import subprocess
 import sys
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Sequence
 from pathlib import Path
 from typing import TypedDict
 
@@ -55,7 +55,7 @@ def image(
     program: str,
     lowers: Sequence[str | Path] | None = None,
     binds: Sequence[tuple[str | Path, str | Path]] | None = None,
-) -> Iterator[Path]:
+) -> Generator[Path]:
     """Mount the image stack the spec names and yield the finalized tree."""
     with rootfs.rootfs(
         "/buildroot", lowers=spec["lower"] if lowers is None else lowers, binds=binds

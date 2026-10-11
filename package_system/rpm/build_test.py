@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import cast, override
 from unittest import mock
@@ -350,7 +350,7 @@ class BuildRpm(unittest.TestCase):
                         return subprocess.CompletedProcess([], result)
 
                     @contextlib.contextmanager
-                    def mounted(trees: list[Path] = directories) -> Iterator[None]:
+                    def mounted(trees: list[Path] = directories) -> Generator[None]:
                         try:
                             yield
                         finally:

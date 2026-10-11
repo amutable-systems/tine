@@ -4,7 +4,7 @@
 """Small, strict readers for Debian's Deb822 metadata."""
 
 import io
-from collections.abc import Iterable, Iterator
+from collections.abc import Generator, Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import BinaryIO, NamedTuple, cast
@@ -119,7 +119,7 @@ class Package(NamedTuple):
 
 
 @contextmanager
-def open_text(path: Path) -> Iterator[Iterable[str]]:
+def open_text(path: Path) -> Generator[Iterable[str]]:
     """Open a Deb822 file as text, and detect its compression from its first bytes.
 
     A byte that is not UTF-8 raises while the caller iterates inside the `with` block. This function

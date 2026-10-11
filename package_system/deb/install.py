@@ -20,7 +20,7 @@ import shutil
 import stat
 import sys
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -103,7 +103,7 @@ def _replace(path: Path, content: bytes, mode: int) -> None:
 
 
 @contextmanager
-def denied_daemons(installroot: Path) -> Iterator[None]:
+def denied_daemons(installroot: Path) -> Generator[None]:
     """Install a `policy-rc.d` that denies daemon starts, and remove it after the transaction.
 
     No package ships this file. It belongs to the administrator, so the image must not keep the

@@ -13,7 +13,7 @@ import tempfile
 import time
 import tomllib
 import unittest
-from collections.abc import Iterator
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any, cast, override
 from unittest import mock
@@ -321,7 +321,7 @@ class TyPackages(unittest.TestCase):
         self.assertEqual(settings.read_text(), '{"tab_size": 4}\n')
 
     @contextlib.contextmanager
-    def server(self, package: str) -> Iterator[LanguageServer]:
+    def server(self, package: str) -> Generator[LanguageServer]:
         command, env = self.launch(package)
         # Exercise Zed's configurationFile expansion without the CLI configuration as a fallback.
         env.pop("TY_CONFIG_FILE")
