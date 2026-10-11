@@ -17,7 +17,7 @@ import ctypes
 import gzip
 import io
 import tarfile
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import IO, NamedTuple, NoReturn, Self, cast
@@ -406,7 +406,7 @@ class Alpm:
         return []
 
     @contextmanager
-    def _transaction(self) -> Iterator[None]:
+    def _transaction(self) -> Generator[None]:
         if self._lib.alpm_trans_init(self._handle, _NO_FLAGS) != 0:
             self._fail("cannot start a transaction")
         try:

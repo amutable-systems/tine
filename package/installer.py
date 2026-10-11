@@ -12,7 +12,7 @@ transaction itself.
 
 import os
 import shutil
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TypedDict
@@ -72,7 +72,7 @@ class InstallSpec(TypedDict):
 
 
 @contextmanager
-def fresh_machine_id(installroot: Path) -> Iterator[None]:
+def fresh_machine_id(installroot: Path) -> Generator[None]:
     """Leave a fresh root the marker systemd initializes on first boot, and an existing one be."""
     etc = installroot / "etc"
     etc.mkdir(parents=True, exist_ok=True)

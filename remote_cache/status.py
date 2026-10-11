@@ -28,7 +28,7 @@ import socketserver
 import struct
 import tempfile
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, override
@@ -114,7 +114,7 @@ class _Server(socketserver.ThreadingUnixStreamServer):
 
 
 @contextmanager
-def serving(root: Path, report: Report, attend: Attend = lambda pid: None) -> Iterator[Path]:
+def serving(root: Path, report: Report, attend: Attend = lambda pid: None) -> Generator[Path]:
     """A socket answering for `root` for as long as the block runs.
 
     A socket file left behind by a killed shim would refuse the next bind, so it is removed first.

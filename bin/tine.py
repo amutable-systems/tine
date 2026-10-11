@@ -13,7 +13,7 @@ import re
 import signal
 import sys
 import tomllib
-from collections.abc import Iterator, Mapping
+from collections.abc import Generator, Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -1423,7 +1423,7 @@ def refresh_project_buckconfig(root: Path, overrides: dict[str, dict[str, str]])
 
 
 @contextmanager
-def mount_table_lock(root: Path) -> Iterator[None]:
+def mount_table_lock(root: Path) -> Generator[None]:
     """Keep concurrent mount-table edits from losing each other's changes."""
     path = root / MOUNT_LOCK
     try:

@@ -15,7 +15,7 @@ import os
 import shutil
 import stat
 import tempfile
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
 from enum import Enum, auto
 from pathlib import Path
@@ -170,7 +170,7 @@ def capture(tree: Path) -> None:
 
 
 @contextmanager
-def capture_on_exit(tree: str | Path) -> Iterator[Path]:
+def capture_on_exit(tree: str | Path) -> Generator[Path]:
     """Capture a tree after use without hiding an error from the body."""
     tree = Path(tree)
     try:
@@ -191,7 +191,7 @@ def capture_on_exit(tree: str | Path) -> Iterator[Path]:
 
 
 @contextmanager
-def source_overlay(source: Path, target: Path) -> Iterator[Path]:
+def source_overlay(source: Path, target: Path) -> Generator[Path]:
     """Mount `source` at `target` as an overlay, and discard every write when the context exits.
 
     `rootfs()` decodes the `.wh.` and `.esc.` marker files of a stored image layer. This function
@@ -214,7 +214,7 @@ def source_overlay(source: Path, target: Path) -> Iterator[Path]:
 
 
 @contextmanager
-def readonly_project(project: Path, outputs: Mapping[Path, Path]) -> Iterator[None]:
+def readonly_project(project: Path, outputs: Mapping[Path, Path]) -> Generator[None]:
     """Make `project` read-only and change into it, but keep each output directory writable.
 
     `outputs` maps an output directory under `project` to a mount point outside `project`.
@@ -280,7 +280,7 @@ def _apivfs(stack: ExitStack, target: Path) -> None:
 
 
 @contextmanager
-def chroot(target: str | Path) -> Iterator[Path]:
+def chroot(target: str | Path) -> Generator[Path]:
     """Temporarily enter an already-mounted target root."""
     with _chroot(Path(target)):
         yield Path("/")
@@ -298,7 +298,7 @@ def rootfs(
     apivfs: bool = False,
     binds: Sequence[tuple[str | Path, str | Path]] | None = None,
     chroot: bool = False,
-) -> Iterator[Path]:
+) -> Generator[Path]:
     """Mount a bind or overlay root, optionally chrooting and persisting its output.
 
     Persistent overlay uppers and bind sources with `capture_bind=True` are captured after all

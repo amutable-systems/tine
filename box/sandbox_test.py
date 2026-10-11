@@ -13,7 +13,7 @@ import sys
 import tempfile
 import unittest
 import unittest.mock
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager, redirect_stdout, suppress
 from pathlib import Path
 
@@ -36,7 +36,7 @@ def _tools(root: Path) -> Path:
 
 
 @contextmanager
-def _project() -> Iterator[tuple[Path, Path]]:
+def _project() -> Generator[tuple[Path, Path]]:
     """Enter a temporary project directory, with a tools tree beside it."""
     with tempfile.TemporaryDirectory(prefix="sandbox-test.", dir="/var/tmp") as scratch:
         root = Path(scratch)

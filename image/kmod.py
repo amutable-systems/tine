@@ -14,7 +14,7 @@ import ctypes
 import fnmatch
 import json
 import os
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Generator, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple, Self, cast
@@ -261,7 +261,7 @@ class Kmod:
             entry = cast(Handle | None, self._lib.kmod_list_next(head, entry))
 
     @contextmanager
-    def _lookup(self, name: str) -> Iterator[Handle | None]:
+    def _lookup(self, name: str) -> Generator[Handle | None]:
         mod = ctypes.c_void_p()
         if self._lib.kmod_module_new_from_name(self._ctx, name.encode(), ctypes.byref(mod)) < 0:
             yield None
