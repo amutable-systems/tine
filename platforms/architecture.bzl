@@ -8,6 +8,7 @@ Everything with its own naming schema reads it from this table:
 
 - `config`: the Buck2 prelude's constraint value, which `select()` keys on
 - `efi`: ukify's `--efi-arch`, which also names the boot stubs and systemd-boot
+- `go`: Go's `GOARCH`
 - `systemd`: the `%a` specifier, which names published artifacts
 - `rpm`, `pacman`, `deb`: the package system's own name, in its metadata and its mirrors' layout
 """
@@ -17,6 +18,7 @@ ARCHITECTURES = {
         config = "config//cpu:arm64",
         deb = "arm64",
         efi = "aa64",
+        go = "arm64",
         pacman = "aarch64",
         rpm = "aarch64",
         systemd = "arm64",
@@ -25,6 +27,7 @@ ARCHITECTURES = {
         config = "config//cpu:x86_64",
         deb = "amd64",
         efi = "x64",
+        go = "amd64",
         pacman = "x86_64",
         rpm = "x86_64",
         systemd = "x86-64",

@@ -5,6 +5,7 @@
 
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//platforms:architecture.bzl", "architecture")
 load("//project:defs.bzl", "project")
 
 _PRIVATE = "__tine"
@@ -29,6 +30,7 @@ def _go_build_impl(
     cgo_cflags: list[str],
     fetch: RunInfo,
     gocache: OutputArtifact | None,
+    goarch: str,
     incremental: bool,
     linker_flags: list[str],
     packages: dict[str, str],
@@ -79,6 +81,7 @@ def _go_build_impl(
                     "build_mode": build_mode,
                     "cgo": cgo,
                     "cgo_cflags": cgo_cflags,
+                    "goarch": goarch,
                     "gocache": gocache,
                     "linker_flags": linker_flags,
                     "module_cache_dir": module_cache,
@@ -106,6 +109,7 @@ _go_build = dynamic_actions(
         "cgo": dynattrs.value(bool | None),
         "cgo_cflags": dynattrs.value(list[str]),
         "fetch": dynattrs.value(RunInfo),
+        "goarch": dynattrs.value(str),
         "gocache": dynattrs.option(dynattrs.output()),
         "incremental": dynattrs.value(bool),
         "linker_flags": dynattrs.value(list[str]),
@@ -167,6 +171,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             cgo_cflags = ctx.attrs.cgo_cflags,
             fetch = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._fetch, network = True),
             gocache = gocache.as_output() if gocache != None else None,
+            goarch = architecture.spelling(ctx.attrs._arch, "go"),
             incremental = ctx.attrs.incremental,
             linker_flags = ctx.attrs.linker_flags,
             packages = packages,
@@ -195,6 +200,8 @@ _go_package = rule(
         "src": attrs.source(allow_directory = True, doc = "the project's source directory, go.mod and go.sum included"),
         "tags": attrs.list(attrs.string(), default = [], doc = "build tags selecting the project's optional files"),
         "test_packages": attrs.option(attrs.list(attrs.string()), default = None, doc = "Go package patterns whose tests the build compiles for a go_test"),
+        # `_arch` is the architecture the binaries run on. On a cross build, it differs from the box's.
+        "_arch": attrs.string(default = architecture.configured()),
         "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//go:build"),
         "_fetch": attrs.exec_dep(providers = [RunInfo], default = "tine//go:fetch"),
         "_workspace": attrs.exec_dep(providers = [RunInfo], default = "tine//go:workspace"),

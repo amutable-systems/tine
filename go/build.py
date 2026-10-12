@@ -35,6 +35,8 @@ class Spec(TypedDict):
     # go's build cache, kept from the previous build of this project.
     # None outside an incremental build.
     gocache: str | None
+    # go builds the binaries and tests for this GOARCH.
+    goarch: str
     # Flags for the Go linker, passed as -ldflags.
     linker_flags: list[str]
     # The fetched module cache directory, or None for a project without a go.sum.
@@ -178,10 +180,15 @@ def build_go(spec: Spec) -> None:
         # Spelled out rather than left to the box's `go env` defaults, so a project's extra
         # flags add to a known baseline instead of replacing whatever go would have used.
         "CGO_CFLAGS": " ".join(["-O2", "-g", *spec["cgo_cflags"]]),
+        # The box's go builds for the box's architecture unless told otherwise. The image that
+        # contains the binaries can be for another architecture. go turns cgo off when it
+        # cross-compiles, unless the project forces it on.
+        "GOARCH": spec["goarch"],
         "GOCACHE": str(gocache),
         "GOENV": "off",
         "GOFLAGS": " ".join(flags),
         "GOMODCACHE": str(scratch / "modules"),
+        "GOOS": "linux",
         "GOPROXY": proxy,
         # The committed go.sum is the sole trust anchor here: with -mod=readonly a module it does
         # not pin is a build failure rather than something to look up, and a database is not
