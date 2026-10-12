@@ -76,6 +76,7 @@ def install(
     installroot: Path,
     cachedir: Path,
     *,
+    arch: str,
     system: bool = False,
     langs: list[str] | None = None,
     docs: bool = True,
@@ -95,6 +96,12 @@ def install(
     # rpmdb, which is deliberately not where they live.
     cfg.pkg_gpgcheck = False
     cfg.localpkg_gpgcheck = False
+    # libdnf5 and rpm expect packages for the architecture of the machine that the box runs on. Without
+    # these options, they refuse the packages of an image for another architecture. dnf5's --forcearch
+    # also sets ignorearch and arch.
+    cfg.ignorearch = True
+    base.get_vars().set("arch", arch)
+    base.get_vars().set("basearch", arch)
     base.setup()
 
     sack = base.get_repo_sack()
@@ -164,12 +171,13 @@ def install_into_root(
     packages_dir: Path,
     installroot: Path,
     *,
+    arch: str,
     system: bool,
     langs: list[str] | None = None,
     docs: bool = True,
 ) -> None:
     with installer.fresh_machine_id(installroot):
-        install(packages_dir, installroot, CACHEDIR, system=system, langs=langs, docs=docs)
+        install(packages_dir, installroot, CACHEDIR, arch=arch, system=system, langs=langs, docs=docs)
     parkdb(installroot)
     scrub(installroot)
 
@@ -178,6 +186,7 @@ def _install(packages_dir: Path, installroot: Path, spec: installer.InstallSpec,
     install_into_root(
         packages_dir,
         installroot,
+        arch=spec["arch"],
         # Installed packages satisfy dependencies for an incremental install; a root the caller
         # mounted says so by already carrying an rpmdb.
         system=layered or (installroot / DBPATH / "rpmdb.sqlite").exists(),
