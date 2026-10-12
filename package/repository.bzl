@@ -4,6 +4,7 @@
 """Native package repositories, universes, and dynamic transaction selection."""
 
 load("//platforms:architecture.bzl", "architecture")
+load("//platforms:defs.bzl", "architecture_transition")
 load(":system.bzl", "PackageSystemInfo")
 load(":verify.bzl", "Verifier", "verify_packages")
 
@@ -368,11 +369,13 @@ _REMOTE_REPOSITORY_ATTRS = {
         default = {},
         doc = "what else this repository's snapshot driver needs to name its metadata",
     ),
-    # Private: the configuration a repository is reached under says which architecture it serves.
     "_arch": attrs.string(default = architecture.configured(), doc = "the architecture to serve"),
 }
 
-remote_repository = rule(impl = _remote_repository_impl, attrs = _REMOTE_REPOSITORY_ATTRS)
+# A box lock and an image reach a repository in configurations that also differ in other constraints, such
+# as the image's distribution. `architecture_transition` configures the repository for its architecture
+# alone, so the box lock and the image share one configured repository and download each file once.
+remote_repository = rule(impl = _remote_repository_impl, attrs = _REMOTE_REPOSITORY_ATTRS, cfg = architecture_transition)
 
 LocalPackageInfo = provider(
     doc = "Built native packages and their native package system.",
@@ -449,12 +452,14 @@ def _add_repository(
 ) -> None:
     repo = repository[PackageRepositoryInfo]
     rid = repository.label.name
-    if repo.package_system.label != package_system.label:
+    # A remote repository is configured for its architecture alone, so its package system is in a
+    # different configuration than the consumer's.
+    if repo.package_system.label.raw_target() != package_system.label.raw_target():
         fail(
             "repository '{}' uses package system {}, expected {}".format(
                 rid,
-                repo.package_system.label,
-                package_system.label,
+                repo.package_system.label.raw_target(),
+                package_system.label.raw_target(),
             ),
         )
     previous = by_id.get(rid)

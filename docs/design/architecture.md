@@ -446,6 +446,10 @@ and ordinary dependencies all arrive at the same box. The alias is also what ano
 names: it is configured like that box rather than for execution, so a `select()` over its packages
 follows the architecture the child box resolves for.
 
+A remote repository serves one architecture, and its content depends on nothing else. Its rule has an
+incoming transition to that architecture's target platform. A box lock and an image of the same
+architecture therefore reach the same repository, and each file of the repository is downloaded once.
+
 A lockless box uses its resolver box, by default the one its release names, to produce its build
 transaction and perform the authoritative installation. Its target root therefore contains only the
 requested packages and their dependencies; it does not need Python, package-manager libraries, or
