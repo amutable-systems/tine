@@ -11,7 +11,15 @@ be reached as `exec_dep`. They cannot execute target platform code.
 load("@prelude//cfg/exec_platform:marker.bzl", "get_exec_platform_marker")
 load(":architecture.bzl", "ARCHITECTURES")
 
+def _check_unmarked(platform: PlatformInfo, refs: struct) -> None:
+    # Buck keeps the exec mark through a transition. If an execution platform registers the exec marker
+    # constraint, an exec caller reaches a second configured target. The two configured targets then
+    # download the same files at the same time.
+    if refs.exec_marker[ConstraintValueInfo].setting.label in platform.configuration.constraints:
+        fail("{} contains the exec marker constraint; register no exec_marker_constraint on the execution platform".format(platform.label))
+
 def _architecture_transition_impl(platform: PlatformInfo, refs: struct) -> PlatformInfo:
+    _check_unmarked(platform, refs)
     setting = refs.cpu[ConstraintSettingInfo].label
     cpu = platform.configuration.constraints.get(setting)
     for name in ARCHITECTURES:
@@ -21,12 +29,27 @@ def _architecture_transition_impl(platform: PlatformInfo, refs: struct) -> Platf
     fail("{} configures none of the architectures {}".format(platform.label, sorted(ARCHITECTURES)))
 
 # A rule that sets this as its `cfg` is configured for the target platform of the caller's architecture.
-# Callers whose configurations differ in other constraints, such as an image's distribution, then reach
-# the same configured target. Buck keeps the exec mark through a transition, so an exec caller still
-# reaches a configured target of its own.
+# All callers of one architecture then reach the same configured target, whatever else their
+# configurations contain.
 architecture_transition = transition(
     impl = _architecture_transition_impl,
-    refs = {name: "tine//platforms:" + name for name in ARCHITECTURES} | {"cpu": "config//cpu/constraints:cpu"},
+    refs = {name: "tine//platforms:" + name for name in ARCHITECTURES} | {"cpu": "config//cpu/constraints:cpu", "exec_marker": get_exec_platform_marker()},
+)
+
+def _host_transition_impl(platform: PlatformInfo, refs: struct) -> PlatformInfo:
+    _check_unmarked(platform, refs)
+    return refs.host[PlatformInfo]
+
+# A rule that sets this as its `cfg` is configured for the host, whatever the caller's configuration is.
+# The execution platform registers no exec marker constraint, so the execution configuration is the same as
+# the host's. An `exec_dep` therefore reaches the same configured target as an ordinary dependency.
+# The transition assumes one execution platform, for the host's architecture. A project can register an
+# execution platform for another architecture. An `exec_dep` resolved for that platform still reaches the
+# target built for the host. The actions on that platform then run binaries for the wrong architecture,
+# and Buck reports no error.
+host_transition = transition(
+    impl = _host_transition_impl,
+    refs = {"exec_marker": get_exec_platform_marker(), "host": "tine//platforms:default"},
 )
 
 def _target_platform_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -101,9 +124,11 @@ def _execution_platform_impl(ctx: AnalysisContext) -> list[Provider]:
         DefaultInfo(),
         platform,
         PlatformInfo(label = str(name), configuration = cfg),
+        # The prelude's platform also registers an exec marker constraint. Buck then marks the execution
+        # configuration, so it differs from the default target configuration. A transition keeps that
+        # mark, so a box or a repository would be configured once more for its exec callers.
         ExecutionPlatformRegistrationInfo(
             platforms = [platform],
-            exec_marker_constraint = get_exec_platform_marker(),
         ),
     ]
 

@@ -18,6 +18,7 @@ load("//package:solver.bzl", "solve_command", "solver_cache")
 load("//package:system.bzl", "PackageSystemInfo")
 load("//package:verify.bzl", "repository_verifier")
 load("//platforms:architecture.bzl", "architecture")
+load("//platforms:defs.bzl", "host_transition")
 load(":runtime.bzl", "BoxInfo", "box_run")
 
 _REPOSITORY_PRIORITY = 99
@@ -251,11 +252,13 @@ _box = rule(
             default = None,
             doc = "predecessor box used to resolve and install this box's transaction",
         ),
-        # Private: A box is only ever reached as an exec_dep, so that is the build host's architecture.
+        # `host_transition` configures a box for the build host, so this is the host's architecture.
         "_arch": attrs.string(default = architecture.configured(), doc = "the resolution arch"),
         # BoxInfo carries this into the rest of the graph.
         "_sandbox": attrs.exec_dep(default = "tine//box:sandbox", providers = [RunInfo]),
     },
+    # A box runs on the build host. Every caller reaches the same box, whatever its configuration is.
+    cfg = host_transition,
 )
 
 def _box_lock_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -306,8 +309,8 @@ def _box_alias_impl(ctx: AnalysisContext) -> list[Provider]:
     )
     return ctx.attrs.actual.providers + [relaxed, packages]
 
-# The box's public name. An indirection to build the box only once, regardless of the caller's target
-# configuration; see "Box bootstrap" in docs/design/architecture.md.
+# The box's public name, which adds what a caller needs in its own configuration; see "Box bootstrap" in
+# docs/design/architecture.md.
 _box_alias = rule(
     impl = _box_alias_impl,
     attrs = {
@@ -318,10 +321,6 @@ _box_alias = rule(
         "release": attrs.dep(providers = [OsReleaseInfo]),
     },
 )
-
-# Avoid rebuilding boxes for different caller configurations (they are independent of that), only build
-# them for different execution platforms (we just have one).
-_EXECUTION_CONFIGURATION = "prelude//cfg/exec_platform/marker:is_exec_platform[true]"
 
 # Every in-box driver runs on the box's own interpreter. Arch names the package `python`, which
 # provides this.
@@ -384,7 +383,6 @@ def new(
         enable_repository_groups = enable_repository_groups,
         parent = parent,
         lock = architecture.select(locks) if locks else None,
-        target_compatible_with = [_EXECUTION_CONFIGURATION],
         **kwargs,
     )
     _box_alias(

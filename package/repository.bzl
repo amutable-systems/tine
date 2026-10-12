@@ -372,9 +372,9 @@ _REMOTE_REPOSITORY_ATTRS = {
     "_arch": attrs.string(default = architecture.configured(), doc = "the architecture to serve"),
 }
 
-# A box lock and an image reach a repository in configurations that also differ in other constraints, such
-# as the image's distribution. `architecture_transition` configures the repository for its architecture
-# alone, so the box lock and the image share one configured repository and download each file once.
+# A box lock, the box and an image reach a repository in configurations that also differ in other
+# constraints, such as the image's distribution. `architecture_transition` configures the repository for
+# its architecture alone, so all of them share one configured repository and download each file once.
 remote_repository = rule(impl = _remote_repository_impl, attrs = _REMOTE_REPOSITORY_ATTRS, cfg = architecture_transition)
 
 LocalPackageInfo = provider(

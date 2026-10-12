@@ -437,17 +437,17 @@ that stack. The base release identifies where this userspace came from, not the 
 operate on.
 
 A box runs on the build host, so it is an execution dependency: a rule takes it with `attrs.exec_dep`, a
-command line with `$(location_exec)`. Buck configures those for the execution
-platform (tine has just one) rather than for the consumer's target. A target named on the command line is
-configured for the target platform instead, which would be a second build of the same box. To avoid that,
-`box.new` declares the box under a hidden name that is compatible with the execution configuration only,
-and the public name as an alias reaching it through an execution dependency, so `buck build`, `buck run`
-and ordinary dependencies all arrive at the same box. The alias is also what another box's `parent`
-names: it is configured like that box rather than for execution, so a `select()` over its packages
-follows the architecture the child box resolves for.
+command line with `$(location_exec)`. A target named on the command line or reached as an ordinary
+dependency is configured for the target platform instead. To build each box once, the box rule has an
+incoming transition to the host's platform. tine's execution platform registers no exec marker
+constraint, so the execution configuration is the same as the host platform's. `buck build`, `buck run`,
+execution dependencies and ordinary dependencies therefore all reach the same box. `box.new` declares the
+box under a hidden name and the public name as an alias. The alias is what another box's `parent` names.
+It is configured like that box rather than for the host, so a `select()` over its packages follows the
+architecture the child box resolves for.
 
 A remote repository serves one architecture, and its content depends on nothing else. Its rule has an
-incoming transition to that architecture's target platform. A box lock and an image of the same
+incoming transition to that architecture's target platform. A box lock, the box and an image of the same
 architecture therefore reach the same repository, and each file of the repository is downloaded once.
 
 A lockless box uses its resolver box, by default the one its release names, to produce its build
