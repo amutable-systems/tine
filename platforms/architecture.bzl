@@ -11,6 +11,7 @@ Everything with its own naming schema reads it from this table:
 - `go`: Go's `GOARCH`
 - `systemd`: the `%a` specifier, which names published artifacts
 - `rpm`, `pacman`, `deb`: the package system's own name, in its metadata and its mirrors' layout
+- `rust`: the Rust target triple, which cargo's `--target` takes
 """
 
 ARCHITECTURES = {
@@ -21,6 +22,7 @@ ARCHITECTURES = {
         go = "arm64",
         pacman = "aarch64",
         rpm = "aarch64",
+        rust = "aarch64-unknown-linux-gnu",
         systemd = "arm64",
     ),
     "x86_64": struct(
@@ -30,6 +32,7 @@ ARCHITECTURES = {
         go = "amd64",
         pacman = "x86_64",
         rpm = "x86_64",
+        rust = "x86_64-unknown-linux-gnu",
         systemd = "x86-64",
     ),
 }

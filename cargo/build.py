@@ -48,6 +48,8 @@ class Spec(TypedDict):
     src: str
     # Cargo's persistent incremental build directory for a project in dev mode
     target: str | None
+    # cargo builds the binaries for this Rust target triple.
+    triple: str
     # The unpacked crates the build resolves against.
     vendor: str
 
@@ -91,8 +93,9 @@ def _cargo_config(vendor: Path, git: dict[str, GitSource]) -> str:
     return "\n".join(sections)
 
 
-def _take_binaries(built: Path, names: list[str], into: Path) -> None:
-    """Copy each declared binary out of cargo's `target/release` into the output directory."""
+def _take_binaries(target: Path, triple: str, names: list[str], into: Path) -> None:
+    """Copy each declared binary out of cargo's `target/<triple>/release` into the output directory."""
+    built = target / triple / "release"
     missing = [name for name in names if not (built / name).is_file()]
     if missing:
         # Everything executable in there, which after an earlier build of the same project may name
@@ -100,7 +103,7 @@ def _take_binaries(built: Path, names: list[str], into: Path) -> None:
         entries = built.iterdir() if built.is_dir() else []
         found = sorted(entry.name for entry in entries if entry.is_file() and os.access(entry, os.X_OK))
         holds = f"which holds: {', '.join(found)}" if found else "which holds no executable"
-        util.fail(f"cargo-build: no {', '.join(missing)} in target/release, {holds}")
+        util.fail(f"cargo-build: no {', '.join(missing)} in target/{triple}/release, {holds}")
     for name in names:
         util.clone_file(built / name, into / name)
 
@@ -152,6 +155,12 @@ def build_cargo(spec: Spec) -> None:
                     "build",
                     "--release",
                     "--locked",
+                    # Without --target, cargo builds for the box's architecture. The image that
+                    # contains the binaries can be for another architecture. A cross build needs the
+                    # target's standard library and a linker for it in the box. Without them, cargo
+                    # fails.
+                    "--target",
+                    spec["triple"],
                     *offline,
                 ],
                 check=True,
@@ -159,7 +168,7 @@ def build_cargo(spec: Spec) -> None:
                 env=os.environ | {"CARGO_HOME": str(cargo_home), "CARGO_TARGET_DIR": str(target)},
             )
 
-        _take_binaries(target / "release", spec["binaries"], out)
+        _take_binaries(target, spec["triple"], spec["binaries"], out)
 
 
 def main(argv: list[str] | None = None) -> None:
