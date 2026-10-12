@@ -195,7 +195,7 @@ _materialize_package_pool = dynamic_actions(
 
 def _signing_keys(ctx: AnalysisContext) -> dict[str, Artifact | None]:
     """Map each declared signing key fingerprint to its committed file, or None until refresh fetches it."""
-    rid = ctx.label.name
+    rid = ctx.attrs.id
     if ctx.attrs.package_system[PackageSystemInfo].verify != None and not ctx.attrs.signing_keys:
         fail("repository '{}' declares no signing_keys, and its package system verifies signatures".format(rid))
     for fingerprint in ctx.attrs.signing_keys:
@@ -213,7 +213,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
     ctx.actions.dynamic_output_new(
         _materialize_metadata(
             box_locks = ctx.attrs.box_locks,
-            id = ctx.label.name,
+            id = ctx.attrs.id,
             pinned_at = ctx.attrs.pinned_at,
             repo = repo.as_output(),
             snapshot = snapshot,
@@ -226,6 +226,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
 
     return remote_repository_base(
         ctx,
+        id = ctx.attrs.id,
         arch = ctx.attrs._arch,
         architectures = ctx.attrs.architectures,
         baseurl = ctx.attrs.baseurl,
@@ -264,7 +265,7 @@ def _declare_package_pool(
         _materialize_package_pool(
             baseurl = baseurl,
             box_locks = box_locks,
-            id = ctx.label.name,
+            id = ctx.attrs.id,
             snapshot = snapshot,
             suffix = package_system[PackageSystemInfo].package_suffix,
         )
@@ -333,6 +334,7 @@ _REMOTE_REPOSITORY_ATTRS = {
         default = [],
         doc = "frozen box transactions whose remote package transports remain available",
     ),
+    "id": attrs.string(doc = "the repository's id, which is the name of its public target"),
     "labels": attrs.list(attrs.string(), default = []),
     "package_system": attrs.dep(providers = [PackageSystemInfo]),
     "pinned_at": attrs.option(
@@ -558,6 +560,7 @@ def expand_baseurl(baseurl: str, arch: str, system: PackageSystemInfo) -> str:
 def remote_repository_base(
     ctx: AnalysisContext,
     *,
+    id: str,
     arch: str,
     architectures: list[str],
     baseurl: str,
@@ -574,7 +577,6 @@ def remote_repository_base(
     of every served architecture is offered as `[manifest.<architecture>]`, so refresh-catalog reads
     each one's expanded URL from the one place that expands it.
     """
-    rid = ctx.label.name
     system = package_system[PackageSystemInfo]
     reserved = [key for key in snapshot_spec if key in ("arch", "baseurl", "id")]
     if reserved:
@@ -588,7 +590,7 @@ def remote_repository_base(
                 snapshot_spec,
                 arch = arch_spelling(architecture, system),
                 baseurl = expand_baseurl(baseurl, architecture, system),
-                id = rid,
+                id = id,
             ),
             has_content_based_path = False,
         )
@@ -669,6 +671,7 @@ def declare_remote_repository(
     remote_repository(
         name = name,
         architectures = architectures,
+        id = name,
         baseurl = url,
         # A box lock's transports point into one architecture's mirror, so only this architecture's
         # belong in its pool.
