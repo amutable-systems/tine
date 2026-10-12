@@ -248,6 +248,13 @@ class TestAuthorities(ChainCase):
         with self.assertRaisesRegex(ValueError, "signing certificate expired"):
             signing.Signer(self.root / "leaf", certificate).wrap(ACTION, PAYLOAD)
 
+    def test_a_builder_refuses_an_empty_certificate(self) -> None:
+        """Reading an empty file as no certificate would sign results and skip the expiry check."""
+        certificate = self.root / "empty.crt"
+        certificate.write_text("")
+        with self.assertRaisesRegex(ValueError, "not a usable certificate"):
+            signing.Signer(self.root / "leaf", certificate)
+
     def test_a_builder_learns_at_startup_whether_anyone_would_read_it(self) -> None:
         """Judged on the certificate in hand, so nothing is published before it passes."""
         certificate = self.root / "leaf.crt"
