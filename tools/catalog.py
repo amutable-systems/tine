@@ -150,7 +150,7 @@ def _pinned_repositories(catalog: str, label: str, prefix: str) -> list[Pin]:
     out = buck_output(
         "uquery",
         "--json",
-        "--output-attribute=^(architectures|metadata)$",
+        "--output-attribute=^(repositories|metadata)$",
         f"attrfilter(labels, '{label}', {catalog})",
     )
     pins = []
@@ -167,7 +167,7 @@ def _pinned_repositories(catalog: str, label: str, prefix: str) -> list[Pin]:
                     target=target,
                     mirror=pin["mirror"],
                     snapshot=pin["snapshot"],
-                    architectures=tuple(attributes["architectures"]),
+                    architectures=_architectures(attributes["repositories"]),
                 )
             )
     return pins
@@ -206,16 +206,21 @@ class _Checkout:
             raise failed
 
 
+def _architectures(repositories: dict[str, str]) -> tuple[str, ...]:
+    """The architectures a repository's mirror serves: its public target names one target for each."""
+    return tuple(sorted(repositories))
+
+
 def _served_architectures(repositories: list[str]) -> dict[str, tuple[str, ...]]:
     """The architectures each repository's mirror serves, and so the locks it keeps."""
     out = buck_output(
         "uquery",
         "--json",
-        "--output-attribute=^architectures$",
+        "--output-attribute=^repositories$",
         f"set({' '.join(repositories)})",
     )
     return {
-        target: tuple(sorted(attributes["architectures"])) for target, attributes in json.loads(out).items()
+        target: _architectures(attributes["repositories"]) for target, attributes in json.loads(out).items()
     }
 
 
@@ -414,12 +419,16 @@ def _advance_snapshots(checkout: _Checkout, catalog: str, catalog_dir: Path, sel
 
 
 def _declared_signing_keys(repositories: list[str]) -> dict[str, str]:
-    """Where each signing key the given repositories declare is fetched from, by fingerprint."""
+    """Where each signing key the given repositories declare is fetched from, by fingerprint.
+
+    The keys are declared by the target serving each architecture, which a public target depends on
+    directly.
+    """
     out = buck_output(
         "uquery",
         "--json",
         "--output-attribute=^signing_keys$",
-        f"set({' '.join(repositories)})",
+        f"deps(set({' '.join(repositories)}), 1)",
     )
     keys: dict[str, str] = {}
     for target, attributes in json.loads(out).items():

@@ -220,15 +220,12 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
             vouches = ctx.attrs.package_system[PackageSystemInfo].metadata_vouches,
         )
     )
-    # An architecture the mirror does not serve never gets here: the `snapshot` and `box_locks` selects
-    # have no branch for it, and Buck fails configuring the target.
-    baseurl = expand_baseurl(ctx.attrs.baseurl, ctx.attrs._arch, ctx.attrs.package_system[PackageSystemInfo])
+    baseurl = expand_baseurl(ctx.attrs.baseurl, ctx.attrs.arch, ctx.attrs.package_system[PackageSystemInfo])
 
     return remote_repository_base(
         ctx,
         id = ctx.attrs.id,
-        arch = ctx.attrs._arch,
-        architectures = ctx.attrs.architectures,
+        arch = ctx.attrs.arch,
         baseurl = ctx.attrs.baseurl,
         package_system = ctx.attrs.package_system,
         pinned_at = ctx.attrs.pinned_at,
@@ -326,8 +323,7 @@ ConfiguredPackageRepositoryInfo = record(
 
 # What every remote repository declares, whichever package system owns it.
 _REMOTE_REPOSITORY_ATTRS = {
-    # All of them, so refresh-catalog can update them all at once
-    "architectures": attrs.list(attrs.string(), doc = "the architectures the mirror serves"),
+    "arch": attrs.string(doc = "the architecture to serve"),
     "baseurl": attrs.string(doc = "the mirror URL, with " + BASEARCH + " wherever its layout names the architecture"),
     "box_locks": attrs.list(
         attrs.source(),
@@ -335,7 +331,6 @@ _REMOTE_REPOSITORY_ATTRS = {
         doc = "frozen box transactions whose remote package transports remain available",
     ),
     "id": attrs.string(doc = "the repository's id, which is the name of its public target"),
-    "labels": attrs.list(attrs.string(), default = []),
     "package_system": attrs.dep(providers = [PackageSystemInfo]),
     "pinned_at": attrs.option(
         attrs.string(),
@@ -360,11 +355,39 @@ _REMOTE_REPOSITORY_ATTRS = {
         default = {},
         doc = "what else this repository's snapshot driver needs to name its metadata",
     ),
-    # Private: the configuration a repository is reached under says which architecture it serves.
-    "_arch": attrs.string(default = architecture.configured(), doc = "the architecture to serve"),
 }
 
 remote_repository = rule(impl = _remote_repository_impl, attrs = _REMOTE_REPOSITORY_ATTRS)
+
+def _remote_repository_alias_impl(ctx: AnalysisContext) -> list[Provider]:
+    repository = ctx.attrs.repositories.get(ctx.attrs._arch)
+    if repository == None:
+        fail("repository '{}' does not serve {}, only {}".format(ctx.label.name, ctx.attrs._arch, sorted(ctx.attrs.repositories)))
+    sub_targets = {}
+    for arch, served in ctx.attrs.repositories.items():
+        sub_targets[_snapshot_subtarget(arch)] = served.sub_target("snapshot").providers
+        sub_targets[_manifest_subtarget(arch)] = served.sub_target("manifest").providers
+    return [
+        DefaultInfo(default_outputs = repository[DefaultInfo].default_outputs, sub_targets = sub_targets),
+        repository[PackageRepositoryInfo],
+        repository[PackagePoolInfo],
+    ]
+
+# A remote repository's public name, which refresh-catalog queries and runs. It stands for the target serving
+# the caller's architecture.
+_remote_repository_alias = rule(
+    impl = _remote_repository_alias_impl,
+    attrs = {
+        "labels": attrs.list(attrs.string(), default = []),
+        "repositories": attrs.dict(
+            attrs.string(),
+            attrs.dep(providers = [PackageRepositoryInfo, PackagePoolInfo]),
+            doc = "the repository serving each architecture the mirror serves",
+        ),
+        # Private: the configuration a repository is reached under says which architecture it serves.
+        "_arch": attrs.string(default = architecture.configured()),
+    },
+)
 
 LocalPackageInfo = provider(
     doc = "Built native packages and their native package system.",
@@ -562,7 +585,6 @@ def remote_repository_base(
     *,
     id: str,
     arch: str,
-    architectures: list[str],
     baseurl: str,
     package_system: Dependency,
     repo_dir: Artifact,
@@ -570,40 +592,32 @@ def remote_repository_base(
     snapshot_spec: dict[str, typing.Any] = {},
     pinned_at: str | None = None,
 ) -> list[Provider]:
-    """Register the package-system-neutral interface to a remote repository.
+    """Register the package-system-neutral interface to a remote repository serving `arch`.
 
     `snapshot_spec` carries whatever else one package system's snapshot driver needs to name
-    its metadata; the identity and base URL every repository has are supplied here. The manifest
-    of every served architecture is offered as `[manifest.<architecture>]`, so refresh-catalog reads
-    each one's expanded URL from the one place that expands it.
+    its metadata; the identity and base URL every repository has are supplied here. The expanded
+    spec is offered as `[manifest]`, so refresh-catalog reads the expanded URL from the one place
+    that expands it.
     """
     system = package_system[PackageSystemInfo]
     reserved = [key for key in snapshot_spec if key in ("arch", "baseurl", "id")]
     if reserved:
         fail("remote_repository_base: {} are supplied by the neutral spec".format(reserved))
 
-    # per-architecture specs/subtargets so that refresh-catalog can produce all locks from a single build
-    specs = {
-        architecture: ctx.actions.write_json(
-            "{}.snapshot.spec.json".format(architecture),
-            dict(
-                snapshot_spec,
-                arch = arch_spelling(architecture, system),
-                baseurl = expand_baseurl(baseurl, architecture, system),
-                id = id,
-            ),
-            has_content_based_path = False,
-        )
-        for architecture in architectures
+    spec = ctx.actions.write_json(
+        "snapshot.spec.json",
+        dict(
+            snapshot_spec,
+            arch = arch_spelling(arch, system),
+            baseurl = expand_baseurl(baseurl, arch, system),
+            id = id,
+        ),
+        has_content_based_path = False,
+    )
+    sub_targets = {
+        "manifest": [DefaultInfo(default_output = spec)],
+        "snapshot": [DefaultInfo(), RunInfo(args = cmd_args(system.snapshot[RunInfo], "--spec", spec))],
     }
-
-    def snapshot(architecture: str) -> list[Provider]:
-        return [DefaultInfo(), RunInfo(args = cmd_args(system.snapshot[RunInfo], "--spec", specs[architecture]))]
-
-    sub_targets = {_snapshot_subtarget(architecture): snapshot(architecture) for architecture in specs}
-    sub_targets.update({_manifest_subtarget(architecture): [DefaultInfo(default_output = spec)] for architecture, spec in specs.items()})
-    sub_targets["manifest"] = [DefaultInfo(default_output = specs[arch])]
-    sub_targets["snapshot"] = snapshot(arch)
     return [
         DefaultInfo(default_output = repo_dir, sub_targets = sub_targets),
         PackageRepositoryInfo(
@@ -636,6 +650,7 @@ def declare_remote_repository(
     pin: RepositoryPin | None,
     labels: list[str] = [],
     signing_keys: dict[str, str] = {},
+    visibility: list[str] | None = None,
     **kwargs,
 ) -> None:
     """Declare a remote repository backed by its optional package-relative snapshot.
@@ -661,29 +676,32 @@ def declare_remote_repository(
         fail("{} requires the architectures its mirror serves: {}".format(what, name))
     url = pin.baseurl if pin != None else baseurl
 
-    # The lock of each architecture, None until refresh-catalog has written one. A repository
-    # declared but never refreshed still analyzes; consuming its empty pool fails.
-    locks = {}
+    signing_key_files = glob([SIGNING_KEY_DIRECTORY + "/" + fingerprint + SIGNING_KEY_SUFFIX for fingerprint in signing_keys])
     for arch in architectures:
+        # The lock, None until refresh-catalog has written one. A repository declared but never
+        # refreshed still analyzes; consuming its empty pool fails.
         committed = glob([_repository_lock_path(name.removesuffix(".repository"), arch)])
-        locks[arch] = committed[0] if committed else None
-
-    remote_repository(
+        remote_repository(
+            name = "{}.{}".format(name, arch),
+            arch = arch,
+            baseurl = url,
+            # A box lock's transports point into one architecture's mirror, so only this architecture's
+            # belong in its pool.
+            box_locks = glob([box_lock_path("*", arch)]),
+            id = name,
+            pinned_at = pin.pinned_at if pin != None else None,
+            package_system = package_system,
+            signing_key_files = signing_key_files,
+            signing_keys = signing_keys,
+            snapshot = committed[0] if committed else None,
+            **kwargs,
+        )
+    _remote_repository_alias(
         name = name,
-        architectures = architectures,
-        id = name,
-        baseurl = url,
-        # A box lock's transports point into one architecture's mirror, so only this architecture's
-        # belong in its pool.
-        box_locks = architecture.select({arch: glob([box_lock_path("*", arch)]) for arch in architectures}),
-        pinned_at = pin.pinned_at if pin != None else None,
         labels = ["tine:remote-repository", label] + labels,
         metadata = pin.metadata if pin != None else {},
-        package_system = package_system,
-        signing_key_files = glob([SIGNING_KEY_DIRECTORY + "/" + fingerprint + SIGNING_KEY_SUFFIX for fingerprint in signing_keys]),
-        signing_keys = signing_keys,
-        snapshot = architecture.select(locks),
-        **kwargs,
+        repositories = {arch: ":{}.{}".format(name, arch) for arch in architectures},
+        visibility = visibility,
     )
 
 def _contains_only(value: str, alphabet: str) -> bool:
