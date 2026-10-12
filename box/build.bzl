@@ -24,7 +24,7 @@ load(":runtime.bzl", "BoxInfo", "box_run")
 _REPOSITORY_PRIORITY = 99
 
 BoxPackagesInfo = provider(
-    doc = "The box's declarations, for a box building on it.",
+    doc = "The declarations of a box for a child box, or of its lock for one architecture for the child box's lock.",
     fields = {
         # The package system they are named in, which a child box must share.
         "package_system": provider_field(Dependency),
@@ -124,6 +124,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.attrs.disable_repository_groups,
     )
     configured_repositories = _configure_repositories(ctx, repositories, None)
+    names = _effective_packages(ctx.attrs.packages, ctx.attrs.parent, release.package_system)
 
     resolver_box = None
     if ctx.attrs.resolver_box != None:
@@ -133,8 +134,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     if transaction == None:
         if ctx.attrs.resolver_box == None:
             fail("box: a root box has nothing to resolve with and requires a committed lock")
-        packages = _effective_packages(ctx.attrs.packages, ctx.attrs.parent, release.package_system)
-        resolve = _solve(ctx, release, ctx.attrs.resolver_box, configured_repositories, packages, ctx.attrs._arch)
+        resolve = _solve(ctx, release, ctx.attrs.resolver_box, configured_repositories, names, ctx.attrs._arch)
         transaction = ctx.actions.declare_output("transaction.json")
         resolve.add("--out", transaction.as_output())
         ctx.actions.run(resolve, category = "box_resolve", allow_cache_upload = True)
@@ -228,13 +228,24 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     )
     sub_targets = {"transaction": [DefaultInfo(default_output = transaction)]}
 
-    return [DefaultInfo(default_outputs = info.layers, sub_targets = sub_targets), info, root]
+    # Running a box target is an interactive act, so its RunInfo is the host-integrated relaxed
+    # entry. Build actions never reach it: they take BoxInfo and construct their own hermetic
+    # box_run.
+    relaxed = box_run(info, relaxed = True, name = ctx.label.name.removesuffix(".box"))
+    return [
+        DefaultInfo(default_outputs = info.layers, sub_targets = sub_targets),
+        info,
+        root,
+        relaxed,
+        BoxPackagesInfo(packages = names, package_system = release.package_system),
+    ]
 
 _box = rule(
     impl = _box_impl,
     attrs = {
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
+        "labels": attrs.list(attrs.string(), default = []),
         "layered": attrs.bool(default = True, doc = "layer over a parent from the same repositories instead of installing on its own"),
         "lock": attrs.option(
             attrs.source(),
@@ -245,7 +256,7 @@ _box = rule(
             attrs.string(),
             doc = "top-level box package names used to resolve the effective transaction",
         ),
-        "parent": attrs.option(attrs.dep(providers = [BoxPackagesInfo]), default = None, doc = "box whose packages this one adds to"),
+        "parent": attrs.option(attrs.dep(providers = [BoxInfo, BoxPackagesInfo]), default = None, doc = "box whose packages this one adds to"),
         "release": attrs.dep(providers = [OsReleaseInfo], doc = "base OS release for the box root"),
         "resolver_box": attrs.option(
             attrs.exec_dep(providers = [BoxInfo]),
@@ -276,11 +287,13 @@ def _box_lock_impl(ctx: AnalysisContext) -> list[Provider]:
     return [
         DefaultInfo(),
         RunInfo(args = _solve(ctx, release, ctx.attrs.resolver_box, repositories, packages, ctx.attrs._arch)),
+        BoxPackagesInfo(packages = packages, package_system = release.package_system),
     ]
 
-# What a box is made of, resolved for one architecture. The repositories come in under the target
-# configuration, so an incoming transition to that architecture's platform is what makes them serve
-# its metadata; the box running the solver stays an exec_dep, and so the host's.
+# A box lock resolves the box for one architecture. Its incoming transition to that architecture's
+# platform configures the repositories for that architecture, and a `select()` in `packages` picks that
+# architecture's entry. A parent box is configured for the host. A child box's lock therefore reads the
+# parent's packages from the parent's lock for the same architecture.
 _box_lock = rule(
     impl = _box_lock_impl,
     attrs = {
@@ -288,38 +301,13 @@ _box_lock = rule(
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
         "labels": attrs.list(attrs.string(), default = []),
         "packages": attrs.list(attrs.string(), doc = "the box's top-level package names"),
-        "parent": attrs.option(attrs.dep(providers = [BoxPackagesInfo]), default = None, doc = "box whose packages this one adds to"),
+        "parent": attrs.option(attrs.dep(providers = [BoxPackagesInfo]), default = None, doc = "lock of the parent box for the same architecture"),
         "release": attrs.dep(providers = [OsReleaseInfo], doc = "base OS release for the box root"),
         "resolver_box": attrs.exec_dep(providers = [BoxInfo], doc = "box the solver runs in"),
         # Private: the incoming transition decides.
         "_arch": attrs.string(default = architecture.configured(), doc = "the architecture to resolve for"),
     },
     supports_incoming_transition = True,
-)
-
-def _box_alias_impl(ctx: AnalysisContext) -> list[Provider]:
-    # Running a box target is an interactive act, so its RunInfo is the host-integrated relaxed
-    # entry. Build actions never reach it: they take BoxInfo and construct their own hermetic
-    # box_run.
-    relaxed = box_run(ctx.attrs.actual[BoxInfo], relaxed = True, name = ctx.label.name.removesuffix(".box"))
-    package_system = ctx.attrs.release[OsReleaseInfo].package_system
-    packages = BoxPackagesInfo(
-        packages = _effective_packages(ctx.attrs.packages, ctx.attrs.parent, package_system),
-        package_system = package_system,
-    )
-    return ctx.attrs.actual.providers + [relaxed, packages]
-
-# The box's public name, which adds what a caller needs in its own configuration; see "Box bootstrap" in
-# docs/design/architecture.md.
-_box_alias = rule(
-    impl = _box_alias_impl,
-    attrs = {
-        "actual": attrs.exec_dep(providers = [BoxInfo]),
-        "labels": attrs.list(attrs.string(), default = []),
-        "packages": attrs.list(attrs.string()),
-        "parent": attrs.option(attrs.dep(providers = [BoxPackagesInfo]), default = None),
-        "release": attrs.dep(providers = [OsReleaseInfo]),
-    },
 )
 
 # Every in-box driver runs on the box's own interpreter. Arch names the package `python`, which
@@ -353,6 +341,7 @@ def new(
     `architectures` are the ones this box keeps a committed lock for: it is built for the host's
     alone, but refresh-catalog writes a lock per architecture, so a build on any of them has one to
     start from. A box that names none resolves during the build instead, which a root box cannot do.
+    A box with a `parent` can only keep a lock for an architecture that its parent keeps one for.
     """
     if not name.endswith(".box"):
         fail("box name must end with '.box': {}".format(name))
@@ -375,7 +364,7 @@ def new(
         locks[arch] = committed[0] if committed else None
 
     _box(
-        name = name + ".exec",
+        name = name,
         packages = packages,
         release = release,
         resolver_box = resolver_box,
@@ -383,16 +372,9 @@ def new(
         enable_repository_groups = enable_repository_groups,
         parent = parent,
         lock = architecture.select(locks) if locks else None,
-        **kwargs,
-    )
-    _box_alias(
-        name = name,
-        actual = ":" + name + ".exec",
         labels = labels,
-        packages = packages,
-        parent = parent,
-        release = release,
         visibility = visibility,
+        **kwargs,
     )
 
     # A root box resolves through itself: its committed lock is what builds the root that then says
@@ -406,7 +388,10 @@ def new(
             resolver_box = ":" + name if root else resolver_box,
             disable_repository_groups = disable_repository_groups,
             enable_repository_groups = enable_repository_groups,
-            parent = parent,
+            parent = "{}.lock.{}".format(parent, arch) if parent != None else None,
             incoming_transition = "tine//platforms:" + arch,
             labels = ["tine:box-lock"],
+            # The lock of a child box in another package depends on this lock. Without the box's
+            # visibility, that lock fails to configure.
+            visibility = visibility,
         )
