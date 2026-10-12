@@ -3,6 +3,7 @@
 
 """Interactive virtual-machine image runners."""
 
+load("@prelude//platforms:defs.bzl", "host_configuration")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//distribution:defs.bzl", "distribution")
 load("//image_format:disk.bzl", "RepartInfo", "SIZE_PATTERN")
@@ -154,4 +155,9 @@ _image_vm = rule(
 
 def image_vm(name: str, distro: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
     """Declare one, compatible with the distributions its package serves."""
-    _image_vm(name = name, **(distribution.distributed(name, distro, visibility) | kwargs))
+    attributes = distribution.distributed(name, distro, visibility) | kwargs
+
+    # vmspawn runs the host's qemu with KVM and has no option for another architecture. A disk of
+    # another architecture therefore cannot boot, and the runner is incompatible with it.
+    attributes["target_compatible_with"] = attributes.get("target_compatible_with", []) + [host_configuration.cpu]
+    _image_vm(name = name, **attributes)
