@@ -26,6 +26,7 @@ load(
     "resolve_signing_key",
     "signing_key_spec",
 )
+load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 
 Partition = dict[str, typing.Any]
 
@@ -283,6 +284,7 @@ def declare_repart(
     *,
     tools: ImageToolsInfo,
     image: ImageInfo,
+    systemd_arch: str,
     definitions: list[str],
     disk: bool = True,
     split: bool = False,
@@ -377,6 +379,7 @@ def declare_repart(
         written.append(WrittenPartitionInfo(definition = definition, manifest = listing))
 
     spec = {
+        "architecture": systemd_arch,
         "basename": basename,
         "definitions": definition_specs,
         "identity": "{}[{}]".format(ctx.label, identifier or "repart"),
@@ -481,6 +484,7 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
     result = declare_repart(
         ctx,
         tools = ctx.attrs._tools[ImageToolsInfo],
+        systemd_arch = ARCHITECTURES[ctx.attrs._arch].systemd,
         basename = ctx.attrs.basename,
         definitions = ctx.attrs.definitions,
         disk = ctx.attrs.disk,
@@ -540,6 +544,8 @@ _repart = rule(
             doc = "split repart targets whose partitions should be copied into the result",
         ),
         "split": attrs.bool(default = False, doc = "also emit independent artifacts for new partitions"),
+        # `_arch` is the architecture the image runs on. repart picks the partition types for it.
+        "_arch": attrs.string(default = architecture.configured()),
     }
     | IMAGE_TOOLS_ATTR,
 )

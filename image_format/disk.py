@@ -51,6 +51,9 @@ class ImportedPartitionSpec(TypedDict):
 
 class Spec(finalize.ImageSpec):
     out: str | None
+    # The systemd spelling of the architecture the image runs on. repart picks the partition types of
+    # root and usr partitions for it.
+    architecture: str
     # What the artifacts of this invocation are named after, extension aside.
     basename: str
     # Stable target identity the seed derives from, unless one is given outright.
@@ -360,6 +363,7 @@ def main(argv: list[str] | None = None) -> None:
             str(seed),
             "--definitions",
             str(repart_definitions),
+            f"--architecture={spec['architecture']}",
         ]
         if splits:
             cmd.append("--split=yes")

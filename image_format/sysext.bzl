@@ -122,6 +122,8 @@ def declare_image_sysext(
         exe = tools.sysext,
         image = image,
         spec = {
+            # repart has no partition type for any architecture, so an `_any` DDI gets the build host's types.
+            "architecture": None if systemd_arch == "_any" else systemd_arch,
             "base": layers,
             "identity": str(ctx.label),
             "manifest": manifest.as_output(),
