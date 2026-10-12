@@ -446,6 +446,13 @@ and ordinary dependencies all arrive at the same box. The alias is also what ano
 names: it is configured like that box rather than for execution, so a `select()` over its packages
 follows the architecture the child box resolves for.
 
+A remote repository has the same problem. Its content depends only on the architecture it serves, not on
+its caller's configuration. But a box lock, the box itself and an image each reach it in their own
+configuration, and each would download every file again. So `declare_remote_repository` declares (1) one
+private target per architecture, compatible with the execution configuration only; and (2) an alias as
+the public name, which selects the caller's architecture and reaches that target through an execution
+dependency. An arm64 lock on an x86_64 host therefore reads the arm64 repository.
+
 A lockless box uses its resolver box, by default the one its release names, to produce its build
 transaction and perform the authoritative installation. Its target root therefore contains only the
 requested packages and their dependencies; it does not need Python, package-manager libraries, or

@@ -4,6 +4,7 @@
 """Native package repositories, universes, and dynamic transaction selection."""
 
 load("//platforms:architecture.bzl", "architecture")
+load("//platforms:defs.bzl", "EXECUTION_CONFIGURATION")
 load(":system.bzl", "PackageSystemInfo")
 load(":verify.bzl", "Verifier", "verify_packages")
 
@@ -373,15 +374,16 @@ def _remote_repository_alias_impl(ctx: AnalysisContext) -> list[Provider]:
         repository[PackagePoolInfo],
     ]
 
-# A remote repository's public name, which refresh-catalog queries and runs. It stands for the target serving
-# the caller's architecture.
+# A remote repository's public name, which refresh-catalog queries and runs. A repository's content
+# depends only on the architecture it serves, not on its caller's configuration, so reach the repository
+# through an exec_dep alias. See "Box bootstrap" in docs/design/architecture.md for the same pattern.
 _remote_repository_alias = rule(
     impl = _remote_repository_alias_impl,
     attrs = {
         "labels": attrs.list(attrs.string(), default = []),
         "repositories": attrs.dict(
             attrs.string(),
-            attrs.dep(providers = [PackageRepositoryInfo, PackagePoolInfo]),
+            attrs.exec_dep(providers = [PackageRepositoryInfo, PackagePoolInfo]),
             doc = "the repository serving each architecture the mirror serves",
         ),
         # Private: the configuration a repository is reached under says which architecture it serves.
@@ -694,6 +696,7 @@ def declare_remote_repository(
             signing_key_files = signing_key_files,
             signing_keys = signing_keys,
             snapshot = committed[0] if committed else None,
+            target_compatible_with = [EXECUTION_CONFIGURATION],
             **kwargs,
         )
     _remote_repository_alias(
