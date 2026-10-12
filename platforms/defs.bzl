@@ -9,6 +9,25 @@ be reached as `exec_dep`. They cannot execute target platform code.
 """
 
 load("@prelude//cfg/exec_platform:marker.bzl", "get_exec_platform_marker")
+load(":architecture.bzl", "ARCHITECTURES")
+
+def _architecture_transition_impl(platform: PlatformInfo, refs: struct) -> PlatformInfo:
+    setting = refs.cpu[ConstraintSettingInfo].label
+    cpu = platform.configuration.constraints.get(setting)
+    for name in ARCHITECTURES:
+        target = getattr(refs, name)[PlatformInfo]
+        if cpu != None and target.configuration.constraints[setting].label == cpu.label:
+            return target
+    fail("{} configures none of the architectures {}".format(platform.label, sorted(ARCHITECTURES)))
+
+# A rule that sets this as its `cfg` is configured for the target platform of the caller's architecture.
+# Callers whose configurations differ in other constraints, such as an image's distribution, then reach
+# the same configured target. Buck keeps the exec mark through a transition, so an exec caller still
+# reaches a configured target of its own.
+architecture_transition = transition(
+    impl = _architecture_transition_impl,
+    refs = {name: "tine//platforms:" + name for name in ARCHITECTURES} | {"cpu": "config//cpu/constraints:cpu"},
+)
 
 def _target_platform_impl(ctx: AnalysisContext) -> list[Provider]:
     constraints = dict()
