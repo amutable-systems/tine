@@ -39,6 +39,9 @@ class Spec(finalize.ImageSpec):
     # Where to write the DDI's verity root hash: the identity a host reports
     # for the merged extension, published so consumers can join on it.
     root_hash_out: str
+    # The systemd spelling of the architecture the extension merges on. repart picks the partition
+    # types for it. With None, repart uses the build host's types.
+    architecture: str | None
 
 
 _SEED_NAMESPACE = uuid.UUID("b388a973-3ffa-44aa-90b7-afcc4573ea9f")
@@ -139,6 +142,8 @@ def main(argv: list[str] | None = None) -> None:
             "--seed",
             str(seed),
         ]
+        if spec["architecture"] is not None:
+            cmd.append(f"--architecture={spec['architecture']}")
         # The built-in sysext definitions always include the signature partition, and repart
         # refuses to fill it without a key, so an unsigned DDI must drop it instead.
         if spec["signing"]:

@@ -292,6 +292,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     system = declare_repart(
         ctx,
         tools = tools,
+        systemd_arch = ARCHITECTURES[ctx.attrs.arch].systemd,
         basename = basename,
         definitions = system_definitions,
         disk = False,
@@ -334,6 +335,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     disk = declare_repart(
         ctx,
         tools = tools,
+        systemd_arch = ARCHITECTURES[ctx.attrs.arch].systemd,
         basename = basename,
         definitions = boot_definitions,
         identifier = "disk",
