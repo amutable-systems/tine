@@ -50,6 +50,7 @@ class TestBuildCargo(unittest.TestCase):
             root=root,
             src=src,
             target=target,
+            triple="x86_64-unknown-linux-gnu",
             vendor="vendor",
         )
 
@@ -66,7 +67,7 @@ class TestBuildCargo(unittest.TestCase):
 
     @staticmethod
     def _link(env: dict[str, str], content: str) -> None:
-        binary = Path(env["CARGO_TARGET_DIR"]) / "release/example"
+        binary = Path(env["CARGO_TARGET_DIR"]) / "x86_64-unknown-linux-gnu/release/example"
         binary.parent.mkdir(parents=True, exist_ok=True)
         binary.write_text(content, encoding="utf-8")
         binary.chmod(0o755)
@@ -187,18 +188,22 @@ class TestTakeBinaries(unittest.TestCase):
         )
 
     def test_rejects_a_binary_the_build_did_not_produce(self) -> None:
-        (self.built / "hello-cli").write_text("elf", encoding="utf-8")
-        (self.built / "hello-cli").chmod(0o755)
+        release = self.built / "x86_64-unknown-linux-gnu/release"
+        release.mkdir(parents=True)
+        (release / "hello-cli").write_text("elf", encoding="utf-8")
+        (release / "hello-cli").chmod(0o755)
         with self.assertRaises(SystemExit) as caught:
-            build._take_binaries(self.built, ["hello"], self.built / "out")
+            build._take_binaries(self.built, "x86_64-unknown-linux-gnu", ["hello"], self.built / "out")
         self.assertEqual(
             str(caught.exception),
-            "tine: cargo-build: no hello in target/release, which holds: hello-cli",
+            "tine: cargo-build: no hello in target/x86_64-unknown-linux-gnu/release, which holds: hello-cli",
         )
 
     def test_rejects_a_build_that_produced_no_release_directory(self) -> None:
         with self.assertRaises(SystemExit) as caught:
-            build._take_binaries(self.built / "missing", ["hello"], self.built / "out")
+            build._take_binaries(self.built, "x86_64-unknown-linux-gnu", ["hello"], self.built / "out")
         self.assertEqual(
-            str(caught.exception), "tine: cargo-build: no hello in target/release, which holds no executable"
+            str(caught.exception),
+            "tine: cargo-build: no hello in target/x86_64-unknown-linux-gnu/release, "
+            "which holds no executable",
         )

@@ -5,6 +5,7 @@
 
 load("//:specs.bzl", "executable", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//platforms:architecture.bzl", "architecture")
 load("//project:defs.bzl", "project")
 load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
 
@@ -21,6 +22,7 @@ def _cargo_build_impl(
     lock: ArtifactValue,
     src: Artifact,
     target: OutputArtifact | None,
+    triple: str,
     vendor: RunInfo,
 ) -> list[Provider]:
     """Declare everything the lock names, once it has been built and can be read."""
@@ -74,6 +76,7 @@ git --git-dir="$git_dir" config --bool core.bare true""",
                     "root": workspace["root"],
                     "src": src,
                     "target": target,
+                    "triple": triple,
                     "vendor": assemble_vendor(actions, vendor, workspace["crates"], _PRIVATE),
                 },
             ),
@@ -96,6 +99,7 @@ _cargo_build = dynamic_actions(
         "lock": dynattrs.artifact_value(),
         "src": dynattrs.value(Artifact),
         "target": dynattrs.option(dynattrs.output()),
+        "triple": dynattrs.value(str),
         "vendor": dynattrs.value(RunInfo),
     },
 )
@@ -138,6 +142,7 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
             lock = resolved,
             src = src,
             target = target.as_output() if target != None else None,
+            triple = architecture.spelling(ctx.attrs._arch, "rust"),
             vendor = ctx.attrs._vendor[RunInfo],
         ),
     )
@@ -150,6 +155,8 @@ _cargo_package = rule(
         "box": attrs.exec_dep(providers = [BoxInfo], doc = "box carrying the Rust toolchain"),
         "incremental": attrs.bool(doc = "keep cargo's build directory across dev-mode rebuilds"),
         "src": attrs.source(allow_directory = True, doc = "the project's source directory, Cargo.lock included"),
+        # `_arch` is the architecture the binaries run on. On a cross build, it differs from the box's.
+        "_arch": attrs.string(default = architecture.configured()),
         "_auditable": attrs.exec_dep(providers = [RunInfo], default = "tine//tools:cargo-auditable"),
         "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//cargo:build"),
         "_fetch": attrs.exec_dep(providers = [RunInfo], default = "prelude//git/tools:git_fetch"),
