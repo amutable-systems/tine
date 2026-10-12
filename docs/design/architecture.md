@@ -441,10 +441,15 @@ command line with `$(location_exec)`. A target named on the command line or reac
 dependency is configured for the target platform instead. To build each box once, the box rule has an
 incoming transition to the host's platform. tine's execution platform registers no exec marker
 constraint, so the execution configuration is the same as the host platform's. `buck build`, `buck run`,
-execution dependencies and ordinary dependencies therefore all reach the same box. `box.new` declares the
-box under a hidden name and the public name as an alias. The alias is what another box's `parent` names.
-It is configured like that box rather than for the host, so a `select()` over its packages follows the
-architecture the child box resolves for.
+execution dependencies and ordinary dependencies therefore all reach the same box. This assumes one
+execution platform, for the host's architecture. An execution platform for another architecture, such as
+a remote arm64 one, still gets the box built for the host. Its actions then run binaries for the wrong
+architecture.
+
+A box's packages can `select()` on the architecture. A box lock is configured for its own architecture,
+so it resolves the packages for that architecture. A child box's lock reads its parent's packages from the
+parent's lock for the same architecture, because the parent box itself is configured for the host. A child
+box can therefore only keep a lock for an architecture that its parent keeps one for.
 
 A remote repository serves one architecture, and its content depends on nothing else. Its rule has an
 incoming transition to that architecture's target platform. A box lock, the box and an image of the same
