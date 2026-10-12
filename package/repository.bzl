@@ -115,13 +115,19 @@ def _retained_metadata(id: str, box_locks: list[ArtifactValue], current: list, p
             generations[json.encode(files)] = entry
     return [generations[key] for key in sorted(generations)]
 
-def _download(actions: AnalysisActions, path: str, file: dict) -> Artifact:
-    out = actions.declare_output(path)
+def _download(actions: AnalysisActions, arch: str, path: str, file: dict) -> Artifact:
+    # The path of a content-based output contains no configuration. The configurations of one repository
+    # for two architectures download an identical file, such as a noarch package, to the same path. Two
+    # parallel downloads into one path corrupt the file, so the architecture is part of the path.
+    out = actions.declare_output(arch, path)
+
+    # A repository may serve a file larger than a Starlark i32, which arrives as a float.
     actions.download_file(out, file["url"], sha256 = file["sha256"], size_bytes = int(file["size"]))
     return out
 
 def _materialize_metadata_impl(
     actions: AnalysisActions,
+    arch: str,
     id: str,
     repo: OutputArtifact,
     snapshot: ArtifactValue,
@@ -136,7 +142,7 @@ def _materialize_metadata_impl(
 
     tree = {path: actions.write(path, content) for path, content in metadata["inline"].items()}
     for file in metadata["files"]:
-        tree[file["out"]] = _download(actions, file["out"], file)
+        tree[file["out"]] = _download(actions, arch, file["out"], file)
     if vouches:
         # A resolve records the manifest in the lock it writes, so what vouched for a package
         # is retained with its transport, and a lock's packages stay verifiable after the pin moves.
@@ -145,7 +151,7 @@ def _materialize_metadata_impl(
         for index, generation in enumerate(_retained_metadata(id, box_locks, metadata["files"], data.get("packages", {}))):
             directory = "{}/{}".format(RETAINED_DIRECTORY, index)
             for file in generation["files"]:
-                tree[directory + "/" + file["out"]] = _download(actions, directory + "/" + file["out"], file)
+                tree[directory + "/" + file["out"]] = _download(actions, arch, directory + "/" + file["out"], file)
             # A generation is judged as of its own pin, the way the current one is as of the repository's.
             if generation.get("pinned_at") != None:
                 tree[directory + "/" + PINNED_AT_FILE] = actions.write(directory + "/" + PINNED_AT_FILE, generation["pinned_at"])
@@ -155,6 +161,7 @@ def _materialize_metadata_impl(
 _materialize_metadata = dynamic_actions(
     impl = _materialize_metadata_impl,
     attrs = {
+        "arch": dynattrs.value(str),
         "box_locks": dynattrs.list(dynattrs.artifact_value()),
         "id": dynattrs.value(str),
         "pinned_at": dynattrs.value(str | None),
@@ -166,6 +173,7 @@ _materialize_metadata = dynamic_actions(
 
 def _materialize_package_pool_impl(
     actions: AnalysisActions,
+    arch: str,
     baseurl: str,
     box_locks: list[ArtifactValue],
     id: str,
@@ -175,16 +183,14 @@ def _materialize_package_pool_impl(
     pool = {}
     for checksum, package in pool_transports(id, baseurl, snapshot, box_locks).items():
         url = package["url"]
-        artifact = actions.declare_output("packages", checksum + suffix, has_content_based_path = True)
-
-        # A repository may serve a package larger than a Starlark i32, which arrives as a float.
-        actions.download_file(artifact, url, sha256 = checksum, size_bytes = int(package["size"]))
+        artifact = _download(actions, arch, "packages/" + checksum + suffix, {"sha256": checksum, "size": package["size"], "url": url})
         pool[checksum] = PackageArtifactInfo(artifact = artifact, name = url.rsplit("/", 1)[-1])
     return [PackagePoolValueInfo(packages = pool)]
 
 _materialize_package_pool = dynamic_actions(
     impl = _materialize_package_pool_impl,
     attrs = {
+        "arch": dynattrs.value(str),
         "baseurl": dynattrs.value(str),
         "box_locks": dynattrs.list(dynattrs.artifact_value()),
         "id": dynattrs.value(str),
@@ -212,6 +218,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
         snapshot = ctx.actions.write("empty-snapshot.json", "{}")
     ctx.actions.dynamic_output_new(
         _materialize_metadata(
+            arch = ctx.attrs._arch,
             box_locks = ctx.attrs.box_locks,
             id = ctx.label.name,
             pinned_at = ctx.attrs.pinned_at,
@@ -238,6 +245,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
         PackagePoolInfo(
             value = _declare_package_pool(
                 ctx,
+                arch = ctx.attrs._arch,
                 baseurl = baseurl,
                 box_locks = ctx.attrs.box_locks,
                 package_system = ctx.attrs.package_system,
@@ -249,6 +257,7 @@ def _remote_repository_impl(ctx: AnalysisContext) -> list[Provider]:
 def _declare_package_pool(
     ctx: AnalysisContext,
     *,
+    arch: str,
     baseurl: str,
     box_locks: list[Artifact],
     package_system: Dependency,
@@ -262,6 +271,7 @@ def _declare_package_pool(
     """
     return ctx.actions.dynamic_output_new(
         _materialize_package_pool(
+            arch = arch,
             baseurl = baseurl,
             box_locks = box_locks,
             id = ctx.label.name,
