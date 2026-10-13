@@ -111,6 +111,7 @@ def arch_release(
 
     repository_universe(
         name = name + ".repositories",
+        target_compatible_with = distribution.serves(name, architectures),
         package_system = PACKAGE_SYSTEM,
         required_repositories = [":" + name + ".core.repository"],
         optional_repository_groups = {
@@ -119,17 +120,19 @@ def arch_release(
         },
         default_repository_groups = ["extra"],
     )
-    distribution.new(name = name + ".distribution", visibility = visibility)
+    distribution.new(name = name + ".distribution", architectures = architectures, visibility = visibility)
     package_sets = dict(_ARCH_PACKAGE_SETS)
     package_sets.update(package_set_overrides)
     os_release(
         name = name + ".release",
+        target_compatible_with = distribution.serves(name, architectures),
         repository_universe = ":" + name + ".repositories",
         package_sets = package_sets,
         visibility = visibility,
     )
     package_manager(
         name = name + ".package-manager",
+        target_compatible_with = distribution.serves(name, architectures, in_box = True),
         release = ":" + name + ".release",
         box = box,
         enable_repository_groups = enable_repository_groups,

@@ -147,20 +147,23 @@ def debian_release(
 
     repository_universe(
         name = name + ".repositories",
+        target_compatible_with = distribution.serves(name, architectures),
         package_system = PACKAGE_SYSTEM,
         required_repositories = [":{}.{}.repository".format(name, _REQUIRED)],
         optional_repository_groups = {component: [":{}.{}.repository".format(name, component)] for component in _COMPONENTS if component != _REQUIRED},
         default_repository_groups = ["non-free-firmware"],
     )
-    distribution.new(name = name + ".distribution", visibility = visibility)
+    distribution.new(name = name + ".distribution", architectures = architectures, visibility = visibility)
     os_release(
         name = name + ".release",
+        target_compatible_with = distribution.serves(name, architectures),
         repository_universe = ":" + name + ".repositories",
         package_sets = architecture.select({arch: _package_sets(architecture.spelling(arch, "deb"), package_set_overrides) for arch in architectures}),
         visibility = visibility,
     )
     package_manager(
         name = name + ".package-manager",
+        target_compatible_with = distribution.serves(name, architectures, in_box = True),
         release = ":" + name + ".release",
         box = box,
         enable_repository_groups = enable_repository_groups,

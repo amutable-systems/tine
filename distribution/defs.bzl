@@ -10,17 +10,27 @@ this cell never has to know which distributions exist.
 
 The transition sets the constraint only where nothing has set it yet. The target being built is
 therefore the one that decides, and every image below it, `parent` chain included, follows: a base
-layer is not a distribution, it is whatever the leaf pulling it in is.
+layer is not a distribution, it is whatever the leaf pulling it in is. For an architecture the
+distribution does not serve, the transition leaves the constraint unset.
 """
 
 load("@prelude//:rules.bzl", "constraint_value")
+load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 
 def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
     value = ctx.attrs.constraint[ConstraintValueInfo]
+    served = [cpu.label for configuration in ctx.attrs.architectures for cpu in configuration[ConfigurationInfo].constraints.values()]
+
+    def served_on(constraints: dict[TargetLabel, ConstraintValueInfo]) -> bool:
+        return bool([cpu for cpu in constraints.values() if cpu.label in served])
 
     def select_distribution(platform: PlatformInfo) -> PlatformInfo:
         constraints = platform.configuration.constraints
-        if value.setting.label in constraints:
+
+        # A distribution has no packages for an architecture it does not serve. With the
+        # distribution unset, `compatibility()` makes every target under the transition incompatible.
+        # A build of `//...` then skips such a target instead of failing on the missing packages.
+        if value.setting.label in constraints or not served_on(constraints):
             return platform
         constraints[value.setting.label] = value
         return PlatformInfo(
@@ -35,7 +45,9 @@ def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
     # branches on, the transition that puts it there, and a platform to build against. The
     # configuration stays the constraint alone, so a `select()` on it matches whatever else the
     # platform carries; the platform adds it to the base one, so choosing a distribution does not
-    # drop the cpu and os the base platform brought.
+    # drop the cpu and os the base platform brought. A base cpu the distribution does not serve gets
+    # no distribution, as under the transition.
+    base = ctx.attrs.base[PlatformInfo].configuration
     return [
         DefaultInfo(),
         ConfigurationInfo(constraints = {value.setting.label: value}, values = {}),
@@ -43,8 +55,8 @@ def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
         PlatformInfo(
             label = str(ctx.label.raw_target()),
             configuration = ConfigurationInfo(
-                constraints = ctx.attrs.base[PlatformInfo].configuration.constraints | {value.setting.label: value},
-                values = ctx.attrs.base[PlatformInfo].configuration.values,
+                constraints = base.constraints | ({value.setting.label: value} if served_on(base.constraints) else {}),
+                values = base.values,
             ),
         ),
     ]
@@ -52,14 +64,15 @@ def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
 _distribution = rule(
     impl = _distribution_impl,
     attrs = {
+        "architectures": attrs.list(attrs.dep(providers = [ConfigurationInfo]), doc = "the cpu configuration of each architecture the distribution serves"),
         "base": attrs.dep(providers = [PlatformInfo], default = "tine//platforms:default"),
         "constraint": attrs.dep(providers = [ConstraintValueInfo]),
     },
     is_configuration_rule = True,
 )
 
-def new(name: str, visibility: list[str] | None = None) -> None:
-    """Declare a distribution and the constraint value `select()` keys on."""
+def new(name: str, architectures: list[str], visibility: list[str] | None = None) -> None:
+    """Declare a distribution of `architectures` and the constraint value `select()` keys on."""
     if not name.endswith(".distribution"):
         fail("distribution name must end with '.distribution': {}".format(name))
     constraint_value(
@@ -67,8 +80,13 @@ def new(name: str, visibility: list[str] | None = None) -> None:
         constraint_setting = "tine//distribution:distribution",
         visibility = visibility,
     )
+    configurations = [architecture.spelling(arch, "config") for arch in architectures]
     _distribution(
         name = name,
+        # The release's box is built for the host and exists only for `architectures`. A host of
+        # another architecture has no box to install the release's packages with, so the distribution
+        # serves no architecture there.
+        architectures = configurations if architecture.host() in architectures else [],
         constraint = ":" + name + ".constraint",
         visibility = visibility,
     )
@@ -128,6 +146,16 @@ def compatibility():
     targets = [described["distribution"] for described in declared.values()]
     return select({target: [] for target in targets} | {"DEFAULT": [_UNCHOSEN]})
 
+def _chosen(distro: str) -> list[str] | Select:
+    """`target_compatible_with` for a target whose incoming transition chooses `distro`.
+
+    The transition leaves the distribution unset for an architecture that `distro` does not serve,
+    and the target is then incompatible.
+    """
+    if for_package():
+        return compatibility()
+    return select({distro: [], "DEFAULT": [_UNCHOSEN]})
+
 def attributes(distro: str | None = None, visibility: list[str] | None = None) -> dict:
     """Resolve what a package declares about distributions into the attributes rules take.
 
@@ -141,7 +169,7 @@ def attributes(distro: str | None = None, visibility: list[str] | None = None) -
 
     # A package that declares none leaves compatibility alone, which is every package that has not
     # opted into building for a distribution at all.
-    compatible_with = compatibility()
+    compatible_with = compatibility() if distro == None else _chosen(distro)
     if compatible_with:
         result["target_compatible_with"] = compatible_with
     return result
@@ -193,6 +221,18 @@ def distributed(
     result["target_compatible_with"] = result.get("target_compatible_with", []) + compatible_with
     return result
 
+def serves(name: str, architectures: list[str], in_box: bool = False) -> Select:
+    """`target_compatible_with` for a target `name` that exists only for `architectures`, such as a release's repository.
+
+    A target that runs in the release's box, such as its package manager, sets `in_box`. The release
+    builds its box only for `architectures`, so such a target is also incompatible on a host whose
+    architecture is not in `architectures`.
+    """
+    unserved = select_incompatible("{} serves {} only".format(name, ", ".join(architectures)))
+    if in_box and architecture.host() not in architectures:
+        return select({"DEFAULT": unserved})
+    return architecture.select({arch: [] if arch in architectures else unserved for arch in ARCHITECTURES})
+
 def _distribution_alias_impl(ctx: AnalysisContext) -> list[Provider]:
     return ctx.attrs.actual.providers
 
@@ -212,15 +252,14 @@ def alias(
     """The same target, built for another distribution.
 
     Everything below it is reconfigured, so one declaration serves every distribution rather than
-    being written out once per distribution. The alias requires no choice of distribution: it is
-    what chooses, so requiring a choice of it would be circular. It takes the target's own
-    `compatible_with`.
+    being written out once per distribution. The alias is incompatible with an architecture the
+    distribution does not serve, and it takes the target's own `compatible_with`.
     """
     _distribution_alias(
         name = name,
         actual = actual,
         incoming_transition = distro,
-        target_compatible_with = compatible_with,
+        target_compatible_with = _chosen(distro) + compatible_with,
         visibility = visibility,
     )
 
@@ -229,6 +268,7 @@ distribution = struct(
     aliases = aliases,
     attrs = attributes,
     select = by_distribution,
+    serves = serves,
     compatibility = compatibility,
     distributed = distributed,
     for_package = for_package,

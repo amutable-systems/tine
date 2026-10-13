@@ -89,26 +89,22 @@ def _orphan_tests(cell: Path) -> list[Path]:
 def _universe() -> str:
     """The query for everything a whole-cell run asks for on this host.
 
-    The catalog serves Arch for x86_64 only, so elsewhere every target reaching it fails to
-    configure, and Buck reports what depends on it as an error rather than a skip. So leave out the
-    Arch catalog, the per-distribution aliases that choose Arch, and what names the Arch box itself.
-    A new target reaching Arch some other way fails on such a host, which is how it gets added here.
+    The catalog serves Arch for x86_64 only. A build for arm64, and any build on an arm64 host, skips
+    the Arch catalog and every target that chooses Arch. A target that runs in the Arch box, such as a
+    type check against it, has no execution platform on an arm64 host, and Buck reports that as an
+    error. So leave out every target that depends on the Arch box directly.
     """
     if platform.machine() == "x86_64":
         return "tine//..."
-    return (
-        r"tine//... - filter('\.arch$', tine//...) - filter('^tine//catalog:arch\.', tine//catalog:)"
-        " - rdeps(tine//..., tine//catalog:arch.rolling.box, 1)"
-    )
+    return "tine//... - rdeps(tine//..., tine//catalog:arch.rolling.box, 1)"
 
 
 def _targets() -> list[str]:
     """What `_universe()` matches, to hand to a command that takes no query.
 
     Named explicitly, a target incompatible by design (an image base without a chosen distribution, a
-    signing token without a configured token) is an error rather than a skip, so a command given these
-    needs `--skip-incompatible-targets`. That does not hide an Arch target the query missed: on a host
-    without Arch, that fails configuration rather than being incompatible.
+    signing token without a configured token, an Arch target on an arm64 host) is an error rather than
+    a skip, so a command given these needs `--skip-incompatible-targets`.
     """
     return buck_output("uquery", _universe()).split()
 
