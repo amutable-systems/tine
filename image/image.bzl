@@ -848,10 +848,11 @@ def layer(
     ops: list[LayerOperationTree] = [],
     distro: str | None = None,
     visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
     **kwargs,
 ) -> None:
     """Create an initial image or apply one delta to a parent image."""
-    _image(name = name, ops = flatten_operations(ops), **(distribution.distributed(name, distro, visibility) | kwargs))
+    _image(name = name, ops = flatten_operations(ops), **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs))
 
 def _image_install_impl(ctx: AnalysisContext) -> list[Provider]:
     from_targets, operations = expand_install_from(ctx.attrs.ops)

@@ -3,6 +3,7 @@
 
 """The public test API, exported as the `tests` namespace."""
 
+load("@prelude//platforms:defs.bzl", "host_configuration")
 load("@tine//distribution:defs.bzl", "distribution")
 
 def _vm_smoke_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -46,9 +47,18 @@ _vm_smoke = rule(
     supports_incoming_transition = True,
 )
 
-def vm_smoke(name: str, distro: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
+def vm_smoke(
+    name: str,
+    distro: str | None = None,
+    visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
+    **kwargs,
+) -> None:
     """Declare one, compatible with the distributions its package serves."""
-    _vm_smoke(name = name, **(distribution.distributed(name, distro, visibility) | kwargs))
+
+    # The smoke test boots an image_vm, which only boots a disk of the host's architecture.
+    compatible_with = ([] if target_compatible_with == None else target_compatible_with) + [host_configuration.cpu]
+    _vm_smoke(name = name, **(distribution.distributed(name, distro, visibility, compatible_with) | kwargs))
 
 tests = struct(
     vm_smoke = vm_smoke,
