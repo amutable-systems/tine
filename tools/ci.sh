@@ -179,7 +179,18 @@ EOF
 
 # Nothing here needs a box, so a graph that does not analyze is reported in seconds rather than
 # after two bootstraps. `check` runs it again, for anyone running that on its own.
-group graph             -- "${buck[@]}" bxl tine//tools/graph.bxl:analyze -- --pattern "$(universe)"
+pattern=$(universe)
+group graph             -- "${buck[@]}" bxl tine//tools/graph.bxl:analyze -- --pattern "$pattern"
+# A build for another architecture, or for one distribution, skips what cannot be built for it. A target
+# that is compatible but depends on an incompatible one fails these analyses instead of being skipped.
+# `graph` already analyzes the graph for the host's architecture.
+case $(uname -m) in
+    x86_64) other=arm64 ;;
+    *) other=x86_64 ;;
+esac
+for platform in "tine//platforms:$other" tine//catalog:debian.testing.distribution; do
+    group "graph-${platform##*:}" -- "${buck[@]}" bxl --target-platforms "$platform" tine//tools/graph.bxl:analyze -- --pattern "$pattern"
+done
 # First invocation fetches buck's pinned tools and builds the shared box; kept its own group so
 # bootstrap time stays visible.
 group box               -- "${buck[@]}" build tine//catalog:fedora.rawhide.box
