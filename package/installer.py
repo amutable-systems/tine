@@ -90,7 +90,12 @@ def _configure_box(installroot: Path) -> None:
     """Materialize configuration needed before the box is ever booted."""
     factory_nsswitch = installroot / "usr/share/factory/etc/nsswitch.conf"
     nsswitch = installroot / "etc/nsswitch.conf"
-    if factory_nsswitch.is_file():
+    # authselect makes nsswitch.conf a symlink to the absolute path /etc/authselect/nsswitch.conf.
+    # The installer runs outside the root, so the symlink does not resolve and writing through it
+    # fails with ENOENT. authselect also stops applying profile updates once a file replaces the symlink.
+    if nsswitch.is_symlink():
+        pass
+    elif factory_nsswitch.is_file():
         shutil.copy2(factory_nsswitch, nsswitch)
     elif not nsswitch.is_file():
         # Minimal boxes need not install systemd's factory configuration.
