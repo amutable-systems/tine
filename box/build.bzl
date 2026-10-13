@@ -4,6 +4,7 @@
 """Build reusable execution environments."""
 
 load("//:specs.bzl", "spec_args")
+load("//distribution:defs.bzl", "distribution")
 load("//package:release.bzl", "OsReleaseInfo")
 load(
     "//package:repository.bzl",
@@ -382,9 +383,18 @@ def new(
         parent = parent,
         lock = architecture.select(locks) if locks else None,
         labels = labels,
+        # A box is built for the host. Without a lock for the host's architecture, it cannot be built.
+        target_compatible_with = distribution.serves(name, architectures) if architectures else [],
         visibility = visibility,
         **kwargs,
     )
+
+    # A lock is resolved in its resolver box on the host. A root box is its own resolver, so its locks
+    # fail to build on a host that it keeps no lock for. A lock is configured for the architecture it
+    # resolves for, so this check reads the host's architecture when the package loads.
+    lock_compatible_with = []
+    if root and architecture.host() not in architectures:
+        lock_compatible_with = select({"DEFAULT": select_incompatible("{} keeps no lock for this host".format(name))})
 
     # A root box resolves through itself: its committed lock is what builds the root that then says
     # what the lock should be.
@@ -400,6 +410,7 @@ def new(
             parent = "{}.lock.{}".format(parent, arch) if parent != None else None,
             incoming_transition = "tine//platforms:" + arch,
             labels = ["tine:box-lock"],
+            target_compatible_with = lock_compatible_with,
             # The lock of a child box in another package depends on this lock. Without the box's
             # visibility, that lock fails to configure.
             visibility = visibility,

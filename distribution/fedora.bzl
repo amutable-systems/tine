@@ -104,6 +104,7 @@ def fedora_release(
     )
     repository_universe(
         name = name + ".repositories",
+        target_compatible_with = distribution.serves(name, architectures),
         package_system = PACKAGE_SYSTEM,
         # The additional repositories are part of the release, not just of installs from it. An
         # box resolves against the universe and nothing else, so leaving them out would stop a
@@ -111,15 +112,17 @@ def fedora_release(
         # these has to be assembled by the matching ukify and repart, which live in the same place.
         required_repositories = [":" + name + ".repository"] + additional_repositories,
     )
-    distribution.new(name = name + ".distribution", visibility = visibility)
+    distribution.new(name = name + ".distribution", architectures = architectures, visibility = visibility)
     os_release(
         name = name + ".release",
+        target_compatible_with = distribution.serves(name, architectures),
         repository_universe = ":" + name + ".repositories",
         package_sets = _merge_package_sets(_FEDORA_PACKAGE_SETS, package_set_overrides),
         visibility = visibility,
     )
     package_manager(
         name = name + ".package-manager",
+        target_compatible_with = distribution.serves(name, architectures, in_box = True),
         release = ":" + name + ".release",
         box = box,
         additional_repositories = additional_repositories,
@@ -128,6 +131,7 @@ def fedora_release(
     )
     buildroot(
         name = name + ".buildroot",
+        target_compatible_with = distribution.serves(name, architectures, in_box = True),
         package_manager = ":" + name + ".package-manager",
         package_set = "buildroot",
         visibility = visibility,

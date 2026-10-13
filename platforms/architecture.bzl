@@ -66,8 +66,18 @@ def _configured() -> Select:
     """
     return _select({name: name for name in ARCHITECTURES})
 
+def _host() -> str:
+    """The architecture of the machine Buck runs on."""
+    arch = host_info().arch
+    if arch.is_aarch64:
+        return "arm64"
+    if arch.is_x86_64:
+        return "x86_64"
+    fail("architecture: tine runs on {}, not on this host".format(sorted(ARCHITECTURES)))
+
 architecture = struct(
     configured = _configured,
+    host = _host,
     select = _select,
     spelling = _spelling,
 )

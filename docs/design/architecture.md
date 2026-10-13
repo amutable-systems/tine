@@ -1081,6 +1081,16 @@ target being built decides and everything under it follows: an image's `parent` 
 distribution of its own, it is whatever the leaf pulling it in is. One declaration therefore serves every
 distribution, and only the alias names are per-distribution.
 
+A release serves a list of architectures, and Arch serves only x86_64. Its repositories and release
+resolve `target_compatible_with` to `select_incompatible()` for any other architecture. The release's box
+is built for the host, so its box and package manager are incompatible on a host of another architecture.
+On such a host, the release serves no architecture at all. Where a release serves no architecture, the
+transition leaves the distribution unset, and `compatibility()` makes every distributed target and alias
+incompatible. A build of `//...` then skips the Arch targets for arm64 and on an arm64 host. A target
+that runs in the Arch box, such as a type check against it, has no execution platform on an arm64 host.
+Buck reports that as an error, so a whole-cell run there leaves out every target that depends on the Arch
+box directly.
+
 What varies between distributions stays where it belongs. A release names the packages a bootable system
 of its own family needs, so an image asks for the `bootable` package set rather than for concrete package
 names. Where a genuine difference remains, it is an ordinary select on the same constraint.

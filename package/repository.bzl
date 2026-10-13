@@ -3,6 +3,7 @@
 
 """Native package repositories, universes, and dynamic transaction selection."""
 
+load("//distribution:defs.bzl", "distribution")
 load("//platforms:architecture.bzl", "architecture")
 load("//platforms:defs.bzl", "architecture_transition")
 load(":system.bzl", "PackageSystemInfo")
@@ -695,6 +696,7 @@ def declare_remote_repository(
         signing_key_files = glob([SIGNING_KEY_DIRECTORY + "/" + fingerprint + SIGNING_KEY_SUFFIX for fingerprint in signing_keys]),
         signing_keys = signing_keys,
         snapshot = architecture.select(locks),
+        target_compatible_with = distribution.serves(name, architectures),
         **kwargs,
     )
 
