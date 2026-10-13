@@ -24,6 +24,22 @@ class TestPathRules(unittest.TestCase):
             self.assertNotIn("*", tree)
 
 
+class TestConfigureBox(unittest.TestCase):
+    def test_keeps_authselect_nsswitch_link(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as scratch:
+            root = Path(scratch)
+            factory = root / "usr/share/factory/etc/nsswitch.conf"
+            factory.parent.mkdir(parents=True)
+            factory.write_text("passwd: files systemd\n")
+            (root / "etc").mkdir()
+            nsswitch = root / "etc/nsswitch.conf"
+            nsswitch.symlink_to("/etc/authselect/nsswitch.conf")
+
+            installer._configure_box(root)
+
+            self.assertEqual(nsswitch.readlink(), Path("/etc/authselect/nsswitch.conf"))
+
+
 class TestRun(unittest.TestCase):
     def test_package_scripts_tolerate_unmapped_acl_groups(self) -> None:
         # The test box mounts /var/tmp as tmpfs, so a host mounted with noacl cannot hide this failure.
