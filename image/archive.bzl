@@ -108,6 +108,12 @@ _image_directory = rule(
     | IMAGE_TOOLS_ATTR,
 )
 
-def image_directory(name: str, distro: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
+def image_directory(
+    name: str,
+    distro: str | None = None,
+    visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
+    **kwargs,
+) -> None:
     """Declare one, compatible with the distributions its package serves."""
-    _image_directory(name = name, **(distribution.distributed(name, distro, visibility) | kwargs))
+    _image_directory(name = name, **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs))

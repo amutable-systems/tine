@@ -174,11 +174,16 @@ _image_vm = rule(
     },
 )
 
-def image_vm(name: str, distro: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
+def image_vm(
+    name: str,
+    distro: str | None = None,
+    visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
+    **kwargs,
+) -> None:
     """Declare one, compatible with the distributions its package serves."""
-    attributes = distribution.distributed(name, distro, visibility) | kwargs
 
     # vmspawn runs the host's qemu with KVM and has no option for another architecture. A disk of
     # another architecture therefore cannot boot, and the runner is incompatible with it.
-    attributes["target_compatible_with"] = attributes.get("target_compatible_with", []) + [host_configuration.cpu]
-    _image_vm(name = name, **attributes)
+    compatible_with = ([] if target_compatible_with == None else target_compatible_with) + [host_configuration.cpu]
+    _image_vm(name = name, **(distribution.distributed(name, distro, visibility, compatible_with) | kwargs))

@@ -1021,15 +1021,27 @@ pacman or dpkg, and nothing is written twice.
 An image's distribution is a configuration its target carries, so one declaration serves every
 distribution the catalog offers. An image rule names itself once per distribution its package
 serves, so declaring `boot-demo` also declares `boot-demo.fedora`, `boot-demo.arch` and
-`boot-demo.debian` with nothing further to write. A rule tine does not own says so itself:
+`boot-demo.debian` with nothing further to write. For any other rule, such as a prelude `command_alias`,
+you declare the aliases yourself:
 
 ```Starlark
+command_alias(
+    name = "boot-demo-qemu",
+    exe = ":run-qemu",
+    args = ["$(location :boot-demo)"],
+    target_compatible_with = distribution.compatibility(),
+)
+
 distribution.alias(
-    name = "boot-demo-vm-smoke.fedora",
-    actual = ":boot-demo-vm-smoke",
+    name = "boot-demo-qemu.fedora",
+    actual = ":boot-demo-qemu",
     distro = "//catalog:<family>.<release>.distribution",
 )
 ```
+
+If the target has constraints of its own, also pass them to the alias as `compatible_with`. Otherwise
+building `//...` for an architecture the target doesn't support fails instead of skipping the alias. An
+image rule passes its `target_compatible_with` to its aliases itself.
 
 An image can also name its own distribution instead of being aliased into one:
 

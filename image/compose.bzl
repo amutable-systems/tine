@@ -182,6 +182,7 @@ def initrd_image(
     version: str | Select | None = None,
     distro: str | None = None,
     visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
     **kwargs,
 ) -> None:
     """Declare the conventional initrd, extended by `packages`, `package_sets`, and `ops`.
@@ -194,7 +195,7 @@ def initrd_image(
         name = name,
         ops = flatten_operations(ops),
         version = resolve_version("initrd_image {}".format(name), version),
-        **(distribution.distributed(name, distro, visibility) | kwargs),
+        **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
     )
 
 _ROOT_ATTRS = {
@@ -626,6 +627,7 @@ def archive(
     version: str | Select | None = None,
     distro: str | None = None,
     visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
     **kwargs,
 ) -> None:
     """Build one logical image from operations and emit it as an archive."""
@@ -633,7 +635,7 @@ def archive(
         name = name,
         ops = flatten_operations(ops),
         version = resolve_version("archive {}".format(name), version),
-        **(distribution.distributed(name, distro, visibility) | kwargs),
+        **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
     )
 
 def extension(
@@ -642,6 +644,7 @@ def extension(
     version: str | Select | None = None,
     distro: str | None = None,
     visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
     **kwargs,
 ) -> None:
     """Build one logical image from operations and package it as an extension DDI.
@@ -653,7 +656,7 @@ def extension(
         name = name,
         ops = flatten_operations(ops),
         version = resolve_version("extension {}".format(name), version),
-        **(distribution.distributed(name, distro, visibility) | kwargs),
+        **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
     )
 
 def sysext(name: str, **kwargs) -> None:
@@ -670,6 +673,7 @@ def portable(
     version: str | Select | None = None,
     distro: str | None = None,
     visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
     **kwargs,
 ) -> None:
     """Build one logical image from operations and package it as a portable service DDI."""
@@ -677,7 +681,7 @@ def portable(
         name = name,
         ops = flatten_operations(ops),
         version = resolve_version("portable {}".format(name), version),
-        **(distribution.distributed(name, distro, visibility) | kwargs),
+        **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
     )
 
 def disk(
@@ -692,6 +696,7 @@ def disk(
     version: str | Select | None = None,
     distro: str | None = None,
     visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
     **kwargs,
 ) -> None:
     """Compose partitions into a disk, which boots when `bootable` is set.
@@ -724,7 +729,7 @@ def disk(
         ops = flatten_operations(ops),
         package_manager = package_manager,
         version = version,
-        **(distribution.distributed(name, distro, visibility) | kwargs),
+        **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
     )
     if not bootable:
         _disk(**common)

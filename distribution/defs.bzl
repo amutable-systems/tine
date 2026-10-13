@@ -146,7 +146,12 @@ def attributes(distro: str | None = None, visibility: list[str] | None = None) -
         result["target_compatible_with"] = compatible_with
     return result
 
-def aliases(name: str, distro: str | None = None, visibility: list[str] | None = None) -> None:
+def aliases(
+    name: str,
+    distro: str | None = None,
+    visibility: list[str] | None = None,
+    compatible_with: list[str] | Select = [],
+) -> None:
     """Name one target once per distribution its package serves.
 
     A target that names no distribution of its own is buildable under every one of them, so the
@@ -162,12 +167,14 @@ def aliases(name: str, distro: str | None = None, visibility: list[str] | None =
             actual = ":" + name,
             distro = declared[suffix]["distribution"],
             visibility = visibility,
+            compatible_with = compatible_with,
         )
 
 def distributed(
     name: str,
     distro: str | None = None,
     visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
 ) -> dict:
     """Declare a target's per-distribution aliases and return the attributes it takes.
 
@@ -175,9 +182,16 @@ def distributed(
     compatible only with a choice nothing can make of it: it disappears from `//...` and fails when
     something finally names it. One that nothing names directly, because it is only ever a
     dependency, takes `distribution.attrs()` on its own instead.
+
+    `target_compatible_with` constrains the target and its aliases alike, on top of the
+    distributions. Buck reports an alias that is compatible where its target is not as an error, and
+    `//...` then fails instead of skipping both.
     """
-    aliases(name, distro, visibility)
-    return attributes(distro, visibility)
+    compatible_with = [] if target_compatible_with == None else target_compatible_with
+    aliases(name, distro, visibility, compatible_with)
+    result = attributes(distro, visibility)
+    result["target_compatible_with"] = result.get("target_compatible_with", []) + compatible_with
+    return result
 
 def _distribution_alias_impl(ctx: AnalysisContext) -> list[Provider]:
     return ctx.attrs.actual.providers
@@ -188,14 +202,27 @@ _distribution_alias = rule(
     supports_incoming_transition = True,
 )
 
-def alias(name: str, actual: str, distro: str, visibility: list[str] | None = None) -> None:
+def alias(
+    name: str,
+    actual: str,
+    distro: str,
+    visibility: list[str] | None = None,
+    compatible_with: list[str] | Select = [],
+) -> None:
     """The same target, built for another distribution.
 
     Everything below it is reconfigured, so one declaration serves every distribution rather than
-    being written out once per distribution. The alias itself stays compatible with anything: it is
-    what chooses, so requiring a choice of it would be circular.
+    being written out once per distribution. The alias requires no choice of distribution: it is
+    what chooses, so requiring a choice of it would be circular. It takes the target's own
+    `compatible_with`.
     """
-    _distribution_alias(name = name, actual = actual, incoming_transition = distro, visibility = visibility)
+    _distribution_alias(
+        name = name,
+        actual = actual,
+        incoming_transition = distro,
+        target_compatible_with = compatible_with,
+        visibility = visibility,
+    )
 
 distribution = struct(
     alias = alias,
