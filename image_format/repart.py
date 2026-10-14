@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""What the drivers invoking systemd-repart share: signing key material, and reading its report back."""
+"""Signing keys, mkfs options and report parsing for the drivers that run systemd-repart."""
 
 from pathlib import Path
 from typing import Any, TypedDict
@@ -29,6 +29,20 @@ def key_arguments(signing: KeySpec | None) -> list[str]:
     if signing["certificate_source"]:
         arguments += ["--certificate-source", signing["certificate_source"]]
     return arguments
+
+
+def mkfs_environment(options: dict[str, list[str]]) -> dict[str, str]:
+    """Return the systemd-repart environment that passes `options` to mkfs, per filesystem."""
+    erofs = options.get("erofs", [])
+    # The kernel shares the page cache of identical files between erofs images mounted with
+    # inode_share, but only for images that record a digest of each file.
+    if not any(option.startswith("--xattr-inode-digest") for option in erofs):
+        erofs = [*erofs, "--xattr-inode-digest"]
+    # repart reads one variable per filesystem it formats and splits each on whitespace.
+    return {
+        f"SYSTEMD_REPART_MKFS_OPTIONS_{filesystem.upper()}": " ".join(arguments)
+        for filesystem, arguments in (options | {"erofs": erofs}).items()
+    }
 
 
 def write_root_hash(rows: list[dict[str, Any]], output: Path) -> None:

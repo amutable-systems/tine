@@ -368,11 +368,7 @@ def main(argv: list[str] | None = None) -> None:
         if splits:
             cmd.append("--split=yes")
         cmd += repart.key_arguments(spec["signing"])
-        # repart reads one variable per filesystem it formats and splits each on whitespace.
-        env = os.environ | {
-            f"SYSTEMD_REPART_MKFS_OPTIONS_{filesystem.upper()}": " ".join(options)
-            for filesystem, options in spec["mkfs_options"].items()
-        }
+        env = os.environ | repart.mkfs_environment(spec["mkfs_options"])
         result = subprocess.run([*cmd, str(disk)], check=True, env=env, stdout=subprocess.PIPE, text=True)
         rows: list[dict[str, Any]] = json.loads(result.stdout)
 
