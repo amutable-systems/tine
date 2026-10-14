@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Tests for reading repart's partition report back.
+"""Tests for the mkfs environment and for reading repart's partition report back.
 
     buck test tine//image_format:test
 
@@ -15,6 +15,29 @@ from pathlib import Path
 import repart
 
 HASH = "d3b20557d33fdb5d496b6faec48fbdf517db6f428dae1c362b59c16dac405bfe"
+
+
+class TestMkfsEnvironment(unittest.TestCase):
+    def test_records_erofs_digests_without_options(self) -> None:
+        self.assertEqual(
+            repart.mkfs_environment({}), {"SYSTEMD_REPART_MKFS_OPTIONS_EROFS": "--xattr-inode-digest"}
+        )
+
+    def test_appends_the_digest_to_erofs_options(self) -> None:
+        environment = repart.mkfs_environment({"erofs": ["-zzstd", "-C524288"], "vfat": ["--invariant"]})
+        self.assertEqual(
+            environment,
+            {
+                "SYSTEMD_REPART_MKFS_OPTIONS_EROFS": "-zzstd -C524288 --xattr-inode-digest",
+                "SYSTEMD_REPART_MKFS_OPTIONS_VFAT": "--invariant",
+            },
+        )
+
+    def test_keeps_a_digest_name_the_caller_picked(self) -> None:
+        environment = repart.mkfs_environment({"erofs": ["--xattr-inode-digest=user.digest"]})
+        self.assertEqual(
+            environment, {"SYSTEMD_REPART_MKFS_OPTIONS_EROFS": "--xattr-inode-digest=user.digest"}
+        )
 
 
 class TestWriteRootHash(unittest.TestCase):

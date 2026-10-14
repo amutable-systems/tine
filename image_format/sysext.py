@@ -51,7 +51,7 @@ _HIERARCHIES = ("opt", "usr")
 
 # erofs dedup keys off the filesystem UUID, so combined with a stable seed these keep the DDI
 # reproducible.
-_MKFS_OPTIONS_EROFS = "--quiet -zzstd,level=3 -C524288 -Efragments,ztailpacking,dedupe"
+_MKFS_OPTIONS_EROFS = ["--quiet", "-zzstd,level=3", "-C524288", "-Efragments,ztailpacking,dedupe"]
 
 
 def _derived_seed(identity: str, name: str, release: dict[str, str]) -> uuid.UUID:
@@ -151,7 +151,7 @@ def main(argv: list[str] | None = None) -> None:
         else:
             cmd.append("--exclude-partitions=root-verity-sig")
         cmd.append(str(out))
-        env = os.environ | {"SYSTEMD_REPART_MKFS_OPTIONS_EROFS": _MKFS_OPTIONS_EROFS}
+        env = os.environ | repart.mkfs_environment({"erofs": _MKFS_OPTIONS_EROFS})
         result = subprocess.run(cmd, check=True, env=env, stdout=subprocess.PIPE, text=True)
         # The root hash is what a host reports for the merged extension
         # (/usr/.systemd-sysext/origin), so it is the DDI's identity to
