@@ -80,7 +80,7 @@ box.new(
     + architecture.select({
         # qemu and its EDK2 firmware are packaged per guest architecture; a box only ever runs guests
         # of its own.
-        "arm64": ["edk2-aarch64", "qemu-system-aarch64-core"],
+        "arm64": ["edk2-aarch64", "qemu-system-aarch64-core", "qemu-device-uefi-vars"],
         "x86_64": ["edk2-ovmf", "qemu-system-x86-core"],
     }),
     release = ":fedora.rawhide.release",
