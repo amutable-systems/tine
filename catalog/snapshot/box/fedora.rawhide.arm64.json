@@ -1312,6 +1312,14 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261003/Packages/q/qemu-common-11.1.2-1.fc46.aarch64.rpm"
   },
   {
+    "package_id": "qemu-device-uefi-vars-2:11.1.2-1.fc46.aarch64",
+    "repo": "fedora.rawhide.repository",
+    "pkg_checksum": "c6412b9bac5a06930bb7be613ab67e03934d922fc97ff96ba93e3e4efd8cb8be",
+    "source": "repo",
+    "size": 40226,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261003/Packages/q/qemu-device-uefi-vars-11.1.2-1.fc46.aarch64.rpm"
+  },
+  {
     "package_id": "qemu-img-2:11.1.2-1.fc46.aarch64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "a15c1685a415d23cecf4c527e2a16667eef94838c7ea8b065eee51de40cb3680",
