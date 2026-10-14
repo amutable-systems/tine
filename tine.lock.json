@@ -1,28 +1,28 @@
 {
   "buck2": {
     "repository": "daandemeyer/buck2",
-    "release": "2026-10-10-10.40.05",
+    "release": "2026-10-13-13.49.54",
     "platforms": {
       "Linux-aarch64": {
         "artifact": "buck2-aarch64-unknown-linux-musl.zst",
-        "sha256": "f15d37dbe7dcc0ca9a4278589ab30802fefed272022304744a018655edcc7cd2",
-        "size": 39054700
+        "sha256": "f58c1794f8966fb372db222e45fa43f99ef5c2dc12209a9e936008b009fab3e4",
+        "size": 39050026
       },
       "Linux-riscv64": {
         "artifact": "buck2-riscv64gc-unknown-linux-gnu.zst",
-        "sha256": "dd7ccf30ff595f6d788037110a5dfa71e966ae3f978ffc99bb2834b63d0cee71",
-        "size": 41302195
+        "sha256": "9d8bd802be50fbb88e8798ccc3a293ca1025996b68b81cd6d294361bff986c89",
+        "size": 41300772
       },
       "Linux-x86_64": {
         "artifact": "buck2-x86_64-unknown-linux-musl.zst",
-        "sha256": "e786f675975724802d34cb7a0471fef95a54c76f125e603db47904e2da3358ad",
-        "size": 40569315
+        "sha256": "50c25dc993239a6c8bdd94f150ebbec0a5dd3d02d8b118ac8e4b6e851d55420d",
+        "size": 40562596
       }
     }
   },
   "starlark-fmt": {
     "repository": "daandemeyer/buck2",
-    "release": "2026-10-10-10.40.05",
+    "release": "2026-10-13-13.49.54",
     "platforms": {
       "arm64": {
         "artifact": "starlark_fmt-aarch64-unknown-linux-musl.zst",
@@ -38,18 +38,18 @@
   },
   "python3": {
     "repository": "astral-sh/python-build-standalone",
-    "release": "20261009",
+    "release": "20261013",
     "platforms": {
       "arm64": {
-        "artifact": "cpython-3.14.8+20261009-aarch64-unknown-linux-gnu-install_only.tar.gz",
-        "sha256": "2a99838d2ba71c91d9c72929ee73cdfad2ccd093d7746a14094f50e583989ec3",
-        "size": 57602307,
+        "artifact": "cpython-3.14.8+20261013-aarch64-unknown-linux-gnu-install_only.tar.gz",
+        "sha256": "6c3cfb175acca2748d5a9e42208c523bfbc1099ddb928615b5f328ba7c106e83",
+        "size": 57711872,
         "strip_prefix": "python"
       },
       "x86_64": {
-        "artifact": "cpython-3.14.8+20261009-x86_64-unknown-linux-gnu-install_only.tar.gz",
-        "sha256": "83f9cb480b702548c592443f86209cf0fc03448d90692df257f095c01791dccc",
-        "size": 74948766,
+        "artifact": "cpython-3.14.8+20261013-x86_64-unknown-linux-gnu-install_only.tar.gz",
+        "sha256": "322271a761140ffb3f522431048f701831e412c8f64770103d2b881ee2bbaed0",
+        "size": 75066232,
         "strip_prefix": "python"
       }
     }
@@ -74,18 +74,18 @@
   },
   "ty": {
     "repository": "astral-sh/ty",
-    "release": "0.0.86",
+    "release": "0.0.87",
     "platforms": {
       "arm64": {
         "artifact": "ty-aarch64-unknown-linux-musl.tar.gz",
-        "sha256": "ff3f848d01d6849131ed712fc946c026b33a95720408eaece26d28d3c2e52c45",
-        "size": 13019630,
+        "sha256": "0de546b9b4fa9d1d7a0aa7bf02b517bbfdd60715ef79a6dd3fbabfcd1fe891ec",
+        "size": 13027311,
         "strip_prefix": "ty-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "ty-x86_64-unknown-linux-musl.tar.gz",
-        "sha256": "cedbbe26a4f12533cfa728e07c8f053c86c7642548c72e92971e1154a94f3583",
-        "size": 14149832,
+        "sha256": "682edebc4d8cc8562bf24551109bee28e481fe8b036786c05e96dac24e42ac00",
+        "size": 14165324,
         "strip_prefix": "ty-x86_64-unknown-linux-musl"
       }
     }
