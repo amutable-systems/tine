@@ -3,8 +3,9 @@
 
 """The command a checkout builds through."""
 
-load("//box:test.bzl", "box_python_test")
+load("//box:test.bzl", "box_python_test", "box_sh_test")
 load("//python:defs.bzl", "tine_python_library")
+load(":umask_test.bzl", "umask_probe")
 
 # How the launcher reads the cache settings and talks to a running shim, for the round trip in
 # tests/, which judges a build by the shim's own counters.
@@ -33,4 +34,21 @@ box_python_test(
         "tine_test.py",
         "//:buckconfig",
     ],
+)
+
+umask_probe(name = "umask-probe")
+
+# The launcher runs Buck with umask 022, so that a builder's own umask does not reach image
+# directories; this fails when built with a umask such as 0002 without that.
+box_sh_test(
+    name = "umask-test",
+    args = ["$(location :umask-probe)/directory"],
+    box = "//tools:dev.box",
+    script = """
+mode=$(stat -c %a "$1")
+if [ "$mode" != 755 ]; then
+    echo "ERROR: $1 has mode $mode, expected 755" >&2
+    exit 1
+fi
+""",
 )
