@@ -9,10 +9,21 @@ load("//platforms:architecture.bzl", "ARCHITECTURES")
 load(
     ":archive.bzl",
     "ARCHIVE_ATTRS",
+    "COMPRESSIONS",
+    "ImageArchiveInfo",
     "declare_image_archive",
     "declare_image_directory",
 )
-load(":boot.bzl", "boot_subtargets", "declare_boot_artifacts")
+load(
+    ":boot.bzl",
+    "UKI_ATTRS",
+    "UkiProfile",  # @unused Used as a type.
+    "boot_subtargets",
+    "declare_boot_artifacts",
+    "declare_uki",
+    "encode_profiles",
+    "uki_subtargets",
+)
 load(
     ":ddi.bzl",
     "DISK_FORMATS",
@@ -39,9 +50,10 @@ load(
     "image_providers",
     "install_systemd_boot",
     "merge_os_release",
+    "remove",
     "sign_systemd_boot",
+    "symlink",
 )
-load(":initrd.bzl", "InitrdInfo", "initrd_image")
 load(":publish.bzl", "PublishedInfo", "published_metadata_subtargets")
 load(
     ":sign.bzl",
@@ -56,15 +68,101 @@ load(
     "sysext_published",
     "sysext_subtargets",
 )
-load(
-    ":uki.bzl",
-    "UKI_ATTRS",
-    "UkiProfile",  # @unused Used as a type.
-    "declare_uki",
-    "encode_profiles",
-    "uki_subtargets",
-)
 load(":version.bzl", "resolve_version")
+
+InitrdInfo = provider(
+    doc = "A logical initrd image and its derived cpio archive.",
+    fields = {
+        "cpio": provider_field(ImageArchiveInfo),
+        "image": provider_field(ImageInfo),
+    },
+)
+
+def _initrd_image_impl(ctx: AnalysisContext) -> list[Provider]:
+    tools = ctx.attrs._tools[ImageToolsInfo]
+    image = declare_image(
+        ctx,
+        tools = tools,
+        install_docs = ctx.attrs.install_docs,
+        install_langs = ctx.attrs.install_langs,
+        ops = generated(
+            [
+                symlink("/usr/lib/systemd/systemd", "/init"),
+                symlink("/etc/os-release", "/etc/initrd-release"),
+            ]
+            + ctx.attrs.ops,
+            ["initrd"],
+        )
+        # The removals run after the generators, because the hwdb generator reads hwdb.d. At run time
+        # udev reads only the compiled hardware database. Nothing in the initrd shows catalog
+        # messages or resolves service names, so the initrd does not need the catalogs or
+        # /etc/services.
+        + [
+            remove("/usr/lib/udev/hwdb.d"),
+            remove("/usr/lib/systemd/catalog"),
+            remove("/var/lib/systemd/catalog"),
+            remove("/etc/services"),
+        ],
+        package_manager = ctx.attrs.package_manager,
+        # Each release lists the packages of its "initrd" package set, so the initrd names the set
+        # instead of packages.
+        package_sets = ["initrd"] + ctx.attrs.package_sets,
+        packages = ctx.attrs.packages,
+        tmpfiles = ctx.attrs.tmpfiles,
+        version = ctx.attrs.version,
+    )
+    cpio = declare_image_archive(
+        ctx,
+        tools = tools,
+        compression = ctx.attrs.compression,
+        format = "cpio",
+        image = image,
+        strip_pkgdb = ctx.attrs.strip_pkgdb,
+    )
+    return image_providers(
+        default_outputs = [cpio.archive],
+        extra = [InitrdInfo(cpio = cpio, image = image), cpio],
+        image = image,
+    )
+
+_initrd_image = rule(
+    impl = _initrd_image_impl,
+    supports_incoming_transition = True,
+    attrs = IMAGE_ATTRS
+    | {
+        "compression": attrs.enum(COMPRESSIONS, default = "zstd"),
+        # An initrd is small, short-lived, and read once, so the defaults an OS image wants are the
+        # wrong way round here: documentation and translations only cost boot memory.
+        "install_docs": attrs.bool(default = False),
+        "install_langs": attrs.list(attrs.string(), default = ["C.UTF-8"]),
+        "package_manager": attrs.dep(providers = [PackageManagerInfo]),
+        "strip_pkgdb": attrs.bool(
+            default = True,
+            doc = "leave the package database out of the cpio; the image still carries it",
+        ),
+    },
+)
+
+def initrd_image(
+    name: str,
+    ops: list[LayerOperationTree] = [],
+    version: str | Select | None = None,
+    distro: str | None = None,
+    visibility: list[str] | None = None,
+    **kwargs,
+) -> None:
+    """Declare the conventional initrd, extended by `packages`, `package_sets`, and `ops`.
+
+    The release's `initrd` package set and the operations every initrd needs come first; what this
+    target declares is added to them rather than replacing them. `bootable_disk_image` declares one
+    of these for itself when it is given no `initrd`.
+    """
+    _initrd_image(
+        name = name,
+        ops = flatten_operations(ops),
+        version = resolve_version("initrd_image {}".format(name), version),
+        **(distribution.distributed(name, distro, visibility) | kwargs),
+    )
 
 def _composed_image(
     ctx: AnalysisContext,

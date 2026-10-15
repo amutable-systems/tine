@@ -16,10 +16,12 @@ load(
     "image_archive",
     "image_directory",
 )
-load(":boot.bzl", "bootable")
+load(":boot.bzl", "UkiInfo", "bootable", "uki", "uki_profile")
 load(
     ":compose.bzl",
+    "InitrdInfo",
     "bootable_disk_image",
+    "initrd_image",
     "rootfs_archive",
     "sysext_image",
 )
@@ -45,6 +47,7 @@ load(
     "copy",
     "depmod",
     "hwdb",
+    "image_install",
     "install_from",
     "install_systemd_boot",
     "layer",
@@ -57,8 +60,6 @@ load(
     "symlink",
     "write_file",
 )
-load(":initrd.bzl", "InitrdInfo", "initrd_image")
-load(":install.bzl", "image_install")
 load(":publish.bzl", "PublishedInfo", "image_artifacts")
 load(
     ":sign.bzl",
@@ -72,12 +73,6 @@ load(
     ":sysext.bzl",
     "SysextImageInfo",
     "image_sysext",
-)
-load(
-    ":uki.bzl",
-    "UkiInfo",
-    "uki",
-    "uki_profile",
 )
 load(":version.bzl", "resolve_version")
 load(":vm.bzl", "image_vm")

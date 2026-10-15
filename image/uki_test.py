@@ -72,7 +72,7 @@ class TestSigningArguments(unittest.TestCase):
         self.assertEqual(uki._signing_arguments(SECURE_BOOT, None, [], OPTIONS), SECURE_BOOT_ARGUMENTS)
 
     def test_expected_pcr_alone(self) -> None:
-        """The driver keeps the roles separate; only uki.bzl insists on signing what it seals."""
+        """The driver accepts an expected-PCR key alone. declare_uki() requires a Secure Boot key with it."""
         self.assertEqual(uki._signing_arguments(None, PCR, [], OPTIONS), PCR_ARGUMENTS)
 
     def test_the_initrd_policy_rides_along_with_the_expected_pcr_key(self) -> None:
