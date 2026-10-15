@@ -557,9 +557,9 @@ Optional attributes:
 - `parent` (target label providing `image.ImageInfo`): The logical image the disk extends, instead of the
   `package_manager` it would otherwise start one from; exactly one of the two is required. This is what
   lets something else build on the same content the disk boots: an `image.sysext()` whose `parent` is
-  that image extends what the disk carries, and the disk can then ship the resulting DDI through
-  `esp_files`,
-  where making the extension's parent the disk itself would be a dependency cycle. A disk extending a parent
+  that image extends the content of the disk, and the disk can then copy the resulting DDI to `/boot`
+  with `image.ops.copy()` in `ops`, where making the extension's parent the disk itself would be a
+  dependency cycle. A disk extending a parent
   declares its own `initrd`, because the conventional one is declared from a package manager it no longer
   names, and the parent places the generators below itself, because only a composition places them for a
   caller.
@@ -589,8 +589,6 @@ Optional attributes:
   Either way the file must be a BMP; the build fails on any other format, and on an image path the
   image does not ship.
 - `arch` (string): Architecture; defaults to the one the image is built for; passed on to `image.uki()`.
-- `esp_files` (dict): Map from an absolute image path (under `/boot` or `/efi`, the trees the ESP
-  partition carries) to a source target copied onto the ESP.
 - `install_docs` (boolean): Passed to the root filesystem layer only; an `image.initrd()` carries its
   own, defaulting to no documentation.
 - `image_id` (string): The image identity, stamped into the image's os-release as `IMAGE_ID`.

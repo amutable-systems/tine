@@ -209,9 +209,14 @@ image.bootable_disk(
     })
     # Only Arch's systemd package contains portablectl.
     + distribution.select({"arch": []}, default = ["systemd-container"]),
-    # systemd-confext mounts /etc read-only by default. This image writes /etc at boot, and login
-    # fails with "PAM failure, aborting" once a confext is merged.
-    ops = [image.ops.write_file("/usr/lib/systemd/confext.conf.d/10-mutable.conf", "[ConfExt]\nMutable=ephemeral\n")],
+    ops = [
+        # systemd-confext mounts /etc read-only by default. This image writes /etc at boot, and
+        # login fails with "PAM failure, aborting" once a confext is merged.
+        image.ops.write_file("/usr/lib/systemd/confext.conf.d/10-mutable.conf", "[ConfExt]\nMutable=ephemeral\n"),
+        # The ESP partition of the layout copies /boot of the image. The disk therefore contains
+        # this file on its ESP.
+        image.ops.copy(":demo[sbom][spdx]", "/boot/metadata/demo.spdx.json"),
+    ],
     profiles = [
         image.uki_profile(
             id = "debug",
@@ -219,8 +224,6 @@ image.bootable_disk(
             cmdline = ["debug", "systemd.log_level=debug", "systemd.journald.forward_to_console=1"],
         ),
     ],
-    # Arbitrary declared artifacts can be shipped through the ESP.
-    esp_files = {"/boot/metadata/demo.spdx.json": ":demo[sbom][spdx]"},
     # An absolute path names a BMP the image itself ships, here the one Arch's systemd package
     # installs; the other distributions ship no BMP and embed none.
     splash = distribution.select({"arch": "/usr/share/systemd/bootctl/splash-arch.bmp"}, default = None),

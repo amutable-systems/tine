@@ -161,5 +161,22 @@ class TestWriteRootHash(unittest.TestCase):
             self._write([{"roothash": HASH}, {"roothash": HASH.replace("d", "0")}])
 
 
+class TestEmptyDirectories(unittest.TestCase):
+    def test_removes_the_contents_and_keeps_the_directory(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ddi_test.") as scratch_dir:
+            tree = Path(scratch_dir)
+            (tree / "boot/EFI/Linux").mkdir(parents=True)
+            (tree / "boot/EFI/Linux/image.efi").write_text("uki")
+            (tree / "boot/.hidden").write_text("hidden")
+            (tree / "usr").mkdir()
+            (tree / "usr/os-release").write_text("ID=test")
+            ddi.empty_directories(tree, ["/boot", "/efi"])
+            self.assertTrue((tree / "boot").is_dir())
+            self.assertEqual(list((tree / "boot").iterdir()), [])
+            # A directory the image doesn't have is left alone.
+            self.assertFalse((tree / "efi").exists())
+            self.assertEqual((tree / "usr/os-release").read_text(), "ID=test")
+
+
 if __name__ == "__main__":
     unittest.main()

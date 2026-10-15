@@ -122,6 +122,8 @@ class Spec(finalize.ImageSpec):
     root_hash_out: str | None
     # Image paths holding the package database, stripped from the partitions.
     pkgdb_paths: list[str]
+    # Image directories whose contents the partitions leave out. The directories stay, empty.
+    exclude: list[str]
     # Where to list what the composed disk carries, its partitions taken together.
     manifest: str | None
     # Filesystem -> the options mkfs is given for it.
@@ -305,6 +307,15 @@ def _extension_layers(spec: Spec, extension: ExtensionSpec) -> tuple[list[Releas
     return pinned, lowers[parent:]
 
 
+def empty_directories(tree: Path, directories: list[str]) -> None:
+    """Remove the contents of each directory in `directories` below `tree`, and keep the directory."""
+    for relative in directories:
+        directory = tree / relative.lstrip("/")
+        if directory.is_dir() and not directory.is_symlink():
+            for child in directory.iterdir():
+                util.remove_path(child)
+
+
 def _write_definitions(
     directory: Path,
     written: list[WrittenPartition],
@@ -466,6 +477,7 @@ def main(argv: list[str] | None = None) -> None:
         # subtargets capture from the tree, so partitions nothing resolves packages in can drop it.
         for relative in spec["pkgdb_paths"]:
             util.remove_path(tree / relative, with_parents=True)
+        empty_directories(tree, spec["exclude"])
 
         if extension:
             # A delta may lack a directory the root partition copies, /opt most often. Create it,
