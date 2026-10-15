@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Package a logical image as an extension DDI."""
+"""Package a logical image as an extension DDI or as a portable service DDI."""
 
 load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load(
@@ -246,6 +246,33 @@ def declare_extension(
         ],
     )
 
+def declare_portable(
+    ctx: AnalysisContext,
+    *,
+    tools: ImageToolsInfo,
+    image: ImageInfo,
+    name: str,
+    arch: str,
+    version: str,
+    seed: str | None = None,
+    verity_key: SigningKeyInfo | None = None,
+) -> list[Provider]:
+    """Declare a portable service DDI that contains the whole tree of `image`."""
+    basename, systemd_arch = ddi_names("portable", name, version, arch)
+    return _declare_preset(
+        ctx,
+        tools = tools,
+        image = image,
+        systemd_arch = systemd_arch,
+        basename = basename,
+        # portablectl takes the image name from the file name up to the first "_", and
+        # systemd-sysupdate matches a transfer against <name>_<version>_<arch>.raw.
+        filename = basename,
+        copy_files = ["/"],
+        seed = seed,
+        verity_key = verity_key,
+    )
+
 _COMMON_ATTRS = {
     "arch": attrs.enum(
         ARCHITECTURES.keys() + ["_any"],
@@ -260,6 +287,8 @@ _COMMON_ATTRS = {
     ),
     "verity_key": VERITY_KEY_ATTR,
 }
+
+PORTABLE_ATTRS = _COMMON_ATTRS
 
 EXTENSION_ATTRS = _COMMON_ATTRS | {
     "classes": attrs.list(

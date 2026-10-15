@@ -159,8 +159,8 @@ ordered operation sequence in one action and persists exactly one delta:
   below).
 
 `image.layer()` recursively flattens operation lists, allowing reusable helpers to return ordered groups of
-operations; `image.rootfs_archive`, `image.sysext`, `image.confext`, `image.extension` and
-`image.bootable_disk` accept the same nested groups. Materialize a complete logical image explicitly with
+operations; `image.rootfs_archive`, `image.sysext`, `image.confext`, `image.extension`, `image.portable`
+and `image.bootable_disk` accept the same nested groups. Materialize a complete logical image explicitly with
 `image.directory`.
 
 ### Generating what packages only describe
@@ -202,14 +202,14 @@ does by default, so an image that installs no systemd of its own still gets a da
 the image's own. What they write is captured by the layer that runs them, so it is built once and
 cached rather than repeated by every terminal output.
 
-`image.rootfs_archive`, `image.bootable_disk`'s root filesystem, and `image.initrd` end their operations with
-`image.ops.depmod()`, `image.ops.hwdb()` and `image.ops.locale_gen()` at their defaults, because a
-composition declares a whole product rather than one layer: the three cover everything a package can leave
-described, and each does nothing on an image carrying none of it. They land on the layer the composition
-declares, so a composition handed a `parent` and given no operations or packages of its own declares no layer
-and places none; that parent is where they belong, after the operations whose packages they read. An initrd
-generates before it prunes, so it ships the compiled database rather than the sources it was compiled from.
-Naming a generator in `ops` overrides the composition's copy instead of adding a second, so
+`image.rootfs_archive`, `image.portable`, `image.bootable_disk`'s root filesystem, and `image.initrd` end
+their operations with `image.ops.depmod()`, `image.ops.hwdb()` and `image.ops.locale_gen()` at their
+defaults, because a composition declares a whole product rather than one layer: the three cover everything a
+package can leave described, and each does nothing on an image carrying none of it. They land on the layer
+the composition declares, so a composition handed a `parent` and given no operations or packages of its own
+declares no layer and places none; that parent is where they belong, after the operations whose packages they
+read. An initrd generates before it prunes, so it ships the compiled database rather than the sources it was
+compiled from. Naming a generator in `ops` overrides the composition's copy instead of adding a second, so
 `image.ops.hwdb(usr = False)`, or an `image.ops.depmod()` placed before the operations that strip modules, is
 taken exactly as written. The extension rules (`image.sysext`, `image.confext`, `image.extension`) run none
 of them. An extension merges onto a system it does not own. A database generated in the extension would
@@ -373,7 +373,8 @@ when needed:
 `image.rootfs_archive` is the composition rule for building one logical image from operations and emitting an
 archive; `image.archive` remains the terminal rule for archiving an existing logical image.
 `image.sysext`, `image.confext` and `image.extension` are the compositions for extension DDIs (see
-"Extensions" below). Every composition takes `install_docs` and passes it to the image it builds.
+"Extensions" below), and `image.portable` the one for portable service images (see "image.portable"
+below). Every composition takes `install_docs` and passes it to the image it builds.
 
 Each composition publishes one product target that also provides its logical filesystem as `image.ImageInfo`.
 `image.rootfs_archive` defaults to its archive and provides `image.ImageArchiveInfo`. An extension
@@ -461,6 +462,52 @@ name, such as `debug-tools.raw`. With `arch = "_any"`, the DDI is named `<name>_
 The target defaults to its DDI and provides `image.DdiInfo`, like `image.ddi`, and
 `image.ExtensionInfo` with its classes and scope. `[roothash]` is the verity root hash, and
 `[disk-manifest]` lists the files the DDI contains. The rule publishes both with the DDI.
+
+### image.portable
+
+`image.portable()` builds a portable service image for `portablectl attach` and `RootImage=`. The DDI
+contains the whole tree of the image, including its os-release, in an erofs root partition with its
+verity hash partition and, with `verity_key`, a signature over the verity root hash. Extensions for it
+are `image.extension()` targets with `base` set to the portable image and `scope = ["portable"]`:
+
+```Starlark
+image.portable(
+    name = "webapp",
+    package_manager = ":image.package-manager",
+    packages = ["bash", "coreutils", "python3"],
+    ops = [
+        image.ops.copy("webapp.service", "/usr/lib/systemd/system/webapp.service"),
+        # webapp.service sets StateDirectory=webapp.
+        image.ops.mkdir("/var/lib/webapp"),
+    ],
+)
+
+image.extension(
+    name = "webapp-config",
+    base = ":webapp",
+    classes = ["confext"],
+    scope = ["portable"],
+    ops = [image.ops.copy("webapp.conf", "/etc/webapp/webapp.conf")],
+)
+```
+
+systemd cannot create a mount point on the read-only root partition, so every path that systemd binds
+into the service must exist in the image. The portable profiles bind `/etc/machine-id` and
+`/etc/resolv.conf` from the host, and the rule adds an empty file at each path. An operation in `ops` that
+writes `/etc/machine-id` or `/etc/resolv.conf` replaces the empty file. `StateDirectory=`, `CacheDirectory=`
+and `LogsDirectory=` bind directories under `/var` from the host. Create the directories for the service's
+settings with `image.ops.mkdir()`, as in the example above. A tmpfiles.d snippet in the image cannot create
+the directories, because systemd-tmpfiles cannot write to the read-only root partition at run time. [Portable
+Services](https://systemd.io/PORTABLE_SERVICES/) lists what else an image needs, such as `/proc` and
+`/tmp`, which the base package of a distribution installs. Like `image.rootfs_archive`, the rule runs the
+generators (see "Generating what packages only describe").
+
+The DDI is named `<name>_<version>_<arch>.raw`. portablectl takes the image name from the file name up to
+the first `_`, and attaches the units whose names start with that image name: `webapp.service`,
+`webapp-worker.service` or `webapp@.service`. The target defaults to its DDI and provides
+`image.DdiInfo`, with the same `[roothash]` and `[disk-manifest]` subtargets as an extension. It takes
+`package_manager`, the operations and packages of any composition, and `version`, `arch`, `seed` and
+`verity_key`.
 
 ### image.bootable_disk
 
@@ -811,8 +858,8 @@ Every image macro resolves it as it declares the target, so the components are r
 declared and only the packages that declare one re-read them when the version moves. `image.bootable_disk`
 renders the hash against its own longest label and hands the result to the initrd it declares, so a disk
 and its initrd carry one version rather than each rendering its own; an image whose version reaches no
-partition label (`image.rootfs_archive`, the extensions, `image.initrd`) has all 36 characters to
-itself and keeps the full 12.
+partition label (`image.rootfs_archive`, the extensions, `image.portable`, `image.initrd`) has all 36
+characters to itself and keeps the full 12.
 
 Three things are errors rather than fallbacks, because an unversioned or stale build published under a
 version that promises something else is worse than a build that stops:
@@ -930,13 +977,15 @@ tine buck build //examples/image:boot-demo.fedora
 tine buck build '//examples/image:boot-demo.fedora[uki]'
 tine buck build '//examples/image:boot-demo.fedora[partitions][usr]'
 tine buck build //examples/image:demo-ext.fedora
+tine buck build //examples/image:demo-portable.fedora
 ```
 
 These validate package installation and commands sharing one delta, incremental layering, archive packing,
 versioned UKI creation, semantic boot-artifact extraction, ESP-layer assembly, and disk composition.
 `demo-ext` is a system-extension DDI on top of `boot-demo`. Running `boot-demo-vm` validates the interactive
 VM runner; it exposes `demo-ext` under `/var/lib/extensions` in the guest, which validates the sysext merge
-at boot.
+at boot. `demo-confext` is a configuration extension for `boot-demo`. `demo-portable` is a portable
+service image, and `demo-portable-ext` an extension for it.
 
 The signed variant lives in `//examples/image-secureboot`: its `demo-ext` signs the verity root hash with a
 generated key, the image ships that key's certificate in `/usr/lib/verity.d/` and a
