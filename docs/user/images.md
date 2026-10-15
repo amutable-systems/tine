@@ -159,8 +159,9 @@ ordered operation sequence in one action and persists exactly one delta:
   below).
 
 `image.layer()` recursively flattens operation lists, allowing reusable helpers to return ordered groups of
-operations; `image.rootfs_archive`, `image.sysext_image`, and `image.bootable_disk` accept the same nested
-groups. Materialize a complete logical image explicitly with `image.directory`.
+operations; `image.rootfs_archive`, `image.sysext`, `image.confext`, `image.extension` and
+`image.bootable_disk` accept the same nested groups. Materialize a complete logical image explicitly with
+`image.directory`.
 
 ### Generating what packages only describe
 
@@ -210,9 +211,9 @@ and places none; that parent is where they belong, after the operations whose pa
 generates before it prunes, so it ships the compiled database rather than the sources it was compiled from.
 Naming a generator in `ops` overrides the composition's copy instead of adding a second, so
 `image.ops.hwdb(usr = False)`, or an `image.ops.depmod()` placed before the operations that strip modules, is
-taken exactly as written. `image.sysext_image` runs none of them: an extension merges onto a system it does
-not own, where a database built from the extension's own tree would shadow that system's while describing
-only what the extension carries.
+taken exactly as written. The extension rules (`image.sysext`, `image.confext`, `image.extension`) run none
+of them. An extension merges onto a system it does not own. A database generated in the extension would
+replace the database of that system in the merged tree, and would go stale when that system changes.
 
 ### Declaring the initrd
 
@@ -362,16 +363,6 @@ when needed:
   `image.DiskConversionInfo`; `virtual_size` sizes the disk a qcow2 describes;
 - `image.bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
-- `image.sysext` builds a systemd-sysext(8) DDI with `systemd-repart`, containing `/usr`, `/opt`, and
-  `extension-release.<name>`, and provides `image.SysextImageInfo`. The DDI is the file
-  `<extension>_<version>_<arch>.sysext.raw`, which is the name a systemd-sysupdate transfer matches, and
-  the same three values fill `SYSEXT_ID`, `SYSEXT_VERSION_ID`, `IMAGE_VERSION` and `ARCHITECTURE` in its
-  extension-release, so a caller states each of them once; `release` overrides any of them. With `base`,
-  only the delta layered above that
-  image is packaged, and the extension-release pins the base's `ID`/`VERSION_ID`; with `verity_key` (a
-  target providing `image.SigningKeyInfo`), the DDI carries a signature over its verity root hash, which
-  a host validates against the key's certificate in its `/usr/lib/verity.d/` (enforced only where the host's
-  sysext image policy says so, see "Example targets" below);
 - `image.vm` runs the raw image ephemerally with its explicitly selected box's `systemd-vmspawn`, QEMU,
   and OVMF stack,
   and binds all given `sysexts` DDIs into the guest at `/var/lib/extensions`, where systemd-sysext merges
@@ -381,12 +372,12 @@ when needed:
 
 `image.rootfs_archive` is the composition rule for building one logical image from operations and emitting an
 archive; `image.archive` remains the terminal rule for archiving an existing logical image.
-`image.sysext_image` is the equivalent composition for a system-extension DDI. Every composition takes
-`install_docs` and passes it to the image it builds.
+`image.sysext`, `image.confext` and `image.extension` are the compositions for extension DDIs (see
+"Extensions" below). Every composition takes `install_docs` and passes it to the image it builds.
 
 Each composition publishes one product target that also provides its logical filesystem as `image.ImageInfo`.
-`image.rootfs_archive` defaults to its archive and provides `image.ImageArchiveInfo`. `image.sysext_image`
-defaults to its DDI and provides `image.SysextImageInfo`. Both expose their supply-chain
+`image.rootfs_archive` defaults to its archive and provides `image.ImageArchiveInfo`. An extension
+defaults to its DDI and provides `image.DdiInfo`. Both expose their supply-chain
 artifacts without conventionally named helper targets:
 
 ```text
@@ -407,6 +398,69 @@ artifacts without conventionally named helper targets:
 
 The product targets provide `image.ImageSbomInfo` for typed consumers. Buck builds an optional artifact
 only when it is requested, so declaring these views costs nothing on a default build.
+
+### Extensions
+
+`image.sysext()` builds a system extension, which contains `/usr` and `/opt`. `image.confext()` builds a
+configuration extension, which contains `/etc`. `image.extension()` builds a DDI of either class or of
+both, named in `classes`:
+
+```Starlark
+image.sysext(
+    name = "debug-tools",
+    base = ":appliance",
+    packages = ["strace", "gdb"],
+)
+
+image.confext(
+    name = "site-config",
+    base = ":appliance",
+    ops = [image.ops.copy("chrony.conf", "/etc/chrony.conf")],
+)
+
+image.extension(
+    name = "webapp-cni",
+    base = ":webapp",
+    classes = ["sysext", "confext"],
+    scope = ["portable"],
+    ops = [image.ops.copy("cni", "/")],
+)
+```
+
+With `base`, the DDI contains only what the target adds on top of `base`. `base` can be any image except
+another extension. Without `base`, the target takes a `package_manager` and the DDI contains its whole
+tree. The DDI is an erofs root partition, its verity hash partition and, with `verity_key`, a signature
+over the verity root hash. A host validates the signature against the certificates in its
+`/usr/lib/verity.d/`, and enforces it only where its image policy says so (see "Example targets" below).
+The DDI contains no os-release and no package database.
+
+The rule writes one extension-release file per class:
+`/usr/lib/extension-release.d/extension-release.<name>` for a sysext and
+`/etc/extension-release.d/extension-release.<name>` for a confext. Each file contains:
+
+- `ID` and `VERSION_ID` from the os-release of `base`. A base without `VERSION_ID`, such as Arch Linux,
+  gives only `ID`. Without `base`, `ID=_any`, which matches any host.
+- `SYSEXT_SCOPE` or `CONFEXT_SCOPE`, from `scope`. The scope lists where systemd applies the extension.
+  `system` merges it on the host and `initrd` in the initrd. `portable` lets
+  `portablectl attach --extension` or `ExtensionImages=` add it on top of a portable service image. The
+  default is `["system"]`.
+- `SYSEXT_ID` or `CONFEXT_ID` with the target name, `SYSEXT_VERSION_ID` or `CONFEXT_VERSION_ID` and
+  `IMAGE_VERSION` with `version`, and `ARCHITECTURE` from `arch`.
+- `EXTENSION_RELOAD_MANAGER=1`.
+
+`release` overrides any of these fields in every file, except the scope: set it with `scope`, which
+`image.vm` checks.
+
+The DDI is named `<name>_<version>_<arch>.sysext.raw`, `<name>_<version>_<arch>.confext.raw`, or
+`<name>_<version>_<arch>.raw` for both classes. A systemd-sysupdate transfer matches these names.
+systemd takes the image name from the file name up to the first `_` and looks up `extension-release.<name>`
+by it, so a target name containing `_` or `+` fails the build. A deployed DDI can drop the rest of its
+name, such as `debug-tools.raw`. With `arch = "_any"`, the DDI is named `<name>_<version>_all` and
+`ARCHITECTURE=_any` matches any host architecture.
+
+The target defaults to its DDI and provides `image.DdiInfo`, like `image.ddi`, and
+`image.ExtensionInfo` with its classes and scope. `[roothash]` is the verity root hash, and
+`[disk-manifest]` lists the files the DDI contains. The rule publishes both with the DDI.
 
 ### image.bootable_disk
 
@@ -439,7 +493,7 @@ Optional attributes:
   fails the build rather than going nowhere, and an option holding whitespace is refused because repart
   splits the variable on it. This is where a disk's compression is really decided: an `image.partition()`'s
   `compression` only picks the algorithm, so an erofs partition left at the defaults comes out
-  substantially larger than one built the way `image.sysext` builds its own, which is
+  substantially larger than one built the way the extension rules build their own, which is
   `["-zzstd,level=3", "-C524288", "-Efragments,ztailpacking,dedupe"]`. `["--invariant"]` for vfat makes an
   ESP byte-stable across rebuilds, which `mkfs.fat` otherwise is not, because it stamps the volume label
   entry with the wall clock even under `SOURCE_DATE_EPOCH`.
@@ -452,7 +506,7 @@ Optional attributes:
   without one the policy is not sealed. See "Secure Boot signing" below.
 - `parent` (target label providing `image.ImageInfo`): The logical image the disk extends, instead of the
   `package_manager` it would otherwise start one from; exactly one of the two is required. This is what
-  lets something else build on the same content the disk boots: an `image.sysext_image()` whose `base` is
+  lets something else build on the same content the disk boots: an `image.sysext()` whose `base` is
   that image extends what the disk carries, and the disk can then ship the resulting DDI through
   `esp_files`,
   where making the extension's base the disk itself would be a dependency cycle. A disk extending a parent
@@ -550,7 +604,7 @@ bootable-image provider: it returns `image.ImageInfo`, `image.DdiInfo`, `image.I
 
 `image.PublishedInfo` is what a target contributes to a release, keyed by the name it is published under:
 for a disk the raw image, the UKI, the kernel and the initrd, plus the partitions, and for an
-`image.sysext_image` its DDI. Each rule names what it builds, so anything gathering a release reads those
+extension its DDI. Each rule names what it builds, so anything gathering a release reads those
 names instead of composing names of its own. A partition is the exception and travels as a typed
 `PartitionInfo`: its name contains the
 type and UUID repart assigned, so it exists only after the build, and a consumer reads it back out of the
@@ -757,7 +811,7 @@ Every image macro resolves it as it declares the target, so the components are r
 declared and only the packages that declare one re-read them when the version moves. `image.bootable_disk`
 renders the hash against its own longest label and hands the result to the initrd it declares, so a disk
 and its initrd carry one version rather than each rendering its own; an image whose version reaches no
-partition label (`image.rootfs_archive`, `image.sysext_image`, `image.initrd`) has all 36 characters to
+partition label (`image.rootfs_archive`, the extensions, `image.initrd`) has all 36 characters to
 itself and keeps the full 12.
 
 Three things are errors rather than fallbacks, because an unversioned or stale build published under a
@@ -769,7 +823,7 @@ version that promises something else is worse than a build that stops:
   or declare a shorter base.
 - Either `"auto"` spelling with no components in configuration. `bin/tine` writes the reason it had none
   into that block (see below), and the message points there.
-- A sentinel that reaches the build unresolved: `image.layer()`, `image.uki()` and `image.sysext()` render
+- A sentinel that reaches the build unresolved: `image.layer()` and `image.uki()` render
   nothing, and a `select()` cannot be read where the rendering happens, so `"auto"` reaching either would
   otherwise name partitions and files `auto`.
 

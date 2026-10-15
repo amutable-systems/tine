@@ -93,7 +93,7 @@ def check_version(what: str, value: str) -> str:
     if value == AUTO or value.startswith(AUTO_PREFIX):
         fail(
             "{}: version {!r} reached the build unresolved. Declare it on a rule that renders it ".format(what, value)
-            + "(rootfs_archive, sysext_image, initrd_image, bootable_disk_image) and not through a "
+            + "(rootfs_archive, sysext, confext, extension, initrd_image, bootable_disk_image) and not through a "
             + 'select(), or name the version outright; see "Image versioning" in images.md.',
         )
     return check_name(what, value, VERSION_PATTERN)
