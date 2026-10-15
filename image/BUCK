@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Logical image mutation and boot assembly drivers."""
+"""Logical images, their compositions and output formats, and the drivers that build them."""
 
 load("@prelude//:rules.bzl", "constraint_setting", "constraint_value")
 load("//box:test.bzl", "box_python_test")
@@ -11,17 +11,17 @@ load(":image.bzl", "image_tools")
 # The one bundle every image rule resolves its drivers through.
 image_tools(
     name = "tools",
-    archive = "//image_format:archive",
+    archive = ":archive",
     artifacts = ":artifacts",
     boot = ":boot",
-    convert = "//image_format:convert",
-    ddi = "//image_format:ddi",
+    convert = ":convert",
+    ddi = ":ddi",
     layer = ":layer",
     manifest = ":manifest",
     python = "//tools:python3",
     sbom = ":sbom",
     syft = "//tools:syft",
-    sysext = "//image_format:sysext",
+    sysext = ":sysext",
     uki = ":uki",
     visibility = ["PUBLIC"],
 )
@@ -34,6 +34,59 @@ tine_python_binary(
         "//:specs",
         "//:util",
         "//package:installer",
+        "//rootfs:rootfs",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+tine_python_binary(
+    name = "archive",
+    main = "archive.py",
+    deps = [
+        ":finalize",
+        "//:specs",
+        "//:util",
+        "//archive:cpio",
+        "//archive:tar",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+tine_python_binary(
+    name = "ddi",
+    main = "ddi.py",
+    deps = [
+        ":finalize",
+        ":manifest-lib",
+        ":repart",
+        "//:specs",
+        "//:util",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+tine_python_library(
+    name = "repart",
+    srcs = ["repart.py"],
+    deps = ["//:util"],
+)
+
+tine_python_binary(
+    name = "convert",
+    main = "convert.py",
+    deps = ["//:specs", "//:util"],
+    visibility = ["PUBLIC"],
+)
+
+tine_python_binary(
+    name = "sysext",
+    main = "sysext.py",
+    deps = [
+        ":finalize",
+        ":manifest-lib",
+        ":repart",
+        "//:specs",
+        "//:util",
         "//rootfs:rootfs",
     ],
     visibility = ["PUBLIC"],
@@ -69,11 +122,14 @@ box_python_test(
     name = "test",
     box = "//tools:dev.box",
     srcs = [
+        "ddi.py",
+        "ddi_test.py",
         "finalize_test.py",
         "layer.py",
         "layer_test.py",
         "manifest.py",
         "manifest_test.py",
+        "repart_test.py",
         "substitute.py",
         "substitute_test.py",
         "uki.py",
@@ -82,6 +138,7 @@ box_python_test(
     ],
     deps = [
         ":finalize",
+        ":repart",
         ":version",
         "//:specs",
         "//:util",
@@ -122,7 +179,6 @@ tine_python_library(
         "//:specs",
         "//:util",
     ],
-    visibility = ["//image_format:"],
 )
 
 tine_python_library(

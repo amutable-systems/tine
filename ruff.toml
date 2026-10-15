@@ -16,7 +16,6 @@ src = [
     "box",
     "image",
     "kmod",
-    "image_format",
     "package",
     "package_system/pacman",
     "package_system/rpm",

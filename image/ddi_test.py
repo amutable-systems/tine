@@ -3,7 +3,7 @@
 
 """Tests for the repart driver's split-artifact handling.
 
-    buck test tine//image_format:test
+    buck test tine//image:test
 
 repart itself is not run here: what matters is the definition the driver hands it and what the
 driver records about the artifact that comes back, both of which decide how a partition is

@@ -3,8 +3,16 @@
 
 """Unified kernel images built from a logical image's kernel, modules, and stub."""
 
+load("//kmod:initrd_modules.toml", _INITRD_MODULES = "value")
+load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
+load(":archive.bzl", "ImageArchiveInfo")
 load(
-    "//image:image.bzl",
+    ":ddi.bzl",
+    "DdiInfo",
+    "RootHashInfo",  # @unused Used as a function argument type.
+)
+load(
+    ":image.bzl",
     "FILENAME_PATTERN",
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
@@ -15,20 +23,12 @@ load(
     "terminal_image_command",
 )
 load(
-    "//image:sign.bzl",
+    ":sign.bzl",
     "SigningKeyInfo",
     "external_signing_execution",
     "merge_signing_access",
     "resolve_signing_key",
     "signing_key_spec",
-)
-load("//kmod:initrd_modules.toml", _INITRD_MODULES = "value")
-load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
-load(":archive.bzl", "ImageArchiveInfo")
-load(
-    ":ddi.bzl",
-    "DdiInfo",
-    "RootHashInfo",  # @unused Used as a function argument type.
 )
 
 UkiInfo = provider(

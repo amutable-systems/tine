@@ -77,8 +77,8 @@ Everything below is re-exported from one facade, so a `BUCK` file needs a single
 load("@tine//image:defs.bzl", "image")
 ```
 
-The modules behind the facade (`image.bzl`, `compose.bzl`, and the `image_format` package) are
-implementation structure and may be rearranged; load them directly only from inside the cell.
+The modules behind the facade, such as `image.bzl` and `compose.bzl`, are implementation structure and
+may be rearranged; load them directly only from inside the cell.
 
 An initial image fixes one package manager for its whole lifetime; every derived image and terminal output
 inherits it and its box. Take a catalog package manager, optionally extend it with project repositories,

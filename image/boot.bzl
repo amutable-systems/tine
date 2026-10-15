@@ -4,7 +4,7 @@
 """Semantic boot-artifact extraction from a completed logical image."""
 
 load(
-    "//image:image.bzl",
+    ":image.bzl",
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
     "ImageToolsInfo",

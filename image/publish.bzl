@@ -14,8 +14,8 @@ the metadata written beside it. That is the whole reason `image_artifacts` assem
 from a dynamic action: everything else in it is known while the graph is still being built.
 """
 
-load("//image:image.bzl", "ImageInfo", "image_metadata_subtargets")
-load("//image_format:ddi.bzl", "PartitionInfo")
+load(":ddi.bzl", "PartitionInfo")
+load(":image.bzl", "ImageInfo", "image_metadata_subtargets")
 
 PublishedInfo = provider(
     doc = "The artifacts one target contributes to a release, keyed by published name.",
