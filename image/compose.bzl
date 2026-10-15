@@ -198,6 +198,18 @@ def initrd_image(
         **(distribution.distributed(name, distro, visibility) | kwargs),
     )
 
+_ROOT_ATTRS = {
+    "package_manager": attrs.option(
+        attrs.dep(providers = [PackageManagerInfo]),
+        default = None,
+    ),
+    "parent": attrs.option(
+        attrs.dep(providers = [ImageInfo]),
+        default = None,
+        doc = "the logical image to build on instead of starting one of its own",
+    ),
+}
+
 def _composed_image(
     ctx: AnalysisContext,
     *,
@@ -213,6 +225,8 @@ def _composed_image(
     package_manager: Dependency | None = None,
     parent: ImageInfo | None = None,
 ) -> ImageInfo:
+    if (parent == None) == (package_manager == None):
+        fail("{}: exactly one of parent and package_manager is required".format(ctx.label.name))
     return declare_image(
         ctx,
         tools = tools,
@@ -228,12 +242,13 @@ def _composed_image(
         version = version,
     )
 
-def _rootfs_archive_impl(ctx: AnalysisContext) -> list[Provider]:
+def _archive_impl(ctx: AnalysisContext) -> list[Provider]:
     tools = ctx.attrs._tools[ImageToolsInfo]
     image = _composed_image(
         ctx,
         tools = tools,
         package_manager = ctx.attrs.package_manager,
+        parent = ctx.attrs.parent[ImageInfo] if ctx.attrs.parent != None else None,
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
         ops = ctx.attrs.ops,
@@ -255,14 +270,10 @@ def _rootfs_archive_impl(ctx: AnalysisContext) -> list[Provider]:
         image = image,
     )
 
-_rootfs_archive = rule(
-    impl = _rootfs_archive_impl,
+_archive = rule(
+    impl = _archive_impl,
     supports_incoming_transition = True,
-    attrs = IMAGE_ATTRS
-    | ARCHIVE_ATTRS
-    | {
-        "package_manager": attrs.dep(providers = [PackageManagerInfo]),
-    },
+    attrs = IMAGE_ATTRS | ARCHIVE_ATTRS | _ROOT_ATTRS,
 )
 
 def _extension_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -650,7 +661,7 @@ _bootable_disk_image = rule(
     },
 )
 
-def rootfs_archive(
+def archive(
     name: str,
     ops: list[LayerOperationTree] = [],
     version: str | Select | None = None,
@@ -659,10 +670,10 @@ def rootfs_archive(
     **kwargs,
 ) -> None:
     """Build one logical image from operations and emit it as an archive."""
-    _rootfs_archive(
+    _archive(
         name = name,
         ops = flatten_operations(ops),
-        version = resolve_version("rootfs_archive {}".format(name), version),
+        version = resolve_version("archive {}".format(name), version),
         **(distribution.distributed(name, distro, visibility) | kwargs),
     )
 

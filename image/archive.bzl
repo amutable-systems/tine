@@ -66,29 +66,10 @@ def declare_image_archive(
     ctx.actions.run(cmd, category = "image_" + format, identifier = identifier or format)
     return ImageArchiveInfo(archive = out, format = format)
 
-def _image_archive_impl(ctx: AnalysisContext) -> list[Provider]:
-    info = declare_image_archive(
-        ctx,
-        tools = ctx.attrs._tools[ImageToolsInfo],
-        compression = ctx.attrs.compression,
-        format = ctx.attrs.format,
-        image = ctx.attrs.image[ImageInfo],
-    )
-    return [DefaultInfo(default_output = info.archive), info]
-
 ARCHIVE_ATTRS = {
     "compression": attrs.enum(COMPRESSIONS, default = "none"),
     "format": attrs.enum(["tar", "cpio"], default = "tar"),
 }
-
-_image_archive = rule(
-    impl = _image_archive_impl,
-    attrs = ARCHIVE_ATTRS
-    | {
-        "image": attrs.dep(providers = [ImageInfo], doc = "the logical image to archive"),
-    }
-    | IMAGE_TOOLS_ATTR,
-)
 
 def declare_image_directory(
     ctx: AnalysisContext,
@@ -126,10 +107,6 @@ _image_directory = rule(
     }
     | IMAGE_TOOLS_ATTR,
 )
-
-def image_archive(name: str, distro: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
-    """Declare one, compatible with the distributions its package serves."""
-    _image_archive(name = name, **(distribution.distributed(name, distro, visibility) | kwargs))
 
 def image_directory(name: str, distro: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
     """Declare one, compatible with the distributions its package serves."""

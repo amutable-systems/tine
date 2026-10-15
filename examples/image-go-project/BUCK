@@ -197,7 +197,7 @@ package.manager(
 
 # `:demo[sbom][cyclonedx]` lists the Go modules each binary was built from, next to the image's
 # packages.
-image.rootfs_archive(
+image.archive(
     name = "demo",
     package_manager = ":image.package-manager",
     # No runtime packages needed: neither project imports anything that pulls in cgo, so both

@@ -13,19 +13,18 @@ load(
     "COMPRESSIONS",
     "ImageArchiveInfo",
     "ImageDirectoryInfo",
-    "image_archive",
     "image_directory",
 )
 load(":boot.bzl", "UkiInfo", "bootable", "uki", "uki_profile")
 load(
     ":compose.bzl",
     "InitrdInfo",
+    "archive",
     "bootable_disk_image",
     "confext",
     "extension",
     "initrd_image",
     "portable",
-    "rootfs_archive",
     "sysext",
 )
 load(
@@ -95,7 +94,6 @@ image = struct(
         locale_gen = locale_gen,
     ),
     # Terminal outputs.
-    archive = image_archive,
     directory = image_directory,
     uki = uki,
     uki_profile = uki_profile,
@@ -113,7 +111,7 @@ image = struct(
     pkcs11_signing_key = pkcs11_signing_key,
     SigningKeyInfo = SigningKeyInfo,
     # Compositions.
-    rootfs_archive = rootfs_archive,
+    archive = archive,
     sysext = sysext,
     confext = confext,
     extension = extension,

@@ -66,7 +66,7 @@ demos):
 ```Starlark
 load("@tine//image:defs.bzl", "image")
 
-image.rootfs_archive(
+image.archive(
     name = "demo",
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"],
