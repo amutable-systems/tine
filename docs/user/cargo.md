@@ -48,7 +48,7 @@ cargo.package(
 The binaries are ordinary artifacts, so an image installs one with an `image.ops.copy()` operation:
 
 ```Starlark
-image.rootfs_archive(
+image.archive(
     name = "demo",
     package_manager = ":image.package-manager",
     packages = ["glibc"],

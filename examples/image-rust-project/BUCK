@@ -97,7 +97,7 @@ package.manager(
 )
 
 # `:demo[sbom][cyclonedx]` reports the crates the binary was built from, next to the image's packages.
-image.rootfs_archive(
+image.archive(
     name = "demo",
     package_manager = ":image.package-manager",
     ops = [image.ops.install_from(":demo.install")],

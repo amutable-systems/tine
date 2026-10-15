@@ -159,7 +159,7 @@ ordered operation sequence in one action and persists exactly one delta:
   below).
 
 `image.layer()` recursively flattens operation lists, allowing reusable helpers to return ordered groups of
-operations; `image.rootfs_archive`, `image.sysext`, `image.confext`, `image.extension`, `image.portable`
+operations; `image.archive`, `image.sysext`, `image.confext`, `image.extension`, `image.portable`
 and `image.bootable_disk` accept the same nested groups. Materialize a complete logical image explicitly with
 `image.directory`.
 
@@ -202,11 +202,11 @@ does by default, so an image that installs no systemd of its own still gets a da
 the image's own. What they write is captured by the layer that runs them, so it is built once and
 cached rather than repeated by every terminal output.
 
-`image.rootfs_archive`, `image.portable`, `image.bootable_disk`'s root filesystem, and `image.initrd` end
-their operations with `image.ops.depmod()`, `image.ops.hwdb()` and `image.ops.locale_gen()` at their
-defaults, because a composition declares a whole product rather than one layer: the three cover everything a
-package can leave described, and each does nothing on an image carrying none of it. They land on the layer
-the composition declares, so a composition handed a `parent` and given no operations or packages of its own
+`image.archive`, `image.portable`, `image.bootable_disk`'s root filesystem, and `image.initrd` end their
+operations with `image.ops.depmod()`, `image.ops.hwdb()` and `image.ops.locale_gen()` at their defaults,
+because a composition declares a whole product rather than one layer: the three cover everything a package
+can leave described, and each does nothing on an image carrying none of it. They land on the layer the
+composition declares, so a composition handed a `parent` and given no operations or packages of its own
 declares no layer and places none; that parent is where they belong, after the operations whose packages they
 read. An initrd generates before it prunes, so it ships the compiled database rather than the sources it was
 compiled from. Naming a generator in `ops` overrides the composition's copy instead of adding a second, so
@@ -339,9 +339,6 @@ at all. `install_docs = False` likewise installs no documentation, keeping the l
 Logical images and terminal outputs are separate rule families. Terminal rules merge the layer stack only
 when needed:
 
-- `image.archive` writes deterministic tar or newc cpio archives, optionally zstd-compressed
-  (`compression = "zstd"`), and provides `image.ImageArchiveInfo`, which names the format alongside the
-  artifact;
 - `image.directory` materializes a Buck directory artifact and provides `image.ImageDirectoryInfo`;
 - `image.uki` builds the unified kernel image for the image's single installed kernel from one or more cpio
   `image.ImageArchiveInfo` dependencies and provides `image.UkiInfo`, named `<image_id>_<version>_<arch>.efi`
@@ -370,16 +367,17 @@ when needed:
   so an image carrying `loader/keys/auto` enrollment files enrolls them on first boot and then boots with
   Secure Boot enforced, and attaches a software TPM so the UKI's signed expected-PCR policy is measured.
 
-`image.rootfs_archive` is the composition rule for building one logical image from operations and emitting an
-archive; `image.archive` remains the terminal rule for archiving an existing logical image.
-`image.sysext`, `image.confext` and `image.extension` are the compositions for extension DDIs (see
-"Extensions" below), and `image.portable` the one for portable service images (see "image.portable"
-below). Every composition takes `install_docs` and passes it to the image it builds.
+`image.archive` builds one logical image from operations and writes it as a deterministic tar or newc cpio
+archive, optionally zstd-compressed (`compression = "zstd"`). `image.sysext`, `image.confext` and
+`image.extension` are the compositions for extension DDIs (see "Extensions" below), and `image.portable` is
+the composition for portable service images (see "image.portable" below). `image.archive` and
+`image.bootable_disk` start their image from `package_manager`, or add their operations on top of the image
+in `parent`. Every composition takes `install_docs` and passes it to the image it builds.
 
 Each composition publishes one product target that also provides its logical filesystem as `image.ImageInfo`.
-`image.rootfs_archive` defaults to its archive and provides `image.ImageArchiveInfo`. An extension
-defaults to its DDI and provides `image.DdiInfo`. Both expose their supply-chain
-artifacts without conventionally named helper targets:
+`image.archive` defaults to its archive and provides `image.ImageArchiveInfo`, which names the format of the
+archive. An extension defaults to its DDI and provides `image.DdiInfo`. `image.archive` and the extension
+rules expose their supply-chain artifacts as subtargets:
 
 ```text
 //examples/image:demo
@@ -500,7 +498,7 @@ and `LogsDirectory=` bind directories under `/var` from the host. Create the dir
 settings with `image.ops.mkdir()`, as in the example above. A tmpfiles.d snippet in the image cannot create
 the directories, because systemd-tmpfiles cannot write to the read-only root partition at run time. [Portable
 Services](https://systemd.io/PORTABLE_SERVICES/) lists what else an image needs, such as `/proc` and
-`/tmp`, which the base package of a distribution installs. Like `image.rootfs_archive`, the rule runs the
+`/tmp`, which the base package of a distribution installs. Like `image.archive`, the rule runs the
 generators (see "Generating what packages only describe").
 
 The DDI is named `<name>_<version>_<arch>.raw`. portablectl takes the image name from the file name up to
@@ -863,7 +861,7 @@ Every image macro resolves it as it declares the target, so the components are r
 declared and only the packages that declare one re-read them when the version moves. `image.bootable_disk`
 renders the hash against its own longest label and hands the result to the initrd it declares, so a disk
 and its initrd carry one version rather than each rendering its own; an image whose version reaches no
-partition label (`image.rootfs_archive`, the extensions, `image.portable`, `image.initrd`) has all 36
+partition label (`image.archive`, the extensions, `image.portable`, `image.initrd`) has all 36
 characters to itself and keeps the full 12.
 
 Three things are errors rather than fallbacks, because an unversioned or stale build published under a

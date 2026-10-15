@@ -57,7 +57,7 @@ export_file(
 )
 
 # Minimal install + ordered-ops demo. `:demo` is both the tar result and a logical image.
-image.rootfs_archive(
+image.archive(
     name = "demo",
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"]
@@ -96,7 +96,7 @@ image.rootfs_archive(
 )
 
 # Base-only image exercising a single-component delta stack.
-image.rootfs_archive(
+image.archive(
     name = "base",
     package_manager = ":image.package-manager",
     packages = ["bash"],
@@ -125,7 +125,7 @@ image.layer(
 
 image.archive(
     name = "chained",
-    image = ":chained-child.layer",
+    parent = ":chained-child.layer",
     format = "tar",
 )
 
@@ -150,7 +150,7 @@ image.layer(
 
 image.archive(
     name = "layered-install",
-    image = ":layered-install.layer",
+    parent = ":layered-install.layer",
     format = "tar",
 )
 
@@ -180,7 +180,7 @@ image.layer(
 
 image.archive(
     name = "escaped",
-    image = ":escaped-child.layer",
+    parent = ":escaped-child.layer",
     format = "tar",
 )
 
@@ -366,7 +366,7 @@ image.layer(
 
 image.archive(
     name = "tree",
-    image = ":tree.layer",
+    parent = ":tree.layer",
     format = "tar",
 )
 
@@ -402,7 +402,7 @@ image.layer(
 
 image.archive(
     name = "opaque",
-    image = ":opaque-child.layer",
+    parent = ":opaque-child.layer",
     format = "tar",
 )
 
