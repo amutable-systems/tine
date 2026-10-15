@@ -34,6 +34,11 @@ ExtensionInfo = provider(
     },
 )
 
+PortableInfo = provider(
+    doc = "Marks the DDI beside it as a portable service image.",
+    fields = {},
+)
+
 # _CLASSES is a list and not a dict, because its order is the order of the CopyFiles= lines of the
 # root partition.
 _CLASSES = [
@@ -279,6 +284,7 @@ def declare_portable(
         copy_files = ["/"],
         seed = seed,
         verity_key = verity_key,
+        extra = [PortableInfo()],
     )
 
 _COMMON_ATTRS = {
