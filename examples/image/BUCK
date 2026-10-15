@@ -282,13 +282,21 @@ test "$(stat -c %s "$2")" -lt $((900 << 20))
 # System-extension DDI extending :boot-demo: only the delta above the base lands in the
 # image, and its extension-release pins the base's ID/VERSION_ID. `boot-demo-vm` exposes
 # it under /var/lib/extensions.
-image.sysext_image(
+image.sysext(
     name = "demo-ext",
     base = ":boot-demo",
     packages = ["zsh"],
     install_docs = False,
     # install a file from source tree; covers reproducibility check under varying umasks
     ops = [image.ops.copy("from-source.txt", "/usr/lib/tine/from-source")],
+)
+
+# demo-confext contains only /etc. Its extension-release file pins the ID and VERSION_ID of
+# boot-demo, as the one of demo-ext does.
+image.confext(
+    name = "demo-confext",
+    base = ":boot-demo",
+    ops = [image.ops.write_file("/etc/tine/from-confext", "confext\n")],
 )
 
 # A file tree that differs per distribution is one copy whose source is a select, rather than a
@@ -427,9 +435,11 @@ box.sh_test(
     name = "sysext-name-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
-    script = 'test "$(basename "$1")" = "$2"',
+    script = 'test "$(basename "$1")" = "$2" && test "$(basename "$3")" = "$4"',
     args = ["$(location :demo-ext.fedora)"]
-    + architecture.select({name: ["demo-ext_0_{}.sysext.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()}),
+    + architecture.select({name: ["demo-ext_0_{}.sysext.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()})
+    + ["$(location :demo-confext.fedora)"]
+    + architecture.select({name: ["demo-confext_0_{}.confext.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()}),
 )
 
 # [NAME, DIGEST, PATH] for each target expected.json tracks, per architecture. Sorted, so the command line

@@ -1,0 +1,280 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
+"""Package a logical image as an extension DDI."""
+
+load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
+load(
+    ":ddi.bzl",
+    "Partition",  # @unused Used as a type.
+    "declare_ddi",
+    "encode_definitions",
+    "partition",
+)
+load(
+    ":image.bzl",
+    "ImageInfo",
+    "ImageToolsInfo",
+    "check_name",
+    "image_providers",
+)
+load(":publish.bzl", "PublishedInfo", "published_metadata_subtargets")
+load(
+    ":sign.bzl",
+    "SigningKeyInfo",
+    "VERITY_KEY_ATTR",
+)
+
+ExtensionInfo = provider(
+    doc = "The extension classes and scope of an extension DDI, beside the DDI's own provider.",
+    fields = {
+        "classes": provider_field(list[str]),
+        # scope lists where systemd accepts the extension: "system", "initrd" or "portable".
+        "scope": provider_field(list[str]),
+    },
+)
+
+# _CLASSES is a list and not a dict, because its order is the order of the CopyFiles= lines of the
+# root partition.
+_CLASSES = [
+    ("sysext", struct(copy_files = ["/usr/", "/opt/"], prefix = "SYSEXT", release = "usr/lib/extension-release.d", suffix = ".sysext")),
+    ("confext", struct(copy_files = ["/etc/"], prefix = "CONFEXT", release = "etc/extension-release.d", suffix = ".confext")),
+]
+
+EXTENSION_CLASSES = [name for name, _ in _CLASSES]
+
+EXTENSION_SCOPES = ["system", "initrd", "portable"]
+
+# systemd's path_extract_image_name() cuts an image name at the first "_" or "+", so the
+# extension-release file of such a name is not found. portablectl cuts a name at the first "_" and
+# refuses "+".
+_NAME_PATTERN = "^[a-zA-Z0-9][a-zA-Z0-9.-]*$"
+
+# erofs dedup keys off the filesystem UUID, so combined with a stable seed these keep the DDI
+# reproducible.
+_MKFS_OPTIONS = {"erofs": ["--quiet", "-zzstd,level=3", "-C524288", "-Efragments,ztailpacking,dedupe"]}
+
+def ddi_names(what: str, name: str, version: str, arch: str) -> (str, str):
+    """Return the name a DDI is published under, and the architecture its release file names.
+
+    The DDI leaves the build as an update artifact, so it is named the way it is published:
+    systemd-sysupdate matches a transfer against <name>_<version>_<arch>. arch "_any" opts out of a
+    specific architecture: the DDI is published under the "all" arch (a literal "_any" would double
+    the name separator and break vpick's version parse), and its extension-release ARCHITECTURE is
+    "_any". systemd-vpick treats the unknown "all" as the any bucket, and later systemd-sysext skips
+    the arch check for "_any".
+    """
+    check_name("{} name".format(what), name, _NAME_PATTERN)
+
+    # systemd strips .sysext.raw and .confext.raw from a file name. A DDI named foo.sysext.raw has
+    # the image name foo, and systemd does not find its extension-release.foo.sysext.
+    if name.endswith(".sysext") or name.endswith(".confext"):
+        fail("{}: the name {!r} ends in a suffix systemd strips from DDI file names".format(what, name))
+
+    if arch == "_any":
+        return "{}_{}_all".format(name, version), "_any"
+    systemd_arch = ARCHITECTURES[arch].systemd
+    return "{}_{}_{}".format(name, version, systemd_arch), systemd_arch
+
+def _partitions(copy_files: list[str], signed: bool) -> list[Partition]:
+    """Return the partitions of a DDI: an erofs root partition with its verity hash and signature.
+
+    They match the definitions systemd-repart --make-ddi uses, so that a DDI does not depend on the
+    systemd version of the box that builds it.
+    """
+    definitions = [
+        partition(
+            type = "root",
+            filesystem = "erofs",
+            copy_files = copy_files,
+            minimize = "best",
+            verity = "data",
+            verity_match_key = "root",
+        ),
+        partition(
+            type = "root-verity",
+            minimize = "best",
+            verity = "hash",
+            verity_match_key = "root",
+        ),
+    ]
+    if signed:
+        definitions.append(
+            partition(
+                type = "root-verity-sig",
+                verity = "signature",
+                verity_match_key = "root",
+            ),
+        )
+    return definitions
+
+def _declare_preset(
+    ctx: AnalysisContext,
+    *,
+    tools: ImageToolsInfo,
+    image: ImageInfo,
+    systemd_arch: str,
+    basename: str,
+    filename: str,
+    copy_files: list[str],
+    seed: str | None,
+    verity_key: SigningKeyInfo | None,
+    extension: dict[str, typing.Any] | None = None,
+    extra: list[Provider] = [],
+) -> list[Provider]:
+    """Declare a DDI of one verity protected root partition, and return the providers of its rule.
+
+    `basename` is <name>_<version>_<arch>, which names the metadata of the logical image. `filename`
+    names the DDI and adds the class suffix of an extension to `basename`.
+    """
+    signed = verity_key != None
+    output = declare_ddi(
+        ctx,
+        tools = tools,
+        image = image,
+        systemd_arch = systemd_arch,
+        definitions = encode_definitions(_partitions(copy_files, signed), disk = True, imports = False, signed = signed, split = False),
+        basename = filename,
+        mkfs_options = _MKFS_OPTIONS,
+        seed = seed,
+        # A merged extension must not replace the host's package database.
+        strip_pkgdb = extension != None,
+        verity_key = verity_key,
+        extension = extension,
+    )
+    info = output.info
+    published = PublishedInfo(
+        artifacts = {
+            info.disk.basename: info.disk,
+            info.manifest.basename: info.manifest,
+            info.root_hash.hash.basename: info.root_hash.hash,
+        },
+    )
+    return image_providers(
+        default_outputs = [info.disk],
+        extra = [info, published] + extra,
+        image = image,
+        sub_targets = output.sub_targets | published_metadata_subtargets(image, basename),
+    )
+
+def declare_extension(
+    ctx: AnalysisContext,
+    *,
+    tools: ImageToolsInfo,
+    image: ImageInfo,
+    name: str,
+    classes: list[str],
+    scope: list[str],
+    arch: str,
+    version: str,
+    base: ImageInfo | None = None,
+    release: dict[str, str] = {},
+    seed: str | None = None,
+    verity_key: SigningKeyInfo | None = None,
+) -> list[Provider]:
+    """Declare an extension DDI with one extension-release file per class.
+
+    With `base`, the DDI contains only the delta that `image` layers on top of it.
+    """
+    if not classes:
+        fail("{}: an extension needs at least one class of {}".format(name, EXTENSION_CLASSES))
+    if not scope:
+        fail("{}: an extension needs at least one scope of {}".format(name, EXTENSION_SCOPES))
+    for key in release:
+        if key.endswith("_SCOPE"):
+            fail("{}: set {} through scope, not release; image.vm checks the scope".format(name, key))
+    basename, systemd_arch = ddi_names("extension", name, version, arch)
+
+    layers = 0
+    if base != None:
+        if len(base.layers) >= len(image.layers):
+            fail("{}: image must layer a delta on top of base".format(name))
+        layers = len(base.layers)
+
+    copy_files = []
+    releases = []
+    suffixes = []
+    for class_name, spec in _CLASSES:
+        if class_name not in classes:
+            continue
+        copy_files += spec.copy_files
+        suffixes.append(spec.suffix)
+
+        # systemd refuses an extension without ID. Without a base, ID=_any matches any host. With a
+        # base, the driver pins the ID and VERSION_ID of the base.
+        fields = {}
+        if base == None:
+            fields["ID"] = "_any"
+        fields[spec.prefix + "_SCOPE"] = " ".join(scope)
+        fields["EXTENSION_RELOAD_MANAGER"] = "1"
+
+        # The rule fills in the name, version and architecture of the DDI, so a caller does not
+        # repeat them. `release` overrides every field.
+        fields["ARCHITECTURE"] = systemd_arch
+        fields[spec.prefix + "_ID"] = name
+        fields[spec.prefix + "_VERSION_ID"] = version
+        fields["IMAGE_VERSION"] = version
+        fields.update(release)
+        releases.append({
+            "fields": {key: fields[key] for key in sorted(fields)},
+            "path": "{}/extension-release.{}".format(spec.release, name),
+        })
+
+    return _declare_preset(
+        ctx,
+        tools = tools,
+        image = image,
+        systemd_arch = systemd_arch,
+        basename = basename,
+        # systemd recognizes the suffixes .sysext.raw and .confext.raw. No suffix names a DDI with
+        # the two classes, so it gets the plain .raw suffix.
+        filename = basename + (suffixes[0] if len(suffixes) == 1 else ""),
+        copy_files = copy_files,
+        seed = seed,
+        verity_key = verity_key,
+        extension = {
+            "base": layers,
+            "identity": str(ctx.label),
+            "name": name,
+            "releases": releases,
+        },
+        extra = [
+            ExtensionInfo(
+                classes = [class_name for class_name, _ in _CLASSES if class_name in classes],
+                scope = scope,
+            ),
+        ],
+    )
+
+_COMMON_ATTRS = {
+    "arch": attrs.enum(
+        ARCHITECTURES.keys() + ["_any"],
+        default = architecture.configured(),
+        doc = "architecture the image runs on, in its name and the ARCHITECTURE of an extension, "
+        + "\"_any\" publishes the DDI as '..._all' and sets ARCHITECTURE=_any",
+    ),
+    "seed": attrs.option(
+        attrs.string(),
+        default = None,
+        doc = "explicit GPT/partition UUID seed; by default derive one from the target identity",
+    ),
+    "verity_key": VERITY_KEY_ATTR,
+}
+
+EXTENSION_ATTRS = _COMMON_ATTRS | {
+    "classes": attrs.list(
+        attrs.enum(EXTENSION_CLASSES),
+        doc = 'the extension classes: "sysext" for /usr and /opt, "confext" for /etc',
+    ),
+    "release": attrs.dict(
+        key = attrs.string(),
+        value = attrs.string(),
+        default = {},
+        doc = "extension-release fields, overriding the defaults",
+    ),
+    "scope": attrs.list(
+        attrs.enum(EXTENSION_SCOPES),
+        default = ["system"],
+        doc = "where systemd accepts the extension: on the host, in the initrd, for portable services",
+    ),
+}

@@ -303,7 +303,7 @@ def declare_ddi(
     With strip_pkgdb, the partitions omit the package database wherever the image's package system
     keeps it, for a system nothing ever resolves packages in. The image's `[pkgdb]` and `[sbom]`
     subtargets still capture it from the tree itself. `extension` makes the driver package the tree
-    as an extension (see sysext.bzl).
+    as an extension (see extension.bzl).
     """
     decoded = [json.decode(value) for value in definitions]
     encode_definitions(

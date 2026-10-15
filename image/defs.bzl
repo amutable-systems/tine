@@ -21,9 +21,11 @@ load(
     ":compose.bzl",
     "InitrdInfo",
     "bootable_disk_image",
+    "confext",
+    "extension",
     "initrd_image",
     "rootfs_archive",
-    "sysext_image",
+    "sysext",
 )
 load(
     ":ddi.bzl",
@@ -39,6 +41,7 @@ load(
     "format_partition_labels",
     "partition",
 )
+load(":extension.bzl", "ExtensionInfo")
 load(
     ":image.bzl",
     "ImageInfo",
@@ -69,11 +72,6 @@ load(
     "pkcs11_signing_key",
 )
 load(":substitute.bzl", "substitute")
-load(
-    ":sysext.bzl",
-    "SysextImageInfo",
-    "image_sysext",
-)
 load(":version.bzl", "resolve_version")
 load(":vm.bzl", "image_vm")
 
@@ -98,7 +96,6 @@ image = struct(
     # Terminal outputs.
     archive = image_archive,
     directory = image_directory,
-    sysext = image_sysext,
     uki = uki,
     uki_profile = uki_profile,
     resolve_version = resolve_version,
@@ -116,7 +113,9 @@ image = struct(
     SigningKeyInfo = SigningKeyInfo,
     # Compositions.
     rootfs_archive = rootfs_archive,
-    sysext_image = sysext_image,
+    sysext = sysext,
+    confext = confext,
+    extension = extension,
     bootable_disk = bootable_disk_image,
     artifacts = image_artifacts,
     initrd = initrd_image,
@@ -134,7 +133,7 @@ image = struct(
     ImageSbomInfo = ImageSbomInfo,
     ImageArchiveInfo = ImageArchiveInfo,
     ImageDirectoryInfo = ImageDirectoryInfo,
-    SysextImageInfo = SysextImageInfo,
+    ExtensionInfo = ExtensionInfo,
     UkiInfo = UkiInfo,
     DdiInfo = DdiInfo,
     RootHashInfo = RootHashInfo,

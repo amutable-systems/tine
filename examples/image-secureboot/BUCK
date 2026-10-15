@@ -113,7 +113,7 @@ image.bootable_disk(
     # the verity root hash. For a key that caches across workspaces, see image.pem_signing_key() under
     # "Secure Boot signing" in images.md.
     # `compression = "zstd"` on the partition only picks the algorithm; these are what actually make
-    # the erofs small, and they are the same options image_sysext builds a DDI with. --invariant keeps
+    # the erofs small, and they are the same options image.sysext builds a DDI with. --invariant keeps
     # the ESP byte-stable, which mkfs.fat is not by default.
     mkfs_options = {
         "erofs": [
@@ -133,7 +133,7 @@ image.bootable_disk(
 
 # System-extension DDI extending :image, signed so the strict policy in sysext.conf accepts the
 # merge. The image's own key, whose certificate it carries in /usr/lib/verity.d.
-image.sysext_image(
+image.sysext(
     name = "demo-ext",
     base = ":image",
     packages = ["zsh"],
@@ -163,7 +163,7 @@ image.artifacts(
 # (extension-release ID=_any) rather than based on :image, which carries this DDI as smoke test
 # data and may not depend on it circularly. Refusal happens at dissection, before content
 # matters; the marker is for the smoke test's permissive counter-check.
-image.sysext_image(
+image.sysext(
     name = "demo-ext-unsigned",
     package_manager = ":image.package-manager",
     ops = [image.ops.mkdir("/usr/share/tine-unsigned")],
@@ -293,7 +293,7 @@ box.sh_test(
     labels = ["image"],
     box = "@tine//tools:dev.box",
     test = "extension-manifest.sh",
-    args = ["$(location :demo-ext[ddi-manifest])"],
+    args = ["$(location :demo-ext[disk-manifest])"],
 )
 
 # Each listing covers what its own artifact carries: a DDI holds the two merged hierarchies, and a
@@ -307,7 +307,7 @@ box.sh_test(
         args = [target] + hierarchies,
     )
     for name, target, hierarchies in [
-        ("ddi", "$(location :demo-ext[ddi-manifest])", ["usr", "opt"]),
+        ("ddi", "$(location :demo-ext[disk-manifest])", ["usr", "opt"]),
         ("disk", "$(location :image[disk-manifest])", ["boot", "efi", "usr"]),
         ("esp", "$(location :image[manifests][esp])", ["boot", "efi"]),
         ("usr", "$(location :image[manifests][usr])", ["usr"]),

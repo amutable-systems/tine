@@ -1172,14 +1172,14 @@ pulls in are built; the universe target itself never forces a package build.
 
 Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
 needed. The catalog of terminal rules (`image.archive`, `image.directory`, `image.uki`, `image.ddi`,
-`image.bootable`, `image.sysext`, and `image.vm`) and the `image.rootfs_archive`, `image.sysext_image`, and
-`image.bootable_disk` composition rules are documented in [images.md](../user/images.md). All of them,
-with the operation helpers and conventional partition layouts, are members of the `image` struct exported
-from `tine//image:defs.bzl`; that facade is the public API, and the modules behind it are implementation
-structure. Every public facade a consuming project loads from exports one namespace struct the same way:
-`box`, `cargo`, `go`, `git`, `package`, `package_system/rpm`, `package_system/deb`,
-`package_system/pacman`, `distribution`, `http`, and `tests`. Every rule resolves its drivers through
-one `ImageToolsInfo` bundle at `tine//image:tools` instead of a private attribute per driver.
+`image.bootable`, and `image.vm`) and the `image.rootfs_archive`, `image.sysext`, `image.confext`,
+`image.extension`, and `image.bootable_disk` composition rules are documented in
+[images.md](../user/images.md). All of them, with the operation helpers and conventional partition layouts,
+are members of the `image` struct exported from `tine//image:defs.bzl`; that facade is the public API, and
+the modules behind it are implementation structure. Every public facade a consuming project loads from
+exports one namespace struct the same way: `box`, `cargo`, `go`, `git`, `package`, `package_system/rpm`,
+`package_system/deb`, `package_system/pacman`, `distribution`, `http`, and `tests`. Every rule resolves its
+drivers through one `ImageToolsInfo` bundle at `tine//image:tools` instead of a private attribute per driver.
 
 The package database and SBOMs are supply-chain outputs read from the assembled image, never shipped in it.
 Declaring any logical image declares both lazy facets, so compositions inherit them rather than repeating a
@@ -1187,8 +1187,8 @@ metadata step. Each package system captures its database in its native shape. SB
 tree additionally catches
 packages no package manager knows about, such as Go modules bundled into ELF binaries.
 
-Terminal rules leave the package database and other package state intact — except `image.sysext`, which
-drops the database from the paths the image's package system declares: a merged extension must not shadow
+Terminal rules leave the package database and other package state intact. An extension drops the
+database from the paths the image's package system declares, because a merged extension must not replace
 the host's. Image cleanup is an explicit, configurable layer so output formats do not silently alter image
 contents. Every terminal driver receives the same ordered layer stack and deferred tmpfiles snippets. It
 applies those snippets with
@@ -1382,7 +1382,7 @@ rules, so the composition reuses their implementations without declaring private
 forwarding through a result rule. This aggregation remains scoped to the concrete bootable-image product;
 it does not restore a generic `image_result` around every logical `image.ImageInfo`.
 
-`image.rootfs_archive` and `image.sysext_image` follow the same ownership model on a smaller graph: one
+`image.rootfs_archive` and the extension rules follow the same ownership model on a smaller graph: one
 rule declares the logical image with its lazy package-database/SBOM views, and its terminal archive or DDI.
 Each target returns `image.ImageInfo` alongside its terminal provider, so consumers never depend on
 generated `.layer`, `.pkgdb`, or `.sbom` labels. The standalone terminal rules share the same
@@ -1431,10 +1431,10 @@ per-distribution knowledge: `image.ops.depmod()` is silent without kernels, `ima
 `hwdb.d`, `image.ops.locale_gen()` without an `/etc/locale.gen` asking for something. That is what lets the
 compositions, which declare a whole product rather than one layer, end every image they build with all three
 at their defaults without knowing what went into it. A generator named in `ops` replaces the composition's
-copy instead of adding a second, so placing or configuring one stays possible. `sysext_image` is the
-exception that generates nothing: an extension merges onto a system it does not own, where a database built
-from the extension's own tree would shadow that system's while describing only what the extension carries,
-exactly as its package database would.
+copy instead of adding a second, so placing or configuring one stays possible. The extension rules are the
+exception that generates nothing: an extension merges onto a system it does not own. A database generated in
+the extension would replace the database of that system in the merged tree, and would go stale when that
+system changes, exactly as its package database would.
 
 Their tools are the box's, applied to the mounted image through the `--root` interface systemd gives them,
 which is the same relationship every other layer driver has to the image and is what lets an image that
@@ -1725,7 +1725,7 @@ Near-term image gaps are:
 - build-time `systemd-sysusers`, `systemd-tmpfiles` and `systemctl preset-all`, once their single-UID/GID
   and volatile-`/etc` behavior is settled;
 - deterministic ext4/FAT byte-level validation and any required normalization;
-- OCI, confext, ESP, and other terminal formats as real consumers require them;
+- OCI, ESP, and other terminal formats as real consumers require them;
 - richer ordered operations for setting file metadata directly;
 - deciding whether package installation and image tooling eventually need distinct compatible boxes.
 
@@ -1754,7 +1754,7 @@ Useful implementation entry points:
   `package/{href,installer,transaction}.py`
 - each package system's `rules.bzl` and drivers under `package_system/`, listed in its own section above
 - `box/{build,runtime}.bzl`, `box/sandbox.py`, and `rootfs/rootfs.py`
-- `image/{image,compose,defs,sign,vm,archive,boot,ddi,sysext}.bzl`
+- `image/{image,compose,defs,sign,vm,archive,boot,ddi,extension}.bzl`
 - `cargo/{defs,rules,vendor}.bzl` and `cargo/{lock,vendor,build}.py`
 - `go/rules.bzl` and `go/{fetch,build}.py`
 - `tools/catalog.py` and `catalog/BUCK`

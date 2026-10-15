@@ -7,7 +7,7 @@ load("@prelude//platforms:defs.bzl", "host_configuration")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//distribution:defs.bzl", "distribution")
 load(":ddi.bzl", "DdiInfo", "SIZE_PATTERN")
-load(":sysext.bzl", "SysextImageInfo")
+load(":extension.bzl", "ExtensionInfo")
 
 def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
     disk = ctx.attrs.image[DdiInfo]
@@ -60,10 +60,15 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
         # each DDI must be named after its extension.
         extensions = {}
         for dep in ctx.attrs.sysexts:
-            info = dep[SysextImageInfo]
-            if info.extension + ".raw" in extensions:
-                fail("image_vm: duplicate sysext {!r}".format(info.extension))
-            extensions[info.extension + ".raw"] = info.image
+            if "system" not in dep[ExtensionInfo].scope:
+                fail("image_vm: {} is not an extension with the system scope".format(dep.label))
+            ddi = dep[DdiInfo].disk
+
+            # systemd takes the image name from the file name, up to the first "_".
+            name = ddi.basename.split("_")[0]
+            if name + ".raw" in extensions:
+                fail("image_vm: duplicate sysext {!r}".format(name))
+            extensions[name + ".raw"] = ddi
         run.add(
             cmd_args(
                 ctx.actions.copied_dir("extensions", extensions),
@@ -142,7 +147,7 @@ _image_vm = rule(
             doc = "boot with Secure Boot capable firmware",
         ),
         "sysexts": attrs.list(
-            attrs.dep(providers = [SysextImageInfo]),
+            attrs.dep(providers = [DdiInfo, ExtensionInfo]),
             default = [],
             doc = "sysext DDIs exposed to the guest under /var/lib/extensions",
         ),

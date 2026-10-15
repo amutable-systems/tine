@@ -37,6 +37,12 @@ load(
     "manifest_sub_targets",
 )
 load(
+    ":extension.bzl",
+    "EXTENSION_ATTRS",
+    "ExtensionInfo",
+    "declare_extension",
+)
+load(
     ":image.bzl",
     "IMAGE_ATTRS",
     "ImageInfo",
@@ -63,13 +69,6 @@ load(
     "SigningKeyInfo",  # @unused Used as a function argument type.
     "VERITY_KEY_ATTR",
     "resolve_signing_key",
-)
-load(
-    ":sysext.bzl",
-    "SYSEXT_ATTRS",
-    "declare_image_sysext",
-    "sysext_published",
-    "sysext_subtargets",
 )
 load(":version.bzl", "resolve_version")
 
@@ -255,20 +254,25 @@ _rootfs_archive = rule(
     },
 )
 
-def _sysext_image_impl(ctx: AnalysisContext) -> list[Provider]:
+def _extension_impl(ctx: AnalysisContext) -> list[Provider]:
     tools = ctx.attrs._tools[ImageToolsInfo]
     if (ctx.attrs.base == None) == (ctx.attrs.package_manager == None):
-        fail("sysext_image: exactly one of base and package_manager is required")
+        fail("{}: exactly one of base and package_manager is required".format(ctx.label.name))
 
-    # An extension merges onto a system it does not own, so it generates nothing: a database built
-    # from its own tree would shadow that system's while describing only what the extension carries,
-    # exactly as its package database would.
-    base = ctx.attrs.base[ImageInfo] if ctx.attrs.base != None else None
+    # An extension runs no generators. A database generated from the full stack would replace the
+    # database of the base in the merged tree. It would also go stale when the base changes.
+    base = None
+    if ctx.attrs.base != None:
+        # An extension of an extension contains only its own delta. It works only when the
+        # extension below it is merged too, and neither DDI records that dependency.
+        if ctx.attrs.base.get(ExtensionInfo) != None:
+            fail("{}: base {} is an extension itself; extend the image it extends".format(ctx.label.name, ctx.attrs.base.label))
+        base = ctx.attrs.base[ImageInfo]
     image = _composed_image(
         ctx,
         tools = tools,
         generate = False,
-        package_manager = ctx.attrs.package_manager if base == None else None,
+        package_manager = ctx.attrs.package_manager,
         parent = base,
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
@@ -278,32 +282,32 @@ def _sysext_image_impl(ctx: AnalysisContext) -> list[Provider]:
         tmpfiles = ctx.attrs.tmpfiles,
         version = ctx.attrs.version,
     )
-    sysext = declare_image_sysext(
+    return declare_extension(
         ctx,
         tools = tools,
         arch = ctx.attrs.arch,
         base = base,
-        extension = ctx.label.name,
+        classes = ctx.attrs.classes,
         image = image,
+        name = ctx.label.name,
         release = ctx.attrs.release,
+        scope = ctx.attrs.scope,
         seed = ctx.attrs.seed,
         verity_key = resolve_signing_key(ctx.attrs.verity_key),
         version = ctx.attrs.version,
     )
-    return image_providers(
-        default_outputs = [sysext.image],
-        extra = [sysext, sysext_published(sysext)],
-        image = image,
-        sub_targets = sysext_subtargets(sysext) | published_metadata_subtargets(image, sysext.basename),
-    )
 
-_sysext_image = rule(
-    impl = _sysext_image_impl,
+_extension = rule(
+    impl = _extension_impl,
     supports_incoming_transition = True,
     attrs = IMAGE_ATTRS
-    | SYSEXT_ATTRS
+    | EXTENSION_ATTRS
     | {
-        "base": attrs.option(attrs.dep(providers = [ImageInfo]), default = None),
+        "base": attrs.option(
+            attrs.dep(providers = [ImageInfo]),
+            default = None,
+            doc = "the image the extension extends; only the delta above it is packaged",
+        ),
         "package_manager": attrs.option(
             attrs.dep(providers = [PackageManagerInfo]),
             default = None,
@@ -617,7 +621,7 @@ def rootfs_archive(
         **(distribution.distributed(name, distro, visibility) | kwargs),
     )
 
-def sysext_image(
+def extension(
     name: str,
     ops: list[LayerOperationTree] = [],
     version: str | Select | None = None,
@@ -625,13 +629,25 @@ def sysext_image(
     visibility: list[str] | None = None,
     **kwargs,
 ) -> None:
-    """Build one logical image from operations and package it as a system-extension DDI."""
-    _sysext_image(
+    """Build one logical image from operations and package it as an extension DDI.
+
+    `classes` lists the extension classes the DDI contains: "sysext" for /usr and /opt, "confext"
+    for /etc. With `base`, the DDI contains only the delta above that image.
+    """
+    _extension(
         name = name,
         ops = flatten_operations(ops),
-        version = resolve_version("sysext_image {}".format(name), version),
+        version = resolve_version("extension {}".format(name), version),
         **(distribution.distributed(name, distro, visibility) | kwargs),
     )
+
+def sysext(name: str, **kwargs) -> None:
+    """Build a system extension: an extension DDI that contains /usr and /opt."""
+    extension(name = name, classes = ["sysext"], **kwargs)
+
+def confext(name: str, **kwargs) -> None:
+    """Build a configuration extension: an extension DDI that contains /etc."""
+    extension(name = name, classes = ["confext"], **kwargs)
 
 def bootable_disk_image(
     name: str,
