@@ -5,7 +5,7 @@
 
 load("//distribution:defs.bzl", "distribution")
 load(
-    "//image:image.bzl",
+    ":image.bzl",
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
     "ImageToolsInfo",

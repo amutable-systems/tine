@@ -4,15 +4,17 @@
 """Convenience compositions for image products."""
 
 load("//distribution:defs.bzl", "distribution")
+load("//package:manager.bzl", "PackageManagerInfo")
+load("//platforms:architecture.bzl", "ARCHITECTURES")
 load(
-    "//image_format:archive.bzl",
+    ":archive.bzl",
     "ARCHIVE_ATTRS",
     "declare_image_archive",
     "declare_image_directory",
 )
-load("//image_format:boot.bzl", "boot_subtargets", "declare_boot_artifacts")
+load(":boot.bzl", "boot_subtargets", "declare_boot_artifacts")
 load(
-    "//image_format:ddi.bzl",
+    ":ddi.bzl",
     "DISK_FORMATS",
     "Partition",  # @unused Used as a type.
     "declare_ddi",
@@ -21,23 +23,6 @@ load(
     "format_partition_labels",
     "manifest_sub_targets",
 )
-load(
-    "//image_format:sysext.bzl",
-    "SYSEXT_ATTRS",
-    "declare_image_sysext",
-    "sysext_published",
-    "sysext_subtargets",
-)
-load(
-    "//image_format:uki.bzl",
-    "UKI_ATTRS",
-    "UkiProfile",  # @unused Used as a type.
-    "declare_uki",
-    "encode_profiles",
-    "uki_subtargets",
-)
-load("//package:manager.bzl", "PackageManagerInfo")
-load("//platforms:architecture.bzl", "ARCHITECTURES")
 load(
     ":image.bzl",
     "IMAGE_ATTRS",
@@ -63,6 +48,21 @@ load(
     "SigningKeyInfo",  # @unused Used as a function argument type.
     "VERITY_KEY_ATTR",
     "resolve_signing_key",
+)
+load(
+    ":sysext.bzl",
+    "SYSEXT_ATTRS",
+    "declare_image_sysext",
+    "sysext_published",
+    "sysext_subtargets",
+)
+load(
+    ":uki.bzl",
+    "UKI_ATTRS",
+    "UkiProfile",  # @unused Used as a type.
+    "declare_uki",
+    "encode_profiles",
+    "uki_subtargets",
 )
 load(":version.bzl", "resolve_version")
 

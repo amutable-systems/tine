@@ -6,8 +6,8 @@
 load("@prelude//platforms:defs.bzl", "host_configuration")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//distribution:defs.bzl", "distribution")
-load("//image_format:ddi.bzl", "DdiInfo", "SIZE_PATTERN")
-load("//image_format:sysext.bzl", "SysextImageInfo")
+load(":ddi.bzl", "DdiInfo", "SIZE_PATTERN")
+load(":sysext.bzl", "SysextImageInfo")
 
 def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
     disk = ctx.attrs.image[DdiInfo]

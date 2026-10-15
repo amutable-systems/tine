@@ -11,8 +11,9 @@ before merging. With `base`, only the delta layered above that image is packaged
 extension-release pins the base's ID/VERSION_ID.
 """
 
+load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load(
-    "//image:image.bzl",
+    ":image.bzl",
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
     "ImageToolsInfo",
@@ -20,9 +21,9 @@ load(
     "pkgdb_paths",
     "terminal_image_command",
 )
-load("//image:publish.bzl", "PublishedInfo")
+load(":publish.bzl", "PublishedInfo")
 load(
-    "//image:sign.bzl",
+    ":sign.bzl",
     "SigningKeyInfo",
     "VERITY_KEY_ATTR",
     "external_signing_execution",
@@ -30,7 +31,6 @@ load(
     "resolve_signing_key",
     "signing_key_spec",
 )
-load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 
 SysextImageInfo = provider(
     doc = "A systemd system-extension DDI generated from a logical image.",

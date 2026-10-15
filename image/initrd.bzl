@@ -4,13 +4,13 @@
 """The conventional initrd a bootable image boots, as a target of its own."""
 
 load("//distribution:defs.bzl", "distribution")
+load("//package:manager.bzl", "PackageManagerInfo")
 load(
-    "//image_format:archive.bzl",
+    ":archive.bzl",
     "COMPRESSIONS",
     "ImageArchiveInfo",
     "declare_image_archive",
 )
-load("//package:manager.bzl", "PackageManagerInfo")
 load(
     ":image.bzl",
     "IMAGE_ATTRS",

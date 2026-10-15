@@ -5,8 +5,9 @@
 
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load(
-    "//image:image.bzl",
+    ":image.bzl",
     "GPT_LABEL_LIMIT",
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
@@ -18,7 +19,7 @@ load(
     "terminal_image_command",
 )
 load(
-    "//image:sign.bzl",
+    ":sign.bzl",
     "SigningKeyInfo",
     "VERITY_KEY_ATTR",
     "external_signing_execution",
@@ -26,7 +27,6 @@ load(
     "resolve_signing_key",
     "signing_key_spec",
 )
-load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 
 Partition = dict[str, typing.Any]
 

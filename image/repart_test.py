@@ -3,7 +3,7 @@
 
 """Tests for the mkfs environment and for reading repart's partition report back.
 
-    buck test tine//image_format:test
+    buck test tine//image:test
 
 repart itself is not run here.
 """

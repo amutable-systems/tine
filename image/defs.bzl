@@ -7,17 +7,24 @@ Load the `image` namespace from here; the modules behind it are implementation s
 rearranged.
 """
 
+load("//kmod:initrd_modules.toml", _INITRD_MODULES = "value")
 load(
-    "//image_format:archive.bzl",
+    ":archive.bzl",
     "COMPRESSIONS",
     "ImageArchiveInfo",
     "ImageDirectoryInfo",
     "image_archive",
     "image_directory",
 )
-load("//image_format:boot.bzl", "bootable")
+load(":boot.bzl", "bootable")
 load(
-    "//image_format:ddi.bzl",
+    ":compose.bzl",
+    "bootable_disk_image",
+    "rootfs_archive",
+    "sysext_image",
+)
+load(
+    ":ddi.bzl",
     "DEFAULT_ROOT_PARTITIONS",
     "DEFAULT_SIGNED_USR_VERITY_PARTITIONS",
     "DEFAULT_USR_VERITY_PARTITIONS",
@@ -29,24 +36,6 @@ load(
     "disk_convert",
     "format_partition_labels",
     "partition",
-)
-load(
-    "//image_format:sysext.bzl",
-    "SysextImageInfo",
-    "image_sysext",
-)
-load(
-    "//image_format:uki.bzl",
-    "UkiInfo",
-    "uki",
-    "uki_profile",
-)
-load("//kmod:initrd_modules.toml", _INITRD_MODULES = "value")
-load(
-    ":compose.bzl",
-    "bootable_disk_image",
-    "rootfs_archive",
-    "sysext_image",
 )
 load(
     ":image.bzl",
@@ -79,6 +68,17 @@ load(
     "pkcs11_signing_key",
 )
 load(":substitute.bzl", "substitute")
+load(
+    ":sysext.bzl",
+    "SysextImageInfo",
+    "image_sysext",
+)
+load(
+    ":uki.bzl",
+    "UkiInfo",
+    "uki",
+    "uki_profile",
+)
 load(":version.bzl", "resolve_version")
 load(":vm.bzl", "image_vm")
 

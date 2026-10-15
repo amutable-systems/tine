@@ -51,8 +51,8 @@ tine//package_system/     one directory per package system: its repository, reso
                           extractor, and optional indexer and builder
 tine//box/                box bootstrap and sandbox command construction
 tine//rootfs/             bind/overlay mounting and stored-delta translation
-tine//image/              layers, boot artifacts, composition macros, and VM runners
-tine//image_format/       archive, directory, and raw-disk output rules and drivers
+tine//image/              layers, compositions, archive, directory, disk and boot artifact rules and
+                          drivers, and VM runners
 tine//git/                pinned Git repositories with local checkout overrides
 tine//cargo/              vendored crate trees and offline Rust source builds
 tine//go/                 go.sum-verified module fetches and offline Go source builds
@@ -1754,7 +1754,7 @@ Useful implementation entry points:
   `package/{href,installer,transaction}.py`
 - each package system's `rules.bzl` and drivers under `package_system/`, listed in its own section above
 - `box/{build,runtime}.bzl`, `box/sandbox.py`, and `rootfs/rootfs.py`
-- `image/{image,compose,defs,sign,vm}.bzl` and `image_format/{archive,boot,disk,sysext,uki}.bzl`
+- `image/{image,compose,defs,sign,vm,archive,boot,ddi,sysext,uki}.bzl`
 - `cargo/{defs,rules,vendor}.bzl` and `cargo/{lock,vendor,build}.py`
 - `go/rules.bzl` and `go/{fetch,build}.py`
 - `tools/catalog.py` and `catalog/BUCK`
