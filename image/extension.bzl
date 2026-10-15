@@ -6,9 +6,9 @@
 load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load(
     ":ddi.bzl",
-    "Partition",  # @unused Used as a type.
     "declare_ddi",
     "partition",
+    "verity_partitions",
 )
 load(
     ":image.bzl",
@@ -80,38 +80,6 @@ def ddi_names(what: str, name: str, version: str, arch: str) -> (str, str):
     systemd_arch = ARCHITECTURES[arch].systemd
     return "{}_{}_{}".format(name, version, systemd_arch), systemd_arch
 
-def _partitions(copy_files: list[str], signed: bool) -> list[Partition]:
-    """Return the partitions of a DDI: an erofs root partition with its verity hash and signature.
-
-    They match the definitions systemd-repart --make-ddi uses, so that a DDI does not depend on the
-    systemd version of the box that builds it.
-    """
-    definitions = [
-        partition(
-            type = "root",
-            filesystem = "erofs",
-            copy_files = copy_files,
-            minimize = "best",
-            verity = "data",
-            verity_match_key = "root",
-        ),
-        partition(
-            type = "root-verity",
-            minimize = "best",
-            verity = "hash",
-            verity_match_key = "root",
-        ),
-    ]
-    if signed:
-        definitions.append(
-            partition(
-                type = "root-verity-sig",
-                verity = "signature",
-                verity_match_key = "root",
-            ),
-        )
-    return definitions
-
 def _declare_preset(
     ctx: AnalysisContext,
     *,
@@ -132,13 +100,22 @@ def _declare_preset(
     `basename` is <name>_<version>_<arch>, which names the metadata of the logical image. `filename`
     names the DDI and adds the class suffix of an extension to `basename`.
     """
-    signed = verity_key != None
+    # The partitions match the definitions systemd-repart --make-ddi uses, so that a DDI does not
+    # depend on the systemd version of the box that builds it.
+    root = partition(
+        type = "root",
+        filesystem = "erofs",
+        copy_files = copy_files,
+        minimize = "best",
+        verity = "data",
+        verity_match_key = "root",
+    )
     output = declare_ddi(
         ctx,
         tools = tools,
         image = image,
         systemd_arch = systemd_arch,
-        definitions = _partitions(copy_files, signed),
+        definitions = verity_partitions(root, signed = verity_key != None),
         basename = filename,
         mkfs_options = _MKFS_OPTIONS,
         seed = seed,
