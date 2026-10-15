@@ -1170,7 +1170,7 @@ locally backed in later solves. Unlike a static `local_repository`, only the pac
 pulls in are built; the universe target itself never forces a package build.
 
 Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
-needed. The catalog of terminal rules (`image.archive`, `image.directory`, `image.uki`, `image.repart`,
+needed. The catalog of terminal rules (`image.archive`, `image.directory`, `image.uki`, `image.ddi`,
 `image.bootable`, `image.sysext`, and `image.vm`) and the `image.rootfs_archive`, `image.sysext_image`, and
 `image.bootable_disk` composition rules are documented in [images.md](../user/images.md). All of them,
 with the operation helpers and conventional partition layouts, are members of the `image` struct exported
@@ -1207,30 +1207,30 @@ multi-threaded output is byte-identical to its single-threaded output, so this s
 uses it, while the kernel-modules cpio that `uki.py` appends stays raw because the distribution already
 ships each module compressed; the kernel unpacks the concatenation as independently compressed segments.
 
-`image.repart` deliberately distinguishes `definitions` from `partitions`. Definitions describe new
+`image.ddi` deliberately distinguishes `definitions` from `partitions`. Definitions describe new
 partitions to populate directly from `image.ImageInfo`: repart mounts the delta stack with a
 disposable overlay upper instead of first copying a directory artifact. Partition inputs are
-`image.RepartInfo` outputs from an earlier split call; their blocks are copied into the new disk with
+`image.DdiInfo` outputs from an earlier split call; their blocks are copied into the new disk with
 their resolved type and UUID preserved.
 Calls emit a disk by default. `split = True` additionally exposes each newly defined partition with
 normalized metadata alongside its block artifact; `disk = False` makes such a call partition-only. No
 partial disk is passed between
-actions. The partition artifacts are portable, so `image.RepartInfo` carries no box: repart uses the
+actions. The partition artifacts are portable, so `image.DdiInfo` carries no box: repart uses the
 destination `image.ImageInfo.box`, while standalone conversion and VM rules select a box explicitly.
 `image.directory` is an independent terminal view and is never an input to repart.
 
-Partition layouts are always explicit inputs; neither `image.repart` nor `image.bootable_disk` chooses one
+Partition layouts are always explicit inputs; neither `image.ddi` nor `image.bootable_disk` chooses one
 implicitly. The reusable conventional layouts are listed in [images.md](../user/images.md).
 
 Partition labels may contain `{image_id}` and `{version}` placeholders. `image.format_partition_labels()`
-renders them — `image.bootable_disk()` calls it with its own image identity, raw `image.repart()` users
+renders them — `image.bootable_disk()` calls it with its own image identity, raw `image.ddi()` users
 call it themselves, and unrendered placeholders fail the build. The usr-verity layouts carry such labels
 to produce the `<id>_<version>[_verity[_sig]]` names that systemd-sysupdate A/B slot matching expects.
 Rendered labels pass through `image.partition()` again, so GPT's 36-character label limit is enforced on the
 final value.
 
 Verity data, hash, and optional signature partitions are produced together in the split action. The root or
-usr hash is an artifact because its value is known only after execution. `image.RepartInfo.root_hash` carries
+usr hash is an artifact because its value is known only after execution. `image.DdiInfo.root_hash` carries
 an optional `image.RootHashInfo`, allowing `image.uki` to consume the hash without another top-level
 provider. One split call may produce at most one such hash. This artifact boundary also ensures the final
 disk contains exactly the partition bytes whose hash was embedded in the UKI. The hash is also available
@@ -1330,7 +1330,7 @@ artifact, so one provider covers every encoding instead of one provider type per
 
 Bootability and output format remain independent terminal capabilities, but the artifacts declared by one
 `image.bootable_disk()` invocation form one concrete product. The composition publishes one target at
-the requested name. Its default output and `image.RepartInfo.disk` are the raw disk; its other terminal
+the requested name. Its default output and `image.DdiInfo.disk` are the raw disk; its other terminal
 views,
 supply-chain metadata, and constituents are lazy subtargets:
 
@@ -1358,8 +1358,8 @@ supply-chain metadata, and constituents are lazy subtargets:
 ```
 
 Typed providers are the composition API; subtargets are the command-line interface. There is no aggregate
-bootable-image provider. The rule returns its completed `image.ImageInfo`, `image.RepartInfo`,
-`image.InitrdInfo`, `image.ImageDirectoryInfo`, and `image.UkiInfo` independently. `image.RepartInfo`
+bootable-image provider. The rule returns its completed `image.ImageInfo`, `image.DdiInfo`,
+`image.InitrdInfo`, `image.ImageDirectoryInfo`, and `image.UkiInfo` independently. `image.DdiInfo`
 holds the composed raw disk, its independent partitions, and optional `image.RootHashInfo`, rather than
 exposing separate top-level providers for these facets.
 Its qcow2 and compressed-raw encodings are reachable only through their subtargets, each publishing one
@@ -1376,7 +1376,7 @@ describe, so a release gathers what a scanner reads while an image's own publish
 update transfers.
 
 `image.bootable_disk` is one rule that owns the complete composition action graph. Provider-oriented action
-helpers are shared with the standalone `image.layer`, `image.repart`, `image.uki`, and terminal-format
+helpers are shared with the standalone `image.layer`, `image.ddi`, `image.uki`, and terminal-format
 rules, so the composition reuses their implementations without declaring private sibling targets or
 forwarding through a result rule. This aggregation remains scoped to the concrete bootable-image product;
 it does not restore a generic `image_result` around every logical `image.ImageInfo`.

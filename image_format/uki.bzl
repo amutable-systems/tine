@@ -26,8 +26,8 @@ load("//kmod:initrd_modules.toml", _INITRD_MODULES = "value")
 load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load(":archive.bzl", "ImageArchiveInfo")
 load(
-    ":disk.bzl",
-    "RepartInfo",
+    ":ddi.bzl",
+    "DdiInfo",
     "RootHashInfo",  # @unused Used as a function argument type.
 )
 
@@ -163,9 +163,9 @@ def uki_subtargets(info: UkiInfo) -> dict[str, list[Provider]]:
 def _uki_impl(ctx: AnalysisContext) -> list[Provider]:
     root_hash = None
     if ctx.attrs.root_hash != None:
-        root_hash = ctx.attrs.root_hash[RepartInfo].root_hash
+        root_hash = ctx.attrs.root_hash[DdiInfo].root_hash
         if root_hash == None:
-            fail("uki: root_hash RepartInfo does not contain a verity root hash")
+            fail("uki: root_hash DdiInfo does not contain a verity root hash")
     info = declare_uki(
         ctx,
         tools = ctx.attrs._tools[ImageToolsInfo],
@@ -239,9 +239,9 @@ _uki = rule(
             doc = "cpio archives to prepend to the per-kernel modules archive",
         ),
         "root_hash": attrs.option(
-            attrs.dep(providers = [RepartInfo]),
+            attrs.dep(providers = [DdiInfo]),
             default = None,
-            doc = "repart result whose verity hash is added to the embedded kernel command line",
+            doc = "DDI whose verity hash is added to the embedded kernel command line",
         ),
         "version": attrs.string(default = "0", doc = "image version in the UKI name"),
     }

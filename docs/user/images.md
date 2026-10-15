@@ -349,8 +349,8 @@ when needed:
   kernel are signed
   for Secure Boot. With a `sign_expected_pcr_key`, a signed expected-PCR 11 policy covers each profile;
   set its `sign_expected_pcr` to false to opt out;
-- `image.repart` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
-  GPT disk and independent partition artifacts in one `image.RepartInfo`; its disk field is absent for a
+- `image.ddi` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
+  GPT disk and independent partition artifacts in one `image.DdiInfo`; its disk field is absent for a
   split-only invocation, `output_size` composes the disk with free space behind its partitions, and
   `strip_pkgdb` leaves the package database out of them, and `mkfs_options` tunes the filesystems it
   creates;
@@ -416,24 +416,24 @@ Required attributes:
   passed on to `image.layer`.
 - `definitions` (list of `image.partition()` descriptors): Partition layout; `image.DEFAULT_ROOT_PARTITIONS`,
   `image.DEFAULT_USR_VERITY_PARTITIONS`, and `image.DEFAULT_SIGNED_USR_VERITY_PARTITIONS` are reusable
-  conventional layouts; it must contain system and ESP partitions; passed on to `image.repart()`.
+  conventional layouts; it must contain system and ESP partitions; passed on to `image.ddi()`.
 
 Optional attributes:
 
-- `disk_seed` (string): Seeds stable partition UUIDs; passed on to `image.repart()`.
+- `disk_seed` (string): Seeds stable partition UUIDs; passed on to `image.ddi()`.
 - `verity_key` (target providing `image.SigningKeyInfo`): Signs the verity signature partition; passed on to
-  `image.repart()`.
+  `image.ddi()`.
 - `secure_boot_key` (target providing `image.SigningKeyInfo`): Signs the UKIs and systemd-boot; see "Secure
   Boot signing" below.
 - `output_size` (size string such as `"20G"`): Ships the disk at this size instead of at the size its
   partitions need, so an installed system finds room past them and does not have to resize its medium
-  before first boot; passed on to `image.repart()`. The partitions keep the sizes their definitions ask
+  before first boot; passed on to `image.ddi()`. The partitions keep the sizes their definitions ask
   for, and the composed file is enlarged behind the last one, so the added room costs nothing on disk and,
   as with `image.vm`'s `grow`, sits past the GPT backup header until something rewrites the table. A size
   the
   partitions do not fit in fails the build.
 - `mkfs_options` (dict of filesystem to option list, default `{}`): Options `mkfs` is given when
-  creating a partition of that filesystem, passed on to `image.repart()`, which hands each list to
+  creating a partition of that filesystem, passed on to `image.ddi()`, which hands each list to
   `systemd-repart` as `SYSTEMD_REPART_MKFS_OPTIONS_<FSTYPE>`. Naming a filesystem the disk never formats
   fails the build rather than going nowhere, and an option holding whitespace is refused because repart
   splits the variable on it. This is where a disk's compression is really decided: an `image.partition()`'s
@@ -444,7 +444,7 @@ Optional attributes:
   entry with the wall clock even under `SOURCE_DATE_EPOCH`.
 - `strip_pkgdb` (bool, default `False`): Leaves the package database out of the system partitions, for a
   system that ships without its package manager and never resolves a package again; passed on to
-  `image.repart()`. The logical image keeps it, so `[pkgdb]` still captures the database and `[sbom]` still
+  `image.ddi()`. The logical image keeps it, so `[pkgdb]` still captures the database and `[sbom]` still
   reports every installed package rather than what a binary scan can guess. The ESP carries no database
   either way.
 - `sign_expected_pcr_key` (target providing `image.SigningKeyInfo`): Seals the expected-PCR policy;
@@ -543,7 +543,7 @@ identity when copied out of the build, exactly matching the UKI's `<image_id>_<v
 The `[qcow2]` and `[raw.zst]` subtargets re-encode the raw disk into a compact qcow2 or a compressed raw on
 demand, each publishing one `image.DiskConversionInfo`; the encodings are reachable only through those
 subtargets, because one result cannot carry the same provider type twice. The target has no aggregate
-bootable-image provider: it returns `image.ImageInfo`, `image.RepartInfo`, `image.InitrdInfo`,
+bootable-image provider: it returns `image.ImageInfo`, `image.DdiInfo`, `image.InitrdInfo`,
 `image.ImageDirectoryInfo`,
 `image.UkiInfo`, and `image.PublishedInfo` independently.
 
@@ -592,7 +592,7 @@ metadata beside it, which is why it assembles the directory from a dynamic actio
 one name is an error rather than a silent overwrite. The `usr` and `usr-verity` UUIDs above are the two
 halves of that build's verity root hash, and `%M_@v_%a.usr-%a.@u.raw` in a transfer is how
 systemd-sysupdate reads one back to give the partition it writes the UUID dissection pairs them by.
-`image.RepartInfo` contains the optional `image.RootHashInfo` when verity is enabled. The completed
+`image.DdiInfo` contains the optional `image.RootHashInfo` when verity is enabled. The completed
 `image.ImageInfo` includes the ESP layer, so another image can use the bootable image as its parent without
 relying on a generated
 helper label. The same `image.InitrdInfo`, containing its logical `image.ImageInfo` and derived

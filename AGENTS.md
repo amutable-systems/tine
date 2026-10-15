@@ -72,7 +72,7 @@ Cell layout and architecture: [the design plan](docs/design/architecture.md). Us
 `starlark_fmt` owns the layout of every `.bzl` and `BUCK` file and wraps at 160 columns.
 
 - Leave a trailing comma after the last argument to keep a signature or call broken across lines.
-- It sorts dict keys unconditionally; mark a dict whose order is a contract (`disk.bzl:partition` feeds
+- It sorts dict keys unconditionally; mark a dict whose order is a contract (`ddi.bzl:partition` feeds
   partition UUIDs) `# @unsorted-dict-items`.
 - It drops load symbols it cannot see used; annotate type-only imports `# @unused`.
 

@@ -177,7 +177,7 @@ def _derived_seed(
     """Derive UUIDs from logical configuration, not action-local CopyBlocks paths.
 
     A definition is re-encoded exactly as the rule spelled it, key order included (see
-    disk.bzl:partition): any other encoding re-identifies every partition of every
+    ddi.bzl:partition): any other encoding re-identifies every partition of every
     unchanged image.
     """
     digest = hashlib.sha256(identity.encode())
@@ -215,14 +215,14 @@ def _write_definitions(
 def _partition_row(rows: list[dict[str, Any]], filename: str) -> dict[str, Any]:
     matches = [row for row in rows if Path(row.get("file", "")).name == filename]
     if len(matches) != 1:
-        util.fail(f"repart: expected one result for {filename}, found {len(matches)}")
+        util.fail(f"ddi: expected one result for {filename}, found {len(matches)}")
     return matches[0]
 
 
 def _copy_partition(row: dict[str, Any], name: str, blocks: Path, metadata: Path) -> None:
     source_value = row.get("split_path")
     if not source_value or source_value == "-":
-        util.fail(f"repart: no split artifact was produced for {name}")
+        util.fail(f"ddi: no split artifact was produced for {name}")
     source = Path(source_value)
     blocks.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, blocks)
@@ -231,7 +231,7 @@ def _copy_partition(row: dict[str, Any], name: str, blocks: Path, metadata: Path
     # sector-aligned artifact, so restore the partition's declared raw size.
     raw_size = int(row["raw_size"])
     if blocks.stat().st_size > raw_size:
-        util.fail(f"repart: split artifact for {name} exceeds its partition")
+        util.fail(f"ddi: split artifact for {name} exceeds its partition")
     with blocks.open("r+b") as f:
         f.truncate(raw_size)
 
@@ -261,16 +261,16 @@ def _grow(disk: Path, size: str) -> None:
     )
     composed = disk.stat().st_size
     if composed > target:
-        util.fail(f"repart: the partitions need {composed} bytes, more than the requested {size}")
+        util.fail(f"ddi: the partitions need {composed} bytes, more than the requested {size}")
     with disk.open("r+b") as f:
         f.truncate(target)
 
 
 def main(argv: list[str] | None = None) -> None:
-    spec = specs.parse(Spec, "repart", argv)
+    spec = specs.parse(Spec, "ddi", argv)
 
     if not spec["definitions"] and not spec["partitions"]:
-        util.fail("repart: specify at least one definition or imported partition")
+        util.fail("ddi: specify at least one definition or imported partition")
     raw_definitions = [entry["definition"] for entry in spec["definitions"]]
     written = [
         WrittenPartition(
@@ -298,14 +298,14 @@ def main(argv: list[str] | None = None) -> None:
         if partition.blocks is not None and partition.metadata is not None
     ]
     if not spec["out"] and not splits:
-        util.fail("repart: specify a disk output, split outputs, or both")
+        util.fail("ddi: specify a disk output, split outputs, or both")
 
     binds: list[tuple[str | Path, str | Path]] = [
         (partition.blocks, f"/run/tine/repart/{index}.raw")
         for index, partition in enumerate(partitions, start=len(written))
     ]
     with (
-        finalize.image(spec, program="repart", binds=binds) as tree,
+        finalize.image(spec, program="ddi", binds=binds) as tree,
         tempfile.TemporaryDirectory(prefix="repart.") as scratch_dir,
     ):
         # The package database is a supply-chain artifact that the image's `[pkgdb]` and `[sbom]`
@@ -387,7 +387,7 @@ def main(argv: list[str] | None = None) -> None:
     if splits:
         artifacts.append(f"{len(splits)} partitions")
     mode = " and ".join(artifacts)
-    print(f"repart: wrote {mode} (seed={seed})", file=sys.stderr)
+    print(f"ddi: wrote {mode} (seed={seed})", file=sys.stderr)
 
 
 if __name__ == "__main__":

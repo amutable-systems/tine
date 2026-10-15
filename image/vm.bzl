@@ -6,13 +6,13 @@
 load("@prelude//platforms:defs.bzl", "host_configuration")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//distribution:defs.bzl", "distribution")
-load("//image_format:disk.bzl", "RepartInfo", "SIZE_PATTERN")
+load("//image_format:ddi.bzl", "DdiInfo", "SIZE_PATTERN")
 load("//image_format:sysext.bzl", "SysextImageInfo")
 
 def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
-    disk = ctx.attrs.image[RepartInfo]
+    disk = ctx.attrs.image[DdiInfo]
     if disk.disk == None:
-        fail("image_vm: RepartInfo does not contain a composed disk")
+        fail("image_vm: DdiInfo does not contain a composed disk")
     run = cmd_args(
         box_run(
             box = ctx.attrs.box[BoxInfo],
@@ -131,7 +131,7 @@ _image_vm = rule(
             default = None,
             doc = 'size to grow the disk file to before booting, e.g. "8G"; the built image itself grows',
         ),
-        "image": attrs.dep(providers = [RepartInfo], doc = "the raw disk image to boot ephemerally"),
+        "image": attrs.dep(providers = [DdiInfo], doc = "the raw disk image to boot ephemerally"),
         "ram": attrs.option(
             attrs.string(),
             default = None,

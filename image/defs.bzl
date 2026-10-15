@@ -17,18 +17,18 @@ load(
 )
 load("//image_format:boot.bzl", "bootable")
 load(
-    "//image_format:disk.bzl",
+    "//image_format:ddi.bzl",
     "DEFAULT_ROOT_PARTITIONS",
     "DEFAULT_SIGNED_USR_VERITY_PARTITIONS",
     "DEFAULT_USR_VERITY_PARTITIONS",
     "DISK_FORMATS",
+    "DdiInfo",
     "DiskConversionInfo",
-    "RepartInfo",
     "RootHashInfo",
+    "ddi",
     "disk_convert",
     "format_partition_labels",
     "partition",
-    "repart",
 )
 load(
     "//image_format:sysext.bzl",
@@ -106,7 +106,7 @@ image = struct(
     uki_profile = uki_profile,
     resolve_version = resolve_version,
     bootable = bootable,
-    repart = repart,
+    ddi = ddi,
     partition = partition,
     format_partition_labels = format_partition_labels,
     disk_convert = disk_convert,
@@ -139,7 +139,7 @@ image = struct(
     ImageDirectoryInfo = ImageDirectoryInfo,
     SysextImageInfo = SysextImageInfo,
     UkiInfo = UkiInfo,
-    RepartInfo = RepartInfo,
+    DdiInfo = DdiInfo,
     RootHashInfo = RootHashInfo,
     DiskConversionInfo = DiskConversionInfo,
     InitrdInfo = InitrdInfo,
