@@ -166,35 +166,25 @@ def format_partition_labels(definitions: list[Partition], image_id: str, version
             )
     return formatted
 
-def encode_definitions(
+def _check_definitions(
     definitions: list[Partition],
     *,
     imports: bool,
     disk: bool,
     split: bool,
     signed: bool,
-    rendered: bool = True,
-) -> list[str]:
-    """Validate a partition layout and serialize it for an attribute.
-
-    `rendered = False` accepts label placeholders for a caller that renders them itself.
-    """
+) -> None:
     if not definitions and (split or not imports):
         fail("ddi: definitions may be empty only when assembling partition inputs")
     if not disk and not split:
         fail("ddi: at least one of disk or split must be enabled")
-    names = {}
     for definition in definitions:
-        if definition["name"] in names:
-            fail("ddi: definition names must be unique")
-        names[definition["name"]] = True
         label = definition["label"]
-        if rendered and label != None and "{" in label:
+        if label != None and "{" in label:
             fail("ddi: unrendered placeholder in label {!r}; render with format_partition_labels()".format(label))
     signatures = [it for it in definitions if it["verity"] == "signature"]
     if bool(signatures) != signed:
         fail("ddi: Verity=signature and signing credentials must be specified together")
-    return [json.encode(definition) for definition in definitions]
 
 WrittenPartitionInfo = record(
     definition = Partition,
@@ -285,7 +275,7 @@ def declare_ddi(
     tools: ImageToolsInfo,
     image: ImageInfo,
     systemd_arch: str,
-    definitions: list[str],
+    definitions: list[Partition],
     disk: bool = True,
     split: bool = False,
     imported: list[DdiInfo] = [],
@@ -306,9 +296,8 @@ def declare_ddi(
     subtargets still capture it from the tree itself. `extension` makes the driver package the tree
     as an extension (see extension.bzl). `tmpfiles` replaces the tmpfiles lines of `image`.
     """
-    decoded = [json.decode(value) for value in definitions]
-    encode_definitions(
-        decoded,
+    _check_definitions(
+        definitions,
         disk = disk,
         imports = bool(imported),
         signed = verity_key != None,
@@ -331,7 +320,7 @@ def declare_ddi(
     for info in imported:
         imported_partitions.extend(info.partitions)
 
-    names = [definition["name"] for definition in decoded] + [partition.definition["name"] for partition in imported_partitions]
+    names = [definition["name"] for definition in definitions] + [partition.definition["name"] for partition in imported_partitions]
     if len(names) != len({name: True for name in names}):
         fail("ddi: new and imported partition names must be unique")
 
@@ -339,7 +328,7 @@ def declare_ddi(
     outputs = []
     new_partitions = []
     written = []
-    for definition in decoded:
+    for definition in definitions:
         name = definition["name"]
 
         # A definition that copies nothing carries nothing to list: verity partitions hold a hash
@@ -417,7 +406,7 @@ def declare_ddi(
             manifest = declare_out(ctx, identifier, basename + ".Uapi16Manifest")
             spec["manifest"] = manifest.as_output()
 
-    kind = _verity_kind(decoded)
+    kind = _verity_kind(definitions)
     if kind != None and imported_root_hash != None:
         fail("ddi: cannot combine multiple verity root hashes")
     root_hash = imported_root_hash
@@ -490,7 +479,7 @@ def _ddi_impl(ctx: AnalysisContext) -> list[Provider]:
         tools = ctx.attrs._tools[ImageToolsInfo],
         systemd_arch = ARCHITECTURES[ctx.attrs._arch].systemd,
         basename = ctx.attrs.basename,
-        definitions = ctx.attrs.definitions,
+        definitions = [json.decode(value) for value in ctx.attrs.definitions],
         disk = ctx.attrs.disk,
         image = ctx.attrs.image[ImageInfo],
         imported = imported,
@@ -548,29 +537,11 @@ _ddi = rule(
     | IMAGE_TOOLS_ATTR,
 )
 
-def ddi(
-    name: str,
-    definitions: list[Partition],
-    partitions: list[str] = [],
-    disk: bool = True,
-    split: bool = False,
-    verity_key: str | None = None,
-    **kwargs,
-) -> None:
+def ddi(name: str, definitions: list[Partition], **kwargs) -> None:
     """Create a disk, independent partitions, or both."""
     _ddi(
         name = name,
-        definitions = encode_definitions(
-            definitions,
-            disk = disk,
-            imports = bool(partitions),
-            signed = verity_key != None,
-            split = split,
-        ),
-        partitions = partitions,
-        disk = disk,
-        split = split,
-        verity_key = verity_key,
+        definitions = [json.encode(definition) for definition in definitions],
         **kwargs,
     )
 

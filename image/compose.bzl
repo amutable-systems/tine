@@ -34,7 +34,6 @@ load(
     "VIRTUAL_SIZE_FORMATS",
     "declare_ddi",
     "declare_disk_conversion",
-    "encode_definitions",
     "format_partition_labels",
     "manifest_sub_targets",
 )
@@ -433,9 +432,9 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     verity = False
     for definition in definitions:
         if definition["type"] == "esp":
-            boot_definitions.append(json.encode(definition))
+            boot_definitions.append(definition)
         else:
-            system_definitions.append(json.encode(definition))
+            system_definitions.append(definition)
             verity = verity or definition["verity"] == "data"
     if not system_definitions or not boot_definitions:
         fail("bootable_disk_image: definitions must include system and ESP partitions")
@@ -727,9 +726,6 @@ def bootable_disk_image(
     definitions: list[Partition],
     ops: list[LayerOperationTree] = [],
     profiles: list[UkiProfile] = [],
-    verity_key: str | None = None,
-    secure_boot_key: str | None = None,
-    sign_expected_pcr_key: str | None = None,
     initrd: str | Select | None = None,
     package_manager: str | Select | None = None,
     image_id: str | None = None,
@@ -778,20 +774,10 @@ def bootable_disk_image(
         image_id = image_id,
         initrd = initrd,
         # The rule renders label placeholders from its own identity during analysis.
-        definitions = encode_definitions(
-            definitions,
-            disk = True,
-            imports = False,
-            rendered = False,
-            signed = verity_key != None,
-            split = True,
-        ),
+        definitions = [json.encode(definition) for definition in definitions],
         ops = flatten_operations(ops),
         package_manager = package_manager,
         profiles = encode_profiles(profiles),
-        secure_boot_key = secure_boot_key,
-        sign_expected_pcr_key = sign_expected_pcr_key,
-        verity_key = verity_key,
         version = version,
         **(distribution.distributed(name, distro, visibility) | kwargs),
     )
