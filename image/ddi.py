@@ -22,7 +22,6 @@ import util
 
 import finalize
 import manifest
-import repart
 import rootfs
 
 _SEED_NAMESPACE = uuid.UUID("5af2de99-4f9f-4e0b-a04b-bde36b068c4f")
@@ -30,6 +29,42 @@ _SEED_NAMESPACE = uuid.UUID("5af2de99-4f9f-4e0b-a04b-bde36b068c4f")
 # Extensions derive their seed from a namespace and inputs of their own. Changing either changes
 # the partition UUIDs of every published extension.
 _EXTENSION_SEED_NAMESPACE = uuid.UUID("b388a973-3ffa-44aa-90b7-afcc4573ea9f")
+
+
+class KeySpec(TypedDict):
+    """One signing key as a driver-spec object; sign.bzl's signing_key_spec() produces it."""
+
+    private_key: str
+    certificate: str
+    # OpenSSL sources in systemd's spelling, each None for material in the build graph.
+    private_key_source: str | None
+    certificate_source: str | None
+
+
+def _key_arguments(signing: KeySpec | None) -> list[str]:
+    """systemd-repart options selecting the key that signs a verity root hash."""
+    if signing is None:
+        return []
+    arguments = ["--private-key", signing["private_key"], "--certificate", signing["certificate"]]
+    if signing["private_key_source"]:
+        arguments += ["--private-key-source", signing["private_key_source"]]
+    if signing["certificate_source"]:
+        arguments += ["--certificate-source", signing["certificate_source"]]
+    return arguments
+
+
+def mkfs_environment(options: dict[str, list[str]]) -> dict[str, str]:
+    """Return the systemd-repart environment that passes `options` to mkfs, per filesystem."""
+    erofs = options.get("erofs", [])
+    # The kernel shares the page cache of identical files between erofs images mounted with
+    # inode_share, but only for images that record a digest of each file.
+    if not any(option.startswith("--xattr-inode-digest") for option in erofs):
+        erofs = [*erofs, "--xattr-inode-digest"]
+    # repart reads one variable per filesystem it formats and splits each on whitespace.
+    return {
+        f"SYSTEMD_REPART_MKFS_OPTIONS_{filesystem.upper()}": " ".join(arguments)
+        for filesystem, arguments in (options | {"erofs": erofs}).items()
+    }
 
 
 class WrittenPartitionSpec(TypedDict):
@@ -80,7 +115,7 @@ class Spec(finalize.ImageSpec):
     # Stable target identity the seed derives from, unless one is given outright.
     identity: str
     seed: str | None
-    signing: repart.KeySpec | None
+    signing: KeySpec | None
     # The partitions this invocation writes, and the independent ones copied into the result.
     definitions: list[WrittenPartitionSpec]
     partitions: list[ImportedPartitionSpec]
@@ -327,6 +362,54 @@ def _copy_partition(row: dict[str, Any], name: str, blocks: Path, metadata: Path
     metadata.write_text(json.dumps(described, sort_keys=True, separators=(",", ":")) + "\n")
 
 
+def write_root_hash(rows: list[dict[str, Any]], output: Path) -> None:
+    """Write the verity root hash repart generated, as hex plus a newline.
+
+    The rows are repart's --json output.
+    """
+    # repart reports the root hash TBD for a partition that it did not generate.
+    hashes = {value for row in rows if (value := row.get("roothash")) not in (None, "TBD")}
+    if len(hashes) != 1:
+        util.fail(f"ddi: expected one generated verity root hash, found {len(hashes)}")
+    output.write_text(hashes.pop() + "\n")
+
+
+def _repart(
+    tree: Path,
+    definitions: Path,
+    image: Path,
+    *,
+    seed: uuid.UUID,
+    signing: KeySpec | None,
+    mkfs_options: dict[str, list[str]],
+    architecture: str | None,
+    split: bool = False,
+) -> list[dict[str, Any]]:
+    """Create `image` from `tree` with the repart.d files in `definitions`, and return repart's report."""
+    cmd = [
+        "systemd-repart",
+        "--empty=create",
+        "--size=auto",
+        "--dry-run=no",
+        "--json=pretty",
+        "--no-pager",
+        f"--root={tree}",
+        "--offline=yes",
+        "--seed",
+        str(seed),
+        "--definitions",
+        str(definitions),
+    ]
+    if architecture is not None:
+        cmd.append(f"--architecture={architecture}")
+    if split:
+        cmd.append("--split=yes")
+    cmd += _key_arguments(signing)
+    env = os.environ | mkfs_environment(mkfs_options)
+    result = subprocess.run([*cmd, str(image)], check=True, env=env, stdout=subprocess.PIPE, text=True)
+    return json.loads(result.stdout)
+
+
 def main(argv: list[str] | None = None) -> None:
     spec = specs.parse(Spec, "ddi", argv)
 
@@ -434,33 +517,21 @@ def main(argv: list[str] | None = None) -> None:
         # published basename even when only the partitions leave this invocation.
         disk = scratch / f"{spec['basename']}.raw" if splits else out
         assert disk is not None  # one of a disk output and split outputs is required
-        cmd = [
-            "systemd-repart",
-            "--empty=create",
-            "--size=auto",
-            "--dry-run=no",
-            "--json=pretty",
-            "--no-pager",
-            f"--root={tree}",
-            "--offline=yes",
-            "--seed",
-            str(seed),
-            "--definitions",
-            str(repart_definitions),
-        ]
-        if spec["architecture"] is not None:
-            cmd.append(f"--architecture={spec['architecture']}")
-        if splits:
-            cmd.append("--split=yes")
-        cmd += repart.key_arguments(spec["signing"])
-        env = os.environ | repart.mkfs_environment(spec["mkfs_options"])
-        result = subprocess.run([*cmd, str(disk)], check=True, env=env, stdout=subprocess.PIPE, text=True)
-        rows: list[dict[str, Any]] = json.loads(result.stdout)
+        rows = _repart(
+            tree,
+            repart_definitions,
+            disk,
+            seed=seed,
+            signing=spec["signing"],
+            mkfs_options=spec["mkfs_options"],
+            architecture=spec["architecture"],
+            split=bool(splits),
+        )
 
         for name, blocks, metadata in splits:
             _copy_partition(_partition_row(rows, files[name]), name, blocks, metadata)
         if spec["root_hash_out"]:
-            repart.write_root_hash(rows, Path(spec["root_hash_out"]))
+            write_root_hash(rows, Path(spec["root_hash_out"]))
         if out and splits:
             shutil.copyfile(disk, out)
 
