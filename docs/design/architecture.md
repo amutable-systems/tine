@@ -1173,7 +1173,7 @@ pulls in are built; the universe target itself never forces a package build.
 Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
 needed. The catalog of terminal rules (`image.directory`, `image.uki`, `image.ddi`, `image.bootable`,
 and `image.vm`) and the `image.archive`, `image.sysext`, `image.confext`, `image.extension`,
-`image.portable`, and `image.bootable_disk` composition rules are documented in
+`image.portable`, and `image.disk` composition rules are documented in
 [images.md](../user/images.md). All of them, with the operation helpers and conventional partition layouts,
 are members of the `image` struct exported from `tine//image:defs.bzl`; that facade is the public API, and
 the modules behind it are implementation structure. Every public facade a consuming project loads from
@@ -1220,11 +1220,11 @@ actions. The partition artifacts are portable, so `image.DdiInfo` carries no box
 destination `image.ImageInfo.box`, while standalone conversion and VM rules select a box explicitly.
 `image.directory` is an independent terminal view and is never an input to repart.
 
-Partition layouts are always explicit inputs; neither `image.ddi` nor `image.bootable_disk` chooses one
+Partition layouts are always explicit inputs; neither `image.ddi` nor `image.disk` chooses one
 implicitly. The reusable conventional layouts are listed in [images.md](../user/images.md).
 
 Partition labels may contain `{image_id}` and `{version}` placeholders. `image.format_partition_labels()`
-renders them — `image.bootable_disk()` calls it with its own image identity, raw `image.ddi()` users
+renders them — `image.disk()` calls it with its own image identity, raw `image.ddi()` users
 call it themselves, and unrendered placeholders fail the build. The usr-verity layouts carry such labels
 to produce the `<id>_<version>[_verity[_sig]]` names that systemd-sysupdate A/B slot matching expects.
 Rendered labels pass through `image.partition()` again, so GPT's 36-character label limit is enforced on the
@@ -1238,7 +1238,7 @@ disk contains exactly the partition bytes whose hash was embedded in the UKI. Th
 as the split target's `roothash` subtarget. Signature partitions require an explicitly declared key and
 certificate.
 
-`image.bootable_disk()` composes:
+A bootable `image.disk()` composes:
 
 ```text
 base initrd package image (zstd cpio)
@@ -1280,7 +1280,7 @@ package system declares: nothing in an initrd resolves a dependency or verifies 
 unpacks the whole cpio into tmpfs, so shipping it would only cost boot memory. The `[manifest]`, `[pkgdb]`
 and `[sbom]` views
 read the tree rather than the archive, so they still describe the complete installed set.
-`image.bootable_disk` consumes `image.InitrdInfo` rather than a bare `image.ImageInfo`, so the archive is
+A bootable `image.disk` consumes `image.InitrdInfo` rather than a bare `image.ImageInfo`, so the archive is
 the initrd target's own output and its compression is declared where the initrd is. A composition given
 no `initrd` declares `<name>.initrd` for itself through the same macro, inheriting its package manager,
 version, and distribution; the default is therefore an ordinary target that can be built and inspected on
@@ -1331,7 +1331,7 @@ artifact, so one provider covers every encoding instead of one provider type per
 #### Bootable-image result
 
 Bootability and output format remain independent terminal capabilities, but the artifacts declared by one
-`image.bootable_disk()` invocation form one concrete product. The composition publishes one target at
+`image.disk()` invocation form one concrete product. The composition publishes one target at
 the requested name. Its default output and `image.DdiInfo.disk` are the raw disk; its other terminal
 views,
 supply-chain metadata, and constituents are lazy subtargets:
@@ -1377,7 +1377,7 @@ conversion does: `[sbom]` and `[pkgdb]` carry an `image.PublishedInfo` naming th
 describe, so a release gathers what a scanner reads while an image's own published set stays what an
 update transfers.
 
-`image.bootable_disk` is one rule that owns the complete composition action graph. Provider-oriented action
+`image.disk` is one rule that owns the complete composition action graph. Provider-oriented action
 helpers are shared with the standalone `image.layer`, `image.ddi`, `image.uki`, and terminal-format
 rules, so the composition reuses their implementations without declaring private sibling targets or
 forwarding through a result rule. This aggregation remains scoped to the concrete bootable-image product;

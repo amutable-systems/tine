@@ -127,9 +127,9 @@ def verity_partitions(data: Partition, signed: bool) -> list[Partition]:
         )
     return definitions
 
-# systemd-sysupdate A/B slots match partitions by exact label, so the default layouts carry the
-# image identity: `bootable_disk_image()` renders the placeholders from its image_id and version
-# attributes (raw `ddi()` users render them with `format_partition_labels()`).
+# systemd-sysupdate matches A/B partitions by their exact label, so the labels of the default layouts
+# contain the image ID and version as placeholders. `disk()` fills them in from its image_id
+# and version attributes. A `ddi()` caller fills them in with `format_partition_labels()`.
 def _usr_verity_partitions(signed: bool) -> list[Partition]:
     usr = partition(
         type = "usr",

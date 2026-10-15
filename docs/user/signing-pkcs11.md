@@ -75,7 +75,7 @@ load("@tine//image:defs.bzl", "image")
 image.pkcs11_signing_key(name = "secureboot", section = "secure-boot-signing")
 image.pkcs11_signing_key(name = "pcr-signing", section = "pcr-signing")
 
-image.bootable_disk(
+image.disk(
     name = "image",
     secure_boot_key = ":secureboot",
     sign_expected_pcr_key = ":pcr-signing",
@@ -95,7 +95,7 @@ image.generate_signing_key(name = "secureboot")
 
 SIGN_WITH_TOKEN = read_config("secure-boot-signing", "token") != None
 
-image.bootable_disk(
+image.disk(
     name = "image",
     secure_boot_key = ":secureboot.token" if SIGN_WITH_TOKEN else ":secureboot",
     ...

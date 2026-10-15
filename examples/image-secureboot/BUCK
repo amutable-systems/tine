@@ -78,7 +78,7 @@ image.initrd(
     compression = "none",
 )
 
-image.bootable_disk(
+image.disk(
     name = "image",
     package_manager = ":image.package-manager",
     initrd = ":image.initrd",
