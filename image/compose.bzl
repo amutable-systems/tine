@@ -429,13 +429,11 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     )
     system_definitions = []
     boot_definitions = []
-    verity = False
     for definition in definitions:
         if definition["type"] == "esp":
             boot_definitions.append(definition)
         else:
             system_definitions.append(definition)
-            verity = verity or definition["verity"] == "data"
     if not system_definitions or not boot_definitions:
         fail("bootable_disk_image: definitions must include system and ESP partitions")
 
@@ -482,7 +480,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         initrd_modules = ctx.attrs.initrd_modules,
         initrds = [initrd_info.cpio],
         profiles = ctx.attrs.profiles,
-        root_hash = system.info.root_hash if verity else None,
+        root_hash = system.info.root_hash,
         secure_boot_key = secure_boot_key,
         sign_expected_pcr_key = resolve_signing_key(ctx.attrs.sign_expected_pcr_key),
         splash = ctx.attrs.splash,
@@ -507,7 +505,6 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         identifier = "disk",
         image = esp,
         imported = [system.info],
-        imported_root_hash = system.info.root_hash,
         mkfs_options = ctx.attrs.mkfs_options,
         seed = ctx.attrs.disk_seed,
     )
