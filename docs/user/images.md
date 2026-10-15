@@ -160,7 +160,7 @@ ordered operation sequence in one action and persists exactly one delta:
 
 `image.layer()` recursively flattens operation lists, allowing reusable helpers to return ordered groups of
 operations; `image.archive`, `image.sysext`, `image.confext`, `image.extension`, `image.portable`
-and `image.bootable_disk` accept the same nested groups. Materialize a complete logical image explicitly with
+and `image.disk` accept the same nested groups. Materialize a complete logical image explicitly with
 `image.directory`.
 
 ### Generating what packages only describe
@@ -202,14 +202,14 @@ does by default, so an image that installs no systemd of its own still gets a da
 the image's own. What they write is captured by the layer that runs them, so it is built once and
 cached rather than repeated by every terminal output.
 
-`image.archive`, `image.portable`, `image.bootable_disk`'s root filesystem, and `image.initrd` end their
-operations with `image.ops.depmod()`, `image.ops.hwdb()` and `image.ops.locale_gen()` at their defaults,
-because a composition declares a whole product rather than one layer: the three cover everything a package
-can leave described, and each does nothing on an image carrying none of it. They land on the layer the
-composition declares, so a composition handed a `parent` and given no operations or packages of its own
-declares no layer and places none; that parent is where they belong, after the operations whose packages they
-read. An initrd generates before it prunes, so it ships the compiled database rather than the sources it was
-compiled from. Naming a generator in `ops` overrides the composition's copy instead of adding a second, so
+`image.archive`, `image.portable`, `image.disk`'s root filesystem, and `image.initrd` end their operations
+with `image.ops.depmod()`, `image.ops.hwdb()` and `image.ops.locale_gen()` at their defaults, because a
+composition declares a whole product rather than one layer: the three cover everything a package can leave
+described, and each does nothing on an image carrying none of it. They land on the layer the composition
+declares, so a composition handed a `parent` and given no operations or packages of its own declares no layer
+and places none; that parent is where they belong, after the operations whose packages they read. An initrd
+generates before it prunes, so it ships the compiled database rather than the sources it was compiled from.
+Naming a generator in `ops` overrides the composition's copy instead of adding a second, so
 `image.ops.hwdb(usr = False)`, or an `image.ops.depmod()` placed before the operations that strip modules, is
 taken exactly as written. The extension rules (`image.sysext`, `image.confext`, `image.extension`) run none
 of them. An extension merges onto a system it does not own. A database generated in the extension would
@@ -217,7 +217,7 @@ replace the database of that system in the merged tree, and would go stale when 
 
 ### Declaring the initrd
 
-`image.bootable_disk` declares a conventional initrd for itself, so nothing is required to get one.
+A bootable `image.disk` declares a conventional initrd for itself, so nothing is required to get one.
 Declare an `image.initrd()` and pass it when you want to change what is in it or how it is packed:
 
 ```Starlark
@@ -229,7 +229,7 @@ image.initrd(
     compression = "none",
 )
 
-image.bootable_disk(
+image.disk(
     name = "os",
     initrd = ":os.initrd",
     ...
@@ -266,7 +266,7 @@ image.install(
     ],
 )
 
-image.bootable_disk(
+image.disk(
     name = "os",
     package_sets = ["bootable"],
     ops = [image.ops.install_from(":project.install")],
@@ -375,7 +375,7 @@ when needed:
 archive, optionally zstd-compressed (`compression = "zstd"`). `image.sysext`, `image.confext` and
 `image.extension` are the compositions for extension DDIs (see "Extensions" below), and `image.portable` is
 the composition for portable service images (see "image.portable" below). `image.archive`, the extension
-rules, `image.portable` and `image.bootable_disk` start their image from `package_manager`, or add their
+rules, `image.portable` and `image.disk` start their image from `package_manager`, or add their
 operations on top of the image in `parent`. Every composition takes `install_docs` and passes it to the image
 it builds.
 
@@ -512,10 +512,11 @@ first `_`, and attaches the units whose names start with that image name: `webap
 with the same `[roothash]` and `[disk-manifest]` subtargets as an extension. It takes `package_manager` or
 `parent`, the operations and packages of any composition, and `version`, `arch`, `seed` and `verity_key`.
 
-### image.bootable_disk
+### image.disk
 
-`image.bootable_disk()` composes the initrd, versioned UKIs, the ESP, and a verity-protected
-`/usr` into a GPT disk. Most attributes parameterize the terminal rules described above.
+`image.disk()` composes the partitions in `definitions` into a GPT disk. A bootable disk also contains
+systemd-boot, the initrd and versioned UKIs in its ESP. Most attributes parameterize the terminal rules
+described above.
 
 Required attributes:
 
@@ -524,10 +525,13 @@ Required attributes:
   passed on to `image.layer`.
 - `definitions` (list of `image.partition()` descriptors): Partition layout; `image.DEFAULT_ROOT_PARTITIONS`,
   `image.DEFAULT_USR_VERITY_PARTITIONS`, and `image.DEFAULT_SIGNED_USR_VERITY_PARTITIONS` are reusable
-  conventional layouts; it must contain system and ESP partitions; passed on to `image.ddi()`.
+  conventional layouts; a bootable disk needs system and ESP partitions; passed on to `image.ddi()`.
 
 Optional attributes:
 
+- `bootable` (bool): Makes the disk boot. It defaults to whether `definitions` contain an ESP partition, and
+  `True` without one fails the build. A disk that does not boot refuses `initrd`, `profiles`, `splash`,
+  `cmdline`, `initrd_modules`, `secure_boot_key` and `sign_expected_pcr_key`.
 - `disk_seed` (string): Seeds stable partition UUIDs; passed on to `image.ddi()`.
 - `verity_key` (target providing `image.SigningKeyInfo`): Signs the verity signature partition; passed on to
   `image.ddi()`.
@@ -651,8 +655,9 @@ raw, or a compressed (streamOptimized) VMDK for VMware and cloud importers on de
 subtargets, because one result cannot carry the same provider type twice. `[ami]` is the raw disk with the
 parameters an Amazon Machine Image is registered with, see [aws.md](aws.md). The target has no aggregate
 bootable-image provider: it returns `image.ImageInfo`, `image.DdiInfo`, `image.InitrdInfo`,
-`image.ImageDirectoryInfo`,
-`image.UkiInfo`, and `image.PublishedInfo` independently.
+`image.ImageDirectoryInfo`, `image.UkiInfo`, and `image.PublishedInfo` independently. A disk that does not
+boot has no `[uki]`, `[initrd]`, `[boot]` or `[ami]` subtargets, returns no `image.InitrdInfo` or
+`image.UkiInfo`, and publishes no UKI, kernel or initrd.
 
 `image.PublishedInfo` is what a target contributes to a release, keyed by the name it is published under:
 for a disk the raw image, the UKI, the kernel and the initrd, plus the partitions, and for an
@@ -731,7 +736,7 @@ assembles for that kernel alone, holding kernel modules. `initrd_modules` select
 image's own `/usr/lib/modules/<kver>`, and the build adds what they depend on and the firmware they ask for.
 This
 initrd is appended after the ones passed in, so no initrd has to be built for a particular kernel: an
-image given to `image.bootable_disk` as `initrd` needs no kernel modules of its own, and gets the ones
+image given to `image.disk` as `initrd` needs no kernel modules of its own, and gets the ones
 selected here.
 
 The default is `image.DEFAULT_INITRD_MODULES`, exported from `//image:defs.bzl`. It is a core set rather than
@@ -745,7 +750,7 @@ filesystem reached over the network, or any device whose driver needs firmware. 
 through one of those has to name it:
 
 ```Starlark
-image.bootable_disk(
+image.disk(
     # The core set, plus a controller this appliance boots from, minus a filesystem it never mounts.
     initrd_modules = image.DEFAULT_INITRD_MODULES + ["mpt3sas", "-btrfs"],
 )
@@ -833,7 +838,7 @@ An image asks for that version with `version = "auto"`, or names its own base wi
 `version = "auto:<base>"` and takes only what tells one build of that base from the next:
 
 ```Starlark
-image.bootable_disk(
+image.disk(
     name = "demo",
     definitions = image.DEFAULT_SIGNED_USR_VERITY_PARTITIONS,
     version = "auto:1.4.2",
@@ -860,7 +865,7 @@ version a tag itself names can be, since two builds of a declared base have to s
 `":"` is not a character a version accepts, so neither spelling can collide with one meant literally.
 
 Every image macro resolves it as it declares the target, so the components are read where the image is
-declared and only the packages that declare one re-read them when the version moves. `image.bootable_disk`
+declared and only the packages that declare one re-read them when the version moves. `image.disk`
 renders the hash against its own longest label and hands the result to the initrd it declares, so a disk
 and its initrd carry one version rather than each rendering its own; an image whose version reaches no
 partition label (`image.archive`, the extensions, `image.portable`, `image.initrd`) has all 36
@@ -907,7 +912,7 @@ A version that changes rebuilds only the artifacts that embed it, never package 
 
 ## Secure Boot signing
 
-`image.bootable_disk()` accepts a `secure_boot_key`, which names a target providing
+`image.disk()` accepts a `secure_boot_key`, which names a target providing
 `image.SigningKeyInfo` (the private key and its certificate). It signs the UKIs and the systemd-boot
 binaries with `systemd-sbsign`, and `bootctl` places `loader/keys/auto/{PK,KEK,db}.auth` enrollment variables
 on the ESP: firmware in setup mode
@@ -1039,7 +1044,7 @@ distribution.alias(
 An image can also name its own distribution instead of being aliased into one:
 
 ```Starlark
-image.bootable_disk(
+image.disk(
     name = "appliance",
     distro = "//catalog:<family>.<release>.distribution",
     package_sets = ["bootable"],

@@ -12,7 +12,7 @@ that is a function of the image, and uploads it as a separate `buck run` step th
 
 ## The AMI bundle
 
-Every [image.bootable_disk](images.md#imagebootable_disk) has an `[ami]` subtarget: the raw disk and the
+Every bootable [image.disk](images.md#imagedisk) has an `[ami]` subtarget: the raw disk and the
 parameters to register it with. `buck build` it to get the bundle, `buck run` it to
 [import](#importing-an-ami) it.
 

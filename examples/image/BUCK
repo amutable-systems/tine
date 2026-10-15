@@ -189,7 +189,7 @@ image.archive(
 # The version stamps os-release, partition labels, and the UKI and disk file names. A product names
 # one here, or asks for a git-derived one with `version = "auto:1.4.2"`, which needs a build through
 # `bin/tine` (see "Image versioning" in images.md); this demo has nothing to version.
-image.bootable_disk(
+image.disk(
     name = "boot-demo",
     package_manager = ":image.package-manager",
     definitions = image.DEFAULT_USR_VERITY_PARTITIONS,
@@ -325,6 +325,29 @@ assert register["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] == 2, register
 """,
     args = ["$(location :boot-demo.fedora[ami])", "$(location :boot-demo.fedora)"]
     + architecture.select({name: [spellings.ec2] for name, spellings in ARCHITECTURES.items()}),
+)
+
+# data-disk has no ESP partition, so image.disk builds it without systemd-boot, UKIs or an initrd.
+image.disk(
+    name = "data-disk",
+    package_manager = ":image.package-manager",
+    packages = ["bash"],
+    definitions = [
+        image.partition(
+            type = "root",
+            filesystem = "ext4",
+            copy_files = ["/"],
+            minimize = "guess",
+        ),
+    ],
+)
+
+box.sh_test(
+    name = "data-disk-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    test = "data-disk-test.sh",
+    args = ["$(location :data-disk.fedora)"],
 )
 
 # demo-ext extends boot-demo. The DDI contains only the files that demo-ext adds to boot-demo,

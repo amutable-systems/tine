@@ -186,9 +186,9 @@ def initrd_image(
 ) -> None:
     """Declare the conventional initrd, extended by `packages`, `package_sets`, and `ops`.
 
-    The release's `initrd` package set and the operations every initrd needs come first; what this
-    target declares is added to them rather than replacing them. `bootable_disk_image` declares one
-    of these for itself when it is given no `initrd`.
+    The initrd installs the release's `initrd` package set and runs the operations every initrd
+    needs first. The packages and operations of the target are added after them. A bootable `disk`
+    declares an initrd with `initrd_image` when it is given no `initrd`.
     """
     _initrd_image(
         name = name,
@@ -322,23 +322,18 @@ _portable = rule(
     attrs = IMAGE_ATTRS | PORTABLE_ATTRS | _ROOT_ATTRS,
 )
 
-def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
+def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
     tools = ctx.attrs._tools[ImageToolsInfo]
-    if (ctx.attrs.parent == None) == (ctx.attrs.package_manager == None):
-        fail("bootable_disk_image: exactly one of parent and package_manager is required")
-
+    bootable = ctx.attrs._bootable
     image_id = check_name(
-        "bootable_disk_image image_id",
+        "disk image_id",
         ctx.attrs.image_id or ctx.label.name,
     )
 
     # The version lands in partition labels and the UKI filename.
-    version = check_name("bootable_disk_image version", ctx.attrs.version, VERSION_PATTERN)
+    version = check_name("disk version", ctx.attrs.version, VERSION_PATTERN)
 
-    secure_boot_key = resolve_signing_key(ctx.attrs.secure_boot_key)
-
-    initrd_info = ctx.attrs.initrd[InitrdInfo]
-    initrd = initrd_info.image
+    secure_boot_key = resolve_signing_key(ctx.attrs.secure_boot_key) if bootable else None
 
     root = declare_image(
         ctx,
@@ -378,15 +373,6 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         image_id,
         version,
     )
-    system_definitions = []
-    boot_definitions = []
-    for definition in definitions:
-        if definition["type"] == "esp":
-            boot_definitions.append(definition)
-        else:
-            system_definitions.append(definition)
-    if not system_definitions or not boot_definitions:
-        fail("bootable_disk_image: definitions must include system and ESP partitions")
 
     # An option set for a filesystem this disk never formats would go nowhere: repart reads the
     # variable named after the filesystem it is about to create and ignores the rest.
@@ -394,7 +380,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     unknown = [name for name in sorted(ctx.attrs.mkfs_options) if name not in formatted]
     if unknown:
         fail(
-            "bootable_disk_image: mkfs_options for {}, which no partition of this disk formats; it formats {}".format(
+            "disk: mkfs_options for {}, which no partition of this disk formats; it formats {}".format(
                 unknown,
                 sorted(formatted),
             )
@@ -404,74 +390,136 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     # and every split partition, which repart names after the image it writes them out of.
     basename = "{}_{}_{}".format(image_id, version, ARCHITECTURES[ctx.attrs.arch].systemd)
 
-    system = declare_ddi(
-        ctx,
-        tools = tools,
-        systemd_arch = ARCHITECTURES[ctx.attrs.arch].systemd,
-        basename = basename,
-        definitions = system_definitions,
-        disk = False,
-        # repart leaves the directories that the ESP copies out of a root partition that copies "/",
-        # but only when the ESP is in the same run. The ESP is in a run of its own, so this run
-        # leaves them out itself. Otherwise the files that ops copy to /boot are in both partitions.
-        exclude = [entry.split(":")[0] for definition in boot_definitions for entry in definition["copy_files"]],
-        identifier = "system",
-        image = identity,
-        mkfs_options = ctx.attrs.mkfs_options,
-        seed = ctx.attrs.disk_seed,
-        split = True,
-        strip_pkgdb = ctx.attrs.strip_pkgdb,
-        verity_key = resolve_signing_key(ctx.attrs.verity_key),
-    )
+    if bootable:
+        # The disk() macro makes a disk bootable only when its definitions contain an ESP partition.
+        system_definitions = [definition for definition in definitions if definition["type"] != "esp"]
+        boot_definitions = [definition for definition in definitions if definition["type"] == "esp"]
+        if not system_definitions:
+            fail("disk: a bootable disk needs system partitions besides the ESP")
+        initrd_info = ctx.attrs.initrd[InitrdInfo]
 
-    uki = declare_uki(
-        ctx,
-        tools = tools,
-        arch = ctx.attrs.arch,
-        cmdline = ctx.attrs.cmdline,
-        identifier = "uki",
-        image = identity,
-        image_id = image_id,
-        initrd_modules = ctx.attrs.initrd_modules,
-        initrds = [initrd_info.cpio],
-        profiles = ctx.attrs.profiles,
-        root_hash = system.info.root_hash,
-        secure_boot_key = secure_boot_key,
-        sign_expected_pcr_key = resolve_signing_key(ctx.attrs.sign_expected_pcr_key),
-        splash = ctx.attrs.splash,
-        version = version,
-    )
-    esp = declare_image(
-        ctx,
-        tools = tools,
-        identifier = "esp",
-        keys = [secure_boot_key],
-        ops = [copy(uki.ukis, "/boot/EFI/Linux")] + install_systemd_boot(secure_boot_key),
-        parent = identity,
-        version = version,
-    )
+        # The UKI contains the verity root hash of the system partitions, and the ESP contains the
+        # UKI. repart therefore writes the system partitions first, and copies them into the disk
+        # after the ESP is built.
+        system = declare_ddi(
+            ctx,
+            tools = tools,
+            systemd_arch = ARCHITECTURES[ctx.attrs.arch].systemd,
+            basename = basename,
+            definitions = system_definitions,
+            disk = False,
+            # repart leaves the directories that the ESP copies out of a root partition that copies
+            # "/", but only when the ESP is in the same run. The ESP is in a run of its own, so this
+            # run leaves them out itself. Otherwise the files that ops copy to /boot are in both
+            # partitions.
+            exclude = [entry.split(":")[0] for definition in boot_definitions for entry in definition["copy_files"]],
+            identifier = "system",
+            image = identity,
+            mkfs_options = ctx.attrs.mkfs_options,
+            seed = ctx.attrs.disk_seed,
+            split = True,
+            strip_pkgdb = ctx.attrs.strip_pkgdb,
+            verity_key = resolve_signing_key(ctx.attrs.verity_key),
+        )
+        uki = declare_uki(
+            ctx,
+            tools = tools,
+            arch = ctx.attrs.arch,
+            cmdline = ctx.attrs.cmdline,
+            identifier = "uki",
+            image = identity,
+            image_id = image_id,
+            initrd_modules = ctx.attrs.initrd_modules,
+            initrds = [initrd_info.cpio],
+            profiles = ctx.attrs.profiles,
+            root_hash = system.info.root_hash,
+            secure_boot_key = secure_boot_key,
+            sign_expected_pcr_key = resolve_signing_key(ctx.attrs.sign_expected_pcr_key),
+            splash = ctx.attrs.splash,
+            version = version,
+        )
+        top = declare_image(
+            ctx,
+            tools = tools,
+            identifier = "esp",
+            keys = [secure_boot_key],
+            ops = [copy(uki.ukis, "/boot/EFI/Linux")] + install_systemd_boot(secure_boot_key),
+            parent = identity,
+            version = version,
+        )
+        composed = declare_ddi(
+            ctx,
+            tools = tools,
+            systemd_arch = ARCHITECTURES[ctx.attrs.arch].systemd,
+            basename = basename,
+            definitions = boot_definitions,
+            identifier = "disk",
+            image = top,
+            imported = [system.info],
+            mkfs_options = ctx.attrs.mkfs_options,
+            seed = ctx.attrs.disk_seed,
+        )
 
-    disk = declare_ddi(
-        ctx,
-        tools = tools,
-        systemd_arch = ARCHITECTURES[ctx.attrs.arch].systemd,
-        basename = basename,
-        definitions = boot_definitions,
-        identifier = "disk",
-        image = esp,
-        imported = [system.info],
-        mkfs_options = ctx.attrs.mkfs_options,
-        seed = ctx.attrs.disk_seed,
-    )
-    raw = disk.info.disk
-    directory = declare_image_directory(ctx, tools = tools, identifier = "directory", image = esp)
+        # repart lists the files of the system partitions in the run that writes them. The disk
+        # manifest therefore combines the manifests of both runs.
+        manifests = system.info.manifests | composed.info.manifests
+
+        # What this disk boots, as files rather than as PE sections: a direct kernel boot needs the
+        # kernel and the initrd the UKI carries, and publishing needs the one UKI out of the set the
+        # image ships. Declared here so a caller does not have to point a second target at the ESP.
+        boot = declare_boot_artifacts(ctx, tools = tools, identifier = "boot", image = top)
+        boot_sub_targets = {
+            "boot": [
+                DefaultInfo(
+                    default_outputs = [boot.kernel, boot.initrd],
+                    sub_targets = boot_subtargets(boot),
+                ),
+            ],
+            "initrd": [
+                DefaultInfo(
+                    default_output = initrd_info.cpio.archive,
+                    sub_targets = published_metadata_subtargets(initrd_info.image, "{}.initrd".format(basename)),
+                ),
+                initrd_info,
+            ],
+            "uki": [DefaultInfo(default_output = uki.ukis, sub_targets = uki_subtargets(uki)), uki],
+        }
+        boot_artifacts = {
+            "{}.efi".format(basename): boot.uki,
+            "{}.initrd".format(basename): boot.initrd,
+            "{}.vmlinuz".format(basename): boot.kernel,
+        }
+        boot_providers = [initrd_info, uki]
+    else:
+        top = identity
+        composed = declare_ddi(
+            ctx,
+            tools = tools,
+            systemd_arch = ARCHITECTURES[ctx.attrs.arch].systemd,
+            basename = basename,
+            definitions = definitions,
+            identifier = "disk",
+            image = top,
+            mkfs_options = ctx.attrs.mkfs_options,
+            seed = ctx.attrs.disk_seed,
+            split = True,
+            strip_pkgdb = ctx.attrs.strip_pkgdb,
+            verity_key = resolve_signing_key(ctx.attrs.verity_key),
+        )
+        manifests = composed.info.manifests
+        boot_sub_targets = {}
+        boot_artifacts = {}
+        boot_providers = []
+
+    raw = composed.info.disk
+    directory = declare_image_directory(ctx, tools = tools, identifier = "directory", image = top)
     conversions = [
         declare_disk_conversion(
             ctx,
             tools = tools,
             basename = basename,
-            disk = disk.info,
-            box = esp.box,
+            disk = composed.info,
+            box = top.box,
             format = format,
             virtual_size = ctx.attrs.virtual_size if format in VIRTUAL_SIZE_FORMATS else None,
             identifier = format,
@@ -479,48 +527,25 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         for format in DISK_FORMATS
     ]
 
-    # What this disk boots, as files rather than as PE sections: a direct kernel boot needs the
-    # kernel and the initrd the UKI carries, and publishing needs the one UKI out of the set the
-    # image ships. Declared here so a caller does not have to point a second target at the ESP.
-    boot = declare_boot_artifacts(ctx, tools = tools, identifier = "boot", image = esp)
-
-    # The system partitions are filled by their own repart run and imported into this one, so what
-    # the disk holds is what the two runs between them listed.
-    manifests = system.info.manifests | disk.info.manifests
-
-    sub_targets = dict(disk.sub_targets)
+    sub_targets = dict(composed.sub_targets)
     sub_targets.update(manifest_sub_targets(manifests))
-    sub_targets.update({
-        "boot": [
-            DefaultInfo(
-                default_outputs = [boot.kernel, boot.initrd],
-                sub_targets = boot_subtargets(boot),
+    sub_targets.update(boot_sub_targets)
+    sub_targets["directory"] = [DefaultInfo(default_output = directory.directory), directory]
+    if bootable:
+        sub_targets["ami"] = declare_ami(
+            ctx.actions,
+            arch = ctx.attrs.arch,
+            basename = basename,
+            box = ctx.attrs._ami_box[BoxInfo],
+            disk = raw,
+            importer = ctx.attrs._ami_import[RunInfo],
+            # A key held by a token has a URI, not a file, for a certificate; every key rule publishes the
+            # file as `[cert]`.
+            secure_boot_certificate = (
+                ctx.attrs.secure_boot_key[DefaultInfo].sub_targets["cert"][DefaultInfo].default_outputs[0] if secure_boot_key != None else None
             ),
-        ],
-        "directory": [DefaultInfo(default_output = directory.directory), directory],
-        "initrd": [
-            DefaultInfo(
-                default_output = initrd_info.cpio.archive,
-                sub_targets = published_metadata_subtargets(initrd, "{}.initrd".format(basename)),
-            ),
-            initrd_info,
-        ],
-        "uki": [DefaultInfo(default_output = uki.ukis, sub_targets = uki_subtargets(uki)), uki],
-    })
-    sub_targets["ami"] = declare_ami(
-        ctx.actions,
-        arch = ctx.attrs.arch,
-        basename = basename,
-        box = ctx.attrs._ami_box[BoxInfo],
-        disk = raw,
-        importer = ctx.attrs._ami_import[RunInfo],
-        # A key held by a token has a URI, not a file, for a certificate; every key rule publishes the
-        # file as `[cert]`.
-        secure_boot_certificate = (
-            ctx.attrs.secure_boot_key[DefaultInfo].sub_targets["cert"][DefaultInfo].default_outputs[0] if secure_boot_key != None else None
-        ),
-        virtual_size = ctx.attrs.virtual_size,
-    )
+            virtual_size = ctx.attrs.virtual_size,
+        )
     for conversion in conversions:
         sub_targets[conversion.format] = [
             DefaultInfo(default_output = conversion.image),
@@ -537,52 +562,62 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     # partition nothing ever writes back. The listings join them: one per partition, naming what
     # that partition puts on a machine and nothing the image happens to hold besides, and one for
     # the disk, which is what an installation of it leaves behind.
-    artifacts = {
-        "{}.efi".format(basename): boot.uki,
-        "{}.initrd".format(basename): boot.initrd,
-        "{}.vmlinuz".format(basename): boot.kernel,
-        raw.basename: raw,
-    }
+    artifacts = {raw.basename: raw} | boot_artifacts
     for name, listing in manifests.items():
         artifacts["{}.{}.Uapi16Manifest".format(basename, name)] = listing
-    whole = disk.info.manifest
+    whole = composed.info.manifest
     if whole != None:
         artifacts[whole.basename] = whole
 
     published = PublishedInfo(
         artifacts = artifacts,
-        partitions = [partition for partition in disk.info.partitions if partition.definition["type"] != "esp"],
+        partitions = [partition for partition in composed.info.partitions if partition.definition["type"] != "esp"],
     )
 
     return image_providers(
         default_outputs = [raw],
-        extra = [directory, disk.info, initrd_info, published, uki],
-        image = esp,
-        sub_targets = sub_targets | published_metadata_subtargets(esp, basename),
+        extra = [directory, composed.info, published] + boot_providers,
+        image = top,
+        sub_targets = sub_targets | published_metadata_subtargets(top, basename),
     )
 
-_bootable_disk_image = rule(
-    impl = _bootable_disk_image_impl,
-    supports_incoming_transition = True,
-    attrs = IMAGE_ATTRS
-    | UKI_ATTRS
+_DISK_ATTRS = (
+    IMAGE_ATTRS
     | DDI_ATTRS
     | _ROOT_ATTRS
     | {
-        "cmdline": attrs.list(
-            attrs.string(),
-            default = ["root=tmpfs", "mount.usr=dissect", "rw"],
-        ),
+        "arch": UKI_ATTRS["arch"],
         "disk_seed": attrs.option(attrs.string(), default = None),
         "image_id": attrs.option(attrs.string(), default = None),
-        "initrd": attrs.dep(
-            providers = [InitrdInfo],
-            doc = "the initrd to boot; the declaration macro declares a conventional one when given none",
-        ),
         "virtual_size": VIRTUAL_SIZE_ATTR,
-        "_ami_box": attrs.exec_dep(providers = [BoxInfo], default = "tine//tools:aws.box"),
-        "_ami_import": attrs.exec_dep(providers = [RunInfo], default = "tine//image:ami-import"),
-    },
+    }
+)
+
+# Only a bootable disk has the attributes in _BOOTABLE_ATTRS. Buck refuses them on a disk that
+# doesn't boot.
+_BOOTABLE_ATTRS = UKI_ATTRS | {
+    "cmdline": attrs.list(
+        attrs.string(),
+        default = ["root=tmpfs", "mount.usr=dissect", "rw"],
+    ),
+    "initrd": attrs.dep(
+        providers = [InitrdInfo],
+        doc = "the initrd to boot; the declaration macro declares a conventional one when given none",
+    ),
+    "_ami_box": attrs.exec_dep(providers = [BoxInfo], default = "tine//tools:aws.box"),
+    "_ami_import": attrs.exec_dep(providers = [RunInfo], default = "tine//image:ami-import"),
+}
+
+_disk = rule(
+    impl = _disk_impl,
+    supports_incoming_transition = True,
+    attrs = _DISK_ATTRS | {"_bootable": attrs.bool(default = False)},
+)
+
+_bootable_disk = rule(
+    impl = _disk_impl,
+    supports_incoming_transition = True,
+    attrs = _DISK_ATTRS | _BOOTABLE_ATTRS | {"_bootable": attrs.bool(default = True)},
 )
 
 def archive(
@@ -645,9 +680,10 @@ def portable(
         **(distribution.distributed(name, distro, visibility) | kwargs),
     )
 
-def bootable_disk_image(
+def disk(
     name: str,
     definitions: list[Partition],
+    bootable: bool | None = None,
     ops: list[LayerOperationTree] = [],
     profiles: list[UkiProfile] = [],
     initrd: str | Select | None = None,
@@ -658,29 +694,46 @@ def bootable_disk_image(
     visibility: list[str] | None = None,
     **kwargs,
 ) -> None:
-    """Compose the initrd, versioned UKIs, the ESP, and system partitions into a disk.
+    """Compose partitions into a disk, which boots when `bootable` is set.
 
-    Without `initrd`, a conventional `initrd_image()` is declared as `<name>.initrd` and booted;
-    declare one yourself to configure its packages, operations, or compression, which a disk
-    extending `parent` has to do because the initrd takes its package manager from the disk.
-
-    With secure_boot_key, the UKIs and systemd-boot are signed for Secure Boot, and the ESP receives
-    key auto-enrollment files for firmware in setup mode. With sign_expected_pcr_key, the UKIs carry
-    a signed expected-PCR policy.
+    `bootable` defaults to whether `definitions` contain an ESP partition. Without `initrd`, a
+    bootable disk declares a conventional `initrd_image()` as `<name>.initrd`. A bootable disk with
+    `parent` must be given an `initrd`, because the conventional initrd needs a package manager.
     """
+    esp = [definition for definition in definitions if definition["type"] == "esp"]
+    if bootable == None:
+        bootable = bool(esp)
+    elif bootable and not esp:
+        fail("disk {}: a bootable disk needs an ESP partition in definitions".format(name))
+    if not bootable and (profiles or initrd != None):
+        fail("disk {}: profiles and initrd apply only to a bootable disk".format(name))
+
     # Resolved once, against the labels this disk renders, and passed on: the initrd below carries
     # the version of the disk it boots rather than one rendered against its own empty budget.
     version = resolve_version(
-        "bootable_disk_image {}".format(name),
+        "disk {}".format(name),
         version,
         labels = [d["label"] for d in definitions if d["label"] != None],
         image_id = image_id or name,
     )
+    common = dict(
+        name = name,
+        image_id = image_id,
+        # The rule renders label placeholders from its own identity during analysis.
+        definitions = [json.encode(definition) for definition in definitions],
+        ops = flatten_operations(ops),
+        package_manager = package_manager,
+        version = version,
+        **(distribution.distributed(name, distro, visibility) | kwargs),
+    )
+    if not bootable:
+        _disk(**common)
+        return
 
     if initrd == None:
         if package_manager == None:
             fail(
-                "bootable_disk_image {}: declare an `initrd_image()` and pass it as `initrd`; ".format(name)
+                "disk {}: declare an `initrd_image()` and pass it as `initrd`; ".format(name)
                 + "a disk extending `parent` names no package manager to declare one from",
             )
         initrd = ":{}.initrd".format(name)
@@ -693,15 +746,4 @@ def bootable_disk_image(
             # otherwise the leaf pulling it in decides, exactly as a parent chain does.
             distro = distro,
         )
-    _bootable_disk_image(
-        name = name,
-        image_id = image_id,
-        initrd = initrd,
-        # The rule renders label placeholders from its own identity during analysis.
-        definitions = [json.encode(definition) for definition in definitions],
-        ops = flatten_operations(ops),
-        package_manager = package_manager,
-        profiles = encode_profiles(profiles),
-        version = version,
-        **(distribution.distributed(name, distro, visibility) | kwargs),
-    )
+    _bootable_disk(initrd = initrd, profiles = encode_profiles(profiles), **common)

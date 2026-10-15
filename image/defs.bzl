@@ -20,8 +20,8 @@ load(
     ":compose.bzl",
     "InitrdInfo",
     "archive",
-    "bootable_disk_image",
     "confext",
+    "disk",
     "extension",
     "initrd_image",
     "portable",
@@ -116,7 +116,7 @@ image = struct(
     confext = confext,
     extension = extension,
     portable = portable,
-    bootable_disk = bootable_disk_image,
+    disk = disk,
     artifacts = image_artifacts,
     initrd = initrd_image,
     # The core kernel modules a UKI carries unless a target says otherwise; extend it with `+`.
