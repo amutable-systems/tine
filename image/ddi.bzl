@@ -487,22 +487,14 @@ def _ddi_impl(ctx: AnalysisContext) -> list[Provider]:
         result.info,
     ]
 
+# Every rule that builds a DDI from partition definitions takes DDI_ATTRS.
 DDI_ATTRS = {
-    "basename": attrs.string(
-        default = "image",
-        doc = "what the composed disk and its split partitions are named after, without extension",
-    ),
     "definitions": attrs.list(attrs.string(), doc = "serialized partition definitions"),
     "mkfs_options": attrs.dict(
         attrs.string(),
         attrs.list(attrs.string()),
         default = {},
         doc = "filesystem -> the options mkfs is given when formatting a partition of that type",
-    ),
-    "seed": attrs.option(
-        attrs.string(),
-        default = None,
-        doc = "explicit GPT/partition UUID seed; by default derive one from target identity and definitions",
     ),
     "strip_pkgdb": attrs.bool(
         default = False,
@@ -515,12 +507,21 @@ _ddi = rule(
     impl = _ddi_impl,
     attrs = DDI_ATTRS
     | {
+        "basename": attrs.string(
+            default = "image",
+            doc = "what the composed disk and its split partitions are named after, without extension",
+        ),
         "disk": attrs.bool(default = True, doc = "emit a composed raw disk image"),
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image used to populate new partitions"),
         "partitions": attrs.list(
             attrs.dep(providers = [DdiInfo]),
             default = [],
             doc = "split ddi targets whose partitions should be copied into the result",
+        ),
+        "seed": attrs.option(
+            attrs.string(),
+            default = None,
+            doc = "explicit GPT/partition UUID seed; by default derive one from target identity and definitions",
         ),
         "split": attrs.bool(default = False, doc = "also emit independent artifacts for new partitions"),
         # `_arch` is the architecture the image runs on. repart picks the partition types for it.
