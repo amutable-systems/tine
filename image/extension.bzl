@@ -8,7 +8,6 @@ load(
     ":ddi.bzl",
     "Partition",  # @unused Used as a type.
     "declare_ddi",
-    "encode_definitions",
     "partition",
 )
 load(
@@ -139,7 +138,7 @@ def _declare_preset(
         tools = tools,
         image = image,
         systemd_arch = systemd_arch,
-        definitions = encode_definitions(_partitions(copy_files, signed), disk = True, imports = False, signed = signed, split = False),
+        definitions = _partitions(copy_files, signed),
         basename = filename,
         mkfs_options = _MKFS_OPTIONS,
         seed = seed,
