@@ -1187,17 +1187,17 @@ metadata step. Each package system captures its database in its native shape. SB
 tree additionally catches
 packages no package manager knows about, such as Go modules bundled into ELF binaries.
 
-Terminal rules leave the package database and other package state intact. An extension drops the
-database from the paths the image's package system declares, because a merged extension must not replace
-the host's. Image cleanup is an explicit, configurable layer so output formats do not silently alter image
-contents. Every terminal driver receives the same ordered layer stack and deferred tmpfiles snippets. It
-applies those snippets with
-`systemd-tmpfiles --root` before reading or emitting image content; a missing tool is an error whenever
-finalization is needed. The directives
+Terminal rules leave the package database and other package state intact. An extension drops the database
+from the paths the image's package system declares, because a merged extension must not replace the host's.
+Image cleanup is an explicit, configurable layer so output formats do not silently alter image contents.
+Every terminal driver receives the ordered layer stack and the deferred tmpfiles snippets of its image. An
+extension receives only the snippets that it adds to its base, because a snippet of the base would create a
+file of the base in the extension. The driver applies the snippets with `systemd-tmpfiles --root` before
+reading or emitting image content; a missing tool is an error whenever finalization is needed. The directives
 run against a disposable overlay upper and can create paths or restore modes and xattrs. Image-shipped
 tmpfiles configuration is not applied implicitly; enabling it will be an explicit output option once its
-single-UID/GID behavior is defined. Ownership and named ACL entries are deliberately unsupported: all
-archive entries use uid/gid zero.
+single-UID/GID behavior is defined. Ownership and named ACL entries are deliberately unsupported: all archive
+entries use uid/gid zero.
 
 Tar uses deterministic PAX archives and stores Linux xattrs using `SCHILY.xattr.*` headers. The newc cpio
 format has no general xattr representation. Tar/cpio entries are ordered and mtimes are clamped to the fixed

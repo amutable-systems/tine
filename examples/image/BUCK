@@ -331,6 +331,8 @@ image.portable(
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"],
     install_docs = False,
+    # demo-portable-ext must not contain this directory, because only demo-portable declares it.
+    tmpfiles = ["d /etc/tine/from-base-tmpfiles 0755 - -"],
     ops = [image.ops.copy("demo-portable.service", "/usr/lib/systemd/system/demo-portable.service")],
 )
 
