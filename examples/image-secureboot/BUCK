@@ -200,7 +200,7 @@ image.vm(
     # select setup-mode firmware, so sd-boot enrolls the keys from the ESP on first
     # boot; VM then enforces Secure Boot.
     secure_boot = True,
-    sysexts = [":demo-ext"],
+    extensions = [":demo-ext"],
 )
 
 # Boot smoke test: enrolls keys on first boot, settles under Secure Boot with a vTPM, then powers

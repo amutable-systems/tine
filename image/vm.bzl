@@ -7,7 +7,7 @@ load("@prelude//platforms:defs.bzl", "host_configuration")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//distribution:defs.bzl", "distribution")
 load(":ddi.bzl", "DdiInfo", "SIZE_PATTERN")
-load(":extension.bzl", "ExtensionInfo")
+load(":extension.bzl", "ExtensionInfo", "PortableInfo")
 
 def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
     disk = ctx.attrs.image[DdiInfo]
@@ -56,26 +56,37 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
     if ctx.attrs.secure_boot or ctx.attrs.tpm:
         run.add("--tpm=yes")
 
-    if ctx.attrs.sysexts:
-        # each DDI must be named after its extension.
-        extensions = {}
-        for dep in ctx.attrs.sysexts:
-            if "system" not in dep[ExtensionInfo].scope:
-                fail("image_vm: {} is not an extension with the system scope".format(dep.label))
-            ddi = dep[DdiInfo].disk
+    directories = {}
+    for dep in ctx.attrs.extensions:
+        extension = dep[ExtensionInfo]
+        if "system" not in extension.scope:
+            fail("image_vm: {} is not an extension with the system scope".format(dep.label))
+        for class_name, directory in (("sysext", "extensions"), ("confext", "confexts")):
+            if class_name in extension.classes:
+                directories.setdefault(directory, []).append(dep[DdiInfo].disk)
+    for dep in ctx.attrs.portables:
+        extension = dep.get(ExtensionInfo)
+        if dep.get(PortableInfo) == None and (extension == None or "portable" not in extension.scope):
+            fail("image_vm: {} is neither a portable image nor an extension with the portable scope".format(dep.label))
+        directories.setdefault("portables", []).append(dep[DdiInfo].disk)
 
-            # systemd takes the image name from the file name, up to the first "_".
-            name = ddi.basename.split("_")[0]
-            if name + ".raw" in extensions:
-                fail("image_vm: duplicate sysext {!r}".format(name))
-            extensions[name + ".raw"] = ddi
+    for directory in sorted(directories):
+        files = {}
+        for disk in directories[directory]:
+            # systemd takes the image name from the file name, up to the first "_", and looks up an
+            # extension's release file by it. portablectl attaches the units of a portable image
+            # by it too, so the guest gets each DDI as <image name>.raw.
+            name = disk.basename.split("_")[0] + ".raw"
+            if name in files:
+                fail("image_vm: duplicate {} DDI {!r}".format(directory, name))
+            files[name] = disk
         run.add(
             cmd_args(
-                ctx.actions.copied_dir("extensions", extensions),
-                # can't use /run/extensions: vmspawn marks binds x-initrd.mount, so the initrd
-                # mounts them at /sysroot/<target>; switch-root then moves the initrd's own /run
-                # tmpfs onto the new root's /run, burying a mount on that directory.
-                format = "--bind={}:/var/lib/extensions",
+                ctx.actions.copied_dir(directory, files),
+                # The binds can't go below /run. vmspawn marks binds x-initrd.mount, so the initrd
+                # mounts them at /sysroot/<target>. switch-root then moves the /run tmpfs of the
+                # initrd onto /run of the new root, which hides a mount below /run.
+                format = "--bind={{}}:/var/lib/{}".format(directory),
             ),
         )
 
@@ -131,12 +142,22 @@ _image_vm = rule(
             default = {},
             doc = "non-secret system credentials passed to systemd-vmspawn",
         ),
+        "extensions": attrs.list(
+            attrs.dep(providers = [DdiInfo, ExtensionInfo]),
+            default = [],
+            doc = "extensions merged at boot, from /var/lib/extensions and /var/lib/confexts by class",
+        ),
         "grow": attrs.option(
             attrs.string(),
             default = None,
             doc = 'size to grow the disk file to before booting, e.g. "8G"; the built image itself grows',
         ),
         "image": attrs.dep(providers = [DdiInfo], doc = "the raw disk image to boot ephemerally"),
+        "portables": attrs.list(
+            attrs.dep(providers = [DdiInfo]),
+            default = [],
+            doc = "portable service images and their extensions, exposed under /var/lib/portables",
+        ),
         "ram": attrs.option(
             attrs.string(),
             default = None,
@@ -145,11 +166,6 @@ _image_vm = rule(
         "secure_boot": attrs.bool(
             default = False,
             doc = "boot with Secure Boot capable firmware",
-        ),
-        "sysexts": attrs.list(
-            attrs.dep(providers = [DdiInfo, ExtensionInfo]),
-            default = [],
-            doc = "sysext DDIs exposed to the guest under /var/lib/extensions",
         ),
         "tpm": attrs.bool(
             default = False,

@@ -206,7 +206,12 @@ image.bootable_disk(
             "arch": ["amd-ucode", "intel-ucode"],
             "fedora": ["amd-ucode-firmware", "microcode_ctl"],
         }),
-    }),
+    })
+    # Only Arch's systemd package contains portablectl.
+    + distribution.select({"arch": []}, default = ["systemd-container"]),
+    # systemd-confext mounts /etc read-only by default. This image writes /etc at boot, and login
+    # fails with "PAM failure, aborting" once a confext is merged.
+    ops = [image.ops.write_file("/usr/lib/systemd/confext.conf.d/10-mutable.conf", "[ConfExt]\nMutable=ephemeral\n")],
     profiles = [
         image.uki_profile(
             id = "debug",
@@ -241,7 +246,8 @@ image.vm(
     # same harness and the VM stack is built once rather than per release.
     box = "tine//catalog:fedora.rawhide.box",
     image = ":boot-demo",
-    sysexts = [":demo-ext"],
+    extensions = [":demo-confext", ":demo-ext"],
+    portables = [":demo-portable", ":demo-portable-ext"],
 )
 
 # Boot smoke test: drives :boot-demo-vm's console over a pty (via the shared tine driver),
@@ -264,6 +270,20 @@ tests.vm_smoke(
         "grep -q tine.smoke=1 /proc/cmdline",
         # The initrd carries networkd for IMDS, which is inert on a non-cloud VM.
         '[ -z "$(journalctl -b -q _RUNTIME_SCOPE=initrd _SYSTEMD_UNIT=systemd-networkd.service)" ]',
+        # systemd-sysext and systemd-confext merged the extensions the runner binds in at boot.
+        "test -x /usr/bin/zsh",
+        "test -f /etc/tine/from-confext",
+        "touch /etc/tine/written-after-merge",
+        # portabled checks the extension-release files of demo-portable-ext against the os-release
+        # of demo-portable.
+        "portablectl attach --now --runtime --extension demo-portable-ext demo-portable",
+        "portablectl is-attached --extension demo-portable-ext demo-portable",
+        "systemctl is-active demo-portable.service",
+        # Without demo-portable-ext, demo-portable.service fails. This shows that the files came
+        # from the extension.
+        "portablectl detach --now --runtime --extension demo-portable-ext demo-portable",
+        "portablectl attach --runtime demo-portable",
+        "! systemctl start demo-portable.service",
     ],
 )
 

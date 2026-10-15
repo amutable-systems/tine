@@ -362,10 +362,14 @@ when needed:
   and `[initrd]` subtargets;
 - `image.vm` runs the raw image ephemerally with its explicitly selected box's `systemd-vmspawn`, QEMU,
   and OVMF stack,
-  and binds all given `sysexts` DDIs into the guest at `/var/lib/extensions`, where systemd-sysext merges
-  them at boot. With `secure_boot`, vmspawn picks Secure Boot capable firmware without pre-enrolled keys,
-  so an image carrying `loader/keys/auto` enrollment files enrolls them on first boot and then boots with
-  Secure Boot enforced, and attaches a software TPM so the UKI's signed expected-PCR policy is measured.
+  and binds the DDIs in `extensions` into the guest, where systemd merges them at boot: a sysext from
+  `/var/lib/extensions`, a confext from `/var/lib/confexts`, and a DDI of both classes from both. Each
+  must have the `system` scope. It binds the DDIs in `portables`, portable images and extensions with
+  the `portable` scope, at `/var/lib/portables`, where `portablectl attach` finds them by name. Each DDI
+  is named `<name>.raw` in the guest. With `secure_boot`, vmspawn picks Secure Boot capable firmware
+  without pre-enrolled keys, so an image carrying `loader/keys/auto` enrollment files enrolls them on
+  first boot and then boots with Secure Boot enforced, and attaches a software TPM so the UKI's signed
+  expected-PCR policy is measured.
 
 `image.archive` builds one logical image from operations and writes it as a deterministic tar or newc cpio
 archive, optionally zstd-compressed (`compression = "zstd"`). `image.sysext`, `image.confext` and
@@ -985,10 +989,19 @@ tine buck build //examples/image:demo-portable.fedora
 
 These validate package installation and commands sharing one delta, incremental layering, archive packing,
 versioned UKI creation, semantic boot-artifact extraction, ESP-layer assembly, and disk composition.
-`demo-ext` is a system-extension DDI on top of `boot-demo`. Running `boot-demo-vm` validates the interactive
-VM runner; it exposes `demo-ext` under `/var/lib/extensions` in the guest, which validates the sysext merge
-at boot. `demo-confext` is a configuration extension for `boot-demo`. `demo-portable` is a portable
-service image, and `demo-portable-ext` an extension for it.
+`demo-ext` is a system extension and `demo-confext` a configuration extension on top of `boot-demo`.
+`demo-portable` is a portable service image, and `demo-portable-ext` an extension for it. Running
+`boot-demo-vm` validates the interactive VM runner. `boot-demo-vm-smoke` boots `boot-demo`, merges
+`demo-ext` and `demo-confext` at boot, and attaches the two portable DDIs with
+`portablectl attach --extension demo-portable-ext demo-portable`.
+
+A host that merges a confext or attaches a portable image needs two things, which `boot-demo` provides:
+
+- systemd-confext mounts `/etc` read-only unless configured otherwise. A host that writes `/etc` at
+  boot needs a `confext.conf.d` drop-in with `Mutable=`, or login fails with "PAM failure, aborting"
+  once a confext is merged. `boot-demo` uses `Mutable=ephemeral`.
+- Only Arch's systemd package contains portablectl. Debian and Fedora install it with
+  `systemd-container`.
 
 The signed variant lives in `//examples/image-secureboot`: its `demo-ext` signs the verity root hash with a
 generated key, the image ships that key's certificate in `/usr/lib/verity.d/` and a
