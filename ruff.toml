@@ -15,6 +15,7 @@ src = [
     "cargo",
     "box",
     "image",
+    "kmod",
     "image_format",
     "package",
     "package_system/pacman",

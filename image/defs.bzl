@@ -41,6 +41,7 @@ load(
     "uki",
     "uki_profile",
 )
+load("//kmod:initrd_modules.toml", _INITRD_MODULES = "value")
 load(
     ":compose.bzl",
     "bootable_disk_image",
@@ -68,7 +69,6 @@ load(
     "write_file",
 )
 load(":initrd.bzl", "InitrdInfo", "initrd_image")
-load(":initrd_modules.toml", _INITRD_MODULES = "value")
 load(":install.bzl", "image_install")
 load(":publish.bzl", "PublishedInfo", "image_artifacts")
 load(
