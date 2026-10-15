@@ -18,12 +18,12 @@ Three signing roles can each take such a key, independently:
 |--------------|------------------------------------------------------|-----------------------------|
 | Secure Boot  | the UKI, its kernel, systemd-boot, ESP enrollment    | `systemd-sbsign`, `bootctl` |
 | expected PCR | the TPM policy sealing PCR 11, per UKI profile       | `systemd-measure`           |
-| verity       | disk/extension `*-verity-sig` partitions             | `systemd-repart`            |
+| verity       | disk/extension/portable `*-verity-sig` partitions    | `systemd-repart`            |
 
-The extension rules take a verity-role key for their DDI as well. The host merging the extension
-validates the signature against the certificates in its `/usr/lib/verity.d/`; these must be files, which a
-token's certificate is not. Every key rule therefore publishes `:<name>[cert]`, its certificate as a PEM
-artifact, so an image installs one the same way whatever holds the key.
+The extension rules and `image.portable` take a verity-role key for their DDI as well. The host merging the
+extension validates the signature against the certificates in its `/usr/lib/verity.d/`; these must be files,
+which a token's certificate is not. Every key rule therefore publishes `:<name>[cert]`, its certificate as a
+PEM artifact, so an image installs one the same way whatever holds the key.
 
 ## How the pieces connect
 

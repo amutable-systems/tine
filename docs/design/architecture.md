@@ -1173,7 +1173,7 @@ pulls in are built; the universe target itself never forces a package build.
 Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
 needed. The catalog of terminal rules (`image.archive`, `image.directory`, `image.uki`, `image.ddi`,
 `image.bootable`, and `image.vm`) and the `image.rootfs_archive`, `image.sysext`, `image.confext`,
-`image.extension`, and `image.bootable_disk` composition rules are documented in
+`image.extension`, `image.portable`, and `image.bootable_disk` composition rules are documented in
 [images.md](../user/images.md). All of them, with the operation helpers and conventional partition layouts,
 are members of the `image` struct exported from `tine//image:defs.bzl`; that facade is the public API, and
 the modules behind it are implementation structure. Every public facade a consuming project loads from
@@ -1382,10 +1382,10 @@ rules, so the composition reuses their implementations without declaring private
 forwarding through a result rule. This aggregation remains scoped to the concrete bootable-image product;
 it does not restore a generic `image_result` around every logical `image.ImageInfo`.
 
-`image.rootfs_archive` and the extension rules follow the same ownership model on a smaller graph: one
-rule declares the logical image with its lazy package-database/SBOM views, and its terminal archive or DDI.
-Each target returns `image.ImageInfo` alongside its terminal provider, so consumers never depend on
-generated `.layer`, `.pkgdb`, or `.sbom` labels. The standalone terminal rules share the same
+`image.rootfs_archive`, `image.portable` and the extension rules follow the same ownership model on a smaller
+graph: one rule declares the logical image with its lazy package-database/SBOM views, and its terminal
+archive or DDI. Each target returns `image.ImageInfo` alongside its terminal provider, so consumers never
+depend on generated `.layer`, `.pkgdb`, or `.sbom` labels. The standalone terminal rules share the same
 provider-oriented declaration functions.
 
 The disk, directory, package database, and SBOM derive from the same ESP layer. The initrd is a second

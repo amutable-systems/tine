@@ -299,6 +299,32 @@ image.confext(
     ops = [image.ops.write_file("/etc/tine/from-confext", "confext\n")],
 )
 
+# portablectl attaches only the units whose names start with the image name, so the service is
+# called demo-portable.service.
+image.portable(
+    name = "demo-portable",
+    package_manager = ":image.package-manager",
+    packages = ["bash", "coreutils"],
+    install_docs = False,
+    ops = [image.ops.copy("demo-portable.service", "/usr/lib/systemd/system/demo-portable.service")],
+)
+
+# demo-portable.service fails unless it finds the files that demo-portable-ext adds to /usr and
+# /etc. systemd merges only /usr, /opt and /etc of an extension, so the extension DDI does not
+# contain the file that demo-portable-ext writes to /var. A portable service that needs a directory
+# under /var must find it in the portable image.
+image.extension(
+    name = "demo-portable-ext",
+    base = ":demo-portable",
+    classes = ["sysext", "confext"],
+    scope = ["portable"],
+    ops = [
+        image.ops.write_file("/usr/lib/tine/from-portable-ext", "usr\n"),
+        image.ops.write_file("/etc/tine/from-portable-ext", "etc\n"),
+        image.ops.write_file("/var/lib/tine/from-portable-ext", "var\n"),
+    ],
+)
+
 # A file tree that differs per distribution is one copy whose source is a select, rather than a
 # target per distribution and an alias choosing between them. A distribution the select names no
 # tree for gets `None`, which copies nothing; only arch ships one so every other exercises that.
@@ -440,6 +466,32 @@ box.sh_test(
     + architecture.select({name: ["demo-ext_0_{}.sysext.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()})
     + ["$(location :demo-confext.fedora)"]
     + architecture.select({name: ["demo-confext_0_{}.confext.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()}),
+)
+
+# portablectl takes the image name from the DDI's file name, up to the first "_", and matches the
+# units it attaches against that name.
+box.sh_test(
+    name = "portable-name-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = 'test "$(basename "$1")" = "$2" && test "$(basename "$3")" = "$4"',
+    args = ["$(location :demo-portable.fedora)"]
+    + architecture.select({name: ["demo-portable_0_{}.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()})
+    + ["$(location :demo-portable-ext.fedora)"]
+    + architecture.select({name: ["demo-portable-ext_0_{}.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()}),
+)
+
+# The portable image contains its os-release and no extension-release files. The extension contains
+# extension-release files, no os-release, and none of the files of demo-portable.
+box.sh_test(
+    name = "portable-manifest-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    test = "portable-manifest.sh",
+    args = [
+        "$(location :demo-portable.fedora[disk-manifest])",
+        "$(location :demo-portable-ext.fedora[disk-manifest])",
+    ],
 )
 
 # [NAME, DIGEST, PATH] for each target expected.json tracks, per architecture. Sorted, so the command line

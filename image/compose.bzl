@@ -40,7 +40,9 @@ load(
     ":extension.bzl",
     "EXTENSION_ATTRS",
     "ExtensionInfo",
+    "PORTABLE_ATTRS",
     "declare_extension",
+    "declare_portable",
 )
 load(
     ":image.bzl",
@@ -98,6 +100,15 @@ _EBS_IO_TIMEOUT = write_file(
     "/usr/lib/udev/rules.d/70-ebs-io-timeout.rules",
     'KERNEL=="nvme[0-9]*n[0-9]*", ENV{DEVTYPE}=="disk", ATTRS{model}=="Amazon Elastic Block Store", ATTR{queue/io_timeout}="4294967295"\n',
 )
+
+# The portable profiles bind /etc/machine-id and /etc/resolv.conf from the host. systemd cannot create
+# mount points on the read-only root partition, so the image must contain empty /etc/machine-id and
+# /etc/resolv.conf files. The caller's operations run after _PORTABLE_MOUNT_POINTS, so an operation
+# that writes /etc/machine-id or /etc/resolv.conf replaces the empty file.
+_PORTABLE_MOUNT_POINTS = [
+    write_file("/etc/machine-id"),
+    write_file("/etc/resolv.conf"),
+]
 
 def _initrd_image_impl(ctx: AnalysisContext) -> list[Provider]:
     tools = ctx.attrs._tools[ImageToolsInfo]
@@ -312,6 +323,40 @@ _extension = rule(
             attrs.dep(providers = [PackageManagerInfo]),
             default = None,
         ),
+    },
+)
+
+def _portable_impl(ctx: AnalysisContext) -> list[Provider]:
+    image = _composed_image(
+        ctx,
+        tools = ctx.attrs._tools[ImageToolsInfo],
+        package_manager = ctx.attrs.package_manager,
+        install_docs = ctx.attrs.install_docs,
+        install_langs = ctx.attrs.install_langs,
+        ops = _PORTABLE_MOUNT_POINTS + ctx.attrs.ops,
+        package_sets = ctx.attrs.package_sets,
+        packages = ctx.attrs.packages,
+        tmpfiles = ctx.attrs.tmpfiles,
+        version = ctx.attrs.version,
+    )
+    return declare_portable(
+        ctx,
+        tools = ctx.attrs._tools[ImageToolsInfo],
+        arch = ctx.attrs.arch,
+        image = image,
+        name = ctx.label.name,
+        seed = ctx.attrs.seed,
+        verity_key = resolve_signing_key(ctx.attrs.verity_key),
+        version = ctx.attrs.version,
+    )
+
+_portable = rule(
+    impl = _portable_impl,
+    supports_incoming_transition = True,
+    attrs = IMAGE_ATTRS
+    | PORTABLE_ATTRS
+    | {
+        "package_manager": attrs.dep(providers = [PackageManagerInfo]),
     },
 )
 
@@ -648,6 +693,22 @@ def sysext(name: str, **kwargs) -> None:
 def confext(name: str, **kwargs) -> None:
     """Build a configuration extension: an extension DDI that contains /etc."""
     extension(name = name, classes = ["confext"], **kwargs)
+
+def portable(
+    name: str,
+    ops: list[LayerOperationTree] = [],
+    version: str | Select | None = None,
+    distro: str | None = None,
+    visibility: list[str] | None = None,
+    **kwargs,
+) -> None:
+    """Build one logical image from operations and package it as a portable service DDI."""
+    _portable(
+        name = name,
+        ops = flatten_operations(ops),
+        version = resolve_version("portable {}".format(name), version),
+        **(distribution.distributed(name, distro, visibility) | kwargs),
+    )
 
 def bootable_disk_image(
     name: str,

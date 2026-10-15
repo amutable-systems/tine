@@ -24,6 +24,7 @@ load(
     "confext",
     "extension",
     "initrd_image",
+    "portable",
     "rootfs_archive",
     "sysext",
 )
@@ -116,6 +117,7 @@ image = struct(
     sysext = sysext,
     confext = confext,
     extension = extension,
+    portable = portable,
     bootable_disk = bootable_disk_image,
     artifacts = image_artifacts,
     initrd = initrd_image,

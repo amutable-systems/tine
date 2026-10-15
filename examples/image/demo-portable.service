@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
+# SPDX-License-Identifier: MPL-2.0
+
+[Unit]
+Description=tine portable service example
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# The files below come from demo-portable-ext. The service fails when the extension is not attached.
+ExecStart=/usr/bin/test -f /usr/lib/tine/from-portable-ext
+ExecStart=/usr/bin/test -f /etc/tine/from-portable-ext
