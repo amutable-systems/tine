@@ -360,7 +360,7 @@ when needed:
   split-only invocation, `strip_pkgdb` leaves the package database out of the partitions, and
   `mkfs_options` tunes the filesystems it creates;
 - `image.disk_convert` re-encodes a raw disk with an explicitly selected box and provides
-  `image.DiskConversionInfo`; `virtual_size` sizes the disk a qcow2 describes;
+  `image.DiskConversionInfo`; `virtual_size` sizes the disk a qcow2 or VMDK describes;
 - `image.bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
 - `image.vm` runs the raw image ephemerally with its explicitly selected box's `systemd-vmspawn`, QEMU,
@@ -530,10 +530,10 @@ Optional attributes:
   `image.ddi()`.
 - `secure_boot_key` (target providing `image.SigningKeyInfo`): Signs the UKIs and systemd-boot; see "Secure
   Boot signing" below.
-- `virtual_size` (size string such as `"20G"`): The size of a virtual disk like `[qcow2]`. A system booted
-  from it can claim the extra space during first boot, e.g. for a root partition. The raw image stays at
-  the size of its partitions. As with `image.vm`'s `grow`, the extra space sits past the GPT backup header
-  until something rewrites the table. A size the partitions do not fit in fails the build.
+- `virtual_size` (size string such as `"20G"`): The size of a virtual disk (`[qcow2]` or `[vmdk]`). A
+  system booted from it can claim the extra space during first boot, e.g. for a root partition. The raw
+  image stays at the size of its partitions. As with `image.vm`'s `grow`, the extra space sits past the GPT
+  backup header until something rewrites the table. A size the partitions do not fit in fails the build.
 - `mkfs_options` (dict of filesystem to option list, default `{}`): Options `mkfs` is given when
   creating a partition of that filesystem, passed on to `image.ddi()`, which hands each list to
   `systemd-repart` as `SYSTEMD_REPART_MKFS_OPTIONS_<FSTYPE>`. Naming a filesystem the disk never formats
@@ -619,6 +619,7 @@ views and supply-chain artifacts are lazy subtargets:
 ├── [directory]
 ├── [qcow2]
 ├── [raw.zst]
+├── [vmdk]
 ├── [manifest]
 ├── [pkgdb]
 ├── [sbom]
@@ -642,8 +643,9 @@ views and supply-chain artifacts are lazy subtargets:
 
 The disk and its re-encodings are files named `<image_id>_<version>_<arch>.<ext>`, so they keep the image
 identity when copied out of the build, exactly matching the UKI's `<image_id>_<version>_<arch>.efi`.
-The `[qcow2]` and `[raw.zst]` subtargets re-encode the raw disk into a compact qcow2 or a compressed raw on
-demand, each publishing one `image.DiskConversionInfo`; the encodings are reachable only through those
+The `[qcow2]`, `[raw.zst]` and `[vmdk]` subtargets re-encode the raw disk into a compact qcow2, a compressed
+raw, or a compressed (streamOptimized) VMDK for VMware and cloud importers on demand, each publishing one
+`image.DiskConversionInfo`; the encodings are reachable only through those
 subtargets, because one result cannot carry the same provider type twice. The target has no aggregate
 bootable-image provider: it returns `image.ImageInfo`, `image.DdiInfo`, `image.InitrdInfo`,
 `image.ImageDirectoryInfo`,
@@ -656,7 +658,7 @@ names instead of composing names of its own. A partition is the exception and tr
 `PartitionInfo`: its name contains the
 type and UUID repart assigned, so it exists only after the build, and a consumer reads it back out of the
 metadata written beside the partition. The ESP is not published: what it carries is transferred by other
-means, and no update writes the partition back. `[qcow2]` and `[raw.zst]` publish themselves rather than
+means, and no update writes the partition back. The format subtargets publish themselves rather than
 travelling in the disk's own set, so gathering a release does not build every encoding of it. So do the
 metadata views: `[sbom]` publishes both formats and `[pkgdb]` one file named after the format its package
 system keeps the database in, each named after the image they describe, and for a disk `[initrd][sbom]`
