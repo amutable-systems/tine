@@ -374,9 +374,10 @@ when needed:
 `image.archive` builds one logical image from operations and writes it as a deterministic tar or newc cpio
 archive, optionally zstd-compressed (`compression = "zstd"`). `image.sysext`, `image.confext` and
 `image.extension` are the compositions for extension DDIs (see "Extensions" below), and `image.portable` is
-the composition for portable service images (see "image.portable" below). `image.archive` and
-`image.bootable_disk` start their image from `package_manager`, or add their operations on top of the image
-in `parent`. Every composition takes `install_docs` and passes it to the image it builds.
+the composition for portable service images (see "image.portable" below). `image.archive`, the extension
+rules, `image.portable` and `image.bootable_disk` start their image from `package_manager`, or add their
+operations on top of the image in `parent`. Every composition takes `install_docs` and passes it to the image
+it builds.
 
 Each composition publishes one product target that also provides its logical filesystem as `image.ImageInfo`.
 `image.archive` defaults to its archive and provides `image.ImageArchiveInfo`, which names the format of the
@@ -411,39 +412,39 @@ both, named in `classes`:
 ```Starlark
 image.sysext(
     name = "debug-tools",
-    base = ":appliance",
+    parent = ":appliance",
     packages = ["strace", "gdb"],
 )
 
 image.confext(
     name = "site-config",
-    base = ":appliance",
+    parent = ":appliance",
     ops = [image.ops.copy("chrony.conf", "/etc/chrony.conf")],
 )
 
 image.extension(
     name = "webapp-cni",
-    base = ":webapp",
+    parent = ":webapp",
     classes = ["sysext", "confext"],
     scope = ["portable"],
     ops = [image.ops.copy("cni", "/")],
 )
 ```
 
-With `base`, the DDI contains only what the target adds on top of `base`. Only the `tmpfiles` lines that the
-target adds apply to the DDI, so a line of `base` creates nothing in it. `base` can be any image except
-another extension. Without `base`, the target takes a `package_manager` and the DDI contains its whole tree.
-The DDI is an erofs root partition, its verity hash partition and, with `verity_key`, a signature over the
-verity root hash. A host validates the signature against the certificates in its `/usr/lib/verity.d/`, and
-enforces it only where its image policy says so (see "Example targets" below). The DDI contains no os-release
-and no package database.
+With `parent`, the DDI contains only what the target adds on top of `parent`. Only the `tmpfiles` lines that
+the target adds apply to the DDI, so a line of `parent` creates nothing in it. `parent` can be any image
+except another extension. Without `parent`, the target takes a `package_manager` and the DDI contains its
+whole tree. The DDI is an erofs root partition, its verity hash partition and, with `verity_key`, a signature
+over the verity root hash. A host validates the signature against the certificates in its
+`/usr/lib/verity.d/`, and enforces it only where its image policy says so (see "Example targets" below). The
+DDI contains no os-release and no package database.
 
 The rule writes one extension-release file per class:
 `/usr/lib/extension-release.d/extension-release.<name>` for a sysext and
 `/etc/extension-release.d/extension-release.<name>` for a confext. Each file contains:
 
-- `ID` and `VERSION_ID` from the os-release of `base`. A base without `VERSION_ID`, such as Arch Linux,
-  gives only `ID`. Without `base`, `ID=_any`, which matches any host.
+- `ID` and `VERSION_ID` from the os-release of `parent`. A parent without `VERSION_ID`, such as Arch
+  Linux, gives only `ID`. Without `parent`, `ID=_any`, which matches any host.
 - `SYSEXT_SCOPE` or `CONFEXT_SCOPE`, from `scope`. The scope lists where systemd applies the extension.
   `system` merges it on the host and `initrd` in the initrd. `portable` lets
   `portablectl attach --extension` or `ExtensionImages=` add it on top of a portable service image. The
@@ -471,7 +472,7 @@ The target defaults to its DDI and provides `image.DdiInfo`, like `image.ddi`, a
 `image.portable()` builds a portable service image for `portablectl attach` and `RootImage=`. The DDI
 contains the whole tree of the image, including its os-release, in an erofs root partition with its
 verity hash partition and, with `verity_key`, a signature over the verity root hash. Extensions for it
-are `image.extension()` targets with `base` set to the portable image and `scope = ["portable"]`:
+are `image.extension()` targets with `parent` set to the portable image and `scope = ["portable"]`:
 
 ```Starlark
 image.portable(
@@ -487,7 +488,7 @@ image.portable(
 
 image.extension(
     name = "webapp-config",
-    base = ":webapp",
+    parent = ":webapp",
     classes = ["confext"],
     scope = ["portable"],
     ops = [image.ops.copy("webapp.conf", "/etc/webapp/webapp.conf")],
@@ -505,12 +506,11 @@ Services](https://systemd.io/PORTABLE_SERVICES/) lists what else an image needs,
 `/tmp`, which the base package of a distribution installs. Like `image.archive`, the rule runs the
 generators (see "Generating what packages only describe").
 
-The DDI is named `<name>_<version>_<arch>.raw`. portablectl takes the image name from the file name up to
-the first `_`, and attaches the units whose names start with that image name: `webapp.service`,
-`webapp-worker.service` or `webapp@.service`. The target defaults to its DDI and provides
-`image.DdiInfo`, with the same `[roothash]` and `[disk-manifest]` subtargets as an extension. It takes
-`package_manager`, the operations and packages of any composition, and `version`, `arch`, `seed` and
-`verity_key`.
+The DDI is named `<name>_<version>_<arch>.raw`. portablectl takes the image name from the file name up to the
+first `_`, and attaches the units whose names start with that image name: `webapp.service`,
+`webapp-worker.service` or `webapp@.service`. The target defaults to its DDI and provides `image.DdiInfo`,
+with the same `[roothash]` and `[disk-manifest]` subtargets as an extension. It takes `package_manager` or
+`parent`, the operations and packages of any composition, and `version`, `arch`, `seed` and `verity_key`.
 
 ### image.bootable_disk
 
@@ -556,10 +556,10 @@ Optional attributes:
   without one the policy is not sealed. See "Secure Boot signing" below.
 - `parent` (target label providing `image.ImageInfo`): The logical image the disk extends, instead of the
   `package_manager` it would otherwise start one from; exactly one of the two is required. This is what
-  lets something else build on the same content the disk boots: an `image.sysext()` whose `base` is
+  lets something else build on the same content the disk boots: an `image.sysext()` whose `parent` is
   that image extends what the disk carries, and the disk can then ship the resulting DDI through
   `esp_files`,
-  where making the extension's base the disk itself would be a dependency cycle. A disk extending a parent
+  where making the extension's parent the disk itself would be a dependency cycle. A disk extending a parent
   declares its own `initrd`, because the conventional one is declared from a package manager it no longer
   names, and the parent places the generators below itself, because only a composition places them for a
   caller.

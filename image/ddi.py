@@ -96,8 +96,8 @@ class Release(TypedDict):
 
 
 class ExtensionSpec(TypedDict):
-    # The number of leading lowers that form the base image. Only the layers above them are packaged.
-    base: int
+    # The number of leading lowers that form the parent image. Only the layers above them are packaged.
+    parent: int
     # The seed derives from this target label, unless the spec gives a seed.
     identity: str
     name: str
@@ -257,7 +257,7 @@ def _extension_seed(identity: str, name: str, releases: list[Release]) -> uuid.U
 
 
 def _os_release(tree: Path) -> dict[str, str]:
-    """Parse the base image's os-release for strict extension matching."""
+    """Parse the parent image's os-release for strict extension matching."""
     for candidate in ("usr/lib/os-release", "etc/os-release"):
         path = tree / candidate
         if not path.is_file():
@@ -268,41 +268,41 @@ def _os_release(tree: Path) -> dict[str, str]:
             if key and sep and not key.startswith("#"):
                 fields[key] = value.strip("\"'")
         return fields
-    util.fail("ddi: the base image ships no os-release to match against")
+    util.fail("ddi: the parent image ships no os-release to match against")
 
 
-def pin_release(base: dict[str, str], release: dict[str, str]) -> dict[str, str]:
-    """Add the base's ID and VERSION_ID to the extension-release fields `release` does not set.
+def pin_release(parent: dict[str, str], release: dict[str, str]) -> dict[str, str]:
+    """Add the parent's ID and VERSION_ID to the extension-release fields `release` does not set.
 
-    The extension must pin the base identity it was built against, so systemd refuses to merge
+    The extension must pin the parent identity it was built against, so systemd refuses to merge
     it onto anything else. An extension that declares ID=_any matches any OS, and systemd then
     does no VERSION_ID matching either, so it gets neither field.
     """
     if release.get("ID") == "_any":
         return release
-    strict = {key: base[key] for key in ("ID", "VERSION_ID") if key in base and key not in release}
+    strict = {key: parent[key] for key in ("ID", "VERSION_ID") if key in parent and key not in release}
     return strict | release
 
 
 def _extension_layers(spec: Spec, extension: ExtensionSpec) -> tuple[list[Release], list[str | Path]]:
     """Return the extension-release files and the layers the extension packages.
 
-    With a base, the fields are pinned to the base's os-release and the layers are the delta above
-    it. Without one, both come back as the spec states them.
+    With a parent, the fields are pinned to the parent's os-release and the layers are the delta
+    above it. Without a parent, the function returns the releases and layers of the spec unchanged.
     """
     releases = extension["releases"]
-    base = extension["base"]
+    parent = extension["parent"]
     lowers: list[str | Path] = list(spec["lower"])
-    if not base:
+    if not parent:
         return releases, lowers
     with rootfs.rootfs("/buildroot", lowers=lowers) as tree:
         fields = _os_release(tree)
     if "ID" not in fields:
-        util.fail("ddi: the base os-release lacks ID")
+        util.fail("ddi: the parent os-release lacks ID")
     pinned = [
         Release(path=release["path"], fields=pin_release(fields, release["fields"])) for release in releases
     ]
-    return pinned, lowers[base:]
+    return pinned, lowers[parent:]
 
 
 def _write_definitions(
@@ -459,7 +459,7 @@ def main(argv: list[str] | None = None) -> None:
     ):
         if extension:
             # An extension identifies itself through its extension-release files. An os-release in
-            # the extension would replace the os-release of the base image in the merged tree.
+            # the extension would replace the os-release of the parent image in the merged tree.
             for path in ("usr/lib/os-release", "etc/os-release"):
                 (tree / path).unlink(missing_ok=True)
         # The package database is a supply-chain artifact that the image's `[pkgdb]` and `[sbom]`

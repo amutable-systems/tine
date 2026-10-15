@@ -174,14 +174,14 @@ def declare_extension(
     scope: list[str],
     arch: str,
     version: str,
-    base: ImageInfo | None = None,
+    parent: ImageInfo | None = None,
     release: dict[str, str] = {},
     seed: str | None = None,
     verity_key: SigningKeyInfo | None = None,
 ) -> list[Provider]:
     """Declare an extension DDI with one extension-release file per class.
 
-    With `base`, the DDI contains only the delta that `image` layers on top of it.
+    With `parent`, the DDI contains only the delta that `image` layers on top of it.
     """
     if not classes:
         fail("{}: an extension needs at least one class of {}".format(name, EXTENSION_CLASSES))
@@ -194,14 +194,14 @@ def declare_extension(
 
     layers = 0
     tmpfiles = image.tmpfiles
-    if base != None:
-        if len(base.layers) >= len(image.layers):
-            fail("{}: image must layer a delta on top of base".format(name))
-        layers = len(base.layers)
+    if parent != None:
+        if len(parent.layers) >= len(image.layers):
+            fail("{}: image must layer a delta on top of parent".format(name))
+        layers = len(parent.layers)
 
-        # The tmpfiles lines of the base belong to the base. Applied to the delta, they would create
-        # files of the base in the extension, which then replace the base's own on merge.
-        tmpfiles = image.tmpfiles[len(base.tmpfiles) :]
+        # The tmpfiles lines of the parent belong to the parent. Applied to the delta, they would
+        # create files of the parent in the extension, which then replace the parent's own on merge.
+        tmpfiles = image.tmpfiles[len(parent.tmpfiles) :]
 
     copy_files = []
     releases = []
@@ -212,10 +212,10 @@ def declare_extension(
         copy_files += spec.copy_files
         suffixes.append(spec.suffix)
 
-        # systemd refuses an extension without ID. Without a base, ID=_any matches any host. With a
-        # base, the driver pins the ID and VERSION_ID of the base.
+        # systemd refuses an extension without ID. Without a parent, ID=_any matches any host. With a
+        # parent, the driver pins the ID and VERSION_ID of the parent.
         fields = {}
-        if base == None:
+        if parent == None:
             fields["ID"] = "_any"
         fields[spec.prefix + "_SCOPE"] = " ".join(scope)
         fields["EXTENSION_RELOAD_MANAGER"] = "1"
@@ -246,9 +246,9 @@ def declare_extension(
         verity_key = verity_key,
         tmpfiles = tmpfiles,
         extension = {
-            "base": layers,
             "identity": str(ctx.label),
             "name": name,
+            "parent": layers,
             "releases": releases,
         },
         extra = [
