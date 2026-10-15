@@ -428,12 +428,13 @@ image.extension(
 )
 ```
 
-With `base`, the DDI contains only what the target adds on top of `base`. `base` can be any image except
-another extension. Without `base`, the target takes a `package_manager` and the DDI contains its whole
-tree. The DDI is an erofs root partition, its verity hash partition and, with `verity_key`, a signature
-over the verity root hash. A host validates the signature against the certificates in its
-`/usr/lib/verity.d/`, and enforces it only where its image policy says so (see "Example targets" below).
-The DDI contains no os-release and no package database.
+With `base`, the DDI contains only what the target adds on top of `base`. Only the `tmpfiles` lines that the
+target adds apply to the DDI, so a line of `base` creates nothing in it. `base` can be any image except
+another extension. Without `base`, the target takes a `package_manager` and the DDI contains its whole tree.
+The DDI is an erofs root partition, its verity hash partition and, with `verity_key`, a signature over the
+verity root hash. A host validates the signature against the certificates in its `/usr/lib/verity.d/`, and
+enforces it only where its image policy says so (see "Example targets" below). The DDI contains no os-release
+and no package database.
 
 The rule writes one extension-release file per class:
 `/usr/lib/extension-release.d/extension-release.<name>` for a sysext and

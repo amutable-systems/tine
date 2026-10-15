@@ -120,6 +120,7 @@ def _declare_preset(
     seed: str | None,
     verity_key: SigningKeyInfo | None,
     extension: dict[str, typing.Any] | None = None,
+    tmpfiles: list[str] | None = None,
     extra: list[Provider] = [],
 ) -> list[Provider]:
     """Declare a DDI of one verity protected root partition, and return the providers of its rule.
@@ -141,6 +142,7 @@ def _declare_preset(
         strip_pkgdb = extension != None,
         verity_key = verity_key,
         extension = extension,
+        tmpfiles = tmpfiles,
     )
     info = output.info
     published = PublishedInfo(
@@ -186,10 +188,15 @@ def declare_extension(
     basename, systemd_arch = ddi_names("extension", name, version, arch)
 
     layers = 0
+    tmpfiles = image.tmpfiles
     if base != None:
         if len(base.layers) >= len(image.layers):
             fail("{}: image must layer a delta on top of base".format(name))
         layers = len(base.layers)
+
+        # The tmpfiles lines of the base belong to the base. Applied to the delta, they would create
+        # files of the base in the extension, which then replace the base's own on merge.
+        tmpfiles = image.tmpfiles[len(base.tmpfiles) :]
 
     copy_files = []
     releases = []
@@ -232,6 +239,7 @@ def declare_extension(
         copy_files = copy_files,
         seed = seed,
         verity_key = verity_key,
+        tmpfiles = tmpfiles,
         extension = {
             "base": layers,
             "identity": str(ctx.label),

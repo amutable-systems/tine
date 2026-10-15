@@ -297,13 +297,14 @@ def declare_ddi(
     basename: str = "image",
     identifier: str | None = None,
     extension: dict[str, typing.Any] | None = None,
+    tmpfiles: list[str] | None = None,
 ) -> DdiOutput:
     """Declare the systemd-repart action that builds a DDI from an image and partition definitions.
 
     With strip_pkgdb, the partitions omit the package database wherever the image's package system
     keeps it, for a system nothing ever resolves packages in. The image's `[pkgdb]` and `[sbom]`
     subtargets still capture it from the tree itself. `extension` makes the driver package the tree
-    as an extension (see extension.bzl).
+    as an extension (see extension.bzl). `tmpfiles` replaces the tmpfiles lines of `image`.
     """
     decoded = [json.decode(value) for value in definitions]
     encode_definitions(
@@ -399,6 +400,9 @@ def declare_ddi(
         "seed": seed,
         "signing": signing_key_spec(verity_key),
     }
+
+    if tmpfiles != None:
+        spec["tmpfiles"] = tmpfiles
 
     out = None
     manifest = None
