@@ -279,7 +279,6 @@ def declare_ddi(
     disk: bool = True,
     split: bool = False,
     imported: list[DdiInfo] = [],
-    imported_root_hash: RootHashInfo | None = None,
     seed: str | None = None,
     verity_key: SigningKeyInfo | None = None,
     strip_pkgdb: bool = False,
@@ -319,6 +318,13 @@ def declare_ddi(
     imported_partitions = []
     for info in imported:
         imported_partitions.extend(info.partitions)
+
+    # A DDI has at most one verity root hash. This invocation generates it, or an imported DdiInfo
+    # contains it, such as the split /usr partitions that a bootable disk copies in.
+    root_hashes = [info.root_hash for info in imported if info.root_hash != None]
+    kind = _verity_kind(definitions)
+    if len(root_hashes) + (1 if kind != None else 0) > 1:
+        fail("ddi: cannot combine multiple verity root hashes")
 
     names = [definition["name"] for definition in definitions] + [partition.definition["name"] for partition in imported_partitions]
     if len(names) != len({name: True for name in names}):
@@ -406,10 +412,7 @@ def declare_ddi(
             manifest = declare_out(ctx, identifier, basename + ".Uapi16Manifest")
             spec["manifest"] = manifest.as_output()
 
-    kind = _verity_kind(definitions)
-    if kind != None and imported_root_hash != None:
-        fail("ddi: cannot combine multiple verity root hashes")
-    root_hash = imported_root_hash
+    root_hash = root_hashes[0] if root_hashes else None
     if kind != None:
         # The root hash file is named after the disk, so that a release can publish the root
         # hashes of several DDIs.
@@ -464,16 +467,6 @@ def declare_ddi(
     return DdiOutput(info = info, outputs = outputs, sub_targets = sub_targets)
 
 def _ddi_impl(ctx: AnalysisContext) -> list[Provider]:
-    imported = []
-    imported_root_hash = None
-    for dep in ctx.attrs.partitions:
-        info = dep[DdiInfo]
-        imported.append(info)
-        root_hash = info.root_hash
-        if root_hash != None:
-            if imported_root_hash != None:
-                fail("ddi: cannot combine multiple verity root hashes")
-            imported_root_hash = root_hash
     result = declare_ddi(
         ctx,
         tools = ctx.attrs._tools[ImageToolsInfo],
@@ -482,8 +475,7 @@ def _ddi_impl(ctx: AnalysisContext) -> list[Provider]:
         definitions = [json.decode(value) for value in ctx.attrs.definitions],
         disk = ctx.attrs.disk,
         image = ctx.attrs.image[ImageInfo],
-        imported = imported,
-        imported_root_hash = imported_root_hash,
+        imported = [dep[DdiInfo] for dep in ctx.attrs.partitions],
         mkfs_options = ctx.attrs.mkfs_options,
         seed = ctx.attrs.seed,
         split = ctx.attrs.split,
