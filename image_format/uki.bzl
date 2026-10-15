@@ -14,7 +14,6 @@ load(
     "declare_out",
     "terminal_image_command",
 )
-load("//image:initrd_modules.toml", _INITRD_MODULES = "value")
 load(
     "//image:sign.bzl",
     "SigningKeyInfo",
@@ -23,6 +22,7 @@ load(
     "resolve_signing_key",
     "signing_key_spec",
 )
+load("//kmod:initrd_modules.toml", _INITRD_MODULES = "value")
 load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load(":archive.bzl", "ImageArchiveInfo")
 load(

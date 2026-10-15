@@ -164,7 +164,7 @@ box.new(
         "e2fsprogs",
         "erofs-utils",
         "kmod",
-        # image/kmod.py loads libkmod.so.2 with dlopen(), and no package in this list depends on it.
+        # kmod/kmod.py loads libkmod.so.2 with dlopen(), and no package in this list depends on it.
         "libkmod2",
         # The relaxed sandbox binds the host's nsswitch.conf. Without libnss_systemd, getpwuid() cannot find
         # a systemd-homed caller, and ssh-keygen aborts.

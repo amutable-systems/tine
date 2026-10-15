@@ -44,18 +44,12 @@ tine_python_binary(
     main = "uki.py",
     deps = [
         ":finalize",
-        ":kmod",
         "//:specs",
         "//:util",
         "//archive:cpio",
+        "//kmod:kmod",
     ],
     visibility = ["PUBLIC"],
-)
-
-tine_python_library(
-    name = "kmod",
-    srcs = ["kmod.py"],
-    deps = ["//:util"],
 )
 
 tine_python_library(
@@ -76,8 +70,6 @@ box_python_test(
     box = "//tools:dev.box",
     srcs = [
         "finalize_test.py",
-        "initrd_modules.toml",
-        "kmod_test.py",
         "layer.py",
         "layer_test.py",
         "manifest.py",
@@ -90,11 +82,11 @@ box_python_test(
     ],
     deps = [
         ":finalize",
-        ":kmod",
         ":version",
         "//:specs",
         "//:util",
         "//archive:cpio",
+        "//kmod:kmod",
         "//package:installer",
         "//rootfs:rootfs",
     ],
@@ -169,10 +161,10 @@ tine_python_binary(
     deps = [
         ":artifacts-lib",
         ":finalize",
-        ":kmod",
         ":version",
         "//:specs",
         "//:util",
+        "//kmod:kmod",
     ],
     visibility = ["PUBLIC"],
 )

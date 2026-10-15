@@ -3,7 +3,7 @@
 
 """Tests for kernel module selection and the explicit-path cpio packer.
 
-    buck test tine//image:test
+    buck test tine//kmod:test
 
 The pattern box, the firmware walk and the packing decide what a UKI carries, and none of them
 need libkmod or a real kernel, so they run against synthetic module trees here. The dependency
