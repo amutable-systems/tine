@@ -280,24 +280,22 @@ _archive = rule(
 
 def _extension_impl(ctx: AnalysisContext) -> list[Provider]:
     tools = ctx.attrs._tools[ImageToolsInfo]
-    if (ctx.attrs.base == None) == (ctx.attrs.package_manager == None):
-        fail("{}: exactly one of base and package_manager is required".format(ctx.label.name))
 
     # An extension runs no generators. A database generated from the full stack would replace the
-    # database of the base in the merged tree. It would also go stale when the base changes.
-    base = None
-    if ctx.attrs.base != None:
+    # database of the parent in the merged tree. It would also be out of date when the parent changes.
+    parent = None
+    if ctx.attrs.parent != None:
         # An extension of an extension contains only its own delta. It works only when the
         # extension below it is merged too, and neither DDI records that dependency.
-        if ctx.attrs.base.get(ExtensionInfo) != None:
-            fail("{}: base {} is an extension itself; extend the image it extends".format(ctx.label.name, ctx.attrs.base.label))
-        base = ctx.attrs.base[ImageInfo]
+        if ctx.attrs.parent.get(ExtensionInfo) != None:
+            fail("{}: parent {} is an extension itself; extend the image it extends".format(ctx.label.name, ctx.attrs.parent.label))
+        parent = ctx.attrs.parent[ImageInfo]
     image = _composed_image(
         ctx,
         tools = tools,
         generate = False,
         package_manager = ctx.attrs.package_manager,
-        parent = base,
+        parent = parent,
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
         ops = ctx.attrs.ops,
@@ -310,7 +308,7 @@ def _extension_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx,
         tools = tools,
         arch = ctx.attrs.arch,
-        base = base,
+        parent = parent,
         classes = ctx.attrs.classes,
         image = image,
         name = ctx.label.name,
@@ -324,19 +322,7 @@ def _extension_impl(ctx: AnalysisContext) -> list[Provider]:
 _extension = rule(
     impl = _extension_impl,
     supports_incoming_transition = True,
-    attrs = IMAGE_ATTRS
-    | EXTENSION_ATTRS
-    | {
-        "base": attrs.option(
-            attrs.dep(providers = [ImageInfo]),
-            default = None,
-            doc = "the image the extension extends; only the delta above it is packaged",
-        ),
-        "package_manager": attrs.option(
-            attrs.dep(providers = [PackageManagerInfo]),
-            default = None,
-        ),
-    },
+    attrs = IMAGE_ATTRS | EXTENSION_ATTRS | _ROOT_ATTRS,
 )
 
 def _portable_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -344,6 +330,7 @@ def _portable_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx,
         tools = ctx.attrs._tools[ImageToolsInfo],
         package_manager = ctx.attrs.package_manager,
+        parent = ctx.attrs.parent[ImageInfo] if ctx.attrs.parent != None else None,
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
         ops = _PORTABLE_MOUNT_POINTS + ctx.attrs.ops,
@@ -366,11 +353,7 @@ def _portable_impl(ctx: AnalysisContext) -> list[Provider]:
 _portable = rule(
     impl = _portable_impl,
     supports_incoming_transition = True,
-    attrs = IMAGE_ATTRS
-    | PORTABLE_ATTRS
-    | {
-        "package_manager": attrs.dep(providers = [PackageManagerInfo]),
-    },
+    attrs = IMAGE_ATTRS | PORTABLE_ATTRS | _ROOT_ATTRS,
 )
 
 def _esp_operations(
@@ -706,7 +689,7 @@ def extension(
     """Build one logical image from operations and package it as an extension DDI.
 
     `classes` lists the extension classes the DDI contains: "sysext" for /usr and /opt, "confext"
-    for /etc. With `base`, the DDI contains only the delta above that image.
+    for /etc. With `parent`, the DDI contains only the delta above that image.
     """
     _extension(
         name = name,

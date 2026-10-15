@@ -324,12 +324,12 @@ assert register["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] == 2, register
     + architecture.select({name: [spellings.ec2] for name, spellings in ARCHITECTURES.items()}),
 )
 
-# System-extension DDI extending :boot-demo: only the delta above the base lands in the
-# image, and its extension-release pins the base's ID/VERSION_ID. `boot-demo-vm` exposes
-# it under /var/lib/extensions.
+# demo-ext extends boot-demo. The DDI contains only the files that demo-ext adds to boot-demo,
+# and its extension-release file pins the ID and VERSION_ID of boot-demo. `boot-demo-vm` binds
+# it into /var/lib/extensions.
 image.sysext(
     name = "demo-ext",
-    base = ":boot-demo",
+    parent = ":boot-demo",
     packages = ["zsh"],
     install_docs = False,
     # install a file from source tree; covers reproducibility check under varying umasks
@@ -340,7 +340,7 @@ image.sysext(
 # boot-demo, as the one of demo-ext does.
 image.confext(
     name = "demo-confext",
-    base = ":boot-demo",
+    parent = ":boot-demo",
     ops = [image.ops.write_file("/etc/tine/from-confext", "confext\n")],
 )
 
@@ -352,7 +352,7 @@ image.portable(
     packages = ["bash", "coreutils"],
     install_docs = False,
     # demo-portable-ext must not contain this directory, because only demo-portable declares it.
-    tmpfiles = ["d /etc/tine/from-base-tmpfiles 0755 - -"],
+    tmpfiles = ["d /etc/tine/from-parent-tmpfiles 0755 - -"],
     ops = [image.ops.copy("demo-portable.service", "/usr/lib/systemd/system/demo-portable.service")],
 )
 
@@ -362,7 +362,7 @@ image.portable(
 # under /var must find it in the portable image.
 image.extension(
     name = "demo-portable-ext",
-    base = ":demo-portable",
+    parent = ":demo-portable",
     classes = ["sysext", "confext"],
     scope = ["portable"],
     ops = [
