@@ -49,7 +49,7 @@ load(
     ":image.bzl",
     "IMAGE_ATTRS",
     "ImageInfo",
-    "ImageToolsInfo",  # @unused Used as a function argument type.
+    "ImageToolsInfo",
     "LayerOperation",  # @unused Used as a type.
     "LayerOperationTree",  # @unused Used as a type.
     "VERSION_PATTERN",
@@ -211,48 +211,17 @@ _ROOT_ATTRS = {
     ),
 }
 
-def _composed_image(
-    ctx: AnalysisContext,
-    *,
-    tools: ImageToolsInfo,
-    install_docs: bool,
-    install_langs: list[str],
-    ops: list[LayerOperation],
-    package_sets: list[str],
-    packages: list[str],
-    tmpfiles: list[str],
-    version: str,
-    generate: bool = True,
-    package_manager: Dependency | None = None,
-    parent: ImageInfo | None = None,
-) -> ImageInfo:
-    if (parent == None) == (package_manager == None):
-        fail("{}: exactly one of parent and package_manager is required".format(ctx.label.name))
-    return declare_image(
+def _archive_impl(ctx: AnalysisContext) -> list[Provider]:
+    tools = ctx.attrs._tools[ImageToolsInfo]
+    image = declare_image(
         ctx,
         tools = tools,
         identifier = "image",
-        install_docs = install_docs,
-        install_langs = install_langs,
-        ops = generated(ops, packages + package_sets) if generate else ops,
-        package_manager = package_manager,
-        package_sets = package_sets,
-        packages = packages,
-        parent = parent,
-        tmpfiles = tmpfiles,
-        version = version,
-    )
-
-def _archive_impl(ctx: AnalysisContext) -> list[Provider]:
-    tools = ctx.attrs._tools[ImageToolsInfo]
-    image = _composed_image(
-        ctx,
-        tools = tools,
         package_manager = ctx.attrs.package_manager,
         parent = ctx.attrs.parent[ImageInfo] if ctx.attrs.parent != None else None,
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
-        ops = ctx.attrs.ops,
+        ops = generated(ctx.attrs.ops, ctx.attrs.packages + ctx.attrs.package_sets),
         package_sets = ctx.attrs.package_sets,
         packages = ctx.attrs.packages,
         tmpfiles = ctx.attrs.tmpfiles,
@@ -279,7 +248,6 @@ _archive = rule(
 
 def _extension_impl(ctx: AnalysisContext) -> list[Provider]:
     tools = ctx.attrs._tools[ImageToolsInfo]
-
     # An extension runs no generators. A database generated from the full stack would replace the
     # database of the parent in the merged tree. It would also be out of date when the parent changes.
     parent = None
@@ -289,10 +257,10 @@ def _extension_impl(ctx: AnalysisContext) -> list[Provider]:
         if ctx.attrs.parent.get(ExtensionInfo) != None:
             fail("{}: parent {} is an extension itself; extend the image it extends".format(ctx.label.name, ctx.attrs.parent.label))
         parent = ctx.attrs.parent[ImageInfo]
-    image = _composed_image(
+    image = declare_image(
         ctx,
         tools = tools,
-        generate = False,
+        identifier = "image",
         package_manager = ctx.attrs.package_manager,
         parent = parent,
         install_docs = ctx.attrs.install_docs,
@@ -325,14 +293,15 @@ _extension = rule(
 )
 
 def _portable_impl(ctx: AnalysisContext) -> list[Provider]:
-    image = _composed_image(
+    image = declare_image(
         ctx,
         tools = ctx.attrs._tools[ImageToolsInfo],
+        identifier = "image",
         package_manager = ctx.attrs.package_manager,
         parent = ctx.attrs.parent[ImageInfo] if ctx.attrs.parent != None else None,
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
-        ops = _PORTABLE_MOUNT_POINTS + ctx.attrs.ops,
+        ops = _PORTABLE_MOUNT_POINTS + generated(ctx.attrs.ops, ctx.attrs.packages + ctx.attrs.package_sets),
         package_sets = ctx.attrs.package_sets,
         packages = ctx.attrs.packages,
         tmpfiles = ctx.attrs.tmpfiles,
