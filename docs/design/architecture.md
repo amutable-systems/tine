@@ -1171,7 +1171,7 @@ locally backed in later solves. Unlike a static `local_repository`, only the pac
 pulls in are built; the universe target itself never forces a package build.
 
 Logical images and terminal outputs are separate rule families. Terminal rules merge the stack only when
-needed. The catalog of terminal rules (`image.directory`, `image.uki`, `image.ddi`, `image.bootable`,
+needed. The catalog of terminal rules (`image.directory`, `image.uki`, `image.bootable`,
 and `image.vm`) and the `image.archive`, `image.sysext`, `image.confext`, `image.extension`,
 `image.portable`, and `image.disk` composition rules are documented in
 [images.md](../user/images.md). All of them, with the operation helpers and conventional partition layouts,
@@ -1208,24 +1208,21 @@ multi-threaded output is byte-identical to its single-threaded output, so this s
 uses it, while the kernel-modules cpio that `uki.py` appends stays raw because the distribution already
 ships each module compressed; the kernel unpacks the concatenation as independently compressed segments.
 
-`image.ddi` deliberately distinguishes `definitions` from `partitions`. Definitions describe new
-partitions to populate directly from `image.ImageInfo`: repart mounts the delta stack with a
-disposable overlay upper instead of first copying a directory artifact. Partition inputs are
-`image.DdiInfo` outputs from an earlier split call; their blocks are copied into the new disk with
-their resolved type and UUID preserved.
-Calls emit a disk by default. `split = True` additionally exposes each newly defined partition with
-normalized metadata alongside its block artifact; `disk = False` makes such a call partition-only. No
-partial disk is passed between
-actions. The partition artifacts are portable, so `image.DdiInfo` carries no box: repart uses the
-destination `image.ImageInfo.box`, while standalone conversion and VM rules select a box explicitly.
-`image.directory` is an independent terminal view and is never an input to repart.
+`declare_ddi()` in `ddi.bzl` deliberately distinguishes `definitions` from `partitions`. Definitions describe
+new partitions to populate directly from `image.ImageInfo`: repart mounts the delta stack with a disposable
+overlay upper instead of first copying a directory artifact. Partition inputs are `image.DdiInfo` outputs
+from an earlier split call; their blocks are copied into the new disk with their resolved type and UUID
+preserved. Calls emit a disk by default. `split = True` additionally exposes each newly defined partition
+with normalized metadata alongside its block artifact; `disk = False` makes such a call partition-only. No
+partial disk is passed between actions. The partition artifacts are portable, so `image.DdiInfo` carries no
+box: repart uses the destination `image.ImageInfo.box`, while standalone conversion and VM rules select a box
+explicitly. `image.directory` is an independent terminal view and is never an input to repart.
 
-Partition layouts are always explicit inputs; neither `image.ddi` nor `image.disk` chooses one
+Partition layouts are always explicit inputs; `image.disk` doesn't choose one
 implicitly. The reusable conventional layouts are listed in [images.md](../user/images.md).
 
-Partition labels may contain `{image_id}` and `{version}` placeholders. `image.format_partition_labels()`
-renders them — `image.disk()` calls it with its own image identity, raw `image.ddi()` users
-call it themselves, and unrendered placeholders fail the build. The usr-verity layouts carry such labels
+Partition labels may contain `{image_id}` and `{version}` placeholders. `image.disk()` renders them from its
+own image identity, and unrendered placeholders fail the build. The usr-verity layouts carry such labels
 to produce the `<id>_<version>[_verity[_sig]]` names that systemd-sysupdate A/B slot matching expects.
 Rendered labels pass through `image.partition()` again, so GPT's 36-character label limit is enforced on the
 final value.
@@ -1235,7 +1232,7 @@ usr hash is an artifact because its value is known only after execution. `image.
 an optional `image.RootHashInfo`, allowing `image.uki` to consume the hash without another top-level
 provider. One split call may produce at most one such hash. This artifact boundary also ensures the final
 disk contains exactly the partition bytes whose hash was embedded in the UKI. The hash is also available
-as the split target's `roothash` subtarget. Signature partitions require an explicitly declared key and
+as the disk's `roothash` subtarget. Signature partitions require an explicitly declared key and
 certificate.
 
 A bootable `image.disk()` composes:
@@ -1378,7 +1375,7 @@ describe, so a release gathers what a scanner reads while an image's own publish
 update transfers.
 
 `image.disk` is one rule that owns the complete composition action graph. Provider-oriented action
-helpers are shared with the standalone `image.layer`, `image.ddi`, `image.uki`, and terminal-format
+helpers are shared with the standalone `image.layer`, `image.uki`, and terminal-format
 rules, so the composition reuses their implementations without declaring private sibling targets or
 forwarding through a result rule. This aggregation remains scoped to the concrete bootable-image product;
 it does not restore a generic `image_result` around every logical `image.ImageInfo`.

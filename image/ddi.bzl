@@ -5,7 +5,6 @@
 
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
-load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load(
     ":image.bzl",
     "GPT_LABEL_LIMIT",
@@ -24,7 +23,6 @@ load(
     "VERITY_KEY_ATTR",
     "external_signing_execution",
     "merge_signing_access",
-    "resolve_signing_key",
     "signing_key_spec",
 )
 
@@ -129,7 +127,7 @@ def verity_partitions(data: Partition, signed: bool) -> list[Partition]:
 
 # systemd-sysupdate matches A/B partitions by their exact label, so the labels of the default layouts
 # contain the image ID and version as placeholders. `disk()` fills them in from its image_id
-# and version attributes. A `ddi()` caller fills them in with `format_partition_labels()`.
+# and version attributes.
 def _usr_verity_partitions(signed: bool) -> list[Partition]:
     usr = partition(
         type = "usr",
@@ -469,28 +467,7 @@ def declare_ddi(
     )
     return DdiOutput(info = info, outputs = outputs, sub_targets = sub_targets)
 
-def _ddi_impl(ctx: AnalysisContext) -> list[Provider]:
-    result = declare_ddi(
-        ctx,
-        tools = ctx.attrs._tools[ImageToolsInfo],
-        systemd_arch = ARCHITECTURES[ctx.attrs._arch].systemd,
-        basename = ctx.attrs.basename,
-        definitions = [json.decode(value) for value in ctx.attrs.definitions],
-        disk = ctx.attrs.disk,
-        image = ctx.attrs.image[ImageInfo],
-        imported = [dep[DdiInfo] for dep in ctx.attrs.partitions],
-        mkfs_options = ctx.attrs.mkfs_options,
-        seed = ctx.attrs.seed,
-        split = ctx.attrs.split,
-        strip_pkgdb = ctx.attrs.strip_pkgdb,
-        verity_key = resolve_signing_key(ctx.attrs.verity_key),
-    )
-    return [
-        DefaultInfo(default_outputs = result.outputs, sub_targets = result.sub_targets),
-        result.info,
-    ]
-
-# Every rule that builds a DDI from partition definitions takes DDI_ATTRS.
+# image.disk passes these attributes on to declare_ddi().
 DDI_ATTRS = {
     "definitions": attrs.list(attrs.string(), doc = "serialized partition definitions"),
     "mkfs_options": attrs.dict(
@@ -505,41 +482,6 @@ DDI_ATTRS = {
     ),
     "verity_key": VERITY_KEY_ATTR,
 }
-
-_ddi = rule(
-    impl = _ddi_impl,
-    attrs = DDI_ATTRS
-    | {
-        "basename": attrs.string(
-            default = "image",
-            doc = "what the composed disk and its split partitions are named after, without extension",
-        ),
-        "disk": attrs.bool(default = True, doc = "emit a composed raw disk image"),
-        "image": attrs.dep(providers = [ImageInfo], doc = "the logical image used to populate new partitions"),
-        "partitions": attrs.list(
-            attrs.dep(providers = [DdiInfo]),
-            default = [],
-            doc = "split ddi targets whose partitions should be copied into the result",
-        ),
-        "seed": attrs.option(
-            attrs.string(),
-            default = None,
-            doc = "explicit GPT/partition UUID seed; by default derive one from target identity and definitions",
-        ),
-        "split": attrs.bool(default = False, doc = "also emit independent artifacts for new partitions"),
-        # `_arch` is the architecture the image runs on. repart picks the partition types for it.
-        "_arch": attrs.string(default = architecture.configured()),
-    }
-    | IMAGE_TOOLS_ATTR,
-)
-
-def ddi(name: str, definitions: list[Partition], **kwargs) -> None:
-    """Create a disk, independent partitions, or both."""
-    _ddi(
-        name = name,
-        definitions = [json.encode(definition) for definition in definitions],
-        **kwargs,
-    )
 
 # The disk conversion output formats, doubling as each artifact's extension.
 DISK_FORMATS = ["qcow2", "raw.zst", "vmdk"]

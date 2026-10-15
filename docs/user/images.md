@@ -348,10 +348,6 @@ when needed:
   kernel are signed
   for Secure Boot. With a `sign_expected_pcr_key`, a signed expected-PCR 11 policy covers each profile;
   set its `sign_expected_pcr` to false to opt out;
-- `image.ddi` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
-  GPT disk and independent partition artifacts in one `image.DdiInfo`; its disk field is absent for a
-  split-only invocation, `strip_pkgdb` leaves the package database out of the partitions, and
-  `mkfs_options` tunes the filesystems it creates;
 - `image.disk_convert` re-encodes a raw disk with an explicitly selected box and provides
   `image.DiskConversionInfo`; `virtual_size` sizes the disk a qcow2 or VMDK describes;
 - `image.bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
@@ -459,7 +455,7 @@ by it, so a target name containing `_` or `+` fails the build. A deployed DDI ca
 name, such as `debug-tools.raw`. With `arch = "_any"`, the DDI is named `<name>_<version>_all` and
 `ARCHITECTURE=_any` matches any host architecture.
 
-The target defaults to its DDI and provides `image.DdiInfo`, like `image.ddi`, and
+The target defaults to its DDI and provides `image.DdiInfo`, like `image.disk`, and
 `image.ExtensionInfo` with its classes and scope. `[roothash]` is the verity root hash, and
 `[disk-manifest]` lists the files the DDI contains. The rule publishes both with the DDI.
 
@@ -521,16 +517,15 @@ Required attributes:
   passed on to `image.layer`.
 - `definitions` (list of `image.partition()` descriptors): Partition layout; `image.DEFAULT_ROOT_PARTITIONS`,
   `image.DEFAULT_USR_VERITY_PARTITIONS`, and `image.DEFAULT_SIGNED_USR_VERITY_PARTITIONS` are reusable
-  conventional layouts; a bootable disk needs system and ESP partitions; passed on to `image.ddi()`.
+  conventional layouts; a bootable disk needs system and ESP partitions.
 
 Optional attributes:
 
 - `bootable` (bool): Makes the disk boot. It defaults to whether `definitions` contain an ESP partition, and
   `True` without one fails the build. A disk that does not boot refuses `initrd`, `profiles`, `splash`,
   `cmdline`, `initrd_modules`, `secure_boot_key` and `sign_expected_pcr_key`.
-- `disk_seed` (string): Seeds stable partition UUIDs; passed on to `image.ddi()`.
-- `verity_key` (target providing `image.SigningKeyInfo`): Signs the verity signature partition; passed on to
-  `image.ddi()`.
+- `disk_seed` (string): Seeds stable partition UUIDs.
+- `verity_key` (target providing `image.SigningKeyInfo`): Signs the verity signature partition.
 - `secure_boot_key` (target providing `image.SigningKeyInfo`): Signs the UKIs and systemd-boot; see "Secure
   Boot signing" below.
 - `virtual_size` (size string such as `"20G"`): The size of a virtual disk (`[qcow2]` or `[vmdk]`). A
@@ -538,7 +533,7 @@ Optional attributes:
   image stays at the size of its partitions. As with `image.vm`'s `grow`, the extra space sits past the GPT
   backup header until something rewrites the table. A size the partitions do not fit in fails the build.
 - `mkfs_options` (dict of filesystem to option list, default `{}`): Options `mkfs` is given when
-  creating a partition of that filesystem, passed on to `image.ddi()`, which hands each list to
+  creating a partition of that filesystem. The disk hands each list to
   `systemd-repart` as `SYSTEMD_REPART_MKFS_OPTIONS_<FSTYPE>`. Naming a filesystem the disk never formats
   fails the build rather than going nowhere, and an option holding whitespace is refused because repart
   splits the variable on it. This is where a disk's compression is really decided: an `image.partition()`'s
@@ -548,10 +543,9 @@ Optional attributes:
   ESP byte-stable across rebuilds, which `mkfs.fat` otherwise is not, because it stamps the volume label
   entry with the wall clock even under `SOURCE_DATE_EPOCH`.
 - `strip_pkgdb` (bool, default `False`): Leaves the package database out of the system partitions, for a
-  system that ships without its package manager and never resolves a package again; passed on to
-  `image.ddi()`. The logical image keeps it, so `[pkgdb]` still captures the database and `[sbom]` still
-  reports every installed package rather than what a binary scan can guess. The ESP carries no database
-  either way.
+  system that ships without its package manager and never resolves a package again. The logical image keeps
+  it, so `[pkgdb]` still captures the database and `[sbom]` still reports every installed package rather than
+  what a binary scan can guess. The ESP carries no database either way.
 - `sign_expected_pcr_key` (target providing `image.SigningKeyInfo`): Seals the expected-PCR policy;
   without one the policy is not sealed. See "Secure Boot signing" below.
 - `parent` (target label providing `image.ImageInfo`): The logical image the disk extends, instead of the
