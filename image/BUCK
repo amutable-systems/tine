@@ -57,18 +57,11 @@ tine_python_binary(
     deps = [
         ":finalize",
         ":manifest-lib",
-        ":repart",
         "//:specs",
         "//:util",
         "//rootfs:rootfs",
     ],
     visibility = ["PUBLIC"],
-)
-
-tine_python_library(
-    name = "repart",
-    srcs = ["repart.py"],
-    deps = ["//:util"],
 )
 
 tine_python_binary(
@@ -117,7 +110,6 @@ box_python_test(
         "layer_test.py",
         "manifest.py",
         "manifest_test.py",
-        "repart_test.py",
         "substitute.py",
         "substitute_test.py",
         "uki.py",
@@ -126,7 +118,6 @@ box_python_test(
     ],
     deps = [
         ":finalize",
-        ":repart",
         ":version",
         "//:specs",
         "//:util",
