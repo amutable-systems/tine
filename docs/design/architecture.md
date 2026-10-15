@@ -1754,7 +1754,7 @@ Useful implementation entry points:
   `package/{href,installer,transaction}.py`
 - each package system's `rules.bzl` and drivers under `package_system/`, listed in its own section above
 - `box/{build,runtime}.bzl`, `box/sandbox.py`, and `rootfs/rootfs.py`
-- `image/{image,compose,defs,sign,vm,archive,boot,ddi,sysext,uki}.bzl`
+- `image/{image,compose,defs,sign,vm,archive,boot,ddi,sysext}.bzl`
 - `cargo/{defs,rules,vendor}.bzl` and `cargo/{lock,vendor,build}.py`
 - `go/rules.bzl` and `go/{fetch,build}.py`
 - `tools/catalog.py` and `catalog/BUCK`
