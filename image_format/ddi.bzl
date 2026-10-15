@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Partition and raw-disk assembly with systemd-repart."""
+"""Build a DDI, a GPT disk image, from partition definitions with systemd-repart."""
 
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
@@ -101,7 +101,7 @@ DEFAULT_ROOT_PARTITIONS = [
 
 # systemd-sysupdate A/B slots match partitions by exact label, so the default layouts carry the
 # image identity: `bootable_disk_image()` renders the placeholders from its image_id and version
-# attributes (raw `repart()` users render them with `format_partition_labels()`).
+# attributes (raw `ddi()` users render them with `format_partition_labels()`).
 def _usr_verity_partitions(signed: bool) -> list[Partition]:
     label = "{image_id}_{version}"
     definitions = [
@@ -180,20 +180,20 @@ def encode_definitions(
     `rendered = False` accepts label placeholders for a caller that renders them itself.
     """
     if not definitions and (split or not imports):
-        fail("repart: definitions may be empty only when assembling partition inputs")
+        fail("ddi: definitions may be empty only when assembling partition inputs")
     if not disk and not split:
-        fail("repart: at least one of disk or split must be enabled")
+        fail("ddi: at least one of disk or split must be enabled")
     names = {}
     for definition in definitions:
         if definition["name"] in names:
-            fail("repart: definition names must be unique")
+            fail("ddi: definition names must be unique")
         names[definition["name"]] = True
         label = definition["label"]
         if rendered and label != None and "{" in label:
-            fail("repart: unrendered placeholder in label {!r}; render with format_partition_labels()".format(label))
+            fail("ddi: unrendered placeholder in label {!r}; render with format_partition_labels()".format(label))
     signatures = [it for it in definitions if it["verity"] == "signature"]
     if bool(signatures) != signed:
-        fail("repart: Verity=signature and signing credentials must be specified together")
+        fail("ddi: Verity=signature and signing credentials must be specified together")
     return [json.encode(definition) for definition in definitions]
 
 WrittenPartitionInfo = record(
@@ -219,8 +219,8 @@ RootHashInfo = provider(
     },
 )
 
-RepartInfo = provider(
-    doc = "A repart result containing an optional disk and any independent partition artifacts.",
+DdiInfo = provider(
+    doc = "A DDI: an optional composed disk and any independent partition artifacts.",
     fields = {
         "disk": provider_field(Artifact | None, default = None),
         # What the composed disk carries, its own partitions and its imported ones taken together.
@@ -233,8 +233,8 @@ RepartInfo = provider(
     },
 )
 
-RepartOutput = record(
-    info = RepartInfo,
+DdiOutput = record(
+    info = DdiInfo,
     outputs = list[Artifact],
     sub_targets = dict[str, list[Provider]],
 )
@@ -245,13 +245,13 @@ def _verity_kind(definitions: list[Partition]) -> str | None:
         if definition["verity"] != "data":
             continue
         if kind != None:
-            fail("repart: one invocation cannot produce more than one verity root hash")
+            fail("ddi: one invocation cannot produce more than one verity root hash")
         if definition["type"].startswith("usr"):
             kind = "usr"
         elif definition["type"].startswith("root"):
             kind = "root"
         else:
-            fail("repart: Verity=data requires a usr or root partition type")
+            fail("ddi: Verity=data requires a usr or root partition type")
     return kind
 
 def _partition_sub_targets(partitions: list[PartitionInfo]) -> dict[str, list[Provider]]:
@@ -279,7 +279,7 @@ def manifest_sub_targets(written: list[WrittenPartitionInfo]) -> dict[str, list[
         ],
     }
 
-def declare_repart(
+def declare_ddi(
     ctx: AnalysisContext,
     *,
     tools: ImageToolsInfo,
@@ -288,7 +288,7 @@ def declare_repart(
     definitions: list[str],
     disk: bool = True,
     split: bool = False,
-    imported: list[RepartInfo] = [],
+    imported: list[DdiInfo] = [],
     imported_root_hash: RootHashInfo | None = None,
     seed: str | None = None,
     verity_key: SigningKeyInfo | None = None,
@@ -297,8 +297,8 @@ def declare_repart(
     mkfs_options: dict[str, list[str]] = {},
     basename: str = "image",
     identifier: str | None = None,
-) -> RepartOutput:
-    """Declare repart actions from resolved image and partition providers.
+) -> DdiOutput:
+    """Declare the systemd-repart action that builds a DDI from an image and partition definitions.
 
     With strip_pkgdb, the partitions omit the package database wherever the image's package system
     keeps it, for a system nothing ever resolves packages in. The image's `[pkgdb]` and `[sbom]`
@@ -315,9 +315,9 @@ def declare_repart(
 
     if output_size != None:
         if not disk:
-            fail("repart: output_size applies to a composed disk, which this invocation does not emit")
+            fail("ddi: output_size applies to a composed disk, which this invocation does not emit")
         if not regex_match(SIZE_PATTERN, output_size):
-            fail("repart: invalid output_size {!r}".format(output_size))
+            fail("ddi: invalid output_size {!r}".format(output_size))
 
     # repart hands mkfs one variable per filesystem and splits it on whitespace, so an option
     # carrying any would silently arrive as two.
@@ -325,7 +325,7 @@ def declare_repart(
         for option in options:
             if " " in option or "\t" in option:
                 fail(
-                    "repart: {} mkfs option {!r} holds whitespace, which repart splits on".format(
+                    "ddi: {} mkfs option {!r} holds whitespace, which repart splits on".format(
                         filesystem,
                         option,
                     )
@@ -337,7 +337,7 @@ def declare_repart(
 
     names = [definition["name"] for definition in decoded] + [partition.definition["name"] for partition in imported_partitions]
     if len(names) != len({name: True for name in names}):
-        fail("repart: new and imported partition names must be unique")
+        fail("ddi: new and imported partition names must be unique")
 
     definition_specs = []
     outputs = []
@@ -382,6 +382,8 @@ def declare_repart(
         "architecture": systemd_arch,
         "basename": basename,
         "definitions": definition_specs,
+        # The default seed derives from the identity, so changing "repart" here changes the partition
+        # UUIDs of every target that declares no identifier.
         "identity": "{}[{}]".format(ctx.label, identifier or "repart"),
         "manifest": None,
         "mkfs_options": mkfs_options,
@@ -417,7 +419,7 @@ def declare_repart(
 
     kind = _verity_kind(decoded)
     if kind != None and imported_root_hash != None:
-        fail("repart: cannot combine multiple verity root hashes")
+        fail("ddi: cannot combine multiple verity root hashes")
     root_hash = imported_root_hash
     if kind != None:
         hash_output = declare_out(ctx, identifier, "{}hash".format(kind))
@@ -425,7 +427,7 @@ def declare_repart(
         root_hash = RootHashInfo(hash = hash_output, kind = kind)
 
     available_partitions = imported_partitions + new_partitions
-    info = RepartInfo(
+    info = DdiInfo(
         disk = out,
         manifest = manifest,
         partitions = available_partitions,
@@ -458,30 +460,30 @@ def declare_repart(
         terminal_image_command(
             ctx,
             signing_access = signing_access,
-            driver = "repart",
-            exe = tools.disk,
+            driver = "ddi",
+            exe = tools.ddi,
             identifier = identifier,
             image = image,
             spec = spec,
         ),
-        category = "repart_split" if split else "repart",
-        identifier = identifier or "repart",
+        category = "ddi_split" if split else "ddi",
+        identifier = identifier or "ddi",
         **external_signing_execution(signing_access),
     )
-    return RepartOutput(info = info, outputs = outputs, sub_targets = sub_targets)
+    return DdiOutput(info = info, outputs = outputs, sub_targets = sub_targets)
 
-def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
+def _ddi_impl(ctx: AnalysisContext) -> list[Provider]:
     imported = []
     imported_root_hash = None
     for dep in ctx.attrs.partitions:
-        info = dep[RepartInfo]
+        info = dep[DdiInfo]
         imported.append(info)
         root_hash = info.root_hash
         if root_hash != None:
             if imported_root_hash != None:
-                fail("repart: cannot combine multiple verity root hashes")
+                fail("ddi: cannot combine multiple verity root hashes")
             imported_root_hash = root_hash
-    result = declare_repart(
+    result = declare_ddi(
         ctx,
         tools = ctx.attrs._tools[ImageToolsInfo],
         systemd_arch = ARCHITECTURES[ctx.attrs._arch].systemd,
@@ -503,7 +505,7 @@ def _repart_impl(ctx: AnalysisContext) -> list[Provider]:
         result.info,
     ]
 
-REPART_ATTRS = {
+DDI_ATTRS = {
     "basename": attrs.string(
         default = "image",
         doc = "what the composed disk and its split partitions are named after, without extension",
@@ -532,16 +534,16 @@ REPART_ATTRS = {
     "verity_key": VERITY_KEY_ATTR,
 }
 
-_repart = rule(
-    impl = _repart_impl,
-    attrs = REPART_ATTRS
+_ddi = rule(
+    impl = _ddi_impl,
+    attrs = DDI_ATTRS
     | {
         "disk": attrs.bool(default = True, doc = "emit a composed raw disk image"),
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image used to populate new partitions"),
         "partitions": attrs.list(
-            attrs.dep(providers = [RepartInfo]),
+            attrs.dep(providers = [DdiInfo]),
             default = [],
-            doc = "split repart targets whose partitions should be copied into the result",
+            doc = "split ddi targets whose partitions should be copied into the result",
         ),
         "split": attrs.bool(default = False, doc = "also emit independent artifacts for new partitions"),
         # `_arch` is the architecture the image runs on. repart picks the partition types for it.
@@ -550,7 +552,7 @@ _repart = rule(
     | IMAGE_TOOLS_ATTR,
 )
 
-def repart(
+def ddi(
     name: str,
     definitions: list[Partition],
     partitions: list[str] = [],
@@ -560,7 +562,7 @@ def repart(
     **kwargs,
 ) -> None:
     """Create a disk, independent partitions, or both."""
-    _repart(
+    _ddi(
         name = name,
         definitions = encode_definitions(
             definitions,
@@ -591,7 +593,7 @@ def declare_disk_conversion(
     ctx: AnalysisContext,
     *,
     tools: ImageToolsInfo,
-    disk: RepartInfo,
+    disk: DdiInfo,
     box: Dependency,
     format: str,
     basename: str = "image",
@@ -599,7 +601,7 @@ def declare_disk_conversion(
 ) -> DiskConversionInfo:
     """Declare a disk format conversion from a resolved raw disk provider."""
     if disk.disk == None:
-        fail("disk_convert: RepartInfo does not contain a composed disk")
+        fail("disk_convert: DdiInfo does not contain a composed disk")
     out = declare_out(ctx, identifier, basename + "." + format)
     cmd = cmd_args(
         box_run(box = box[BoxInfo], exe = tools.convert),
@@ -621,7 +623,7 @@ def _disk_convert_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx,
         tools = ctx.attrs._tools[ImageToolsInfo],
         basename = ctx.attrs.basename,
-        disk = ctx.attrs.disk[RepartInfo],
+        disk = ctx.attrs.disk[DdiInfo],
         box = ctx.attrs.box,
         format = ctx.attrs.format,
     )
@@ -632,7 +634,7 @@ disk_convert = rule(
     attrs = {
         "basename": attrs.string(default = "image", doc = "file name of the re-encoded disk, without extension"),
         "box": attrs.exec_dep(providers = [BoxInfo], doc = "execution environment supplying conversion tools"),
-        "disk": attrs.dep(providers = [RepartInfo], doc = "the composed raw disk to re-encode"),
+        "disk": attrs.dep(providers = [DdiInfo], doc = "the composed raw disk to re-encode"),
         "format": attrs.enum(DISK_FORMATS),
     }
     | IMAGE_TOOLS_ATTR,

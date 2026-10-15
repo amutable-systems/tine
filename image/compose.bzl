@@ -12,11 +12,11 @@ load(
 )
 load("//image_format:boot.bzl", "boot_subtargets", "declare_boot_artifacts")
 load(
-    "//image_format:disk.bzl",
+    "//image_format:ddi.bzl",
     "DISK_FORMATS",
     "Partition",  # @unused Used as a type.
+    "declare_ddi",
     "declare_disk_conversion",
-    "declare_repart",
     "encode_definitions",
     "format_partition_labels",
     "manifest_sub_targets",
@@ -289,7 +289,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     # and every split partition, which repart names after the image it writes them out of.
     basename = "{}_{}_{}".format(image_id, version, ARCHITECTURES[ctx.attrs.arch].systemd)
 
-    system = declare_repart(
+    system = declare_ddi(
         ctx,
         tools = tools,
         systemd_arch = ARCHITECTURES[ctx.attrs.arch].systemd,
@@ -332,7 +332,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         version = version,
     )
 
-    disk = declare_repart(
+    disk = declare_ddi(
         ctx,
         tools = tools,
         systemd_arch = ARCHITECTURES[ctx.attrs.arch].systemd,

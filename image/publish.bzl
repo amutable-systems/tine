@@ -15,7 +15,7 @@ from a dynamic action: everything else in it is known while the graph is still b
 """
 
 load("//image:image.bzl", "ImageInfo", "image_metadata_subtargets")
-load("//image_format:disk.bzl", "PartitionInfo")
+load("//image_format:ddi.bzl", "PartitionInfo")
 
 PublishedInfo = provider(
     doc = "The artifacts one target contributes to a release, keyed by published name.",

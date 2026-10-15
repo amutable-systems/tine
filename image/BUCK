@@ -15,7 +15,7 @@ image_tools(
     artifacts = ":artifacts",
     boot = ":boot",
     convert = "//image_format:convert",
-    disk = "//image_format:disk",
+    ddi = "//image_format:ddi",
     layer = ":layer",
     manifest = ":manifest",
     python = "//tools:python3",

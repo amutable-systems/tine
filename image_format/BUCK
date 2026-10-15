@@ -20,8 +20,8 @@ tine_python_binary(
 )
 
 tine_python_binary(
-    name = "disk",
-    main = "disk.py",
+    name = "ddi",
+    main = "ddi.py",
     deps = [
         ":repart",
         "//:specs",
@@ -63,8 +63,8 @@ box_python_test(
     name = "test",
     box = "//tools:dev.box",
     srcs = [
-        "disk.py",
-        "disk_test.py",
+        "ddi.py",
+        "ddi_test.py",
         "repart_test.py",
     ],
     deps = [

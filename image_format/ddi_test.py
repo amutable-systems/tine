@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 from typing import cast
 
-import disk
+import ddi
 
 UUID = "fb1bb90c-9de1-b90c-8b89-e04b87c721bd"
 PUBLISHED = f"AmutableOS_9_x86-64.usr-x86-64.{UUID}.raw"
@@ -41,16 +41,16 @@ class TestSplitName(unittest.TestCase):
     def test_split_names_by_type_and_uuid(self) -> None:
         # systemd-sysupdate reads the UUID back out of the name as @u, so the artifact repart
         # writes is already named the way it is published.
-        self.assertIn("SplitName=%t.%U", disk.Definition.parse(DEFINITION).render(split=True).splitlines())
+        self.assertIn("SplitName=%t.%U", ddi.Definition.parse(DEFINITION).render(split=True).splitlines())
 
     def test_no_split_name_without_split(self) -> None:
-        rendered = disk.Definition.parse(DEFINITION).render(split=False)
+        rendered = ddi.Definition.parse(DEFINITION).render(split=False)
         self.assertNotIn("SplitName", rendered)
 
 
 class TestCopyPartition(unittest.TestCase):
     def _copy(self, *, contents: bytes, raw_size: int) -> dict[str, object]:
-        with tempfile.TemporaryDirectory(prefix="disk_test.") as scratch_dir:
+        with tempfile.TemporaryDirectory(prefix="ddi_test.") as scratch_dir:
             scratch = Path(scratch_dir)
             source = scratch / PUBLISHED
             source.write_bytes(contents)
@@ -63,7 +63,7 @@ class TestCopyPartition(unittest.TestCase):
                 "type": "usr-x86-64",
                 "uuid": UUID,
             }
-            disk._copy_partition(row, "usr", blocks, metadata)
+            ddi._copy_partition(row, "usr", blocks, metadata)
             self.assertEqual(blocks.stat().st_size, raw_size)
             return cast(dict[str, object], json.loads(metadata.read_text()))
 
@@ -82,10 +82,10 @@ class TestCopyPartition(unittest.TestCase):
             self._copy(contents=b"x" * 1024, raw_size=512)
 
     def test_refuses_a_partition_repart_did_not_split(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="disk_test.") as scratch_dir:
+        with tempfile.TemporaryDirectory(prefix="ddi_test.") as scratch_dir:
             scratch = Path(scratch_dir)
             with self.assertRaises(SystemExit):
-                disk._copy_partition({"split_path": "-"}, "usr", scratch / "usr.raw", scratch / "usr.json")
+                ddi._copy_partition({"split_path": "-"}, "usr", scratch / "usr.raw", scratch / "usr.json")
 
 
 if __name__ == "__main__":
