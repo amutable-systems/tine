@@ -533,10 +533,10 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
 
     # The system partitions are filled by their own repart run and imported into this one, so what
     # the disk holds is what the two runs between them listed.
-    written = system.info.written + disk.info.written
+    manifests = system.info.manifests | disk.info.manifests
 
     sub_targets = dict(disk.sub_targets)
-    sub_targets.update(manifest_sub_targets(written))
+    sub_targets.update(manifest_sub_targets(manifests))
     sub_targets.update({
         "boot": [
             DefaultInfo(
@@ -590,10 +590,8 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         "{}.vmlinuz".format(basename): boot.kernel,
         raw.basename: raw,
     }
-    for partition in written:
-        if partition.manifest != None:
-            name = partition.definition["name"]
-            artifacts["{}.{}.Uapi16Manifest".format(basename, name)] = partition.manifest
+    for name, listing in manifests.items():
+        artifacts["{}.{}.Uapi16Manifest".format(basename, name)] = listing
     whole = disk.info.manifest
     if whole != None:
         artifacts[whole.basename] = whole

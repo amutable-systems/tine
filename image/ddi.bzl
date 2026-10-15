@@ -192,18 +192,13 @@ def _check_definitions(
     if bool(signatures) != signed:
         fail("ddi: Verity=signature and signing credentials must be specified together")
 
-WrittenPartitionInfo = record(
-    definition = Partition,
-    # What it carries; absent for a partition whose content no listing describes.
-    manifest = Artifact | None,
-)
-
 PartitionInfo = record(
     definition = Partition,
     blocks = Artifact,
     metadata = Artifact,
-    # What it carries; absent for the same reason. An imported partition brings this with it, so
-    # the invocation that copies it in can list the whole disk without listing that partition.
+    # The manifest lists the files of the partition. It is None for a partition that copies no
+    # files. The invocation that wrote an imported partition also wrote its manifest, and the
+    # invocation that copies the partition in uses that manifest to list the whole disk.
     manifest = Artifact | None,
 )
 
@@ -221,11 +216,11 @@ DdiInfo = provider(
         "disk": provider_field(Artifact | None, default = None),
         # What the composed disk carries, its own partitions and its imported ones taken together.
         "manifest": provider_field(Artifact | None, default = None),
+        # manifests maps each partition that this invocation writes to the manifest of its files.
+        # Imported partitions are in `partitions`, with the manifest of the invocation that wrote them.
+        "manifests": provider_field(dict[str, Artifact], default = {}),
         "partitions": provider_field(list[PartitionInfo]),
         "root_hash": provider_field(RootHashInfo | None, default = None),
-        # The partitions this invocation populates itself. Imported ones are in `partitions`
-        # instead, already listed by the invocation that filled them.
-        "written": provider_field(list[WrittenPartitionInfo], default = []),
     },
 )
 
@@ -261,16 +256,15 @@ def _partition_sub_targets(partitions: list[PartitionInfo]) -> dict[str, list[Pr
 def _output(artifact: Artifact | None) -> OutputArtifact | None:
     return artifact.as_output() if artifact != None else None
 
-def manifest_sub_targets(written: list[WrittenPartitionInfo]) -> dict[str, list[Provider]]:
+def manifest_sub_targets(manifests: dict[str, Artifact]) -> dict[str, list[Provider]]:
     """What each partition carries, under the name of the definition that carries it."""
-    listings = {it.definition["name"]: it.manifest for it in written if it.manifest != None}
-    if not listings:
+    if not manifests:
         return {}
     return {
         "manifests": [
             DefaultInfo(
-                default_outputs = listings.values(),
-                sub_targets = {name: [DefaultInfo(default_output = out)] for name, out in listings.items()},
+                default_outputs = manifests.values(),
+                sub_targets = {name: [DefaultInfo(default_output = out)] for name, out in manifests.items()},
             ),
         ],
     }
@@ -339,7 +333,7 @@ def declare_ddi(
     definition_specs = []
     outputs = []
     new_partitions = []
-    written = []
+    manifests = {}
     for definition in definitions:
         name = definition["name"]
 
@@ -373,7 +367,8 @@ def declare_ddi(
             "manifest": _output(listing),
             "metadata": _output(metadata),
         })
-        written.append(WrittenPartitionInfo(definition = definition, manifest = listing))
+        if listing != None:
+            manifests[name] = listing
 
     spec = {
         # repart has no partition type for any architecture, so an `_any` DDI gets the build host's types.
@@ -413,8 +408,7 @@ def declare_ddi(
 
         # Nothing to assemble a listing of the whole from when no part of this disk was listed,
         # which is a disk of imported verity partitions and nothing else.
-        listed = [it for it in imported_partitions + written if it.manifest != None]
-        if listed:
+        if manifests or [it for it in imported_partitions if it.manifest != None]:
             manifest = declare_out(ctx, identifier, basename + ".Uapi16Manifest")
             spec["manifest"] = manifest.as_output()
 
@@ -431,10 +425,10 @@ def declare_ddi(
         disk = out,
         manifest = manifest,
         partitions = available_partitions,
+        manifests = manifests,
         root_hash = root_hash,
-        written = written,
     )
-    sub_targets = manifest_sub_targets(written)
+    sub_targets = manifest_sub_targets(manifests)
     if manifest != None:
         # Qualified, unlike the provider field: a logical image publishes a `manifest` subtarget of
         # its own (image.bzl:image_metadata_subtargets) listing its whole tree, and a composition
