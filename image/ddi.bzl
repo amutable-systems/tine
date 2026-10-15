@@ -571,16 +571,16 @@ def ddi(
     )
 
 # The disk conversion output formats, doubling as each artifact's extension.
-DISK_FORMATS = ["qcow2", "raw.zst"]
+DISK_FORMATS = ["qcow2", "raw.zst", "vmdk"]
 
 # The formats whose disk has a size of its own, so it can leave room past the partitions for first boot to
 # claim. The raw itself stays as small as its partitions.
-VIRTUAL_SIZE_FORMATS = ["qcow2"]
+VIRTUAL_SIZE_FORMATS = ["qcow2", "vmdk"]
 
 VIRTUAL_SIZE_ATTR = attrs.option(
     attrs.string(),
     default = None,
-    doc = 'size of the disk a qcow2 describes, e.g. "20G"; the room past the partitions stays free',
+    doc = 'size of the disk a qcow2 or vmdk describes, e.g. "20G"; the room past the partitions stays free',
 )
 
 DiskConversionInfo = provider(

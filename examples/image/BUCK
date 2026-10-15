@@ -267,16 +267,22 @@ tests.vm_smoke(
     ],
 )
 
-# The qcow2 describes a disk of the image's virtual_size, while the raw stays as small as its partitions.
+# The qcow2 and vmdk describe a disk of the image's virtual_size with the raw's content, while the raw stays
+# as small as its partitions.
 box.sh_test(
     name = "virtual-size-test",
     labels = ["image"],
     box = "@tine//catalog:fedora.rawhide.box",
     script = """
-test "$(qemu-img info --output=json "$1" | python3 -c 'import json, sys; print(json.load(sys.stdin)["virtual-size"])')" = 2147483648
-test "$(stat -c %s "$2")" -lt $((900 << 20))
+raw=$1
+shift
+test "$(stat -c %s "$raw")" -lt $((900 << 20))
+for disk in "$@"; do
+    test "$(qemu-img info --output=json "$disk" | python3 -c 'import json, sys; print(json.load(sys.stdin)["virtual-size"])')" = 2147483648
+    qemu-img compare -q -f raw "$raw" "$disk"
+done
 """,
-    args = ["$(location :boot-demo.fedora[qcow2])", "$(location :boot-demo.fedora)"],
+    args = ["$(location :boot-demo.fedora)", "$(location :boot-demo.fedora[qcow2])", "$(location :boot-demo.fedora[vmdk])"],
 )
 
 # System-extension DDI extending :boot-demo: only the delta above the base lands in the
