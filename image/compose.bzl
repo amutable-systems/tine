@@ -28,6 +28,7 @@ load(
 )
 load(
     ":ddi.bzl",
+    "DDI_ATTRS",
     "DISK_FORMATS",
     "Partition",  # @unused Used as a type.
     "VIRTUAL_SIZE_ATTR",
@@ -70,7 +71,6 @@ load(":publish.bzl", "PublishedInfo", "published_metadata_subtargets")
 load(
     ":sign.bzl",
     "SigningKeyInfo",  # @unused Used as a function argument type.
-    "VERITY_KEY_ATTR",
     "resolve_signing_key",
 )
 load(":version.bzl", "resolve_version")
@@ -512,8 +512,6 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         seed = ctx.attrs.disk_seed,
     )
     raw = disk.info.disk
-    if raw == None:
-        fail("bootable_disk_image: internal disk repart did not expose a composed disk")
     directory = declare_image_directory(ctx, tools = tools, identifier = "directory", image = esp)
     conversions = [
         declare_disk_conversion(
@@ -618,12 +616,13 @@ _bootable_disk_image = rule(
     supports_incoming_transition = True,
     attrs = IMAGE_ATTRS
     | UKI_ATTRS
+    | DDI_ATTRS
+    | _ROOT_ATTRS
     | {
         "cmdline": attrs.list(
             attrs.string(),
             default = ["root=tmpfs", "mount.usr=dissect", "rw"],
         ),
-        "definitions": attrs.list(attrs.string(), doc = "serialized partition definitions"),
         "disk_seed": attrs.option(attrs.string(), default = None),
         "esp_files": attrs.dict(
             attrs.string(),
@@ -635,26 +634,6 @@ _bootable_disk_image = rule(
             providers = [InitrdInfo],
             doc = "the initrd to boot; the declaration macro declares a conventional one when given none",
         ),
-        "mkfs_options": attrs.dict(
-            attrs.string(),
-            attrs.list(attrs.string()),
-            default = {},
-            doc = "filesystem -> the options mkfs is given when formatting a partition of that type",
-        ),
-        "package_manager": attrs.option(
-            attrs.dep(providers = [PackageManagerInfo]),
-            default = None,
-        ),
-        "parent": attrs.option(
-            attrs.dep(providers = [ImageInfo]),
-            default = None,
-            doc = "the logical image the disk extends instead of starting one of its own",
-        ),
-        "strip_pkgdb": attrs.bool(
-            default = False,
-            doc = "leave the package database out of the system partitions; the image still carries it",
-        ),
-        "verity_key": VERITY_KEY_ATTR,
         "virtual_size": VIRTUAL_SIZE_ATTR,
         "_ami_box": attrs.exec_dep(providers = [BoxInfo], default = "tine//tools:aws.box"),
         "_ami_import": attrs.exec_dep(providers = [RunInfo], default = "tine//image:ami-import"),
