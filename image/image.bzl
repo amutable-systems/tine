@@ -25,7 +25,6 @@ ImageToolsInfo = provider(
         "python": provider_field(Dependency),
         "sbom": provider_field(Dependency),
         "syft": provider_field(Dependency),
-        "sysext": provider_field(Dependency),
         "uki": provider_field(Dependency),
     },
 )
@@ -41,7 +40,6 @@ _TOOLS = [
     "python",
     "sbom",
     "syft",
-    "sysext",
     "uki",
 ]
 

@@ -24,8 +24,13 @@ import util
 import finalize
 import manifest
 import repart
+import rootfs
 
 _SEED_NAMESPACE = uuid.UUID("5af2de99-4f9f-4e0b-a04b-bde36b068c4f")
+
+# Extensions derive their seed from a namespace and inputs of their own. Changing either changes
+# the partition UUIDs of every published extension.
+_EXTENSION_SEED_NAMESPACE = uuid.UUID("b388a973-3ffa-44aa-90b7-afcc4573ea9f")
 
 
 class WrittenPartitionSpec(TypedDict):
@@ -49,11 +54,28 @@ class ImportedPartitionSpec(TypedDict):
     manifest: str | None
 
 
+class Release(TypedDict):
+    # The path of the extension-release file, relative to the image root.
+    path: str
+    # The driver writes the fields in this order.
+    fields: dict[str, str]
+
+
+class ExtensionSpec(TypedDict):
+    # The number of leading lowers that form the base image. Only the layers above them are packaged.
+    base: int
+    # The seed derives from this target label, unless the spec gives a seed.
+    identity: str
+    name: str
+    # An extension has one extension-release file per class.
+    releases: list[Release]
+
+
 class Spec(finalize.ImageSpec):
     out: str | None
     # The systemd spelling of the architecture the image runs on. repart picks the partition types of
-    # root and usr partitions for it.
-    architecture: str
+    # root and usr partitions for it. With None, repart uses the build host's types.
+    architecture: str | None
     # What the artifacts of this invocation are named after, extension aside.
     basename: str
     # Stable target identity the seed derives from, unless one is given outright.
@@ -71,6 +93,8 @@ class Spec(finalize.ImageSpec):
     manifest: str | None
     # Filesystem -> the options mkfs is given for it.
     mkfs_options: dict[str, list[str]]
+    # The driver prepares the tree of an extension before repart copies it.
+    extension: ExtensionSpec | None
 
 
 @dataclass(frozen=True)
@@ -189,6 +213,65 @@ def _derived_seed(
     return uuid.uuid5(_SEED_NAMESPACE, digest.hexdigest())
 
 
+def _extension_seed(identity: str, name: str, releases: list[Release]) -> uuid.UUID:
+    """Derive the UUIDs of an extension from its name and release fields."""
+    digest = hashlib.sha256(identity.encode())
+    digest.update(b"\0name\0" + name.encode())
+    for release in releases:
+        for key, value in release["fields"].items():
+            digest.update(b"\0release\0" + key.encode() + b"=" + value.encode())
+    return uuid.uuid5(_EXTENSION_SEED_NAMESPACE, digest.hexdigest())
+
+
+def _os_release(tree: Path) -> dict[str, str]:
+    """Parse the base image's os-release for strict extension matching."""
+    for candidate in ("usr/lib/os-release", "etc/os-release"):
+        path = tree / candidate
+        if not path.is_file():
+            continue
+        fields = {}
+        for line in path.read_text().splitlines():
+            key, sep, value = line.strip().partition("=")
+            if key and sep and not key.startswith("#"):
+                fields[key] = value.strip("\"'")
+        return fields
+    util.fail("ddi: the base image ships no os-release to match against")
+
+
+def pin_release(base: dict[str, str], release: dict[str, str]) -> dict[str, str]:
+    """Add the base's ID and VERSION_ID to the extension-release fields `release` does not set.
+
+    The extension must pin the base identity it was built against, so systemd refuses to merge
+    it onto anything else. An extension that declares ID=_any matches any OS, and systemd then
+    does no VERSION_ID matching either, so it gets neither field.
+    """
+    if release.get("ID") == "_any":
+        return release
+    strict = {key: base[key] for key in ("ID", "VERSION_ID") if key in base and key not in release}
+    return strict | release
+
+
+def _extension_layers(spec: Spec, extension: ExtensionSpec) -> tuple[list[Release], list[str | Path]]:
+    """Return the extension-release files and the layers the extension packages.
+
+    With a base, the fields are pinned to the base's os-release and the layers are the delta above
+    it. Without one, both come back as the spec states them.
+    """
+    releases = extension["releases"]
+    base = extension["base"]
+    lowers: list[str | Path] = list(spec["lower"])
+    if not base:
+        return releases, lowers
+    with rootfs.rootfs("/buildroot", lowers=lowers) as tree:
+        fields = _os_release(tree)
+    if "ID" not in fields:
+        util.fail("ddi: the base os-release lacks ID")
+    pinned = [
+        Release(path=release["path"], fields=pin_release(fields, release["fields"])) for release in releases
+    ]
+    return pinned, lowers[base:]
+
+
 def _write_definitions(
     directory: Path,
     written: list[WrittenPartition],
@@ -304,14 +387,36 @@ def main(argv: list[str] | None = None) -> None:
         (partition.blocks, f"/run/tine/repart/{index}.raw")
         for index, partition in enumerate(partitions, start=len(written))
     ]
+    extension = spec["extension"]
+    releases: list[Release] = []
+    lowers = None
+    if extension:
+        releases, lowers = _extension_layers(spec, extension)
     with (
-        finalize.image(spec, program="ddi", binds=binds) as tree,
+        finalize.image(spec, program="ddi", lowers=lowers, binds=binds) as tree,
         tempfile.TemporaryDirectory(prefix="repart.") as scratch_dir,
     ):
+        if extension:
+            # An extension identifies itself through its extension-release files. An os-release in
+            # the extension would replace the os-release of the base image in the merged tree.
+            for path in ("usr/lib/os-release", "etc/os-release"):
+                (tree / path).unlink(missing_ok=True)
         # The package database is a supply-chain artifact that the image's `[pkgdb]` and `[sbom]`
         # subtargets capture from the tree, so partitions nothing resolves packages in can drop it.
         for relative in spec["pkgdb_paths"]:
             util.remove_path(tree / relative, with_parents=True)
+
+        if extension:
+            # A delta may lack a directory the root partition copies, /opt most often. Create it,
+            # so that the DDI contains every directory of its classes.
+            for partition in written:
+                for source in partition.definition.sources:
+                    if source.strip("/"):
+                        (tree / source.strip("/")).mkdir(exist_ok=True)
+            for release in releases:
+                path = tree / release["path"]
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("".join(f"{key}={value}\n" for key, value in release["fields"].items()))
 
         # What each partition ends up carrying, listed from the tree repart is about to copy. A
         # definition takes the paths it names and nothing else, so a disk whose definitions are a
@@ -340,11 +445,12 @@ def main(argv: list[str] | None = None) -> None:
             split=bool(splits),
         )
 
-        seed = (
-            uuid.UUID(spec["seed"])
-            if spec["seed"] is not None
-            else _derived_seed(spec["identity"], raw_definitions, partitions)
-        )
+        if spec["seed"] is not None:
+            seed = uuid.UUID(spec["seed"])
+        elif extension:
+            seed = _extension_seed(extension["identity"], extension["name"], releases)
+        else:
+            seed = _derived_seed(spec["identity"], raw_definitions, partitions)
         out = Path(spec["out"]) if spec["out"] else None
         # A split artifact is named after the image repart writes, so the scratch file carries the
         # published basename even when only the partitions leave this invocation.
@@ -363,8 +469,9 @@ def main(argv: list[str] | None = None) -> None:
             str(seed),
             "--definitions",
             str(repart_definitions),
-            f"--architecture={spec['architecture']}",
         ]
+        if spec["architecture"] is not None:
+            cmd.append(f"--architecture={spec['architecture']}")
         if splits:
             cmd.append("--split=yes")
         cmd += repart.key_arguments(spec["signing"])

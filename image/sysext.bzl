@@ -3,9 +3,8 @@
 
 """Package a logical image's /usr and /opt as a systemd system-extension DDI.
 
-The driver authors `usr/lib/extension-release.d/extension-release.<name>`, drops the base
-os-release, and runs `systemd-repart --make-ddi=sysext` for a GPT image holding an erofs data
-partition plus its verity hash. With `verity_key`, a third partition carries a signature over
+The repart driver authors `usr/lib/extension-release.d/extension-release.<name>`, drops the base
+os-release, and writes a GPT image holding an erofs data partition plus its verity hash. With `verity_key`, a third partition carries a signature over
 the verity root hash, which a host can verify against the key's certificate in its `verity.d`
 before merging. With `base`, only the delta layered above that image is packaged, and the
 extension-release pins the base's ID/VERSION_ID.
@@ -13,23 +12,25 @@ extension-release pins the base's ID/VERSION_ID.
 
 load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load(
+    ":ddi.bzl",
+    "Partition",  # @unused Used as a type.
+    "declare_ddi",
+    "encode_definitions",
+    "partition",
+)
+load(
     ":image.bzl",
     "IMAGE_TOOLS_ATTR",
     "ImageInfo",
     "ImageToolsInfo",
     "check_version",
-    "pkgdb_paths",
-    "terminal_image_command",
 )
 load(":publish.bzl", "PublishedInfo")
 load(
     ":sign.bzl",
     "SigningKeyInfo",
     "VERITY_KEY_ATTR",
-    "external_signing_execution",
-    "merge_signing_access",
     "resolve_signing_key",
-    "signing_key_spec",
 )
 
 SysextImageInfo = provider(
@@ -49,6 +50,42 @@ SysextImageInfo = provider(
         "root_hash": provider_field(Artifact),
     },
 )
+
+# erofs dedup keys off the filesystem UUID, so combined with a stable seed these keep the DDI
+# reproducible.
+_MKFS_OPTIONS = {"erofs": ["--quiet", "-zzstd,level=3", "-C524288", "-Efragments,ztailpacking,dedupe"]}
+
+def _partitions(signed: bool) -> list[Partition]:
+    """Return the partitions of a sysext DDI: an erofs root partition with its verity hash and signature.
+
+    The partitions match the ones that systemd-repart --make-ddi=sysext uses. A DDI therefore does not
+    depend on the systemd version of the box that builds it.
+    """
+    definitions = [
+        partition(
+            type = "root",
+            filesystem = "erofs",
+            copy_files = ["/usr/", "/opt/"],
+            minimize = "best",
+            verity = "data",
+            verity_match_key = "root",
+        ),
+        partition(
+            type = "root-verity",
+            minimize = "best",
+            verity = "hash",
+            verity_match_key = "root",
+        ),
+    ]
+    if signed:
+        definitions.append(
+            partition(
+                type = "root-verity-sig",
+                verity = "signature",
+                verity_match_key = "root",
+            ),
+        )
+    return definitions
 
 def declare_image_sysext(
     ctx: AnalysisContext,
@@ -80,8 +117,6 @@ def declare_image_sysext(
         systemd_arch = ARCHITECTURES[arch].systemd
         architecture = systemd_arch
     basename = "{}_{}_{}".format(extension, version, architecture)
-    stem = basename + ".sysext"
-    out = ctx.actions.declare_output(stem + ".raw")
 
     # systemd-sysext refuses images without these fields. Without a base there is nothing to
     # match strictly, so accept any host; with one, the driver pins the base's ID/VERSION_ID.
@@ -106,52 +141,40 @@ def declare_image_sysext(
             fail("image_sysext: image must layer a delta on top of base")
         layers = len(base.layers)
 
-    # Written by the driver from the tree it packages, and named after the DDI so a release
-    # publishes the listing under a name that says which image it belongs to.
-    manifest = ctx.actions.declare_output(stem + ".Uapi16Manifest")
-
-    # The verity root hash, named like the DDI it identifies.
-    root_hash = ctx.actions.declare_output(stem + ".roothash")
-
-    signing_access = merge_signing_access([verity_key])
-    cmd = terminal_image_command(
+    signed = verity_key != None
+    output = declare_ddi(
         ctx,
-        signing_access = signing_access,
-        # The DDI is named after the extension, so one composition can declare several.
-        driver = "sysext-" + extension,
-        exe = tools.sysext,
+        tools = tools,
         image = image,
-        spec = {
-            # repart has no partition type for any architecture, so an `_any` DDI gets the build host's types.
-            "architecture": None if systemd_arch == "_any" else systemd_arch,
+        systemd_arch = systemd_arch,
+        definitions = encode_definitions(_partitions(signed), disk = True, imports = False, signed = signed, split = False),
+        # A release publishes the manifest and the root hash next to the DDI, so the two files are named after it.
+        basename = basename + ".sysext",
+        mkfs_options = _MKFS_OPTIONS,
+        seed = seed,
+        # A merged extension must not shadow the host's package database.
+        strip_pkgdb = True,
+        verity_key = verity_key,
+        extension = {
             "base": layers,
             "identity": str(ctx.label),
-            "manifest": manifest.as_output(),
             "name": extension,
-            "out": out.as_output(),
-            # A merged extension must not shadow the host's package database.
-            "pkgdb_paths": pkgdb_paths(image),
-            "release": {key: release_fields[key] for key in sorted(release_fields)},
-            "root_hash_out": root_hash.as_output(),
-            "seed": seed,
-            "signing": signing_key_spec(verity_key),
+            "releases": [
+                {
+                    "fields": {key: release_fields[key] for key in sorted(release_fields)},
+                    "path": "usr/lib/extension-release.d/extension-release.{}".format(extension),
+                }
+            ],
         },
-    )
-    ctx.actions.run(
-        cmd,
-        category = "image_sysext",
-        # The category must be unique per target and a composition can declare several extensions.
-        identifier = extension,
-        **external_signing_execution(signing_access),
     )
 
     return SysextImageInfo(
         basename = basename,
         box = image.box,
         extension = extension,
-        image = out,
-        manifest = manifest,
-        root_hash = root_hash,
+        image = output.info.disk,
+        manifest = output.info.manifest,
+        root_hash = output.info.root_hash.hash,
     )
 
 def sysext_published(info: SysextImageInfo) -> PublishedInfo:
