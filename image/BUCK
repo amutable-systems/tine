@@ -21,7 +21,6 @@ image_tools(
     python = "//tools:python3",
     sbom = ":sbom",
     syft = "//tools:syft",
-    sysext = ":sysext",
     uki = ":uki",
     visibility = ["PUBLIC"],
 )
@@ -61,6 +60,7 @@ tine_python_binary(
         ":repart",
         "//:specs",
         "//:util",
+        "//rootfs:rootfs",
     ],
     visibility = ["PUBLIC"],
 )
@@ -75,20 +75,6 @@ tine_python_binary(
     name = "convert",
     main = "convert.py",
     deps = ["//:specs", "//:util"],
-    visibility = ["PUBLIC"],
-)
-
-tine_python_binary(
-    name = "sysext",
-    main = "sysext.py",
-    deps = [
-        ":finalize",
-        ":manifest-lib",
-        ":repart",
-        "//:specs",
-        "//:util",
-        "//rootfs:rootfs",
-    ],
     visibility = ["PUBLIC"],
 )
 

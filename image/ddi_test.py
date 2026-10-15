@@ -88,5 +88,27 @@ class TestCopyPartition(unittest.TestCase):
                 ddi._copy_partition({"split_path": "-"}, "usr", scratch / "usr.raw", scratch / "usr.json")
 
 
+class TestPinRelease(unittest.TestCase):
+    BASE = {"ID": "fedora", "VERSION_ID": "45", "NAME": "Fedora Linux"}
+
+    def test_pins_id_and_version_id(self) -> None:
+        pinned = ddi.pin_release(self.BASE, {"SYSEXT_SCOPE": "portable"})
+        self.assertEqual(pinned, {"ID": "fedora", "VERSION_ID": "45", "SYSEXT_SCOPE": "portable"})
+        # The driver writes the fields in this order, and derives the default seed from it.
+        self.assertEqual(list(pinned), ["ID", "VERSION_ID", "SYSEXT_SCOPE"])
+
+    def test_release_overrides_the_base(self) -> None:
+        pinned = ddi.pin_release(self.BASE, {"VERSION_ID": "46"})
+        self.assertEqual(pinned, {"ID": "fedora", "VERSION_ID": "46"})
+
+    def test_rolling_base_pins_only_id(self) -> None:
+        pinned = ddi.pin_release({"ID": "arch"}, {})
+        self.assertEqual(pinned, {"ID": "arch"})
+
+    def test_any_pins_nothing(self) -> None:
+        pinned = ddi.pin_release(self.BASE, {"ID": "_any"})
+        self.assertEqual(pinned, {"ID": "_any"})
+
+
 if __name__ == "__main__":
     unittest.main()

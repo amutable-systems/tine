@@ -297,12 +297,14 @@ def declare_ddi(
     mkfs_options: dict[str, list[str]] = {},
     basename: str = "image",
     identifier: str | None = None,
+    extension: dict[str, typing.Any] | None = None,
 ) -> DdiOutput:
     """Declare the systemd-repart action that builds a DDI from an image and partition definitions.
 
     With strip_pkgdb, the partitions omit the package database wherever the image's package system
     keeps it, for a system nothing ever resolves packages in. The image's `[pkgdb]` and `[sbom]`
-    subtargets still capture it from the tree itself.
+    subtargets still capture it from the tree itself. `extension` makes the driver package the tree
+    as an extension (see sysext.bzl).
     """
     decoded = [json.decode(value) for value in definitions]
     encode_definitions(
@@ -379,9 +381,11 @@ def declare_ddi(
         written.append(WrittenPartitionInfo(definition = definition, manifest = listing))
 
     spec = {
-        "architecture": systemd_arch,
+        # repart has no partition type for any architecture, so an `_any` DDI gets the build host's types.
+        "architecture": None if systemd_arch == "_any" else systemd_arch,
         "basename": basename,
         "definitions": definition_specs,
+        "extension": extension,
         # The default seed derives from the identity, so changing "repart" here changes the partition
         # UUIDs of every target that declares no identifier.
         "identity": "{}[{}]".format(ctx.label, identifier or "repart"),
@@ -422,7 +426,9 @@ def declare_ddi(
         fail("ddi: cannot combine multiple verity root hashes")
     root_hash = imported_root_hash
     if kind != None:
-        hash_output = declare_out(ctx, identifier, "{}hash".format(kind))
+        # The root hash file is named after the disk, so that a release can publish the root
+        # hashes of several DDIs.
+        hash_output = declare_out(ctx, identifier, "{}.{}hash".format(basename, kind))
         spec["root_hash_out"] = hash_output.as_output()
         root_hash = RootHashInfo(hash = hash_output, kind = kind)
 
