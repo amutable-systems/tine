@@ -75,7 +75,7 @@ go.package(
   executables, which the kernel loads at a random address on each run. Unset, the box toolchain's default
   applies, which is `"exe"` on x86-64 and AArch64 Linux.
 
-The binaries are ordinary artifacts, so an image installs one with an `image.copy()` operation; see the
+The binaries are ordinary artifacts, so an image installs one with an `image.ops.copy()` operation; see the
 example.
 
 For example, etcd's build scripts build the server in `server/`, which contains the server module. The

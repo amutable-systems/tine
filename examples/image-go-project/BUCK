@@ -157,8 +157,8 @@ image.rootfs_archive(
     # copies below their place to land.
     packages = ["filesystem"],
     ops = [
-        image.copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
-        image.copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
+        image.ops.copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
+        image.ops.copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
     ],
     format = "tar",
 )

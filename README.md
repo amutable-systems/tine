@@ -71,8 +71,8 @@ image.rootfs_archive(
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"],
     ops = [
-        image.copy("marker.txt", "/etc/tine/marker"),
-        image.run(["/usr/bin/bash", "-c", "echo built-by-tine >> /etc/tine/marker"], chroot = True),
+        image.ops.copy("marker.txt", "/etc/tine/marker"),
+        image.ops.run(["/usr/bin/bash", "-c", "echo built-by-tine >> /etc/tine/marker"], chroot = True),
     ],
     format = "tar",
 )

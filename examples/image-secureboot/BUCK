@@ -98,14 +98,14 @@ image.bootable_disk(
         # The smoke test compares this against the public key the stub hands the booted system, to
         # tell which key sealed the expected-PCR policy. Sealed under verity, so it cannot be
         # swapped.
-        image.copy(_SIGNING + "[cert]", "/usr/share/tine-example/secure-boot.crt"),
-        image.copy(_PCR_SIGNING + "[cert]", "/usr/share/tine-example/expected-pcr.crt"),
+        image.ops.copy(_SIGNING + "[cert]", "/usr/share/tine-example/secure-boot.crt"),
+        image.ops.copy(_PCR_SIGNING + "[cert]", "/usr/share/tine-example/expected-pcr.crt"),
         # demo-ext's signature verifies against this certificate; the sysext.conf policy next to
         # it makes that verification a requirement rather than opportunistic.
-        image.copy(_SIGNING + "[cert]", "/usr/lib/verity.d/demo-ext.crt"),
-        image.copy("sysext.conf", "/usr/lib/systemd/sysext.conf"),
+        image.ops.copy(_SIGNING + "[cert]", "/usr/lib/verity.d/demo-ext.crt"),
+        image.ops.copy("sysext.conf", "/usr/lib/systemd/sysext.conf"),
         # Plain data for the boot smoke's negative proof: a DDI the policy must refuse.
-        image.copy(":demo-ext-unsigned", "/usr/share/tine-example/demo-ext-unsigned.raw"),
+        image.ops.copy(":demo-ext-unsigned", "/usr/share/tine-example/demo-ext-unsigned.raw"),
     ],
     # An ESP-only path makes deferred metadata cross root, identity, and ESP before repart applies it.
     tmpfiles = ["d /boot/tine-tmpfiles 0700 - -"],
@@ -166,7 +166,7 @@ image.artifacts(
 image.sysext_image(
     name = "demo-ext-unsigned",
     package_manager = ":image.package-manager",
-    ops = [image.mkdir("/usr/share/tine-unsigned")],
+    ops = [image.ops.mkdir("/usr/share/tine-unsigned")],
     install_docs = False,
 )
 

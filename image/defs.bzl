@@ -78,21 +78,23 @@ load(":version.bzl", "resolve_version")
 load(":vm.bzl", "image_vm")
 
 image = struct(
-    # Logical images and their operations.
+    # Logical images and the operations that build them.
     layer = layer,
-    run = run,
-    python = python,
-    install_from = install_from,
-    mkdir = mkdir,
-    symlink = symlink,
-    write_file = write_file,
-    remove = remove,
-    copy = copy,
-    merge_os_release = merge_os_release,
-    install_systemd_boot = install_systemd_boot,
-    depmod = depmod,
-    hwdb = hwdb,
-    locale_gen = locale_gen,
+    ops = struct(
+        run = run,
+        python = python,
+        install_from = install_from,
+        mkdir = mkdir,
+        symlink = symlink,
+        write_file = write_file,
+        remove = remove,
+        copy = copy,
+        merge_os_release = merge_os_release,
+        install_systemd_boot = install_systemd_boot,
+        depmod = depmod,
+        hwdb = hwdb,
+        locale_gen = locale_gen,
+    ),
     # Terminal outputs.
     archive = image_archive,
     directory = image_directory,
