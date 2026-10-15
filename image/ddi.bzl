@@ -99,43 +99,49 @@ DEFAULT_ROOT_PARTITIONS = [
     ),
 ]
 
-# systemd-sysupdate A/B slots match partitions by exact label, so the default layouts carry the
-# image identity: `bootable_disk_image()` renders the placeholders from its image_id and version
-# attributes (raw `ddi()` users render them with `format_partition_labels()`).
-def _usr_verity_partitions(signed: bool) -> list[Partition]:
-    label = "{image_id}_{version}"
+def verity_partitions(data: Partition, signed: bool) -> list[Partition]:
+    """Return `data`, its verity hash partition and, with `signed`, its verity signature partition.
+
+    The labels of the hash and signature partitions are the label of `data` with a suffix.
+    """
+    kind = data["type"]
+    label = data["label"]
     definitions = [
+        data,
         partition(
-            name = "usr",
-            type = "usr",
-            label = label,
-            filesystem = "erofs",
-            copy_files = ["/usr:/"],
-            minimize = "best",
-            compression = "zstd",
-            verity = "data",
-            verity_match_key = "usr",
-        ),
-        partition(
-            name = "usr-verity",
-            type = "usr-verity",
-            label = label + "_verity",
+            type = kind + "-verity",
+            label = label + "_verity" if label != None else None,
             minimize = "best",
             verity = "hash",
-            verity_match_key = "usr",
+            verity_match_key = kind,
         ),
     ]
     if signed:
         definitions.append(
             partition(
-                name = "usr-verity-sig",
-                type = "usr-verity-sig",
-                label = label + "_verity_sig",
+                type = kind + "-verity-sig",
+                label = label + "_verity_sig" if label != None else None,
                 verity = "signature",
-                verity_match_key = "usr",
-            )
+                verity_match_key = kind,
+            ),
         )
-    return definitions + [_ESP_PARTITION]
+    return definitions
+
+# systemd-sysupdate A/B slots match partitions by exact label, so the default layouts carry the
+# image identity: `bootable_disk_image()` renders the placeholders from its image_id and version
+# attributes (raw `ddi()` users render them with `format_partition_labels()`).
+def _usr_verity_partitions(signed: bool) -> list[Partition]:
+    usr = partition(
+        type = "usr",
+        label = "{image_id}_{version}",
+        filesystem = "erofs",
+        copy_files = ["/usr:/"],
+        minimize = "best",
+        compression = "zstd",
+        verity = "data",
+        verity_match_key = "usr",
+    )
+    return verity_partitions(usr, signed) + [_ESP_PARTITION]
 
 DEFAULT_USR_VERITY_PARTITIONS = _usr_verity_partitions(signed = False)
 DEFAULT_SIGNED_USR_VERITY_PARTITIONS = _usr_verity_partitions(signed = True)
