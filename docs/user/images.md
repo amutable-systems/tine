@@ -12,6 +12,9 @@ provider vocabulary, the delta layer model, and disk composition internals) is d
 ## Restrictions
 
 File permissions in built images are normalized: 0755 for directories and executables, 0644 for files.
+A layer normalizes what it captures, and the image is normalized again when it is finalized, because
+Buck stores no mode beyond the executable bit and a layer out of the cache carries the umask of the
+host that materialized it.
 This deliberately breaks suid/sgid executables and the sticky bit: these need to be replaced with
 socket-activated services and other safer alternatives. `/tmp` and `/var/tmp` keep their `1777`, which is
 restored when the image is finalized. Nothing on a `/usr` partition ought to be a secret, and

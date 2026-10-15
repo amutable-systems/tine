@@ -11,7 +11,9 @@ layer can hold.
 """
 
 import contextlib
+import os
 import shutil
+import stat
 import subprocess
 import sys
 from collections.abc import Generator, Sequence
@@ -28,6 +30,47 @@ class ImageSpec(TypedDict):
 
     lower: list[str]
     tmpfiles: list[str]
+
+
+def normalize_mode(path: Path) -> None:
+    """Normalize one inode's permissions: 0755 for directories and executables, 0644 for files.
+
+    See docs/user/images.md. Symlinks (a meaningless mode), whiteout nodes and anything else that is
+    not a file or directory are not content, so whatever they are they are not ours to rewrite.
+    """
+    mode = path.lstat().st_mode
+    if stat.S_ISDIR(mode):
+        wanted = 0o755
+    elif stat.S_ISREG(mode):
+        wanted = 0o755 if mode & 0o111 else 0o644
+    else:
+        return
+    # A mode already right is left alone: on an overlay every chmod copies the inode up.
+    if stat.S_IMODE(mode) != wanted:
+        path.chmod(wanted)
+
+
+def normalize_modes(tree: Path, *, skip: Sequence[Path] = ()) -> None:
+    """Normalize every mode beneath `tree`, leaving the paths in `skip` and what is below them alone.
+
+    A layer normalizes what it captures, but Buck stores no mode beyond the executable bit, so a
+    directory comes back out of the cache with whatever the umask of the host materializing it
+    allows: 0o775 under a developer's 0o002, which sshd for one refuses in its privilege-separation
+    directory and CI, under 0o022, never sees. A file a terminal driver writes while finalizing, such
+    as an extension-release, carries that umask too. Here is the last point before the image is
+    written, so this is where the modes docs/user/images.md promises are made true.
+    """
+    skipped = {Path(path) for path in skip}
+    normalize_mode(tree)
+    for root, dirs, files in os.walk(tree):
+        parent = Path(root)
+        for name in [*dirs, *files]:
+            path = parent / name
+            if path in skipped:
+                if name in dirs:
+                    dirs.remove(name)
+                continue
+            normalize_mode(path)
 
 
 # The directories whose whole point is a mode, so a layer cannot carry them: sticky and
@@ -60,6 +103,9 @@ def image(
     with rootfs.rootfs(
         "/buildroot", lowers=spec["lower"] if lowers is None else lowers, binds=binds
     ) as tree:
+        # The mounted stack carries the modes its layers were materialized with, not the image's.
+        # A bind is another artifact mounted in for the driver, and not this image's to touch.
+        normalize_modes(tree, skip=[tree / str(target).lstrip("/") for _, target in binds or ()])
         # Before the snippets, so an image that states a mode of its own still wins.
         world_writable(tree)
         apply_tmpfiles(tree, spec["tmpfiles"], program=program)

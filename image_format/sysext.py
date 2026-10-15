@@ -115,7 +115,11 @@ def main(argv: list[str] | None = None) -> None:
         release_dir = tree / "usr/lib/extension-release.d"
         release_dir.mkdir(parents=True, exist_ok=True)
         content = "".join(f"{key}={value}\n" for key, value in release.items())
-        (release_dir / f"extension-release.{spec['name']}").write_text(content)
+        release_file = release_dir / f"extension-release.{spec['name']}"
+        release_file.write_text(content)
+        # Written after the mounted stack was normalized, so these carry this process's umask.
+        for created in (tree / "opt", release_dir.parent, release_dir, release_file):
+            finalize.normalize_mode(created)
 
         # Here rather than beside the DDI as an action of its own: this is the tree repart is about
         # to copy, edits and all, and nothing outside this driver has it.

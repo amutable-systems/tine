@@ -9,7 +9,6 @@ import glob  # noqa: F401  # Preload for Path.glob before entering the image chr
 import os
 import re
 import shutil
-import stat
 import subprocess
 import sys
 import tempfile
@@ -142,25 +141,6 @@ def _remove_glob(tree: Path, value: str) -> None:
         util.remove_path(path)
 
 
-def _normalize_mode(path: Path) -> None:
-    """Normalize file permissions for path.
-
-    See docs/user/images.md.
-    """
-    mode = path.lstat().st_mode
-    if stat.S_ISDIR(mode):
-        path.chmod(0o755)
-    elif stat.S_ISREG(mode):
-        path.chmod(0o755 if mode & 0o111 else 0o644)
-    # ignore symlinks (meaningless mode), whiteout nodes, and non-files
-
-
-def _normalize_modes(tree: Path) -> None:
-    _normalize_mode(tree)
-    for path in tree.rglob("*"):
-        _normalize_mode(path)
-
-
 def _apply_filesystem(operation: list[object]) -> None:
     match operation:
         case ["mkdir", str(path)]:
@@ -271,7 +251,7 @@ def main(argv: list[str] | None = None) -> None:
             _install(install, target, Path(scratch))
         for operation in operations:
             _apply(operation, target)
-    _normalize_modes(out)
+    finalize.normalize_modes(out)
     print(f"image: applied {len(operations)} ops over {len(lower)} lower(s) -> {out}", file=sys.stderr)
 
 
