@@ -67,16 +67,16 @@ image.rootfs_archive(
         "fedora": ["fedora-gpg-keys"],
     }),
     ops = [
-        image.run(["/usr/bin/mkdir", "-p", "/buildroot/etc/tine"]),
-        image.run(["/usr/bin/cp", "$(location :marker.txt)", "/buildroot/etc/tine/from-location"]),
-        # image.copy() takes a source directly, so it needs no $(location) around the label.
-        image.copy(":marker.txt", "/etc/tine/from-copy"),
+        image.ops.run(["/usr/bin/mkdir", "-p", "/buildroot/etc/tine"]),
+        image.ops.run(["/usr/bin/cp", "$(location :marker.txt)", "/buildroot/etc/tine/from-location"]),
+        # image.ops.copy() takes a source directly, so it needs no $(location) around the label.
+        image.ops.copy(":marker.txt", "/etc/tine/from-copy"),
         # A chrooted command runs with the image's own binaries. Buck's macro parser claims
         # `$(...)`, so the shell substitution is escaped.
-        image.run(["/usr/bin/bash", "-c", "echo built-by-\\$(echo tine) > /etc/tine/marker"], chroot = True),
+        image.ops.run(["/usr/bin/bash", "-c", "echo built-by-\\$(echo tine) > /etc/tine/marker"], chroot = True),
         # A repository-owned script, run inside the image. The project is mounted there, so
         # `$(location)` names the script and its data exactly as it would outside.
-        image.run(
+        image.ops.run(
             [
                 "/usr/bin/bash",
                 "$(location :configure.sh)",
@@ -86,11 +86,11 @@ image.rootfs_archive(
             chroot = True,
         ),
         # The same, in python, which this image does not install: the interpreter is Buck's own.
-        image.python(["$(location :configure.py)", "$(location :marker.txt)", "from-python-argument"], chroot = True),
+        image.ops.python(["$(location :configure.py)", "$(location :marker.txt)", "from-python-argument"], chroot = True),
         # Unchrooted, the same interpreter sees the image at /buildroot, like any box command.
-        image.python(["-c", "from pathlib import Path; Path('/buildroot/etc/tine/from-python-box').write_text('x\\n')"]),
+        image.ops.python(["-c", "from pathlib import Path; Path('/buildroot/etc/tine/from-python-box').write_text('x\\n')"]),
         # Ensure we don't leak the /tine sandbox mount into image builds
-        image.run(["/usr/bin/test", "!", "-d", "/tine"], chroot = True),
+        image.ops.run(["/usr/bin/test", "!", "-d", "/tine"], chroot = True),
     ],
     format = "tar",
 )
@@ -109,8 +109,8 @@ image.layer(
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"],
     ops = [
-        image.write_file("/etc/tine/from-base-kept", "base"),
-        image.write_file("/etc/tine/from-base-gone", "base"),
+        image.ops.write_file("/etc/tine/from-base-kept", "base"),
+        image.ops.write_file("/etc/tine/from-base-gone", "base"),
     ],
 )
 
@@ -118,8 +118,8 @@ image.layer(
     name = "chained-child.layer",
     parent = ":chained-base",
     ops = [
-        image.write_file("/etc/tine/from-child", "child"),
-        image.remove("/etc/tine/from-base-gone"),
+        image.ops.write_file("/etc/tine/from-child", "child"),
+        image.ops.remove("/etc/tine/from-base-gone"),
     ],
 )
 
@@ -135,7 +135,7 @@ image.layer(
     package_manager = ":image.package-manager",
     packages = ["bash"],
     ops = [
-        image.run(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"], chroot = True),
+        image.ops.run(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"], chroot = True),
     ],
 )
 
@@ -144,7 +144,7 @@ image.layer(
     parent = ":layered-install-base",
     packages = ["coreutils"],
     ops = [
-        image.run(["/usr/bin/bash", "-c", "ls /usr/bin/ls > /etc/from-child-install"], chroot = True),
+        image.ops.run(["/usr/bin/bash", "-c", "ls /usr/bin/ls > /etc/from-child-install"], chroot = True),
     ],
 )
 
@@ -160,8 +160,8 @@ image.layer(
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"],
     ops = [
-        image.mkdir("/etc/tine"),
-        image.run(
+        image.ops.mkdir("/etc/tine"),
+        image.ops.run(
             [
                 "/usr/bin/bash",
                 "-c",
@@ -175,7 +175,7 @@ image.layer(
 image.layer(
     name = "escaped-child.layer",
     parent = ":escaped-base",
-    ops = [image.remove("/etc/tine/esc\\x2dgone")],
+    ops = [image.ops.remove("/etc/tine/esc\\x2dgone")],
 )
 
 image.archive(
@@ -277,7 +277,7 @@ image.sysext_image(
     packages = ["zsh"],
     install_docs = False,
     # install a file from source tree; covers reproducibility check under varying umasks
-    ops = [image.copy("from-source.txt", "/usr/lib/tine/from-source")],
+    ops = [image.ops.copy("from-source.txt", "/usr/lib/tine/from-source")],
 )
 
 # A file tree that differs per distribution is one copy whose source is a select, rather than a
@@ -287,8 +287,8 @@ image.layer(
     name = "tree.layer",
     parent = ":base",
     ops = [
-        image.copy("tree/os", "/"),
-        image.copy(distribution.select({"arch": "tree/os.arch"}, default = None), "/"),
+        image.ops.copy("tree/os", "/"),
+        image.ops.copy(distribution.select({"arch": "tree/os.arch"}, default = None), "/"),
     ],
 )
 
@@ -315,7 +315,7 @@ image.layer(
     package_manager = ":image.package-manager",
     packages = ["bash", "coreutils"],
     ops = [
-        image.run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"], chroot = True),
+        image.ops.run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"], chroot = True),
     ],
 )
 
@@ -323,8 +323,8 @@ image.layer(
     name = "opaque-child.layer",
     parent = ":opaque-base",
     ops = [
-        image.remove("/etc/tine/sub"),
-        image.run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo new > /etc/tine/sub/fresh"], chroot = True),
+        image.ops.remove("/etc/tine/sub"),
+        image.ops.run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo new > /etc/tine/sub/fresh"], chroot = True),
     ],
 )
 

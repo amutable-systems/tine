@@ -45,14 +45,14 @@ cargo.package(
 - `box` is the build environment, declared by the consumer because only the consumer knows what its
   projects link against.
 
-The binaries are ordinary artifacts, so an image installs one with an `image.copy()` operation:
+The binaries are ordinary artifacts, so an image installs one with an `image.ops.copy()` operation:
 
 ```Starlark
 image.rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
     packages = ["glibc"],
-    ops = [image.copy(":hello[hello-cli]", "/usr/bin/hello-cli")],
+    ops = [image.ops.copy(":hello[hello-cli]", "/usr/bin/hello-cli")],
     format = "tar",
 )
 ```

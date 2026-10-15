@@ -85,9 +85,9 @@ image.install(
     # against glibc.
     packages = ["glibc"],
     ops = [
-        image.copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
-        image.copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
-        image.mkdir("/usr/share/hello"),
+        image.ops.copy(":hello[hello-cli]", "/usr/bin/hello-cli"),
+        image.ops.copy(":nodeps[nodeps]", "/usr/bin/nodeps"),
+        image.ops.mkdir("/usr/share/hello"),
     ],
 )
 
@@ -100,7 +100,7 @@ package.manager(
 image.rootfs_archive(
     name = "demo",
     package_manager = ":image.package-manager",
-    ops = [image.install_from(":demo.install")],
+    ops = [image.ops.install_from(":demo.install")],
     format = "tar",
 )
 

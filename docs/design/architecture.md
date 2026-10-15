@@ -1126,7 +1126,7 @@ allowing reusable helpers to return ordered groups of operations. Every rule tha
 wrapped in a declaration macro that flattens them the same way, so a helper returning an ordered group
 works identically in `image.layer()` and in a composition; the underlying attribute stays a flat, typed
 list so Buck can track every embedded source dependency. An `image.install()` target carries `packages`
-beside its operations, so a reusable target declares what it needs and `image.install_from()` folds that
+beside its operations, so a reusable target declares what it needs and `image.ops.install_from()` folds that
 into the installing layer's own request.
 
 `install_langs` narrows the install to the translated files of the named languages, and `install_docs`
@@ -1305,7 +1305,7 @@ UKI is named
 `<image_id>_<version>_<arch>.efi` from the image identity. For now an image holds exactly one kernel — the
 name (and sysupdate's matching of it) could not distinguish more. If several kernels per image ever become
 a requirement, add naming configuration to `image.uki()` to disambiguate them. The ESP layer copies the UKI
-directory into `EFI/Linux` and includes the operations returned by `image.install_systemd_boot()`. Those
+directory into `EFI/Linux` and includes the operations returned by `image.ops.install_systemd_boot()`. Those
 create the ESP path, run the box's `bootctl` with its paths in the command environment, and remove the
 random seed. The final repart action creates the ESP while copying the previously split system partitions
 into the same disk. It splits nothing itself: the system partitions arrive already split, and nothing updates
@@ -1426,15 +1426,14 @@ gets the content its operations ask for and nothing else, which is the same reas
 package state alone.
 
 Each generator is a no-op for an image that carries none of what it acts on, so none of them needs
-per-distribution knowledge: `image.depmod()` is silent without kernels, `image.hwdb()` without `hwdb.d`,
-`image.locale_gen()`
-without an `/etc/locale.gen` asking for something. That is what lets the compositions, which declare a whole
-product rather than one layer, end every image they build with all three at their defaults without knowing
-what went into it. A generator named in `ops` replaces the composition's copy instead of adding a second, so
-placing or configuring one stays possible. `sysext_image` is the exception that generates nothing: an
-extension merges onto a system it does not own, where a database built from the extension's own tree would
-shadow that system's while describing only what the extension carries, exactly as its package database
-would.
+per-distribution knowledge: `image.ops.depmod()` is silent without kernels, `image.ops.hwdb()` without
+`hwdb.d`, `image.ops.locale_gen()` without an `/etc/locale.gen` asking for something. That is what lets the
+compositions, which declare a whole product rather than one layer, end every image they build with all three
+at their defaults without knowing what went into it. A generator named in `ops` replaces the composition's
+copy instead of adding a second, so placing or configuring one stays possible. `sysext_image` is the
+exception that generates nothing: an extension merges onto a system it does not own, where a database built
+from the extension's own tree would shadow that system's while describing only what the extension carries,
+exactly as its package database would.
 
 Their tools are the box's, applied to the mounted image through the `--root` interface systemd gives them,
 which is the same relationship every other layer driver has to the image and is what lets an image that

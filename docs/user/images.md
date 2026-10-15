@@ -106,7 +106,7 @@ image.layer(
 image.layer(
     name = "project-configured.image",
     parent = ":project.image",
-    ops = [image.run(["/usr/bin/project", "configure"], chroot = True)],
+    ops = [image.ops.run(["/usr/bin/project", "configure"], chroot = True)],
 )
 ```
 
@@ -134,28 +134,29 @@ ordered operation sequence in one action and persists exactly one delta:
   request before any of its operations run, so every operation sees what the layer adds. `package_sets`
   names symbolic sets the image's OS release supplies and `packages` names concrete ones; a layer may use
   both, and duplicates between them collapse.
-- `image.run([...])` executes a command against the image. By default the box supplies the userspace and
+- `image.ops.run([...])` executes a command against the image. By default the box supplies the userspace and
   the image is mounted at `/buildroot`; with `chroot = True` the command runs inside the image with its
   own binaries instead. Either takes an `env` argument that overlays variables on that command's
   environment. An argument names a build artifact by being one, or by spelling `$(location //target)` in
   a BUCK file, and it resolves the same in both modes: a chrooted command gets the project bind-mounted
   at a fixed path under `/run`, which is also its working directory. Running a script the repository
-  owns is therefore just `image.run(["/usr/bin/bash", "$(location :setup.sh)"], chroot = True)`. Buck's macro
-  parser claims `$(...)`, so a shell substitution has to be written `\$(...)`; an unescaped one fails to
-  parse rather than silently reaching the shell.
-- `image.python([...])` runs a python script against the image without the image needing python: it is an
-  `image.run` of the relocatable interpreter Buck already pins for its own bootstrap, named through the
+  owns is therefore just `image.ops.run(["/usr/bin/bash", "$(location :setup.sh)"], chroot = True)`. Buck's
+  macro parser claims `$(...)`, so a shell substitution has to be written `\$(...)`; an unescaped one fails
+  to parse rather than silently reaching the shell.
+- `image.ops.python([...])` runs a python script against the image without the image needing python: it is an
+  `image.ops.run` of the relocatable interpreter Buck already pins for its own bootstrap, named through the
   project like any other artifact. It takes the same `env` and `chroot` arguments, so the script either
   sees the image
   at `/buildroot` or has it as its own root; in the chrooted case nothing of the interpreter reaches the
   delta, because the project bind carrying it lives under `/run`.
-- `image.copy` introduces a declared Buck artifact at an absolute image path; `image.mkdir` and
-  `image.symlink` mutate the same root. `image.remove` treats its absolute path as a glob pattern,
+- `image.ops.copy` introduces a declared Buck artifact at an absolute image path; `image.ops.mkdir` and
+  `image.ops.symlink` mutate the same root. `image.ops.remove` treats its absolute path as a glob pattern,
   including recursive `**`, and removes every matching file, symlink, or directory tree. A pattern that
   matches nothing does nothing.
-- `image.depmod()`, `image.hwdb()` and `image.locale_gen()` build the state installed packages only describe
-  (below).
-- `image.install_from` installs what another target needs and applies the operations it attaches (see below).
+- `image.ops.depmod()`, `image.ops.hwdb()` and `image.ops.locale_gen()` build the state installed packages
+  only describe (below).
+- `image.ops.install_from` installs what another target needs and applies the operations it attaches (see
+  below).
 
 `image.layer()` recursively flattens operation lists, allowing reusable helpers to return ordered groups of
 operations; `image.rootfs_archive`, `image.sysext_image`, and `image.bootable_disk` accept the same nested
@@ -175,44 +176,43 @@ image.layer(
     package_manager = ":image.package-manager",
     package_sets = ["bootable"],
     ops = [
-        image.install_from(":project.install"),
-        image.depmod(),
-        image.hwdb(),
+        image.ops.install_from(":project.install"),
+        image.ops.depmod(),
+        image.ops.hwdb(),
     ],
 )
 ```
 
-- `image.depmod()` rebuilds `modules.dep` and its `.bin` indexes for every kernel the image installs, and
+- `image.ops.depmod()` rebuilds `modules.dep` and its `.bin` indexes for every kernel the image installs, and
   does nothing for an image that installs none. It runs the image's own `depmod`, because the tool
   reads its search-order configuration from absolute paths that `--basedir` does not move, and writes
   index files whose compatibility is its own kmod's business. An image with modules but no `depmod`
   fails the build by name rather than shipping a stale index.
-- `image.hwdb(usr = True, strict = True)` compiles `hwdb.d` into the binary database udev actually reads. It
-  writes `/usr/lib/udev/hwdb.bin`, where the image ships it and nothing writable shadows it, and drops
+- `image.ops.hwdb(usr = True, strict = True)` compiles `hwdb.d` into the binary database udev actually reads.
+  It writes `/usr/lib/udev/hwdb.bin`, where the image ships it and nothing writable shadows it, and drops
   the `/etc` copy; `usr = False` writes that copy instead. `strict = False` accepts a source file the
   image cannot parse. An image with no `hwdb.d` is left alone.
-- `image.locale_gen()` runs the image's own `locale-gen` when `/etc/locale.gen` asks for something, which is
-  how Debian and Arch generate locales; a distribution that ships them as packages has no such file and
+- `image.ops.locale_gen()` runs the image's own `locale-gen` when `/etc/locale.gen` asks for something, which
+  is how Debian and Arch generate locales; a distribution that ships them as packages has no such file and
   the operation does nothing.
 
-`image.hwdb()` is the one that runs a box tool against the mounted image, exactly as `image.run()` does by
-default, so an image that installs no systemd of its own still gets a database; the other two must be
+`image.ops.hwdb()` is the one that runs a box tool against the mounted image, exactly as `image.ops.run()`
+does by default, so an image that installs no systemd of its own still gets a database; the other two must be
 the image's own. What they write is captured by the layer that runs them, so it is built once and
 cached rather than repeated by every terminal output.
 
-`image.rootfs_archive`, `image.bootable_disk`'s root filesystem, and `image.initrd` end their operations
-with `image.depmod()`, `image.hwdb()` and `image.locale_gen()` at their defaults, because a composition
-declares a whole product rather than one layer: the three cover everything a package can leave described,
-and each does nothing on
-an image carrying none of it. They land on the layer the composition declares, so a composition handed a
-`parent` and given no operations or packages of its own declares no layer and places none; that parent is
-where they belong, after the operations whose packages they read. An initrd generates before it prunes, so
-it ships the compiled database rather than the sources it was compiled from. Naming a generator in `ops`
-overrides the composition's copy instead of adding a second, so `image.hwdb(usr = False)`, or an
-`image.depmod()` placed before the operations that strip modules, is taken exactly as written.
-`image.sysext_image` runs none of them: an extension merges onto a system it does not own, where a database
-built from the extension's own tree would
-shadow that system's while describing only what the extension carries.
+`image.rootfs_archive`, `image.bootable_disk`'s root filesystem, and `image.initrd` end their operations with
+`image.ops.depmod()`, `image.ops.hwdb()` and `image.ops.locale_gen()` at their defaults, because a
+composition declares a whole product rather than one layer: the three cover everything a package can leave
+described, and each does nothing on an image carrying none of it. They land on the layer the composition
+declares, so a composition handed a `parent` and given no operations or packages of its own declares no layer
+and places none; that parent is where they belong, after the operations whose packages they read. An initrd
+generates before it prunes, so it ships the compiled database rather than the sources it was compiled from.
+Naming a generator in `ops` overrides the composition's copy instead of adding a second, so
+`image.ops.hwdb(usr = False)`, or an `image.ops.depmod()` placed before the operations that strip modules, is
+taken exactly as written. `image.sysext_image` runs none of them: an extension merges onto a system it does
+not own, where a database built from the extension's own tree would shadow that system's while describing
+only what the extension carries.
 
 ### Declaring the initrd
 
@@ -224,7 +224,7 @@ image.initrd(
     name = "os.initrd",
     package_manager = ":image.package-manager",
     packages = ["cryptsetup"],
-    ops = [image.copy(":modprobe.conf", "/usr/lib/modprobe.d/local.conf")],
+    ops = [image.ops.copy(":modprobe.conf", "/usr/lib/modprobe.d/local.conf")],
     compression = "none",
 )
 
@@ -248,35 +248,35 @@ be shared by several disk images.
 ### Attaching install operations to a target
 
 How a project installs is a property of the project, not of each image carrying it. `image.install()`
-attaches packages and operations to a target, and an image applies both with one `image.install_from()`:
+attaches packages and operations to a target, and an image applies both with one `image.ops.install_from()`:
 
 ```Starlark
 image.install(
     name = "project.install",
     packages = ["glibc"],
     ops = [
-        image.copy(":project[project-cli]", "/usr/bin/project-cli"),
-        image.copy(":project.checkout[tmpfiles.d]", "/usr/lib/tmpfiles.d"),
+        image.ops.copy(":project[project-cli]", "/usr/bin/project-cli"),
+        image.ops.copy(":project.checkout[tmpfiles.d]", "/usr/lib/tmpfiles.d"),
     ],
 )
 
 image.bootable_disk(
     name = "os",
     package_sets = ["bootable"],
-    ops = [image.install_from(":project.install")],
+    ops = [image.ops.install_from(":project.install")],
     ...
 )
 ```
 
-`image.copy()` copies a checkout path as it is on disk, including the files that Git ignores, such as build
-output or editor backups. The image then contains the ignored files. Build release images in a fresh
+`image.ops.copy()` copies a checkout path as it is on disk, including the files that Git ignores, such as
+build output or editor backups. The image then contains the ignored files. Build release images in a fresh
 clone, or after `git clean -fdx`.
 
 A target declaring its own `packages` is what keeps every image carrying it from having to know: they
 join the installing layer's own request, so two targets that both need packages compose without the
 caller merging anything. Any operation may be attached, not only copies, and the operations are spliced
 in place, so the image still decides where in its own order they land. An `image.install` target may
-itself `image.install_from()` another, which composes; a cycle is rejected by Buck as a target cycle.
+itself `image.ops.install_from()` another, which composes; a cycle is rejected by Buck as a target cycle.
 
 ### Installing a file a project ships as a template
 
@@ -291,7 +291,7 @@ image.substitute(
     replacements = {"@bindir@": "/usr/bin", "@port@": "555"},
 )
 
-image.copy(":project-http.service", "/usr/lib/systemd/system/project-http.service")
+image.ops.copy(":project-http.service", "/usr/lib/systemd/system/project-http.service")
 ```
 
 The output is named after the target. Each placeholder has to appear in the template, so a project
