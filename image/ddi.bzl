@@ -287,13 +287,15 @@ def declare_ddi(
     identifier: str | None = None,
     extension: dict[str, typing.Any] | None = None,
     tmpfiles: list[str] | None = None,
+    exclude: list[str] = [],
 ) -> DdiOutput:
     """Declare the systemd-repart action that builds a DDI from an image and partition definitions.
 
     With strip_pkgdb, the partitions omit the package database wherever the image's package system
     keeps it, for a system nothing ever resolves packages in. The image's `[pkgdb]` and `[sbom]`
     subtargets still capture it from the tree itself. `extension` makes the driver package the tree
-    as an extension (see extension.bzl). `tmpfiles` replaces the tmpfiles lines of `image`.
+    as an extension (see extension.bzl). `tmpfiles` replaces the tmpfiles lines of `image`. The
+    partitions leave out the contents of the directories in `exclude`.
     """
     _check_definitions(
         definitions,
@@ -375,6 +377,7 @@ def declare_ddi(
         "architecture": None if systemd_arch == "_any" else systemd_arch,
         "basename": basename,
         "definitions": definition_specs,
+        "exclude": exclude,
         "extension": extension,
         # The default seed derives from the identity, so changing "repart" here changes the partition
         # UUIDs of every target that declares no identifier.

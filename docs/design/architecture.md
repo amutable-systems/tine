@@ -1311,9 +1311,10 @@ create the ESP path, run the box's `bootctl` with its paths in the command envir
 random seed. The final repart action creates the ESP while copying the previously split system partitions
 into the same disk. It splits nothing itself: the system partitions arrive already split, and nothing updates
 the ESP as a partition. The default system partition is a compressed EROFS `/usr` protected by
-dm-verity; the generated `usrhash=` is embedded in every UKI. The same copy operation can place device
-trees, bootloader entries, and future standalone artifacts; `esp_files` exposes it, copying caller-declared
-artifacts to chosen ESP paths.
+dm-verity; the generated `usrhash=` is embedded in every UKI. A caller places other files on the ESP, such
+as device trees or bootloader entries, with `image.ops.copy()` operations to `/boot` or `/efi` in `ops`. The
+system partitions leave out what `/boot` and `/efi` contain, so the files are only on the ESP, also with a
+root partition that copies `/`.
 
 Kernel command lines remain lists of arguments through the Starlark API and driver invocation. The UKI
 driver appends any generated verity hash and joins the arguments only when writing ukify's command-line file.

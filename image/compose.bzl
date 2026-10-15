@@ -51,7 +51,6 @@ load(
     "IMAGE_ATTRS",
     "ImageInfo",
     "ImageToolsInfo",
-    "LayerOperation",  # @unused Used as a type.
     "LayerOperationTree",  # @unused Used as a type.
     "VERSION_PATTERN",
     "check_name",
@@ -70,7 +69,6 @@ load(
 load(":publish.bzl", "PublishedInfo", "published_metadata_subtargets")
 load(
     ":sign.bzl",
-    "SigningKeyInfo",  # @unused Used as a function argument type.
     "resolve_signing_key",
 )
 load(":version.bzl", "resolve_version")
@@ -324,22 +322,6 @@ _portable = rule(
     attrs = IMAGE_ATTRS | PORTABLE_ATTRS | _ROOT_ATTRS,
 )
 
-def _esp_operations(
-    esp_files: dict[str, Artifact],
-    ukis: Artifact,
-    secure_boot_key: SigningKeyInfo | None,
-) -> list[LayerOperation]:
-    operations = [copy(ukis, "/boot/EFI/Linux")] + install_systemd_boot(secure_boot_key)
-    for destination in sorted(esp_files):
-        if not (destination.startswith("/boot/") or destination.startswith("/efi/")):
-            fail(
-                "bootable_disk_image: esp_files destination must be under /boot or /efi, got {!r}".format(
-                    destination,
-                )
-            )
-        operations.append(copy(esp_files[destination], destination))
-    return operations
-
 def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
     tools = ctx.attrs._tools[ImageToolsInfo]
     if (ctx.attrs.parent == None) == (ctx.attrs.package_manager == None):
@@ -429,6 +411,10 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         basename = basename,
         definitions = system_definitions,
         disk = False,
+        # repart leaves the directories that the ESP copies out of a root partition that copies "/",
+        # but only when the ESP is in the same run. The ESP is in a run of its own, so this run
+        # leaves them out itself. Otherwise the files that ops copy to /boot are in both partitions.
+        exclude = [entry.split(":")[0] for definition in boot_definitions for entry in definition["copy_files"]],
         identifier = "system",
         image = identity,
         mkfs_options = ctx.attrs.mkfs_options,
@@ -460,7 +446,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         tools = tools,
         identifier = "esp",
         keys = [secure_boot_key],
-        ops = _esp_operations(ctx.attrs.esp_files, uki.ukis, secure_boot_key),
+        ops = [copy(uki.ukis, "/boot/EFI/Linux")] + install_systemd_boot(secure_boot_key),
         parent = identity,
         version = version,
     )
@@ -588,11 +574,6 @@ _bootable_disk_image = rule(
             default = ["root=tmpfs", "mount.usr=dissect", "rw"],
         ),
         "disk_seed": attrs.option(attrs.string(), default = None),
-        "esp_files": attrs.dict(
-            attrs.string(),
-            attrs.source(allow_directory = True),
-            default = {},
-        ),
         "image_id": attrs.option(attrs.string(), default = None),
         "initrd": attrs.dep(
             providers = [InitrdInfo],
