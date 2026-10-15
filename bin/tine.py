@@ -1722,6 +1722,9 @@ def before_shim(
 
 
 def buck_command(argv: list[str]) -> None:
+    # Buck stores no directory mode and creates directories in its outputs with its own umask.
+    # Normalize that to the 0755 that images.md promises.
+    os.umask(0o022)
     root = project_root(cwd())
     ensure_home(root)
     settings = project_settings(root)
