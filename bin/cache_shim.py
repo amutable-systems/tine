@@ -29,8 +29,8 @@ from util import cache_home, fail, object_table, resolved
 SECTION = "cache"
 SHIM = "tine//remote_cache:shim"
 
-# The first start builds the shim's box, which is minutes on a machine that has never built one.
-START_TIMEOUT = 900
+# From starting the built shim to its answering; should be negligible unless the machine is badly overloaded.
+START_TIMEOUT = 30
 
 # Where a build registers itself, so the shim outlives it; the same path as `remote_cache/status.py`.
 CLIENTS = "/clients/"
@@ -290,7 +290,7 @@ def ask(store: Path, timeout: float = 5, client: int | None = None) -> dict[str,
 
 
 def log_path(cache: CacheSettings) -> Path:
-    """Everything the shim, and the Buck run that started it, printed since it last started."""
+    """Everything the shim printed since it last started."""
     return cache_home() / "tine" / "cache-shim" / f"{_digest(str(cache.dir))}.log"
 
 
@@ -301,22 +301,49 @@ def _other(report: Mapping[str, object], cache: CacheSettings) -> str:
     )
 
 
-def start(cache: CacheSettings, buck: list[str]) -> None:
-    """Start the shim through `buck`, and wait until it serves or say why it does not.
+def _build(buck: list[str], expected: list[str]) -> list[str]:
+    """Build the shim with `buck`, in view of the user, and return its command line."""
+    with tempfile.TemporaryDirectory() as scratch:
+        command = Path(scratch) / "command.json"
+        build = subprocess.run(
+            # Report building the box, but suppress status, so that it's quiet on a warm cache.
+            # Buck fails an action outright when the cache it was configured with does not answer. We
+            # are the thing that answers, so our own build must never try to access the cache.
+            [
+                *buck,
+                "run",
+                "-v",
+                "0,actions",
+                "--no-remote-cache",
+                "--command-args-file",
+                str(command),
+                SHIM,
+                "--",
+                *expected,
+            ],
+            stdin=subprocess.DEVNULL,
+            # Whatever Buck says belongs with its progress, not into the output of the command the
+            # user asked for.
+            stdout=sys.stderr,
+        )
+        if build.returncode != 0:
+            fail(f"building the cache shim failed with exit code {build.returncode}")
+        return cast(list[str], json.loads(command.read_text())["argv"])
 
-    Buck builds the shim's box first, so what this waits for is the status socket rather than a
-    process: the process is Buck for most of the wait. A concurrent start from another checkout
-    loses the store's lock to the first, which is then the one to use.
+
+def start(cache: CacheSettings, buck: list[str]) -> None:
+    """Build the shim through `buck`, start it, and wait until it serves or say why it does not.
+
+    A concurrent start from another checkout loses the store's lock to the first, which is then
+    the one to use.
     """
     expected = arguments(cache)
+    argv = _build(buck, expected)
     log = log_path(cache)
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("wb") as out:
         process = subprocess.Popen(
-            # Report building the box, but suppress status, so that it's quiet on a warm cache.
-            # Buck fails an action outright when the cache it was configured with does not answer. We
-            # are the thing that answers, so our own build must never try to access the cache.
-            [*buck, "run", "-v", "0,actions", "--no-remote-cache", SHIM, "--", *expected],
+            argv,
             stdin=subprocess.DEVNULL,
             stdout=out,
             stderr=out,
@@ -324,7 +351,6 @@ def start(cache: CacheSettings, buck: list[str]) -> None:
             start_new_session=True,
         )
     started = time.monotonic()
-    announced = False
     while True:
         report = ask(cache.dir, client=os.getpid())
         if report is not None:
@@ -336,14 +362,9 @@ def start(cache: CacheSettings, buck: list[str]) -> None:
                 return
             tail = " ".join(log.read_text(errors="replace").split()[-60:])
             fail(f"the cache shim exited with {process.returncode} instead of serving {cache.dir}: {tail}")
-        waited = time.monotonic() - started
-        if waited > START_TIMEOUT:
+        if time.monotonic() - started > START_TIMEOUT:
             os.killpg(process.pid, 9)
             fail(f"the cache shim has not served {cache.dir} after {START_TIMEOUT}s; see {log}")
-        # Only once the wait is long enough to be mistaken for a hang.
-        if not announced and waited > 2:
-            announced = True
-            print(f"tine: starting the cache shim through Buck; see {log}", file=sys.stderr)
         time.sleep(0.2)
 
 
