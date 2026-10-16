@@ -992,16 +992,16 @@ an image from those packages. Neither target exists in this repository.
 `bump` refreshes the pinned tool releases against their upstream GitHub releases.
 
 Update one or more pinned tools by name (`buck2`, `starlark-fmt`, `python3`, `ruff`, `ty`, `syft`,
-`cargo-auditable`):
+`cargo-auditable`, `seaweedfs`):
 
 ```sh
-tine buck run tine//bump -- --tool ruff --tool ty
+tine bump --tool ruff --tool ty
 ```
 
 Update all tools:
 
 ```sh
-tine buck run tine//bump -- --all
+tine bump --all
 ```
 
 Each tool is resolved to its latest upstream release and its `url` and `sha256` are rewritten in place.
@@ -1010,5 +1010,5 @@ Add `--commit` to record the result as a git commit whose message itemizes each 
 Buck2 is declared like the rest, and `starlark-fmt` ships from the same fork release, so one run keeps
 the two on one tag. `bin/tine` fetches Buck2 itself, Buck2 then fetches the rest.
 
-python3 minor version stays pinned in pyproject.toml; updating to a new minor release stays a deliberate
-manual change.
+`bump` keeps `python3` on the minor version that `python-version` in `ty.toml` sets. Moving to a new minor
+version is a deliberate change to `ty.toml`.

@@ -3019,6 +3019,35 @@ class TestMain(unittest.TestCase):
             tine.main(["box", "--", "pytest", "-q"])
         buck.assert_called_once_with(["-v", "0", "run", "//:box", "--", "pytest", "-q"])
 
+    def test_bump_updates_the_pins_of_the_project(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="tine-test.", dir="/var/tmp") as directory:
+            root = Path(directory)
+            (root / "ty.toml").touch()
+            with (
+                unittest.mock.patch.object(tine, "project_root", return_value=root),
+                unittest.mock.patch.object(tine, "prepare_buck") as prepare,
+                unittest.mock.patch("bump.main") as main,
+            ):
+                (root / "pyproject.toml").touch()
+                tine.main(["bump", "--all"])
+                (root / "ty.toml").unlink()
+                tine.main(["bump", "--tool", "ruff"])
+                (root / "pyproject.toml").unlink()
+                tine.main(["bump", "--tool", "go"])
+        self.assertEqual(
+            [call.args[2] for call in prepare.call_args_list],
+            [["bump", "--all"], ["bump", "--tool", "ruff"], ["bump", "--tool", "go"]],
+        )
+        data = root / "tine.lock.json"
+        self.assertEqual(
+            [call.args for call in main.call_args_list],
+            [
+                (data, root / "ty.toml", ["--all"]),
+                (data, root / "pyproject.toml", ["--tool", "ruff"]),
+                (data, None, ["--tool", "go"]),
+            ],
+        )
+
     def test_no_such_command(self) -> None:
         with self.assertRaisesRegex(SystemExit, "no such command: nope"):
             tine.main(["nope"])

@@ -125,6 +125,7 @@ tine box                 # run the project's root box target
 tine mount <verb>        # manage external directories mounted over project paths
 tine cache-status        # report on the shim serving the shared build cache
 tine init [<path>]       # write the configuration a project needs, for the checkout this command is in
+tine bump <arguments>    # update the pins in the project's tine.lock.json
 tine completion <shell>  # print the completion script for bash, fish or zsh
 ```
 
@@ -171,7 +172,7 @@ so an image build rebuilds exactly the affected packages.
 ## Pinned dependencies
 
 [`tine.lock.json`](tine.lock.json) declares the supported Buck2 and every other tool tine uses
-internally. `tine//bump` updates those pins. tine depends on fixes in its Buck2 fork, so running
+internally. `tine bump` updates those pins. tine depends on fixes in its Buck2 fork, so running
 another Buck2 is unsupported.
 
 ## Developing tine

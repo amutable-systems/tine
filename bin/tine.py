@@ -968,6 +968,7 @@ VERBS = {
     "mount": "manage external directories mounted over project paths",
     "cache-status": "report on the shim serving the shared build cache",
     "init": "write the configuration a project needs to build against a checkout of the tine cell",
+    "bump": f"update the pins in the project's {PINS} to the newest upstream releases",
     "completion": "print the completion script for bash, fish or zsh",
 }
 HELP = ("-h", "--help", "help")
@@ -1805,6 +1806,20 @@ def cache_status_command(root: Path, arguments: list[str]) -> None:
     cache_shim.status(configured)
 
 
+def bump_command(root: Path, arguments: list[str]) -> None:
+    """Update the pins in this project's tine.lock.json."""
+    # The pin format can differ between tine checkouts, so the bin/tine of the project's tine cell runs bump.
+    prepare_buck(root, project_settings(root), ["bump", *arguments], refresh_config=False)
+    import bump
+
+    # bump reads the Python version that ty checks against. ty reads ty.toml when it exists, and
+    # pyproject.toml otherwise.
+    ty_config = next(
+        (root / name for name in ("ty.toml", "pyproject.toml") if (root / name).is_file()), None
+    )
+    bump.main(root / PINS, ty_config, arguments)
+
+
 def usage(configured: dict[str, ProjectCommand]) -> str:
     available = command_descriptions(configured)
     width = max(12, *(len(name) + 2 for name in available))
@@ -1839,6 +1854,8 @@ def main(argv: list[str]) -> None:
         mount_command(project_root(cwd()), rest)
     elif name == "cache-status":
         cache_status_command(project_root(cwd()), rest)
+    elif name == "bump":
+        bump_command(project_root(cwd()), rest)
     elif name == "init":
         # Before the project root is resolved, because writing one is what this is for.
         init_command(cwd(), rest)

@@ -3,7 +3,7 @@
 
 """Tests for the pin bumper
 
-    buck test tine//bump:test
+    buck test tine//bin:test
 
 The GitHub API is stubbed for the release pins, so both kinds of pin are covered offline.
 """
@@ -92,8 +92,7 @@ class GitPin(unittest.TestCase):
     def test_writes_the_pin_back_to_the_data_file(self) -> None:
         data = self.root / "pins.json"
         data.write_text(json.dumps({"hello": self.pin()}))
-        with mock.patch("sys.argv", ["bump", "--data", str(data), "--all"]):
-            bump.main()
+        bump.main(data, None, ["--all"])
         self.assertEqual(json.loads(data.read_text())["hello"]["commit"], self.head)
 
 
@@ -134,13 +133,11 @@ class ReleasePin(unittest.TestCase):
     ) -> dict[str, Any]:
         """Bump `pins` against one stubbed release; the rewritten file.
 
-        `ty_config` off stands in for a consuming project, whose command passes none.
+        `ty_config` off stands in for a consuming project without a ty configuration.
         """
         self.data.write_text(json.dumps(pins, indent=2) + "\n")
-        option = ["--ty-config", str(self.ty_config)] if ty_config else []
-        argv = ["bump", "--data", str(self.data), *option, "--all"]
-        with mock.patch.object(bump, "_github_json", return_value=release), mock.patch("sys.argv", argv):
-            bump.main()
+        with mock.patch.object(bump, "_github_json", return_value=release):
+            bump.main(self.data, self.ty_config if ty_config else None, ["--all"])
         return cast(dict[str, Any], json.loads(self.data.read_text()))
 
     def test_reads_the_pinned_python_minor_from_the_ty_config(self) -> None:
@@ -161,8 +158,8 @@ class ReleasePin(unittest.TestCase):
         self.assertEqual(bump._python_minor(path), "3.13")
 
     def test_fails_on_a_cpython_pin_with_no_ty_config(self) -> None:
-        """Only CPython needs one, so the option is optional and the demand is the pin's."""
-        with self.assertRaisesRegex(ValueError, "needs --ty-config"):
+        """Only a CPython pin needs a ty configuration, so bump fails on that pin alone."""
+        with self.assertRaisesRegex(ValueError, "needs a ty.toml"):
             bump._python_minor(None)
 
     def test_follows_a_cpython_asset_across_patch_and_date(self) -> None:
@@ -217,7 +214,7 @@ class ReleasePin(unittest.TestCase):
         self.assertEqual(data["syft"]["platforms"]["x86_64"]["artifact"], "syft_1.51.0_linux_amd64.tar.gz")
 
     def test_bumps_a_pin_needing_no_python_with_no_ty_config(self) -> None:
-        """A consuming project passes its own `tine.lock.json` and no ty configuration."""
+        """A consuming project can have no ty configuration."""
         release = {"tag_name": "v1.51.0", "assets": [self.asset("syft_1.51.0_linux_amd64.tar.gz")]}
         data = self.bump(self.syft(), release, ty_config=False)
         self.assertEqual(data["syft"]["release"], "v1.51.0")
