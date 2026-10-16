@@ -519,6 +519,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         arch = ctx.attrs.arch,
         basename = basename,
         disk = raw,
+        importer = ctx.attrs._ami_import[RunInfo],
         virtual_size = ctx.attrs.virtual_size,
     )
     for conversion in conversions:
@@ -606,6 +607,7 @@ _bootable_disk_image = rule(
         ),
         "verity_key": VERITY_KEY_ATTR,
         "virtual_size": VIRTUAL_SIZE_ATTR,
+        "_ami_import": attrs.exec_dep(providers = [RunInfo], default = "tine//image:ami-import"),
     },
 )
 

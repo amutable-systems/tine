@@ -24,11 +24,12 @@ def _gib(size: str) -> int:
     # Starlark has no math.ceil; flooring the negation rounds up.
     return int(-(-number * (1 << 10 * exponent) // (1 << 30)))
 
-def declare_ami(actions: AnalysisActions, *, arch: str, basename: str, disk: Artifact, virtual_size: str | None) -> list[Provider]:
+def declare_ami(actions: AnalysisActions, *, arch: str, basename: str, disk: Artifact, importer: RunInfo, virtual_size: str | None) -> list[Provider]:
     """Declare the AMI bundle of a bootable disk, for its `[ami]` subtarget.
 
     The bundle holds the disk and the `RegisterImage` parameters, which `aws ec2 register-image
-    --cli-input-json` takes as they are once the import adds the snapshot.
+    --cli-input-json` takes as they are once the import adds the snapshot. Running the subtarget
+    imports the bundle with `importer`.
     """
     register = {
         "Architecture": ARCHITECTURES[arch].ec2,
@@ -62,4 +63,4 @@ def declare_ami(actions: AnalysisActions, *, arch: str, basename: str, disk: Art
             "register.json": actions.write_json("ami-register.json", register),
         },
     )
-    return [DefaultInfo(default_output = bundle)]
+    return [DefaultInfo(default_output = bundle), RunInfo(args = cmd_args(importer, bundle))]
