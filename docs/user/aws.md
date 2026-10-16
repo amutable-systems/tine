@@ -32,8 +32,10 @@ The AMI is named after the disk's published name: `<IMAGE_ID>_<IMAGE_VERSION>_<a
 EC2 does not accept in names (such as the `^` in versions) get replaced by `-`. The unchanged name is the
 AMI's description.
 
-TODO: Secure Boot. Without the image's keys in the AMI's UEFI variable store, an instance boots in setup
-mode with Secure Boot disabled.
+With a `secure_boot_key`, the bundle carries a UEFI variable store that enrolls the key's certificate as PK,
+KEK and db, also available as `[ami][uefi-data]`. An instance then enforces Secure Boot from its first boot
+on and trusts only this key; `examples/image-secureboot` has such a disk. Without a key, an instance boots
+in setup mode with Secure Boot disabled.
 
 ## Logging in
 
