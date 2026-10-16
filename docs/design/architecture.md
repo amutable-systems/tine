@@ -56,6 +56,7 @@ tine//image/              layers, compositions, archive, directory, disk and boo
 tine//git/                pinned Git repositories with local checkout overrides
 tine//cargo/              vendored crate trees and offline Rust source builds
 tine//go/                 go.sum-verified module fetches and offline Go source builds
+tine//http/               prebuilt tools that Buck downloads and verifies
 tine//catalog/            default repositories, locks, releases, package managers, and buildroots
 tine//tools/              pinned development and catalog-refresh commands, and the boxes they run in
 tine//bin/                the command a checkout builds through, which fetches and configures Buck2
@@ -1177,8 +1178,8 @@ with the operation helpers and conventional partition layouts, are members of th
 from `tine//image:defs.bzl`; that facade is the public API, and the modules behind it are implementation
 structure. Every public facade a consuming project loads from exports one namespace struct the same way:
 `box`, `cargo`, `go`, `git`, `package`, `package_system/rpm`, `package_system/deb`,
-`package_system/pacman`, `distribution`, and `tests`. Every rule resolves its drivers through one
-`ImageToolsInfo` bundle at `tine//image:tools` instead of a private attribute per driver.
+`package_system/pacman`, `distribution`, `http`, and `tests`. Every rule resolves its drivers through
+one `ImageToolsInfo` bundle at `tine//image:tools` instead of a private attribute per driver.
 
 The package database and SBOMs are supply-chain outputs read from the assembled image, never shipped in it.
 Declaring any logical image declares both lazy facets, so compositions inherit them rather than repeating a

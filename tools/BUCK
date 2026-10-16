@@ -5,8 +5,8 @@
 
 load("//:tine.lock.json", _pins = "value")
 load("//box:defs.bzl", "box")
+load("//http:defs.bzl", "http")
 load("//python:defs.bzl", "box_python_binary", "tine_python_binary")
-load(":defs.bzl", "http_tool")
 
 _RELEASE = "tine//catalog:fedora.rawhide.release"
 
@@ -16,7 +16,7 @@ _RELEASE = "tine//catalog:fedora.rawhide.release"
 # Relocatable bootstrap Python; 3.14 provides stdlib zstd for RPM payloads.
 # PUBLIC: the toolchain reaching it is `tine//:python_bootstrap`, and a project that declares a
 # `toolchains` cell of its own rather than aliasing this one forwards to that target from outside.
-http_tool(
+http.tool(
     name = "python3",
     args = ["-B"],
     path = "bin/python3",
@@ -26,27 +26,21 @@ http_tool(
 
 # The Starlark formatter is published as a bare zstd-compressed binary in the releases of Buck2.
 # tine.lock.json pins the formatter and Buck2, so one `tine bump` run keeps them on the same release.
-http_tool(
+http.tool(
     name = "starlark-fmt",
     compressed = True,
     spec = _pins["starlark-fmt"],
 )
 
-# Decompressor for the above; the pinned CPython is new enough to have zstd in its standard library.
-tine_python_binary(
-    name = "unzstd",
-    main = "unzstd.py",
-)
-
 # Python formatter + linter (static musl builds).
-http_tool(
+http.tool(
     name = "ruff",
     path = "ruff",
     spec = _pins["ruff"],
 )
 
 # Python type checker (static musl builds).
-http_tool(
+http.tool(
     name = "ty",
     path = "ty",
     spec = _pins["ty"],
@@ -55,7 +49,7 @@ http_tool(
 
 # SBOM generator (static release binary; not packaged in Fedora). Scans an assembled image tree for the
 # package database, ELF-bundled modules, and other package metadata.
-http_tool(
+http.tool(
     name = "syft",
     path = "syft",
     spec = _pins["syft"],
@@ -65,7 +59,7 @@ http_tool(
 # Cargo wrapper that embeds the crate graph in every binary it builds, so SBOM scanners can report
 # what a from-source Rust binary contains. Fedora does not package it, and we
 # can't build it from source yet. https://crates.io/crates/cargo-auditable
-http_tool(
+http.tool(
     name = "cargo-auditable",
     path = "cargo-auditable",
     spec = _pins["cargo-auditable"],
@@ -73,7 +67,7 @@ http_tool(
 )
 
 # S3 server with a plain-HTTP read side, for the remote cache's integration tests. Not packaged in Fedora.
-http_tool(
+http.tool(
     name = "seaweedfs",
     path = "weed",
     spec = _pins["seaweedfs"],
