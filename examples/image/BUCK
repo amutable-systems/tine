@@ -221,10 +221,10 @@ image.bootable_disk(
     splash = distribution.select({"arch": "/usr/share/systemd/bootctl/splash-arch.bmp"}, default = None),
     # A shipped appliance has no terminal to read a man page on.
     install_docs = False,
-    # Ship the disk with free space past its partitions, so an installed system can claim it without
-    # resizing the medium first. The space is sparse and this image boots from tmpfs, so nothing here
-    # consumes it; a real appliance creates a root partition in it on first boot.
-    output_size = "2G",
+    # Ship the qcow2 with free space past its partitions, so a VM booting it can claim it without
+    # resizing the disk first. This image boots from tmpfs, so nothing here consumes it; a real
+    # appliance creates a root partition in it on first boot.
+    virtual_size = "2G",
 )
 
 image.vm(
@@ -262,10 +262,19 @@ tests.vm_smoke(
         "test -s /usr/lib/udev/hwdb.bin",
         # The runner's cmdline_extra reached the kernel the UKI booted.
         "grep -q tine.smoke=1 /proc/cmdline",
-        # The guest sees the disk at its output_size, and the partitions it boots from still
-        # occupy only the front of it.
-        "test $(blockdev --getsize64 /dev/vda) -eq 2147483648",
     ],
+)
+
+# The qcow2 describes a disk of the image's virtual_size, while the raw stays as small as its partitions.
+box.sh_test(
+    name = "virtual-size-test",
+    labels = ["image"],
+    box = "@tine//catalog:fedora.rawhide.box",
+    script = """
+test "$(qemu-img info --output=json "$1" | python3 -c 'import json, sys; print(json.load(sys.stdin)["virtual-size"])')" = 2147483648
+test "$(stat -c %s "$2")" -lt $((900 << 20))
+""",
+    args = ["$(location :boot-demo.fedora[qcow2])", "$(location :boot-demo.fedora)"],
 )
 
 # System-extension DDI extending :boot-demo: only the delta above the base lands in the

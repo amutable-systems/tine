@@ -351,11 +351,10 @@ when needed:
   set its `sign_expected_pcr` to false to opt out;
 - `image.ddi` renders ordered Starlark partition definitions and uses offline `systemd-repart` to create a
   GPT disk and independent partition artifacts in one `image.DdiInfo`; its disk field is absent for a
-  split-only invocation, `output_size` composes the disk with free space behind its partitions, and
-  `strip_pkgdb` leaves the package database out of them, and `mkfs_options` tunes the filesystems it
-  creates;
+  split-only invocation, `strip_pkgdb` leaves the package database out of the partitions, and
+  `mkfs_options` tunes the filesystems it creates;
 - `image.disk_convert` re-encodes a raw disk with an explicitly selected box and provides
-  `image.DiskConversionInfo`;
+  `image.DiskConversionInfo`; `virtual_size` sizes the disk a qcow2 describes;
 - `image.bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
 - `image.sysext` builds a systemd-sysext(8) DDI with `systemd-repart`, containing `/usr`, `/opt`, and
@@ -425,13 +424,10 @@ Optional attributes:
   `image.ddi()`.
 - `secure_boot_key` (target providing `image.SigningKeyInfo`): Signs the UKIs and systemd-boot; see "Secure
   Boot signing" below.
-- `output_size` (size string such as `"20G"`): Ships the disk at this size instead of at the size its
-  partitions need, so an installed system finds room past them and does not have to resize its medium
-  before first boot; passed on to `image.ddi()`. The partitions keep the sizes their definitions ask
-  for, and the composed file is enlarged behind the last one, so the added room costs nothing on disk and,
-  as with `image.vm`'s `grow`, sits past the GPT backup header until something rewrites the table. A size
-  the
-  partitions do not fit in fails the build.
+- `virtual_size` (size string such as `"20G"`): The size of a virtual disk like `[qcow2]`. A system booted
+  from it can claim the extra space during first boot, e.g. for a root partition. The raw image stays at
+  the size of its partitions. As with `image.vm`'s `grow`, the extra space sits past the GPT backup header
+  until something rewrites the table. A size the partitions do not fit in fails the build.
 - `mkfs_options` (dict of filesystem to option list, default `{}`): Options `mkfs` is given when
   creating a partition of that filesystem, passed on to `image.ddi()`, which hands each list to
   `systemd-repart` as `SYSTEMD_REPART_MKFS_OPTIONS_<FSTYPE>`. Naming a filesystem the disk never formats
@@ -855,7 +851,7 @@ and the boot loader read (`io.systemd.stub.kernel-cmdline-extra` and its `boot` 
 ephemeral guest is given room the built partitions do not occupy; the guest claims that room itself, for
 example with `systemd-repart`. vmspawn grows the built artifact in place, and the added space sits past the
 GPT backup header until something rewrites the table. Use it to give a guest more room than the shipped
-disk carries; a disk that should always carry that room sets `output_size` on the image instead.
+disk carries; a qcow2 that should always carry that room comes from setting `virtual_size` on the image.
 
 ```sh
 tine buck run //examples/image:boot-demo-vm.fedora

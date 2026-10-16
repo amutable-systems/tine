@@ -17,6 +17,7 @@ class Spec(TypedDict):
     format: str
     input: str
     out: str
+    virtual_size: str | None
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -41,6 +42,11 @@ def main(argv: list[str] | None = None) -> None:
             "-o", str(out), str(source),
         ]  # fmt: skip
     subprocess.run(cmd, check=True)
+    if size := spec["virtual_size"]:
+        # Like vmspawn's --grow-image, the added room sits past the GPT backup header until first
+        # boot's repart rewrites the table. qemu-img refuses to shrink, so a size the partitions do
+        # not fit in fails here.
+        subprocess.run(["qemu-img", "resize", "-q", "-f", "qcow2", str(out), size], check=True)
 
 
 if __name__ == "__main__":
