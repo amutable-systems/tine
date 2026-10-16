@@ -193,6 +193,8 @@ User guides:
 
 - [Building images](docs/user/images.md): host requirements, declaring images and layers, output formats,
   the VM runner
+- [Publishing images to AWS EC2](docs/user/aws.md): importing a disk as an AMI, and booting a test
+  instance
 - [Building Rust projects](docs/user/cargo.md): building a checked-out Rust project offline, with its
   crate graph in the executables and image SBOM
 - [Building Go projects](docs/user/go.md): the same for a checked-out Go project, whose module list go
