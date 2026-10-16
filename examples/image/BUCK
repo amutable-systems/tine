@@ -355,7 +355,10 @@ box.sh_test(
     box = "@tine//tools:dev.box",
     test = "@tine//tests:contains.sh",
     args = ["$(location :boot-demo.fedora[uki][modules])"]
-    + ['"path": ".*/{}\\.ko'.format(module) for module in ["erofs", "dm-verity", "loop", "overlay", "nvme", "vfat", "virtio_scsi", "virtio_net", "virtiofs"]],
+    + [
+        '"path": ".*/{}\\.ko'.format(module)
+        for module in ["erofs", "dm-verity", "ena", "loop", "overlay", "nvme", "vfat", "virtio_scsi", "virtio_net", "virtiofs"]
+    ],
 )
 
 # The file manifest is what tells a consumer which paths an image ships, so its framing and its
