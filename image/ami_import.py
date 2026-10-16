@@ -145,6 +145,10 @@ def register(aws: Aws, bundle: Path, name: str, snapshot: str, tpm: bool) -> str
     parameters["Name"] = name
     parameters["BlockDeviceMappings"][0]["Ebs"]["SnapshotId"] = snapshot
     parameters["TagSpecifications"] = [{"ResourceType": "image", "Tags": [{"Key": "Name", "Value": name}]}]
+    # Only a disk signed for Secure Boot has one, see `_uefi_data` in ami.bzl.
+    uefi_data = bundle / "uefi-data"
+    if uefi_data.exists():
+        parameters["UefiData"] = uefi_data.read_text().strip()
     with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
         json.dump(parameters, f)
         f.flush()

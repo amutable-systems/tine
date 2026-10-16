@@ -174,7 +174,11 @@ box_python_binary(
 # AWS tooling in its own box, as it's big and not always needed.
 box.new(
     name = "aws.box",
-    packages = ["awscli2"],
+    packages = [
+        "awscli2",
+        # virt-fw-vars, for an AMI's UEFI variable store
+        "python3-virt-firmware",
+    ],
     release = _RELEASE,
     visibility = ["PUBLIC"],
 )
