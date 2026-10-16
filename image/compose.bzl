@@ -89,6 +89,17 @@ _IMDS_NETWORKD = write_file(
     "[Unit]\nWants=systemd-networkd.service\n",
 )
 
+# EBS volumes are NVMe devices whose I/O can stall for longer than the kernel's default 30 s timeout,
+# which then fails the root file system. AWS recommends the maximum, see
+# https://docs.aws.amazon.com/ebs/latest/userguide/nvme-ebs-volumes.html#timeout-nvme-ebs-volumes.
+# This is the rule of amazon-ec2-utils, 70-ec2-nvme-devices.rules: unlike `nvme_core.io_timeout` on the
+# kernel command line, it leaves the timeout of every other NVMe disk alone. The root volume keeps the
+# timeout set here after switching root.
+_EBS_IO_TIMEOUT = write_file(
+    "/usr/lib/udev/rules.d/70-ebs-io-timeout.rules",
+    'KERNEL=="nvme[0-9]*n[0-9]*", ENV{DEVTYPE}=="disk", ATTRS{model}=="Amazon Elastic Block Store", ATTR{queue/io_timeout}="4294967295"\n',
+)
+
 def _initrd_image_impl(ctx: AnalysisContext) -> list[Provider]:
     tools = ctx.attrs._tools[ImageToolsInfo]
     image = declare_image(
@@ -101,6 +112,7 @@ def _initrd_image_impl(ctx: AnalysisContext) -> list[Provider]:
                 symlink("/usr/lib/systemd/systemd", "/init"),
                 symlink("/etc/os-release", "/etc/initrd-release"),
                 _IMDS_NETWORKD,
+                _EBS_IO_TIMEOUT,
             ]
             + ctx.attrs.ops,
             ["initrd"],
