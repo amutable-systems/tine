@@ -32,6 +32,9 @@ http.tool(
 ## The pin
 
 - `repository` and `release` name a GitHub release, and each `artifact` is a file attached to it.
+- `url` replaces `repository` for a tool that is not published on GitHub. Each artifact is downloaded from
+  `<url>/<artifact>`, and `release` is the version. `bump` can't update a pin with a `url`, and `--all`
+  fails on one.
 - `platforms` has one entry per architecture, named `arm64` and `x86_64`. Buck downloads the entry of the
   architecture that the target is configured for. A rule attribute declared with `attrs.exec_dep()`
   configures the tool for the machine that runs the build.
@@ -41,8 +44,11 @@ http.tool(
 ## The arguments
 
 - `spec` is the pin, as loaded from `tine.lock.json`.
-- Without `path`, the download is the program itself.
+- Without `path` or `directory`, the download is the program itself.
 - `path` names the program inside an archive. The program is the target's output.
+- `directory = True` makes the whole unpacked archive the target's output, for a tool that needs the files
+  beside its program. `path` then names the program that `buck run` runs. Without `path`, the target has
+  nothing to run.
 - `compressed = True` decompresses a download that is a single zstd-compressed program.
 - `args` come before the arguments given to `buck run`.
 

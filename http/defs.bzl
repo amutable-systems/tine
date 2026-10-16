@@ -16,16 +16,21 @@ def _tool_impl(ctx: AnalysisContext) -> list[Provider]:
             category = "unzstd",
         )
         src = out
-    return [
-        DefaultInfo(default_output = src),
-        RunInfo(args = cmd_args(src, ctx.attrs.args)),
-    ]
+    providers = [DefaultInfo(default_output = src)]
+    if not ctx.attrs.directory:
+        providers.append(RunInfo(args = cmd_args(src, ctx.attrs.args)))
+    elif ctx.attrs.path != None:
+        # `buck run` needs the whole unpacked archive, because a program such as go reads the files beside it.
+        providers.append(RunInfo(args = cmd_args(src.project(ctx.attrs.path), ctx.attrs.args, hidden = src)))
+    return providers
 
 _tool = rule(
     impl = _tool_impl,
     attrs = {
         "args": attrs.list(attrs.string(), default = []),
-        "src": attrs.source(),
+        "directory": attrs.bool(default = False),
+        "path": attrs.option(attrs.string(), default = None),
+        "src": attrs.source(allow_directory = True),
         # Only set for compressed downloads: an unconditional dep would cycle, since the decompressor
         # is a tine_python_binary and the bootstrap interpreter is itself an http_tool.
         "unzstd": attrs.option(attrs.exec_dep(providers = [RunInfo]), default = None),
@@ -38,16 +43,20 @@ def http_tool(
     args: list[str] | None = None,
     path: str | None = None,
     compressed: bool = False,
+    directory: bool = False,
     visibility: list[str] | None = None,
 ) -> None:
-    """Pin a raw binary or archive member for each supported CPU.
+    """Pin a prebuilt tool for each supported CPU, downloaded and sha256-verified by Buck.
 
-    `spec` is the tine.lock.json entry: a `repository`, a `release` tag, and per-CPU `artifact`, `sha256`
-    and `size` (+ optional `strip_prefix`). The download URL is derived from these. `path` selects a
-    member of an archive; `compressed` decompresses a bare zstd-compressed binary, which Buck's http
-    rules cannot unpack themselves.
+    `spec` is a tine.lock.json entry: a `release`, and per-CPU `artifact`, `sha256` and `size` (+ optional
+    `strip_prefix`). The artifact is downloaded from the GitHub release of the entry's `repository`, or from
+    the entry's `url`. `path` selects a member of an archive; `compressed` decompresses a bare
+    zstd-compressed binary, which Buck's http rules cannot unpack themselves. `directory` makes the whole
+    unpacked archive the default output, and `path` then names the program that `buck run` runs.
     """
-    base = "https://github.com/{}/releases/download/{}".format(spec["repository"], spec["release"])
+    if directory and compressed:
+        fail("http.tool {}: a compressed download is a single binary, not a directory".format(name))
+    base = spec["url"] if "url" in spec else "https://github.com/{}/releases/download/{}".format(spec["repository"], spec["release"])
     platforms = spec["platforms"]
     urls = architecture.select({cpu: ["{}/{}".format(base, e["artifact"])] for cpu, e in platforms.items()})
     sha256 = architecture.select({cpu: e["sha256"] for cpu, e in platforms.items()})
@@ -55,7 +64,7 @@ def http_tool(
     # Without a size buck asks the server for one with a HEAD request before every download, which is
     # a second chance for a release host to fail a build that has the bytes pinned already.
     size_bytes = architecture.select({cpu: e["size"] for cpu, e in platforms.items()})
-    if path == None:
+    if path == None and not directory:
         http_file(
             name = name + "-download",
             executable = True,
@@ -70,13 +79,15 @@ def http_tool(
             sha256 = sha256,
             size_bytes = size_bytes,
             strip_prefix = architecture.select({cpu: e.get("strip_prefix") for cpu, e in platforms.items()}),
-            sub_targets = [path],
+            sub_targets = [] if directory else [path],
             urls = urls,
         )
-        src = ":{}-download[{}]".format(name, path)
+        src = ":{}-download".format(name) if directory else ":{}-download[{}]".format(name, path)
     _tool(
         name = name,
         args = args or [],
+        directory = directory,
+        path = path if directory else None,
         src = src,
         unzstd = "tine//http:unzstd" if compressed else None,
         visibility = visibility,
