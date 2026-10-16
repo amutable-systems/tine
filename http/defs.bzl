@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""`http_tool`: pin a prebuilt tool binary that buck downloads and sha256-verifies itself."""
+"""The public HTTP download API, exported as the `http` namespace."""
 
 # Explicit loads keep Starlark type checking precise.
 load("@prelude//:rules.bzl", "http_archive", "http_file")
@@ -78,6 +78,10 @@ def http_tool(
         name = name,
         args = args or [],
         src = src,
-        unzstd = "tine//tools:unzstd" if compressed else None,
+        unzstd = "tine//http:unzstd" if compressed else None,
         visibility = visibility,
     )
+
+http = struct(
+    tool = http_tool,
+)
