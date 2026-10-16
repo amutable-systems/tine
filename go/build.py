@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, TypedDict, cast
 
 import specs
+import toolchain
 import util
 
 import rootfs
@@ -53,6 +54,8 @@ class Spec(TypedDict):
     test_packages: list[str] | None
     # The output directory for the test binaries and their manifest, or None to compile no tests.
     tests: str | None
+    # A Go root directory whose bin/go builds the project, or None to use the box's go.
+    toolchain: str | None
 
 
 class Test(TypedDict):
@@ -177,10 +180,10 @@ def build_go(spec: Spec) -> None:
     if spec["tags"]:
         flags.append("-tags=" + ",".join(spec["tags"]))
     env = os.environ | {
-        # Spelled out rather than left to the box's `go env` defaults, so a project's extra
+        # Spelled out rather than left to go's `go env` defaults, so a project's extra
         # flags add to a known baseline instead of replacing whatever go would have used.
         "CGO_CFLAGS": " ".join(["-O2", "-g", *spec["cgo_cflags"]]),
-        # The box's go builds for the box's architecture unless told otherwise. The image that
+        # go builds for the architecture that it runs on unless told otherwise. The image that
         # contains the binaries can be for another architecture. go turns cgo off when it
         # cross-compiles, unless the project forces it on.
         "GOARCH": spec["goarch"],
@@ -200,10 +203,12 @@ def build_go(spec: Spec) -> None:
         "GOWORK": "off",
     }
     if spec["cgo"] is not None:
-        # Left alone otherwise, so that the box's toolchain decides as it would for a `go build`
-        # run in the checkout by hand. Note that its default is on: importing net or os/user is
+        # Without `cgo`, CGO_ENABLED stays unset, and the toolchain's own default applies as it would for
+        # a `go build` run in the checkout by hand. That default is on: importing net or os/user is
         # enough to need a C compiler in the box and to link the binary dynamically.
         env["CGO_ENABLED"] = "1" if spec["cgo"] else "0"
+    if spec["toolchain"] is not None:
+        env |= toolchain.env(Path(spec["toolchain"]), env)
 
     tests = scratch / "tests"
 

@@ -32,6 +32,7 @@ class TestStage(unittest.TestCase):
             "module_cache_dir": str(self.scratch / "cache"),
             "modules": {path: str(self.scratch / "src" / path) for path in modules},
             "sum": str(self.scratch / "src" / pins),
+            "toolchain": None,
         }
 
     def _staged(self) -> dict[str, str]:
