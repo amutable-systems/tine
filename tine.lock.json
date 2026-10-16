@@ -1,7 +1,7 @@
 {
   "buck2": {
     "repository": "daandemeyer/buck2",
-    "release": "2026-10-13-13.49.54",
+    "release": "2026-10-14-08.32.26",
     "platforms": {
       "Linux-aarch64": {
         "artifact": "buck2-aarch64-unknown-linux-musl.zst",
@@ -22,7 +22,7 @@
   },
   "starlark-fmt": {
     "repository": "daandemeyer/buck2",
-    "release": "2026-10-13-13.49.54",
+    "release": "2026-10-14-08.32.26",
     "platforms": {
       "arm64": {
         "artifact": "starlark_fmt-aarch64-unknown-linux-musl.zst",
@@ -56,36 +56,36 @@
   },
   "ruff": {
     "repository": "astral-sh/ruff",
-    "release": "0.17.0",
+    "release": "0.17.1",
     "platforms": {
       "arm64": {
         "artifact": "ruff-aarch64-unknown-linux-musl.tar.gz",
-        "sha256": "cac779097e34bf1ca40175b4bacf8fca7a92fce5030bfc3edf1fd357428a33b0",
-        "size": 9573349,
+        "sha256": "255404ccf2f7950ff6aad8858321a6f416fe2a840ae4e37dfb4c21cb8774f325",
+        "size": 9557834,
         "strip_prefix": "ruff-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "ruff-x86_64-unknown-linux-musl.tar.gz",
-        "sha256": "0df9421fd0df9aa7a62dab4d1086e085b7c7888b6343fc5a9c5f630771d61aae",
-        "size": 10402616,
+        "sha256": "2d9878b5e6a3d0dedadbfc01a64bfe54e72f560adbfd235937cd29e1fc9238e3",
+        "size": 10375123,
         "strip_prefix": "ruff-x86_64-unknown-linux-musl"
       }
     }
   },
   "ty": {
     "repository": "astral-sh/ty",
-    "release": "0.0.87",
+    "release": "0.0.88",
     "platforms": {
       "arm64": {
         "artifact": "ty-aarch64-unknown-linux-musl.tar.gz",
-        "sha256": "0de546b9b4fa9d1d7a0aa7bf02b517bbfdd60715ef79a6dd3fbabfcd1fe891ec",
-        "size": 13027311,
+        "sha256": "87e91fc3ddd4968d04d5f036613c582fc8cd3444b0c03a19f7b69ccd42ab5642",
+        "size": 13071473,
         "strip_prefix": "ty-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "ty-x86_64-unknown-linux-musl.tar.gz",
-        "sha256": "682edebc4d8cc8562bf24551109bee28e481fe8b036786c05e96dac24e42ac00",
-        "size": 14165324,
+        "sha256": "f1199aa42febec3e58c0dcfa23974fa030f1ec0a79255ba04f7e250eac5abe29",
+        "size": 14228629,
         "strip_prefix": "ty-x86_64-unknown-linux-musl"
       }
     }
