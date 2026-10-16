@@ -28,6 +28,8 @@ load(
     ":ddi.bzl",
     "DISK_FORMATS",
     "Partition",  # @unused Used as a type.
+    "VIRTUAL_SIZE_ATTR",
+    "VIRTUAL_SIZE_FORMATS",
     "declare_ddi",
     "declare_disk_conversion",
     "encode_definitions",
@@ -441,7 +443,6 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         imported = [system.info],
         imported_root_hash = system.info.root_hash,
         mkfs_options = ctx.attrs.mkfs_options,
-        output_size = ctx.attrs.output_size,
         seed = ctx.attrs.disk_seed,
     )
     raw = disk.info.disk
@@ -456,6 +457,7 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
             disk = disk.info,
             box = esp.box,
             format = format,
+            virtual_size = ctx.attrs.virtual_size if format in VIRTUAL_SIZE_FORMATS else None,
             identifier = format,
         )
         for format in DISK_FORMATS
@@ -559,11 +561,6 @@ _bootable_disk_image = rule(
             default = {},
             doc = "filesystem -> the options mkfs is given when formatting a partition of that type",
         ),
-        "output_size": attrs.option(
-            attrs.string(),
-            default = None,
-            doc = 'size to compose the disk at, e.g. "20G"; the room past the partitions stays free',
-        ),
         "package_manager": attrs.option(
             attrs.dep(providers = [PackageManagerInfo]),
             default = None,
@@ -578,6 +575,7 @@ _bootable_disk_image = rule(
             doc = "leave the package database out of the system partitions; the image still carries it",
         ),
         "verity_key": VERITY_KEY_ATTR,
+        "virtual_size": VIRTUAL_SIZE_ATTR,
     },
 )
 

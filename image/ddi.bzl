@@ -292,7 +292,6 @@ def declare_ddi(
     imported_root_hash: RootHashInfo | None = None,
     seed: str | None = None,
     verity_key: SigningKeyInfo | None = None,
-    output_size: str | None = None,
     strip_pkgdb: bool = False,
     mkfs_options: dict[str, list[str]] = {},
     basename: str = "image",
@@ -314,12 +313,6 @@ def declare_ddi(
         signed = verity_key != None,
         split = split,
     )
-
-    if output_size != None:
-        if not disk:
-            fail("ddi: output_size applies to a composed disk, which this invocation does not emit")
-        if not regex_match(SIZE_PATTERN, output_size):
-            fail("ddi: invalid output_size {!r}".format(output_size))
 
     # repart hands mkfs one variable per filesystem and splits it on whitespace, so an option
     # carrying any would silently arrive as two.
@@ -392,7 +385,6 @@ def declare_ddi(
         "manifest": None,
         "mkfs_options": mkfs_options,
         "out": None,
-        "output_size": output_size,
         "partitions": [
             {
                 "blocks": value.blocks,
@@ -504,7 +496,6 @@ def _ddi_impl(ctx: AnalysisContext) -> list[Provider]:
         split = ctx.attrs.split,
         strip_pkgdb = ctx.attrs.strip_pkgdb,
         verity_key = resolve_signing_key(ctx.attrs.verity_key),
-        output_size = ctx.attrs.output_size,
     )
     return [
         DefaultInfo(default_outputs = result.outputs, sub_targets = result.sub_targets),
@@ -522,11 +513,6 @@ DDI_ATTRS = {
         attrs.list(attrs.string()),
         default = {},
         doc = "filesystem -> the options mkfs is given when formatting a partition of that type",
-    ),
-    "output_size": attrs.option(
-        attrs.string(),
-        default = None,
-        doc = 'size to compose the disk at, e.g. "20G"; the room past the partitions stays free',
     ),
     "seed": attrs.option(
         attrs.string(),
@@ -587,6 +573,16 @@ def ddi(
 # The disk conversion output formats, doubling as each artifact's extension.
 DISK_FORMATS = ["qcow2", "raw.zst"]
 
+# The formats whose disk has a size of its own, so it can leave room past the partitions for first boot to
+# claim. The raw itself stays as small as its partitions.
+VIRTUAL_SIZE_FORMATS = ["qcow2"]
+
+VIRTUAL_SIZE_ATTR = attrs.option(
+    attrs.string(),
+    default = None,
+    doc = 'size of the disk a qcow2 describes, e.g. "20G"; the room past the partitions stays free',
+)
+
 DiskConversionInfo = provider(
     doc = "A composed raw disk re-encoded into one distributable format.",
     fields = {
@@ -602,12 +598,22 @@ def declare_disk_conversion(
     disk: DdiInfo,
     box: Dependency,
     format: str,
+    virtual_size: str | None = None,
     basename: str = "image",
     identifier: str | None = None,
 ) -> DiskConversionInfo:
-    """Declare a disk format conversion from a resolved raw disk provider."""
+    """Declare a disk format conversion from a resolved raw disk provider.
+
+    `virtual_size` sizes the disk of a format in VIRTUAL_SIZE_FORMATS, which otherwise is as large as
+    the raw.
+    """
     if disk.disk == None:
         fail("disk_convert: DdiInfo does not contain a composed disk")
+    if virtual_size != None:
+        if format not in VIRTUAL_SIZE_FORMATS:
+            fail("disk_convert: a {} disk is the raw's size and takes no virtual_size".format(format))
+        if not regex_match(SIZE_PATTERN, virtual_size):
+            fail("disk_convert: invalid virtual_size {!r}".format(virtual_size))
     out = declare_out(ctx, identifier, basename + "." + format)
     cmd = cmd_args(
         box_run(box = box[BoxInfo], exe = tools.convert),
@@ -618,6 +624,7 @@ def declare_disk_conversion(
                 "format": format,
                 "input": disk.disk,
                 "out": out.as_output(),
+                "virtual_size": virtual_size,
             },
         ),
     )
@@ -632,6 +639,7 @@ def _disk_convert_impl(ctx: AnalysisContext) -> list[Provider]:
         disk = ctx.attrs.disk[DdiInfo],
         box = ctx.attrs.box,
         format = ctx.attrs.format,
+        virtual_size = ctx.attrs.virtual_size,
     )
     return [DefaultInfo(default_output = info.image), info]
 
@@ -642,6 +650,7 @@ disk_convert = rule(
         "box": attrs.exec_dep(providers = [BoxInfo], doc = "execution environment supplying conversion tools"),
         "disk": attrs.dep(providers = [DdiInfo], doc = "the composed raw disk to re-encode"),
         "format": attrs.enum(DISK_FORMATS),
+        "virtual_size": VIRTUAL_SIZE_ATTR,
     }
     | IMAGE_TOOLS_ATTR,
 )
