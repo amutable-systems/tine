@@ -1708,16 +1708,18 @@ def before_shim(
     root: Path,
     config: dict[str, dict[str, str]],
     settings: dict[str, dict[str, object]],
-    cache: cache_shim.CacheSettings,
     isolation: str | None,
 ) -> list[str]:
-    """Ready Buck to build and start the shim, and return the Buck command to do it with.
+    """Ready Buck to build the shim, and return the Buck command to do it with.
 
-    The address in the generated block is the one this shim is about to answer on, so it can stay
-    where it is: the build that produces the shim is told on its command line not to use the cache.
+    The generated block is written without the cache address; the Buck command after the shim
+    serves writes it back.
     """
     ensure_buck2_binary(settings, wrapper_cell_root())
-    refresh_local_buckconfig(root, collect_project_ignores(root, config, [], {}), cache)
+    # HACK: `--no-remote-cache` does not keep `download_file` from probing the CAS, and Buck retries a
+    # cache that is not serving yet for 45s before it gives up on the probe. Temporarily disable the
+    # cache setting to work around. Fix in https://github.com/facebook/buck2/pull/1579
+    refresh_local_buckconfig(root, collect_project_ignores(root, config, [], {}), None)
     return buck2_argv(*([FLAG_ISOLATION, isolation] if isolation else []))
 
 
@@ -1740,7 +1742,7 @@ def buck_command(argv: list[str]) -> None:
         # runs. The cost is that its pin comes from the outer checkout rather than a mounted cell's.
         # TINE_MOUNTS means entering the namespace already re-executed this, which ensured it once.
         if command.subcommand not in BUCK_COMMAND_NO_ACTION and not os.environ.get(TINE_MOUNTS_ENV):
-            cache_shim.ensure(cache, lambda: before_shim(root, config, settings, cache, command.isolation))
+            cache_shim.ensure(cache, lambda: before_shim(root, config, settings, command.isolation))
     # A completing shell must neither download nor rewrite shared configuration on a keypress.
     config, mounts = prepare_buck(
         root, settings, ["buck", *argv], refresh_config=command.subcommand != "complete"

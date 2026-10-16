@@ -1874,22 +1874,16 @@ class TestBuckCommand(unittest.TestCase):
             read_generated_buckconfig(self.root / tine.LOCAL)[tine.RE_CLIENT], tine.cache_client(cache)
         )
 
-    def test_starting_the_shim_leaves_the_address_where_it_is(self) -> None:
-        """The build that produces the shim is the one told not to use the cache, on its own line."""
+    def test_starting_the_shim_takes_the_address_out(self) -> None:
+        """Buck tries a configured cache despite `--no-remote-cache`, and nothing answers it yet."""
         cache = self.configure_cache()
         tine.refresh_local_buckconfig(self.root, [], cache)
         with self.running():
             buck = tine.before_shim(
-                self.root,
-                tine.read_project_buckconfig(self.root),
-                tine.project_settings(self.root),
-                cache,
-                "x",
+                self.root, tine.read_project_buckconfig(self.root), tine.project_settings(self.root), "x"
             )
         self.assertEqual(buck, [str(self.binary), "--no-buckd", tine.FLAG_ISOLATION, "x"])
-        self.assertEqual(
-            read_generated_buckconfig(self.root / tine.LOCAL)[tine.RE_CLIENT], tine.cache_client(cache)
-        )
+        self.assertNotIn(tine.RE_CLIENT, read_generated_buckconfig(self.root / tine.LOCAL))
 
     def test_a_changed_address_reaches_the_next_invocation(self) -> None:
         """Each command's daemon reads the current configuration, so a new address only needs writing."""
