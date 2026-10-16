@@ -25,6 +25,8 @@ patterns = [
     "edac_mce_amd",
     "efi-pstore",
     "efivarfs",
+    # AWS Nitro's network adapter, for IMDS.
+    "ena",
     "erofs",
     "evdev",
     "ext4",
