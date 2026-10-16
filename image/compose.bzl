@@ -6,6 +6,7 @@
 load("//distribution:defs.bzl", "distribution")
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//platforms:architecture.bzl", "ARCHITECTURES")
+load(":ami.bzl", "declare_ami")
 load(
     ":archive.bzl",
     "ARCHIVE_ATTRS",
@@ -562,6 +563,13 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         ],
         "uki": [DefaultInfo(default_output = uki.ukis, sub_targets = uki_subtargets(uki)), uki],
     })
+    sub_targets["ami"] = declare_ami(
+        ctx.actions,
+        arch = ctx.attrs.arch,
+        basename = basename,
+        disk = raw,
+        virtual_size = ctx.attrs.virtual_size,
+    )
     for conversion in conversions:
         sub_targets[conversion.format] = [
             DefaultInfo(default_output = conversion.image),
