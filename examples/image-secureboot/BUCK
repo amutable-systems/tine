@@ -131,6 +131,24 @@ image.bootable_disk(
     sign_expected_pcr_key = _PCR_SIGNING,
 )
 
+# The AMI's UEFI variable store enrolls the signing certificate as PK, KEK, and db, so EC2 instances start
+# out trusting it. See docs/user/aws.md.
+box.sh_test(
+    name = "uefi-data-test",
+    args = ["$(location :image[ami][uefi-data])", "$(location {}[cert])".format(_SIGNING)],
+    box = "@tine//tools:aws.box",
+    script = """
+virt-fw-vars --input "$1" --output-json /dev/stdout | python3 -c '
+import json, ssl, sys
+cert = ssl.PEM_cert_to_DER_cert(open(sys.argv[1]).read())
+variables = {v["name"]: bytes.fromhex(v["data"]) for v in json.load(sys.stdin)["variables"]}
+for name in ("PK", "KEK", "db"):
+    if cert not in variables.get(name, b""):
+        sys.exit(f"ERROR: {name} does not hold the signing certificate")
+' "$2"
+""",
+)
+
 # System-extension DDI extending :image, signed so the strict policy in sysext.conf accepts the
 # merge. The image's own key, whose certificate it carries in /usr/lib/verity.d.
 image.sysext_image(

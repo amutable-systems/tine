@@ -3,10 +3,15 @@
 
 """Amazon Machine Images: a bootable disk with what EC2 needs to register it."""
 
+load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//platforms:architecture.bzl", "ARCHITECTURES")
 
 # What `RegisterImage` accepts in an image name besides letters and digits.
 _NAME_PUNCTUATION = "()[] ./-'@_"
+
+# Owner of the Secure Boot signature list entries, all zeros as in the auto-enrollment files bootctl writes
+# for the same key.
+_SIGNATURE_OWNER = "00000000-0000-0000-0000-000000000000"
 
 # EC2's label for the root volume, which ties its BlockDeviceMappings to the AMI's RootDeviceName. This
 # is the conventional (but arbitrary) value of most Linux AMIs. Does not appear in guests, that's
@@ -24,12 +29,24 @@ def _gib(size: str) -> int:
     # Starlark has no math.ceil; flooring the negation rounds up.
     return int(-(-number * (1 << 10 * exponent) // (1 << 30)))
 
-def declare_ami(actions: AnalysisActions, *, arch: str, basename: str, disk: Artifact, importer: RunInfo, virtual_size: str | None) -> list[Provider]:
+def declare_ami(
+    actions: AnalysisActions,
+    *,
+    arch: str,
+    basename: str,
+    box: BoxInfo,
+    disk: Artifact,
+    importer: RunInfo,
+    secure_boot_certificate: Artifact | None,
+    virtual_size: str | None,
+) -> list[Provider]:
     """Declare the AMI bundle of a bootable disk, for its `[ami]` subtarget.
 
     The bundle holds the disk and the `RegisterImage` parameters, which `aws ec2 register-image
     --cli-input-json` takes as they are once the import adds the snapshot. Running the subtarget
-    imports the bundle with `importer`.
+    imports the bundle with `importer`. With a `secure_boot_certificate`, the bundle also holds the
+    UEFI variable store that enrolls it, also as the subtarget's `[uefi-data]`; `box` provides the
+    tool that writes it.
     """
     register = {
         "Architecture": ARCHITECTURES[arch].ec2,
@@ -55,12 +72,44 @@ def declare_ami(actions: AnalysisActions, *, arch: str, basename: str, disk: Art
     if virtual_size != None:
         register["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] = _gib(virtual_size)
 
-    bundle = actions.symlinked_dir(
-        "ami",
-        {
-            # Links, not copies: the disk is sparse, as its partitions are mostly empty.
-            "disk.raw": disk,
-            "register.json": actions.write_json("ami-register.json", register),
-        },
+    contents = {
+        # Links, not copies: the disk is sparse, as its partitions are mostly empty.
+        "disk.raw": disk,
+        "register.json": actions.write_json("ami-register.json", register),
+    }
+    sub_targets = {}
+    if secure_boot_certificate != None:
+        contents["uefi-data"] = _uefi_data(actions, box, secure_boot_certificate)
+        sub_targets["uefi-data"] = [DefaultInfo(default_output = contents["uefi-data"])]
+    bundle = actions.symlinked_dir("ami", contents)
+    return [
+        DefaultInfo(default_output = bundle, sub_targets = sub_targets),
+        RunInfo(args = cmd_args(importer, bundle)),
+    ]
+
+def _uefi_data(actions: AnalysisActions, box: BoxInfo, certificate: Artifact) -> Artifact:
+    """The instance's initial UEFI variable store, which trusts `certificate` as PK, KEK, and db.
+
+    Without it, an instance boots in Secure Boot setup mode, and the first thing it boots may enroll
+    whichever keys it likes.
+    """
+    uefi_data = actions.declare_output("ami-uefi-data")
+    actions.run(
+        cmd_args(
+            box_run(box = box),
+            "virt-fw-vars",
+            "--set-pk",
+            _SIGNATURE_OWNER,
+            certificate,
+            "--add-kek",
+            _SIGNATURE_OWNER,
+            certificate,
+            "--add-db",
+            _SIGNATURE_OWNER,
+            certificate,
+            "--output-aws",
+            uefi_data.as_output(),
+        ),
+        category = "uefi_data",
     )
-    return [DefaultInfo(default_output = bundle), RunInfo(args = cmd_args(importer, bundle))]
+    return uefi_data
