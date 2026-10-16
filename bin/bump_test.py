@@ -5,10 +5,12 @@
 
     buck test tine//bin:test
 
-The GitHub API is stubbed for the release pins, so both kinds of pin are covered offline.
+The GitHub API, the release index and the downloads are stubbed, so every kind of pin is tested offline.
 """
 
 import contextlib
+import http.client
+import io
 import json
 import subprocess
 import tempfile
@@ -245,6 +247,185 @@ class ReleasePin(unittest.TestCase):
         release = {"tag_name": "v1.51.0", "assets": [self.asset("syft_1.51.0_linux_arm64.tar.gz")]}
         with self.assertRaises(SystemExit):
             self.bump(self.syft(), release)
+
+
+class UrlPin(unittest.TestCase):
+    """Tests for pins that download from a plain URL, with fixtures for the index and the downloads."""
+
+    INDEX = json.dumps(
+        [{"version": version} for version in ("go1.27.10", "go1.27.9", "go1.27rc1", "go1.26.3")]
+    )
+
+    @override
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.data = Path(directory.name) / "tine.lock.json"
+        self.downloads: list[str] = []
+
+    def download(self, url: str) -> tuple[str, int]:
+        self.downloads.append(url)
+        return "cd" * 32, 7
+
+    @staticmethod
+    def pin(release: str, **entry: object) -> dict[str, object]:
+        return {
+            "url": "https://go.dev/dl",
+            "release": release,
+            "releases": {"url": "https://go.dev/dl/?mode=json&include=all", "pattern": "go1\\.27\\.[0-9]+"},
+            "platforms": {
+                "x86_64": {"artifact": f"{release}.linux-amd64.tar.gz", "strip_prefix": "go", **entry}
+            },
+        }
+
+    def bump(self, pin: dict[str, object], index: str = INDEX) -> dict[str, Any]:
+        self.data.write_text(json.dumps({"go": pin}, indent=2) + "\n")
+        with (
+            mock.patch.object(bump, "_read", return_value=index) as read,
+            mock.patch.object(bump, "_download", side_effect=self.download),
+        ):
+            bump.main(self.data, None, ["--all"])
+        self.reads = [call.args[0] for call in read.call_args_list]
+        return cast(dict[str, Any], json.loads(self.data.read_text()))["go"]
+
+    def test_takes_the_highest_release_that_matches_the_pattern(self) -> None:
+        pin = self.bump(self.pin("go1.27.2", sha256="ab" * 32, size=1))
+        self.assertEqual(self.reads, ["https://go.dev/dl/?mode=json&include=all"])
+        self.assertEqual(pin["release"], "go1.27.10")
+        self.assertEqual(
+            pin["platforms"]["x86_64"],
+            {
+                "artifact": "go1.27.10.linux-amd64.tar.gz",
+                "strip_prefix": "go",
+                "sha256": "cd" * 32,
+                "size": 7,
+            },
+        )
+        self.assertEqual(self.downloads, ["https://go.dev/dl/go1.27.10.linux-amd64.tar.gz"])
+
+    def test_leaves_a_release_that_has_not_moved(self) -> None:
+        pin = self.pin("go1.27.10", sha256="ab" * 32, size=1)
+        self.assertEqual(self.bump(pin), pin)
+        self.assertEqual(self.downloads, [])
+
+    def test_fills_in_the_digests_of_a_pin_without_releases(self) -> None:
+        pin = self.pin("go1.27.2")
+        del pin["releases"]
+        entry = self.bump(pin)["platforms"]["x86_64"]
+        self.assertEqual(self.reads, [])
+        self.assertEqual(
+            (entry["artifact"], entry["sha256"], entry["size"]),
+            ("go1.27.2.linux-amd64.tar.gz", "cd" * 32, 7),
+        )
+
+    def test_fails_on_an_index_without_a_matching_release(self) -> None:
+        pin = self.pin("go1.27.2")
+        pin["releases"] = {"url": "https://go.dev/dl/?mode=json&include=all", "pattern": "go1\\.28\\.[0-9]+"}
+        with self.assertRaisesRegex(SystemExit, "contains no release that matches"):
+            self.bump(pin)
+
+    def test_moves_a_versioned_strip_prefix_with_the_release(self) -> None:
+        pin: dict[str, object] = {
+            "url": "https://nodejs.org/dist",
+            "release": "v22.11.0",
+            "releases": {"url": "https://nodejs.org/dist/index.json", "pattern": "v22\\.[0-9]+\\.[0-9]+"},
+            "platforms": {
+                "x86_64": {
+                    "artifact": "v22.11.0/node-v22.11.0-linux-x64.tar.xz",
+                    "sha256": "ab" * 32,
+                    "size": 1,
+                    "strip_prefix": "node-v22.11.0-linux-x64",
+                }
+            },
+        }
+        entry = self.bump(pin, index="v22.11.0 v22.12.0")["platforms"]["x86_64"]
+        self.assertEqual(entry["artifact"], "v22.12.0/node-v22.12.0-linux-x64.tar.xz")
+        self.assertEqual(entry["strip_prefix"], "node-v22.12.0-linux-x64")
+
+    def test_moves_an_artifact_named_after_the_release_without_its_v(self) -> None:
+        pin = self.pin("v1.2.3", sha256="ab" * 32, size=1)
+        pin["releases"] = {"url": "https://example.com/releases", "pattern": "v1\\.2\\.[0-9]+"}
+        pin["platforms"] = {
+            "x86_64": {"artifact": "foo-1.2.3-linux-amd64.tar.gz", "sha256": "ab" * 32, "size": 1}
+        }
+        entry = self.bump(pin, index="v1.2.3 v1.2.4")["platforms"]["x86_64"]
+        self.assertEqual((entry["artifact"], entry["sha256"]), ("foo-1.2.4-linux-amd64.tar.gz", "cd" * 32))
+
+    def test_downloads_an_unversioned_artifact_again_when_the_release_moves(self) -> None:
+        pin = self.pin("1.0.0")
+        pin["releases"] = {"url": "https://example.com/releases", "pattern": "[0-9]+\\.[0-9]+\\.[0-9]+"}
+        pin["platforms"] = {
+            "x86_64": {"artifact": "tool-linux-amd64.tar.gz", "sha256": "ab" * 32, "size": 1}
+        }
+        entry = self.bump(pin, index="1.0.0 1.1.0")["platforms"]["x86_64"]
+        self.assertEqual(self.downloads, ["https://go.dev/dl/tool-linux-amd64.tar.gz"])
+        self.assertEqual(entry["sha256"], "cd" * 32)
+
+    def test_replaces_only_whole_releases(self) -> None:
+        self.assertEqual(
+            bump._replace_release("tool-4-linux-amd64.tar.gz", "4", "5"), "tool-5-linux-amd64.tar.gz"
+        )
+        self.assertEqual(bump._replace_release("tool-1.2.3.tar.gz", "1.2", "1.3"), "tool-1.2.3.tar.gz")
+        self.assertEqual(
+            bump._replace_release("go1.27.linux-arm64.tar.gz", "go1.27", "go1.27.2"),
+            "go1.27.2.linux-arm64.tar.gz",
+        )
+
+    def test_two_spellings_of_one_version_pick_the_same_release(self) -> None:
+        pin = self.pin("v1.2.3", sha256="ab" * 32, size=1)
+        pin["releases"] = {"url": "https://example.com/releases", "pattern": "v?1\\.2\\.[0-9]+"}
+        for index in ("v1.2.4 1.2.4", "1.2.4 v1.2.4"):
+            with self.subTest(index=index):
+                self.assertEqual(self.bump(pin, index=index)["release"], "v1.2.4")
+
+    def test_says_that_it_only_pinned_the_digests(self) -> None:
+        pin = self.pin("go1.27.2")
+        del pin["releases"]
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            self.bump(pin)
+        self.assertEqual(printed.getvalue(), "go: pinned the digests of go1.27.2\n")
+
+
+class Download(unittest.TestCase):
+    """Tests for the transfer checks, with a fixture in place of the HTTP response."""
+
+    @staticmethod
+    def response(body: bytes, length: int | None = None, error: Exception | None = None) -> mock.MagicMock:
+        stream = io.BytesIO(body)
+
+        def read(amount: int) -> bytes:
+            chunk = stream.read(amount)
+            if not chunk and error is not None:
+                raise error
+            return chunk
+
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        response.headers = {} if length is None else {"Content-Length": str(length)}
+        response.read.side_effect = read
+        return response
+
+    def test_hashes_the_whole_body(self) -> None:
+        with mock.patch.object(bump, "urlopen", return_value=self.response(b"abc", 3)):
+            self.assertEqual(
+                bump._download("https://example.com/a"), (bump.hashlib.sha256(b"abc").hexdigest(), 3)
+            )
+
+    def test_fails_on_a_body_shorter_than_its_length(self) -> None:
+        with (
+            mock.patch.object(bump, "urlopen", return_value=self.response(b"abc", 10)),
+            self.assertRaisesRegex(ValueError, "https://example.com/a: received 3 of 10 bytes"),
+        ):
+            bump._download("https://example.com/a")
+
+    def test_names_the_url_of_a_broken_transfer(self) -> None:
+        response = self.response(b"", error=http.client.IncompleteRead(b""))
+        with (
+            mock.patch.object(bump, "urlopen", return_value=response),
+            self.assertRaisesRegex(ValueError, "^https://example.com/index: IncompleteRead"),
+        ):
+            bump._read("https://example.com/index")
 
 
 if __name__ == "__main__":
