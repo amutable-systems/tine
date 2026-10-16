@@ -42,7 +42,17 @@ _FEDORA_PACKAGE_SETS = {
         "util-linux",
     ],
     "buildroot": ["@buildsys-build"],
-    "initrd": ["bash", "kmod", "systemd", "systemd-udev", "veritysetup"],
+    "initrd": [
+        "bash",
+        "kmod",
+        # avoid full libcurl, not necessary for imds
+        "libcurl-minimal",
+        "systemd",
+        "systemd-imds",
+        "systemd-networkd",
+        "systemd-udev",
+        "veritysetup",
+    ],
 }
 
 def _merge_package_sets(

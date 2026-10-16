@@ -55,6 +55,7 @@ load(
     "remove",
     "sign_systemd_boot",
     "symlink",
+    "write_file",
 )
 load(":publish.bzl", "PublishedInfo", "published_metadata_subtargets")
 load(
@@ -80,6 +81,14 @@ InitrdInfo = provider(
     },
 )
 
+# As of systemd 262, systemd-imds-early-network.service only writes a .network file, but doesn't start
+# networkd. The IMDS generator pulls the unit in only on a cloud it detects in the hardware database, so
+# networkd runs nowhere else, and `systemd.imds.network=off` opts out. mkosi does that via a preset call.
+_IMDS_NETWORKD = write_file(
+    "/usr/lib/systemd/system/systemd-imds-early-network.service.d/tine-networkd.conf",
+    "[Unit]\nWants=systemd-networkd.service\n",
+)
+
 def _initrd_image_impl(ctx: AnalysisContext) -> list[Provider]:
     tools = ctx.attrs._tools[ImageToolsInfo]
     image = declare_image(
@@ -91,6 +100,7 @@ def _initrd_image_impl(ctx: AnalysisContext) -> list[Provider]:
             [
                 symlink("/usr/lib/systemd/systemd", "/init"),
                 symlink("/etc/os-release", "/etc/initrd-release"),
+                _IMDS_NETWORKD,
             ]
             + ctx.attrs.ops,
             ["initrd"],

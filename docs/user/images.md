@@ -242,6 +242,11 @@ initrd never reads) apply either way. `compression` picks how the cpio the UKI c
 it from the tree. `install_docs` and `install_langs` default the other way round from an OS image, since
 documentation and translations only cost an initrd boot memory.
 
+Every initrd can import system credentials, such as an SSH key, from a cloud's instance metadata service
+(IMDS). systemd's IMDS generator enables that (together with networkd to reach the service) on a cloud
+instance which it recognizes from the hardware database; `systemd.imds=` on the kernel command line
+overrides it.
+
 The target is an ordinary image: it builds on its own, publishes `[pkgdb]` and `[sbom]`, and one initrd can
 be shared by several disk images.
 

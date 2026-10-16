@@ -75,6 +75,7 @@ _DEBIAN_PACKAGE_SETS = {
         "mount",
         "systemd",
         "systemd-cryptsetup",
+        "systemd-imds",
         "udev",
         "util-linux",
     ],
