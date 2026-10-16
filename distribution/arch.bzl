@@ -48,7 +48,7 @@ _ARCH_PACKAGE_SETS = {
     ],
     # `base-devel` is a metapackage, so makepkg's assumed build environment is one name.
     "buildroot": ["base-devel"],
-    # Arch ships udev inside systemd and veritysetup inside cryptsetup.
+    # Arch ships udev, networkd and IMDS support inside systemd, and veritysetup inside cryptsetup.
     "initrd": ["bash", "cryptsetup", "kmod", "systemd"],
 }
 
