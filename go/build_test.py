@@ -53,6 +53,7 @@ class TestBuildGo(unittest.TestCase):
                     tags=[],
                     test_packages=None,
                     tests=None,
+                    toolchain=None,
                 )
                 stale = self.project / spec["bin"] / "undeclared"
                 stale.parent.mkdir()
@@ -135,6 +136,7 @@ class TestCompileTests(unittest.TestCase):
             tags=[],
             test_packages=["./..."],
             tests="tests",
+            toolchain=None,
         )
         stale = self.project / "tests" / "7.test"
         stale.parent.mkdir()

@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import specs
+import toolchain
 from util import fail
 
 
@@ -39,6 +40,8 @@ class Spec(TypedDict):
     modules: dict[str, str]
     # The project's go.sum, which go checks a download against wherever it pins one.
     sum: str
+    # A Go root directory whose bin/go fetches the modules, or None to use the box's go.
+    toolchain: str | None
 
 
 def stage(spec: Spec, tree: Path) -> Path:
@@ -67,11 +70,14 @@ def main(argv: list[str] | None = None) -> None:
 
     module_cache_dir = Path(spec["module_cache_dir"]).resolve()
     module_cache_dir.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    if spec["toolchain"] is not None:
+        env |= toolchain.env(Path(spec["toolchain"]), env)
     subprocess.run(
         ["go", "mod", "download"],
         check=True,
         cwd=module,
-        env=os.environ
+        env=env
         | {
             "GOCACHE": str(scratch / "gocache"),
             # Only the user's env file, never $GOROOT/go.env, which is why everything this action
@@ -86,7 +92,8 @@ def main(argv: list[str] | None = None) -> None:
             # trust whatever a repository served.
             "GOPROXY": "https://proxy.golang.org,direct",
             "GOSUMDB": "sum.golang.org",
-            # The box's go is the toolchain; never fetch another one.
+            # With GOTOOLCHAIN=local, go never downloads the toolchain that a go.mod names in its go
+            # or toolchain line.
             "GOTOOLCHAIN": "local",
             # This action stages only go.mod and go.sum files, so a go.work in a parent directory
             # comes from outside the checkout. Without GOWORK=off, go would resolve modules with it.

@@ -67,13 +67,15 @@ go.package(
   variable at link time, and `-extldflags` reaches the C linker of a cgo build.
 - `cgo_cflags` adds C compiler flags for a cgo build, on top of the `-O2 -g` the driver always passes. A
   project needs one when a dependency's headers do not compile as the box's compiler defaults.
-- `cgo` forces cgo on or off. Unset, the box toolchain's own default decides, as it would for a
+- `cgo` forces cgo on or off. Unset, the toolchain's own default decides, as it would for a
   `go build` run in the checkout by hand; that default is on. `cgo = False` builds static binaries and
   needs no C compiler, taking Go's own resolver and user lookup instead of the system's. `cgo = True`
   turns a missing C compiler into a build failure, rather than that same silent switch.
 - `build_mode` sets go's `-buildmode` to `"exe"` or `"pie"`. `"pie"` builds position-independent
-  executables, which the kernel loads at a random address on each run. Unset, the box toolchain's default
+  executables, which the kernel loads at a random address on each run. Unset, the toolchain's default
   applies, which is `"exe"` on x86-64 and AArch64 Linux.
+- `toolchain` is a Go toolchain that builds the project instead of the box's `go`. See
+  [Building with your own Go toolchain](#building-with-your-own-go-toolchain).
 
 The binaries are ordinary artifacts, so an image installs one with an `image.ops.copy()` operation; see the
 example.
@@ -151,8 +153,8 @@ box.new(
 - `golang` is the toolchain, `python3` runs the in-box drivers, and `ca-certificates` gives the module
   fetch its TLS trust for `proxy.golang.org`. A module that proxy does not serve is fetched directly, with
   `git`, which then has to be there too.
-- Both actions set `GOTOOLCHAIN=local`: the box's go is the toolchain, never a downloaded one, so a
-  `go.mod` demanding a newer go than the box carries fails the build instead.
+- The fetch and the build set `GOTOOLCHAIN=local`, so go never downloads another toolchain. A `go.mod`
+  that requires a newer Go than the box's `go`, or than the `toolchain`, fails the build.
 - A project using cgo needs `gcc` and the `-devel` packages it binds, plus `pkgconf-pkg-config` and `rpm`
   for a `#cgo pkg-config:` directive, because Fedora's `/usr/bin/pkg-config` shells out to `rpm --eval`.
   Its binaries then link dynamically, so the image needs the matching runtime packages. This is not
@@ -160,6 +162,80 @@ box.new(
   False` uses Go's own implementations of those instead, and needs no C compiler.
 
 The box is a build environment. It never becomes part of an image, and the toolchain is not shipped.
+
+## Building with your own Go toolchain
+
+Set `toolchain` to build with a Go release other than the one in the box, such as an older release that a
+project requires. An upstream Go release from go.dev works as a toolchain. Pin it in the project's
+`tine.lock.json` and download it with [`http.tool()`](http.md).
+
+Add a pin for the Go version to `tine.lock.json`, without digests:
+
+```json
+{
+  "go": {
+    "url": "https://go.dev/dl",
+    "release": "go1.27",
+    "releases": {
+      "url": "https://go.dev/dl/?mode=json&include=all",
+      "pattern": "go1\\.27\\.[0-9]+"
+    },
+    "platforms": {
+      "arm64": {"artifact": "go1.27.linux-arm64.tar.gz", "strip_prefix": "go"},
+      "x86_64": {"artifact": "go1.27.linux-amd64.tar.gz", "strip_prefix": "go"}
+    }
+  }
+}
+```
+
+The pattern matches the Go 1.27 releases in the release list on go.dev. Run `tine bump` to move the pin to
+the newest of them and fill in the digests and sizes:
+
+```sh
+tine bump --tool go
+```
+
+```
+go: updated go1.27 -> go1.27.2
+```
+
+Declare the toolchain and pass it to `go.package()`:
+
+```Starlark
+load("//:tine.lock.json", pins = "value")
+load("@tine//box:defs.bzl", "box")
+load("@tine//go:defs.bzl", "go")
+load("@tine//http:defs.bzl", "http")
+
+http.tool(
+    name = "go",
+    directory = True,
+    path = "bin/go",
+    spec = pins["go"],
+)
+
+box.new(
+    name = "go-toolchain.box",
+    packages = ["ca-certificates"],
+    release = "tine//catalog:fedora.rawhide.release",
+)
+
+go.package(
+    name = "hello",
+    box = ":go-toolchain.box",
+    packages = {"hello-cli": "./cmd/hello-cli"},
+    toolchain = ":go",
+)
+```
+
+- The toolchain's `go` fetches the modules and builds the binaries and the tests. The box does not need
+  the `golang` package.
+- `toolchain` takes any target whose output is a Go root directory, the directory that contains `bin/go`.
+- The toolchain runs inside the box, so Buck downloads the release for the box's architecture. go then
+  cross-compiles for the target architecture, as the box's `go` does.
+- `buck run :go -- version` runs the pinned `go`.
+- `bump` keeps the pin on the releases that the pattern matches. Change the pattern, such as to
+  `"go1\\.28\\.[0-9]+"`, and run `bump` again to move to another minor version.
 
 ## Properties and limits
 

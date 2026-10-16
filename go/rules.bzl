@@ -38,6 +38,7 @@ def _go_build_impl(
     tags: list[str],
     test_packages: list[str] | None,
     tests: OutputArtifact | None,
+    toolchain: Artifact | None,
     workspace: ArtifactValue,
 ) -> list[Provider]:
     """Declare what the project's go.mod asks for, once it has been found and can be read."""
@@ -61,6 +62,7 @@ def _go_build_impl(
                         "module_cache_dir": module_cache.as_output(),
                         "modules": {path: src.project(path) for path in module["modules"]},
                         "sum": src.project(module["sum"]),
+                        "toolchain": toolchain,
                     },
                 ),
             ),
@@ -91,6 +93,7 @@ def _go_build_impl(
                     "tags": tags,
                     "test_packages": test_packages,
                     "tests": tests,
+                    "toolchain": toolchain,
                 },
             ),
         ),
@@ -118,6 +121,7 @@ _go_build = dynamic_actions(
         "tags": dynattrs.value(list[str]),
         "test_packages": dynattrs.value(list[str] | None),
         "tests": dynattrs.option(dynattrs.output()),
+        "toolchain": dynattrs.value(Artifact | None),
         "workspace": dynattrs.artifact_value(),
     },
 )
@@ -179,6 +183,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             tags = ctx.attrs.tags,
             test_packages = ctx.attrs.test_packages,
             tests = tests.as_output() if tests != None else None,
+            toolchain = ctx.attrs.toolchain[DefaultInfo].default_outputs[0] if ctx.attrs.toolchain != None else None,
             workspace = workspace,
         ),
     )
@@ -187,7 +192,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
 _go_package = rule(
     impl = _go_package_impl,
     attrs = {
-        "box": attrs.exec_dep(providers = [BoxInfo], doc = "box carrying the Go toolchain"),
+        "box": attrs.exec_dep(providers = [BoxInfo], doc = "box to build in, carrying the Go toolchain unless `toolchain` is set"),
         "build_mode": attrs.option(
             attrs.enum(["exe", "pie"]), default = None, doc = "go's -buildmode for the binaries and tests, the toolchain default when unset"
         ),
@@ -200,6 +205,9 @@ _go_package = rule(
         "src": attrs.source(allow_directory = True, doc = "the project's source directory, go.mod and go.sum included"),
         "tags": attrs.list(attrs.string(), default = [], doc = "build tags selecting the project's optional files"),
         "test_packages": attrs.option(attrs.list(attrs.string()), default = None, doc = "Go package patterns whose tests the build compiles for a go_test"),
+        # The toolchain's go runs inside the box. The toolchain is an exec_dep, so Buck configures it for the
+        # box's architecture instead of the architecture of the binaries.
+        "toolchain": attrs.option(attrs.exec_dep(), default = None, doc = "a Go root directory, with go in bin/, to build with instead of the box's go"),
         # `_arch` is the architecture the binaries run on. On a cross build, it differs from the box's.
         "_arch": attrs.string(default = architecture.configured()),
         "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//go:build"),

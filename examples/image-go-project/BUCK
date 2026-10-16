@@ -10,8 +10,10 @@ it builds. `hello/` plays that checkout.
 load("@tine//box:defs.bzl", "box")
 load("@tine//git:defs.bzl", "git")
 load("@tine//go:defs.bzl", "go")
+load("@tine//http:defs.bzl", "http")
 load("@tine//image:defs.bzl", "image")
 load("@tine//package:defs.bzl", "package")
+load("//:tine.lock.json", _pins = "value")
 
 # The build environment for our Go projects; it never reaches an image.
 box.new(
@@ -124,6 +126,52 @@ box.sh_test(
         "$(exe :renamed)",
         "$(exe :multiple[first])",
         "$(exe :multiple[second])",
+    ],
+)
+
+# go.package runs the toolchain's go inside the box, so Buck downloads the release for the box's
+# architecture.
+http.tool(
+    name = "go",
+    directory = True,
+    path = "bin/go",
+    spec = _pins["go"],
+)
+
+# The box contains no golang package, so the build fails unless go.package runs the toolchain's go.
+box.new(
+    name = "go-toolchain.box",
+    packages = ["ca-certificates"],
+    release = "tine//catalog:fedora.rawhide.release",
+)
+
+go.package(
+    name = "toolchain",
+    box = ":go-toolchain.box",
+    packages = {"hello-cli": "./cmd/hello-cli"},
+    src = "hello",
+    toolchain = ":go",
+)
+
+# `$(exe :go)` has to bring the whole unpacked release, because go finds its standard library through the
+# directory around bin/go.
+box.sh_test(
+    name = "go-run-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = '[[ "$("$1" version)" == "go version {} "* && -d "$("$1" env GOROOT)/src/runtime" ]]'.format(_pins["go"]["release"]),
+    args = ["$(exe :go)"],
+)
+
+# go writes the version of the toolchain that built a binary into the binary.
+box.sh_test(
+    name = "toolchain-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    test = "@tine//tests:contains.sh",
+    args = [
+        "$(location :toolchain[hello-cli])",
+        _pins["go"]["release"],
     ],
 )
 

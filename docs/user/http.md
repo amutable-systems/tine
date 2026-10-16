@@ -37,10 +37,11 @@ http.tool(
 - `releases` names the index that `bump` reads for a pin with a `url`. Its `url` is a page that lists the
   releases, and every match of its `pattern`, a Python regular expression, is a release. `bump` compares
   the numbers in each match and takes the highest. A prerelease such as `go1.28rc1` ranks by its numbers
-  too, so write a pattern that matches only releases. A pin without `releases` stays on its release.
+  too, so write a pattern that matches only releases. A pin without `releases` stays on its release. See
+  [Building with your own Go toolchain](go.md#building-with-your-own-go-toolchain) for an example.
 - `platforms` has one entry per architecture, named `arm64` and `x86_64`. Buck downloads the entry of the
-  architecture that the target is configured for. A rule attribute declared with `attrs.exec_dep()`
-  configures the tool for the machine that runs the build.
+  architecture that the target is configured for. A rule attribute declared with `attrs.exec_dep()`, such
+  as the `toolchain` of `go.package()`, configures the tool for the machine that runs the build.
 - `sha256` and `size` are those of the downloaded file.
 - `strip_prefix` is a directory in the archive whose contents become the root of the unpacked tree.
 
