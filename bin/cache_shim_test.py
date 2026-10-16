@@ -229,18 +229,25 @@ class TestLifecycle(SocketCase):
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)
 
-    def fake(self, body: str) -> list[str]:
-        """A stand-in Buck: whatever it is asked to run, it does `body` with the shim's arguments.
+    def fake(self, body: str, build: str = "pass") -> list[str]:
+        """A stand-in Buck: it does `build`, then names itself as the shim, which does `body`.
 
-        `status` comes from this test tree, so the fake answers exactly as the shim would.
+        The shim sees Buck's own flags and the shim's arguments. `status` comes from this test tree,
+        so the fake answers exactly as the shim would.
         """
         script = scratch(self) / "buck"
         script.write_text(
             f"#!{sys.executable}\n"
-            "import os, sys, time\n"
+            "import json, os, sys, time\n"
             f"sys.path.insert(0, {str(Path(__file__).parent)!r})\n"
             "from pathlib import Path\n"
             "import status\n"
+            'if sys.argv[1] != "shim":\n'
+            f"    {build}\n"
+            '    command = Path(sys.argv[sys.argv.index("--command-args-file") + 1])\n'
+            '    command.write_text(json.dumps({"argv": [sys.argv[0], "shim", *sys.argv[1:]]}))\n'
+            "    sys.exit()\n"
+            'flags = sys.argv[2 : sys.argv.index("--")]\n'
             'args = sys.argv[sys.argv.index("--") + 1 :]\n'
             'store = Path(args[args.index("--store") + 1])\n'
             f"{body}\n"
@@ -251,7 +258,6 @@ class TestLifecycle(SocketCase):
     def serving(self) -> list[str]:
         return self.fake(
             "clients = []\n"
-            'flags = sys.argv[1 : sys.argv.index("--")]\n'
             'report = lambda: {"pid": os.getpid(), "argv": args, "flags": flags, "clients": clients}\n'
             "with status.serving(store, report, clients.append):\n    time.sleep(60)"
         )
@@ -289,6 +295,13 @@ class TestLifecycle(SocketCase):
         other = self.configured(reader(dir="store", port=self.cache.port + 1))
         with self.assertRaisesRegex(SystemExit, "already serves .* with other settings, as pid"):
             cache_shim.ensure(other, unittest.mock.Mock())
+
+    def test_a_build_that_fails_starts_nothing(self) -> None:
+        """Buck has said why on the terminal already."""
+        buck = self.fake("raise AssertionError('started')", build="sys.exit(5)")
+        with self.assertRaisesRegex(SystemExit, "building the cache shim failed with exit code 5"):
+            cache_shim.start(self.cache, buck)
+        self.assertFalse(cache_shim.log_path(self.cache).exists())
 
     def test_a_start_that_dies_is_diagnosed_from_its_log(self) -> None:
         buck = self.fake('print("boom, said the box", file=sys.stderr)\nsys.exit(3)')
