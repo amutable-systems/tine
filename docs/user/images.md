@@ -989,7 +989,8 @@ an image from those packages. Neither target exists in this repository.
 
 ## Updating pinned tools
 
-`bump` refreshes the pinned tool releases against their upstream GitHub releases.
+`bump` refreshes the pinned tool releases against their upstream GitHub releases. A pin with a `url`
+moves to the newest release in the index that its `releases` names.
 
 Update one or more pinned tools by name (`buck2`, `starlark-fmt`, `python3`, `ruff`, `ty`, `syft`,
 `cargo-auditable`, `seaweedfs`):
@@ -1004,7 +1005,9 @@ Update all tools:
 tine bump --all
 ```
 
-Each tool is resolved to its latest upstream release and its `url` and `sha256` are rewritten in place.
+Each tool is resolved to its latest upstream release, and its `release`, `artifact`, `sha256` and `size`
+are rewritten in place. For a pin with a `url`, `bump` downloads each new artifact to compute its digest and
+size.
 Add `--commit` to record the result as a git commit whose message itemizes each update.
 
 Buck2 is declared like the rest, and `starlark-fmt` ships from the same fork release, so one run keeps

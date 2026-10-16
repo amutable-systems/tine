@@ -3,30 +3,40 @@
 
 """Update pinned development-tool metadata.
 
-Two kinds of pin are supported:
+Three kinds of pin are supported:
 
  - A release pin names a project's newest release and the artifact, digest and size of every
    platform's download.
+ - A URL pin names the newest release in an index of releases, and the artifact, digest and size
+   of every platform's download from a plain URL.
  - A git pin names a ref that the bumps track, and a current commit on it.
 """
 
 import argparse
 import functools
+import hashlib
+import http.client
 import json
 import os
 import re
 import subprocess
+import time
 import tomllib
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
 
-from util import atomic_write_text, fail
+from util import atomic_write_text, fail, urlopen
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _COMMIT = re.compile(r"[0-9a-f]{40}")
+# The socket timeout catches a host that sends nothing. A host that keeps sending a byte now and then
+# needs a limit on the whole transfer.
+_DEADLINE = 30 * 60
+# The go.dev list of every Go release is about 2 MiB.
+_INDEX_LIMIT = 64 << 20
 
 
 def _string(value: object, description: str) -> str:
@@ -150,18 +160,17 @@ def _asset_regex(artifact: str, tag: str, python_minor: Callable[[], str]) -> re
     return re.compile(pattern)
 
 
+def _version_key(release: str) -> list[int]:
+    return [int(number) for number in re.findall(r"\d+", release)]
+
+
 def _select_asset(assets: list[dict[str, Any]], description: str) -> dict[str, Any]:
     if not assets:
         raise ValueError(f"no release asset matches {description}")
     if len(assets) == 1:
         return assets[0]
     # Several patch builds can match (e.g. two CPython 3.14.x in one release); take the newest.
-    return max(
-        assets,
-        key=lambda asset: [
-            int(number) for number in re.findall(r"\d+", _string(asset.get("name"), "asset name"))
-        ],
-    )
+    return max(assets, key=lambda asset: _version_key(_string(asset.get("name"), "asset name")))
 
 
 def _bump_tool(
@@ -209,6 +218,108 @@ def _bump_tool(
     return (previous, tag) if changed else None
 
 
+def _chunks(url: str) -> Iterator[bytes]:
+    """Yield the body of `url`, and fail when the transfer stalls or ends early."""
+    deadline = time.monotonic() + _DEADLINE
+    try:
+        with urlopen(url, agent="tine-bump", timeout=30) as response:
+            expected = response.headers.get("Content-Length")
+            received = 0
+            while chunk := response.read(1 << 20):
+                received += len(chunk)
+                yield chunk
+                if time.monotonic() > deadline:
+                    raise ValueError(f"{url}: the download took longer than {_DEADLINE} seconds")
+    except (OSError, http.client.HTTPException) as error:
+        raise ValueError(f"{url}: {error}") from error
+    # read() returns an empty chunk instead of failing when the connection closes before the end of the
+    # body. A digest of the truncated body would make Buck reject every later download.
+    if expected is not None and received != int(expected):
+        raise ValueError(f"{url}: received {received} of {expected} bytes")
+
+
+def _read(url: str) -> str:
+    body = bytearray()
+    for chunk in _chunks(url):
+        body += chunk
+        if len(body) > _INDEX_LIMIT:
+            raise ValueError(f"{url}: the index is larger than {_INDEX_LIMIT} bytes")
+    return body.decode("utf-8")
+
+
+def _download(url: str) -> tuple[str, int]:
+    """Return the sha256 and the size of the file at `url`."""
+    digest = hashlib.sha256()
+    size = 0
+    for chunk in _chunks(url):
+        digest.update(chunk)
+        size += len(chunk)
+    return digest.hexdigest(), size
+
+
+def _replace_release(text: str, previous: str, tag: str) -> str:
+    """Replace each whole occurrence of release `previous` in `text` with `tag`.
+
+    A release with a leading v, such as v1.2.3, is often spelled 1.2.3 in file names. Digits next to an
+    occurrence belong to another number, so release 4 doesn't match the 4 in amd64.
+    """
+    pairs = [(previous, tag)]
+    if previous.startswith("v") and tag.startswith("v"):
+        pairs.append((previous[1:], tag[1:]))
+    for old, new in pairs:
+        pattern = rf"(?<![0-9])(?<![0-9]\.){re.escape(old)}(?![0-9])(?!\.[0-9])"
+        replaced = re.sub(pattern, lambda _, new=new: new, text)
+        if replaced != text:
+            return replaced
+    return text
+
+
+def _bump_url(name: str, spec: dict[str, Any]) -> tuple[str, str] | None:
+    """Resolve the newest release in the pin's index and rewrite its per-platform pins.
+
+    Returns the (old, new) releases when anything changed, else None. A pin without `releases` keeps
+    its release, and only gets the digests and sizes it is missing.
+    """
+    url = _string(spec.get("url"), f"{name}.url")
+    platforms = _object(spec.get("platforms"), f"{name}.platforms")
+    previous = _string(spec.get("release"), f"{name}.release")
+    tag = previous
+    if "releases" in spec:
+        releases = _object(spec["releases"], f"{name}.releases")
+        index = _string(releases.get("url"), f"{name}.releases.url")
+        pattern = re.compile(_string(releases.get("pattern"), f"{name}.releases.pattern"))
+        found = {match.group() for match in pattern.finditer(_read(index))}
+        if not found:
+            raise ValueError(f"{index} contains no release that matches /{pattern.pattern}/")
+        # Two spellings of one version, such as v1.2.4 and 1.2.4, have the same key. The spelling itself
+        # breaks the tie, so that the choice doesn't depend on the order of the set.
+        tag = max(found, key=lambda release: (_version_key(release), release))
+    moved = tag != previous
+    changed = False
+    for arch, raw_entry in platforms.items():
+        entry = _object(raw_entry, f"{name} platform {arch}")
+        artifact = _string(entry.get("artifact"), f"artifact for {name} platform {arch}")
+        if not moved and "sha256" in entry and "size" in entry:
+            continue
+        new_artifact = _replace_release(artifact, previous, tag)
+        # An index can be any page, so bump can't count on it to list digests. An artifact whose name
+        # doesn't contain the release can still change with the release, so it is downloaded again too.
+        digest, size = _download(f"{url}/{new_artifact}")
+        changed = True
+        entry["artifact"] = new_artifact
+        entry["sha256"] = digest
+        entry["size"] = size
+        if "strip_prefix" in entry:
+            prefix = _string(entry["strip_prefix"], f"strip_prefix for {name} platform {arch}")
+            entry["strip_prefix"] = _replace_release(prefix, previous, tag)
+    spec["release"] = tag
+    if not changed:
+        print(f"{name}: {tag} is up to date")
+        return None
+    print(f"{name}: updated {previous} -> {tag}" if moved else f"{name}: pinned the digests of {tag}")
+    return previous, tag
+
+
 def _bump_ref(name: str, spec: dict[str, Any]) -> tuple[str, str] | None:
     """Resolve a ref to the commit it points at now; the (old, new) pair when it moved, else None.
 
@@ -249,7 +360,10 @@ def _commit(path: Path, updates: list[tuple[str, str, str]]) -> None:
 
     These are mechanical, machine-generated commits, so they are not signed off.
     """
-    body = "\n".join(f"- {name}: {previous} → {new}" for name, previous, new in updates)
+    body = "\n".join(
+        f"- {name}: {previous} → {new}" if previous != new else f"- {name}: new digests for {new}"
+        for name, previous, new in updates
+    )
     message = f"deps: bump pinned tool releases\n\n{body}\n"
     subprocess.run(
         ["git", "-C", str(path.parent), "commit", "--file=-", "--", path.name],
@@ -300,9 +414,12 @@ def main(path: Path, ty_config: Path | None, argv: list[str]) -> None:
         updates: list[tuple[str, str, str]] = []
         for name in _selected_names(args, data):
             spec = _object(data.get(name), f"{name} in {path}")
-            # A checkout declares the ref it follows; everything else is a release with downloads.
+            # A git pin has a `ref`. A URL pin has a `url`, which its download URLs start with.
+            # Every other pin is a GitHub release.
             if "ref" in spec:
                 change = _bump_ref(name, spec)
+            elif "url" in spec:
+                change = _bump_url(name, spec)
             else:
                 change = _bump_tool(name, spec, python_minor, releases)
             if change is not None:
@@ -318,5 +435,6 @@ def main(path: Path, ty_config: Path | None, argv: list[str]) -> None:
         json.JSONDecodeError,
         subprocess.CalledProcessError,
         urllib.error.URLError,
+        http.client.HTTPException,
     ) as error:
         fail(f"bump: {error}")

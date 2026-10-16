@@ -33,8 +33,11 @@ http.tool(
 
 - `repository` and `release` name a GitHub release, and each `artifact` is a file attached to it.
 - `url` replaces `repository` for a tool that is not published on GitHub. Each artifact is downloaded from
-  `<url>/<artifact>`, and `release` is the version. `bump` can't update a pin with a `url`, and `--all`
-  fails on one.
+  `<url>/<artifact>`, and `release` is the version.
+- `releases` names the index that `bump` reads for a pin with a `url`. Its `url` is a page that lists the
+  releases, and every match of its `pattern`, a Python regular expression, is a release. `bump` compares
+  the numbers in each match and takes the highest. A prerelease such as `go1.28rc1` ranks by its numbers
+  too, so write a pattern that matches only releases. A pin without `releases` stays on its release.
 - `platforms` has one entry per architecture, named `arm64` and `x86_64`. Buck downloads the entry of the
   architecture that the target is configured for. A rule attribute declared with `attrs.exec_dep()`
   configures the tool for the machine that runs the build.
@@ -63,7 +66,12 @@ tine bump --tool ruff
 `bump` writes the newest release, artifacts, digests and sizes back into the file. `--all` updates every
 pin in the file, and `--commit` commits the result.
 
-`bump` also fills in a new pin. Write the entry with `repository`, `release` and each platform's
+`bump` also fills in a new pin. Write the entry with `repository` or `url`, `release` and each platform's
 `artifact`, leave out `sha256` and `size`, and run `bump` for that tool. An artifact name that contains the
 release version, such as `syft_1.54.1_linux_amd64.tar.gz` in release `v1.54.1`, is matched to the
 same file in the newest release.
+
+For a pin with a `url`, `bump` replaces the old release with the new one in each artifact name and
+`strip_prefix`. A release with a leading `v`, such as `v1.2.3`, also replaces `1.2.3` in a name that
+doesn't contain `v1.2.3`. When the release changes, `bump` downloads every artifact again to compute its
+digest and size, and fails if a download ends early.

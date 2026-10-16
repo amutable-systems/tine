@@ -141,13 +141,16 @@ def compress_zstd(src: Path, out: Path) -> None:
         shutil.copyfileobj(source, sink)
 
 
-def urlopen(url: str, *, agent: str) -> http.client.HTTPResponse:
+def urlopen(url: str, *, agent: str, timeout: float | None = None) -> http.client.HTTPResponse:
     """Open one URL, naming the tool that asks.
 
-    CDN bot filters (e.g. Cloudflare's) reject Python's default Python-urllib agent.
+    CDN bot filters (e.g. Cloudflare's) reject Python's default Python-urllib agent. `timeout` bounds
+    each blocking socket operation, not the whole transfer.
     """
     request = urllib.request.Request(url, headers={"User-Agent": agent})
-    return cast(http.client.HTTPResponse, urllib.request.urlopen(request))
+    if timeout is None:
+        return cast(http.client.HTTPResponse, urllib.request.urlopen(request))
+    return cast(http.client.HTTPResponse, urllib.request.urlopen(request, timeout=timeout))
 
 
 def with_retries[T](what: str, operation: Callable[[], T]) -> T:
