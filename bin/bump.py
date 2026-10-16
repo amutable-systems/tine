@@ -118,11 +118,11 @@ def _asset_digest(asset: dict[str, Any], name: str) -> str:
 def _python_minor(path: Path | None) -> str:
     """The pinned CPython minor (e.g. "3.14"), read only for a CPython pin.
 
-    Read lazily, and the option optional, because a project pinning no CPython has no reason to
-    carry the configuration this reads: every other artifact matches its successor without it.
+    Read lazily, because a project that pins no CPython has no reason to have the configuration that
+    this reads. Every other artifact matches its successor without it.
     """
     if path is None:
-        raise ValueError("a CPython pin needs --ty-config, the configuration pinning the minor")
+        raise ValueError("a CPython pin needs a ty.toml or pyproject.toml that sets the Python version")
     table = _object(tomllib.loads(path.read_text(encoding="utf-8")), str(path))
     keys = ("tool", "ty", "environment") if path.name == "pyproject.toml" else ("environment",)
     for key in keys:
@@ -268,14 +268,10 @@ def _selected_names(args: argparse.Namespace, data: dict[str, Any]) -> list[str]
     return list(args.tool)
 
 
-def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=Path(__file__).parent.with_name("tine.lock.json"))
-    parser.add_argument(
-        "--ty-config",
-        type=Path,
-        metavar="PATH",
-        help="ty.toml or pyproject.toml whose python-version pins the CPython minor to bump within",
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="tine bump",
+        description="update the pins in the project's tine.lock.json to the newest upstream releases",
     )
     parser.add_argument(
         "--tool",
@@ -288,19 +284,18 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--commit", action="store_true", help="commit the updated pins with an itemized message"
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if not (args.tool or args.all):
         parser.error("select at least one tool to bump")
     return args
 
 
-def main() -> None:
-    args = _parse_args()
-    path = args.data
+def main(path: Path, ty_config: Path | None, argv: list[str]) -> None:
+    args = _parse_args(argv)
     try:
         original = path.read_text(encoding="utf-8")
         data = _object(json.loads(original), str(path))
-        python_minor = functools.cache(lambda: _python_minor(args.ty_config))
+        python_minor = functools.cache(lambda: _python_minor(ty_config))
         releases: dict[str, dict[str, Any]] = {}
         updates: list[tuple[str, str, str]] = []
         for name in _selected_names(args, data):
@@ -325,7 +320,3 @@ def main() -> None:
         urllib.error.URLError,
     ) as error:
         fail(f"bump: {error}")
-
-
-if __name__ == "__main__":
-    main()

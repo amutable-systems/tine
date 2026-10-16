@@ -27,6 +27,8 @@ box_python_test(
         "//remote_cache:lib",
     ],
     srcs = [
+        "bump.py",
+        "bump_test.py",
         "cache_shim.py",
         "cache_shim_test.py",
         "tine",
