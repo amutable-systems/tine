@@ -171,6 +171,29 @@ box_python_binary(
     visibility = ["PUBLIC"],
 )
 
+# AWS tooling in its own box, as it's big and not always needed.
+box.new(
+    name = "aws.box",
+    packages = [
+        "awscli2",
+        # virt-fw-vars, for an AMI's UEFI variable store
+        "python3-virt-firmware",
+    ],
+    release = _RELEASE,
+    visibility = ["PUBLIC"],
+)
+
+# PUBLIC: the AWS CLI, relaxed so that it logs in to and reads the host's ~/.aws, e.g.
+# `buck run tine//tools:aws -- login`.
+command_alias(
+    name = "aws",
+    args = ["aws"],
+    # The box has no pager, neither aws' `less` default nor the host's $PAGER; aws breaks without it.
+    env = {"AWS_PAGER": ""},
+    exe = ":aws.box",
+    visibility = ["PUBLIC"],
+)
+
 _SOURCE_ARGS = [
     "--starlark-fmt",
     "$(location_exec :starlark-fmt)",

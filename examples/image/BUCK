@@ -267,16 +267,41 @@ tests.vm_smoke(
     ],
 )
 
-# The qcow2 describes a disk of the image's virtual_size, while the raw stays as small as its partitions.
+# The qcow2 and vmdk describe a disk of the image's virtual_size with the raw's content, while the raw stays
+# as small as its partitions.
 box.sh_test(
     name = "virtual-size-test",
     labels = ["image"],
     box = "@tine//catalog:fedora.rawhide.box",
     script = """
-test "$(qemu-img info --output=json "$1" | python3 -c 'import json, sys; print(json.load(sys.stdin)["virtual-size"])')" = 2147483648
-test "$(stat -c %s "$2")" -lt $((900 << 20))
+raw=$1
+shift
+test "$(stat -c %s "$raw")" -lt $((900 << 20))
+for disk in "$@"; do
+    test "$(qemu-img info --output=json "$disk" | python3 -c 'import json, sys; print(json.load(sys.stdin)["virtual-size"])')" = 2147483648
+    qemu-img compare -q -f raw "$raw" "$disk"
+done
 """,
-    args = ["$(location :boot-demo.fedora[qcow2])", "$(location :boot-demo.fedora)"],
+    args = ["$(location :boot-demo.fedora)", "$(location :boot-demo.fedora[qcow2])", "$(location :boot-demo.fedora[vmdk])"],
+)
+
+# The AMI bundle carries the disk, and registers it for the image's architecture with a root volume of its
+# virtual_size.
+box.sh_test(
+    name = "ami-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = """
+cmp "$1/disk.raw" "$2"
+python3 -c '
+import json, sys
+register = json.load(open(sys.argv[1]))
+assert register["Architecture"] == sys.argv[2], register
+assert register["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] == 2, register
+' "$1/register.json" "$3"
+""",
+    args = ["$(location :boot-demo.fedora[ami])", "$(location :boot-demo.fedora)"]
+    + architecture.select({name: [spellings.ec2] for name, spellings in ARCHITECTURES.items()}),
 )
 
 # System-extension DDI extending :boot-demo: only the delta above the base lands in the

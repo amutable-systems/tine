@@ -3,9 +3,11 @@
 
 """Convenience compositions for image products."""
 
+load("//box:runtime.bzl", "BoxInfo")
 load("//distribution:defs.bzl", "distribution")
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//platforms:architecture.bzl", "ARCHITECTURES")
+load(":ami.bzl", "declare_ami")
 load(
     ":archive.bzl",
     "ARCHIVE_ATTRS",
@@ -517,6 +519,20 @@ def _bootable_disk_image_impl(ctx: AnalysisContext) -> list[Provider]:
         ],
         "uki": [DefaultInfo(default_output = uki.ukis, sub_targets = uki_subtargets(uki)), uki],
     })
+    sub_targets["ami"] = declare_ami(
+        ctx.actions,
+        arch = ctx.attrs.arch,
+        basename = basename,
+        box = ctx.attrs._ami_box[BoxInfo],
+        disk = raw,
+        importer = ctx.attrs._ami_import[RunInfo],
+        # A key held by a token has a URI, not a file, for a certificate; every key rule publishes the
+        # file as `[cert]`.
+        secure_boot_certificate = (
+            ctx.attrs.secure_boot_key[DefaultInfo].sub_targets["cert"][DefaultInfo].default_outputs[0] if secure_boot_key != None else None
+        ),
+        virtual_size = ctx.attrs.virtual_size,
+    )
     for conversion in conversions:
         sub_targets[conversion.format] = [
             DefaultInfo(default_output = conversion.image),
@@ -602,6 +618,8 @@ _bootable_disk_image = rule(
         ),
         "verity_key": VERITY_KEY_ATTR,
         "virtual_size": VIRTUAL_SIZE_ATTR,
+        "_ami_box": attrs.exec_dep(providers = [BoxInfo], default = "tine//tools:aws.box"),
+        "_ami_import": attrs.exec_dep(providers = [RunInfo], default = "tine//image:ami-import"),
     },
 )
 
