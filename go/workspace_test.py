@@ -8,12 +8,15 @@
 The source directory can contain a module at its root or nested inside a fetched tree.
 """
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from typing import override
 
 import workspace
+
+RELEASES = {"1.25": "go1.25.10", "1.26": "go1.26.2", "1.27": "go1.27.3"}
 
 
 class TestResolveWorkspace(unittest.TestCase):
@@ -223,6 +226,121 @@ class TestResolveWorkspace(unittest.TestCase):
                 self.assertRaisesRegex(SystemExit, "is not a directory in src that contains a go.mod"),
             ):
                 workspace.resolve_workspace("etcd", self.checkout, module_root)
+
+    def test_takes_the_declared_release_of_the_named_minor_version(self) -> None:
+        for text, release in [
+            ("1.25.3\n", "go1.25.10"),
+            ("go1.25.10", "go1.25.10"),
+            ("1.26rc1\r\n", "go1.26.2"),
+            ("1.26.1", "go1.26.2"),
+            ("1.26", "go1.26.2"),
+            ("go1.27beta1", "go1.27.3"),
+        ]:
+            with self.subTest(text=text):
+                self._write(".go-version", text=text)
+                self.assertEqual(workspace.go_version("kubernetes", self.checkout, "", RELEASES), release)
+
+    def test_takes_the_go_version_nearest_to_the_module_root(self) -> None:
+        self._write(".go-version", text="1.25.3")
+        self.assertEqual(workspace.go_version("etcd", self.checkout, "server", RELEASES), "go1.25.10")
+        self._write("server/.go-version", text="1.26.0")
+        self.assertEqual(workspace.go_version("etcd", self.checkout, "server", RELEASES), "go1.26.2")
+
+    def test_rejects_a_go_version_that_names_no_release(self) -> None:
+        for text in ["stable\n", "1.26.1rc1", "1"]:
+            with self.subTest(text=text), self.assertRaises(SystemExit) as caught:
+                self._write(".go-version", text=text)
+                workspace.go_version("kubernetes", self.checkout, "", RELEASES)
+            self.assertEqual(
+                str(caught.exception),
+                f"tine: go_package kubernetes: .go-version names {text.strip()!r}, "
+                "not a Go release such as 1.25.3",
+            )
+
+    def test_rejects_a_release_newer_than_the_declared_one(self) -> None:
+        self._write(".go-version", text="1.25.11")
+        with self.assertRaises(SystemExit) as caught:
+            workspace.go_version("kubernetes", self.checkout, "", RELEASES)
+        self.assertEqual(
+            str(caught.exception),
+            "tine: go_package kubernetes: .go-version names go1.25.11, which is newer than go1.25.10 that "
+            "its go.releases toolchain declares; advance the go.releases target with "
+            "`tine buck run tine//tools:refresh-catalog -- --go --advance`",
+        )
+
+    def test_rejects_a_minor_version_without_a_declared_release(self) -> None:
+        self._write(".go-version", text="1.24.0")
+        with self.assertRaises(SystemExit) as caught:
+            workspace.go_version("kubernetes", self.checkout, "", RELEASES)
+        self.assertEqual(
+            str(caught.exception),
+            "tine: go_package kubernetes: .go-version names go1.24.0, and its go.releases toolchain "
+            "contains no Go 1.24 release",
+        )
+
+    def test_rejects_a_go_version_that_is_not_utf8(self) -> None:
+        (self.checkout / ".go-version").write_bytes(b"1.26\xff")
+        with self.assertRaisesRegex(SystemExit, "names '1.26\ufffd', not a Go release"):
+            workspace.go_version("kubernetes", self.checkout, "", RELEASES)
+
+    def test_rejects_a_large_go_version(self) -> None:
+        self._write(".go-version", text="1" * 257)
+        with self.assertRaisesRegex(SystemExit, r"\.go-version is larger than 256 bytes"):
+            workspace.go_version("kubernetes", self.checkout, "", RELEASES)
+
+    def test_rejects_a_symlinked_go_version(self) -> None:
+        self._write("host-file", text="1.26.0")
+        (self.checkout / ".go-version").symlink_to(self.checkout / "host-file")
+        with self.assertRaisesRegex(SystemExit, r"\.go-version is a symlink"):
+            workspace.go_version("kubernetes", self.checkout, "", RELEASES)
+
+    def test_main_reports_the_go_version_only_for_a_go_releases_toolchain(self) -> None:
+        self._write("go.mod", text="module example.com/hello\n")
+        self._write(".go-version", text="1.26.0")
+        spec = self.checkout.parent / "spec.json"
+        out = self.checkout.parent / "workspace.json"
+        snapshot = self.checkout.parent / "go.json"
+        snapshot.write_text(json.dumps({release: {} for release in RELEASES.values()}))
+        for snapshot_path, release in [(None, None), (str(snapshot), "go1.26.2")]:
+            with self.subTest(snapshot=snapshot_path):
+                spec.write_text(
+                    json.dumps(
+                        {
+                            "module_root": None,
+                            "name": "hello",
+                            "out": str(out),
+                            "snapshot": snapshot_path,
+                            "src": str(self.checkout),
+                        }
+                    )
+                )
+                workspace.main(["--spec", str(spec)])
+                self.assertEqual(json.loads(out.read_text())["go_version"], release)
+
+    def test_reads_the_release_of_each_minor_version_from_the_snapshot(self) -> None:
+        snapshot = self.checkout.parent / "go.json"
+        snapshot.write_text(json.dumps({release: {} for release in RELEASES.values()}))
+        self.assertEqual(workspace.snapshot_releases("kubernetes", snapshot), RELEASES)
+
+    def test_rejects_a_snapshot_release_that_is_not_a_patch_release(self) -> None:
+        snapshot = self.checkout.parent / "go.json"
+        for release in ["go1.20", "go1.27rc1"]:
+            snapshot.write_text(json.dumps({release: {}}))
+            with (
+                self.subTest(release=release),
+                self.assertRaisesRegex(SystemExit, "not a release such as go1.26.10"),
+            ):
+                workspace.snapshot_releases("kubernetes", snapshot)
+
+    def test_rejects_two_snapshot_releases_of_one_minor_version(self) -> None:
+        snapshot = self.checkout.parent / "go.json"
+        snapshot.write_text(json.dumps({"go1.26.2": {}, "go1.26.3": {}}))
+        with self.assertRaisesRegex(SystemExit, "names go1.26.2 and go1.26.3, two releases of Go 1.26"):
+            workspace.snapshot_releases("kubernetes", snapshot)
+
+    def test_fails_without_a_go_version(self) -> None:
+        with self.assertRaisesRegex(SystemExit, r"src contains no \.go-version in server or above"):
+            workspace.go_version("etcd", self.checkout, "server", RELEASES)
 
 
 class TestLocalReplacements(unittest.TestCase):

@@ -7,12 +7,13 @@ load("//box:test.bzl", "box_python_test")
 load("//go:defs.bzl", "go")
 load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
 
-# The project's source artifacts in; the module root, its pins and the go.mod files the fetch reads out.
+# The project's source artifacts in; the module root, its pins, the go.mod files the fetch reads and the
+# Go release to build with out.
 tine_python_binary(
     name = "workspace",
     main = "workspace.py",
     visibility = ["PUBLIC"],
-    deps = ["//:specs", "//:util"],
+    deps = [":goversion", "//:specs", "//:util"],
 )
 
 # refresh-catalog runs this driver on the host through a go.releases target's [snapshot] sub-target.

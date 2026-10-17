@@ -21,6 +21,25 @@ GoPackageInfo = provider(
     },
 )
 
+GoReleasesInfo = provider(
+    doc = "The Go releases that a go.releases target declares, for a go_package to pick its toolchain from.",
+    fields = {
+        # The committed snapshot, which names one release per minor version.
+        "snapshot": provider_field(Artifact),
+        # A dynamic value whose GoToolchainsInfo contains the unpacked Go root of each release in the
+        # snapshot.
+        "toolchains": provider_field(DynamicValue),
+    },
+)
+
+GoToolchainsInfo = provider(
+    doc = "The unpacked Go root of each release in a go.releases snapshot.",
+    fields = {
+        # The dictionary is keyed by the release as go.dev spells it, such as go1.26.10.
+        "toolchains": provider_field(dict[str, Artifact]),
+    },
+)
+
 def _go_build_impl(
     actions: AnalysisActions,
     bin: OutputArtifact,
@@ -39,10 +58,17 @@ def _go_build_impl(
     test_packages: list[str] | None,
     tests: OutputArtifact | None,
     toolchain: Artifact | None,
+    toolchains: ResolvedDynamicValue | None,
     workspace: ArtifactValue,
 ) -> list[Provider]:
     """Declare what the project's go.mod asks for, once it has been found and can be read."""
     module = workspace.read_json()
+
+    # `toolchains` contains every release that the go.releases target declares. Buck downloads a release
+    # only when an action reads it, and the actions below read only the release that the workspace
+    # action picked.
+    if toolchains != None:
+        toolchain = toolchains.providers[GoToolchainsInfo].toolchains[module["go_version"]]
 
     # The fetch is the one online step: go downloads the modules go.mod requires and verifies them
     # against go.sum. The fetch reads only go.mod, go.sum and the go.mod of each module that go.mod
@@ -122,6 +148,7 @@ _go_build = dynamic_actions(
         "test_packages": dynattrs.value(list[str] | None),
         "tests": dynattrs.option(dynattrs.output()),
         "toolchain": dynattrs.value(Artifact | None),
+        "toolchains": dynattrs.option(dynattrs.dynamic_value()),
         "workspace": dynattrs.artifact_value(),
     },
 )
@@ -147,6 +174,13 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
     if module_root != None and (not module_root or module_root.startswith("/") or ".." in module_root.split("/")):
         fail("go_package {}: module_root must be a relative path inside src without '..': {}".format(ctx.label.name, repr(module_root)))
 
+    toolchain = None
+    releases = None
+    if ctx.attrs.toolchain != None:
+        releases = ctx.attrs.toolchain.get(GoReleasesInfo)
+        if releases == None:
+            toolchain = ctx.attrs.toolchain[DefaultInfo].default_outputs[0]
+
     workspace = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
     ctx.actions.run(
         cmd_args(
@@ -158,6 +192,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
                     "module_root": module_root,
                     "name": ctx.label.name,
                     "out": workspace.as_output(),
+                    "snapshot": releases.snapshot if releases != None else None,
                     "src": src,
                 },
             ),
@@ -183,7 +218,8 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             tags = ctx.attrs.tags,
             test_packages = ctx.attrs.test_packages,
             tests = tests.as_output() if tests != None else None,
-            toolchain = ctx.attrs.toolchain[DefaultInfo].default_outputs[0] if ctx.attrs.toolchain != None else None,
+            toolchain = toolchain,
+            toolchains = releases.toolchains if releases != None else None,
             workspace = workspace,
         ),
     )
@@ -207,7 +243,11 @@ _go_package = rule(
         "test_packages": attrs.option(attrs.list(attrs.string()), default = None, doc = "Go package patterns whose tests the build compiles for a go_test"),
         # The toolchain's go runs inside the box. The toolchain is an exec_dep, so Buck configures it for the
         # box's architecture instead of the architecture of the binaries.
-        "toolchain": attrs.option(attrs.exec_dep(), default = None, doc = "a Go root directory, with go in bin/, to build with instead of the box's go"),
+        "toolchain": attrs.option(
+            attrs.exec_dep(),
+            default = None,
+            doc = "a Go root directory, with go in bin/, to build with instead of the box's go, or a go.releases target to build with a release that it picks from the project's .go-version",
+        ),
         # `_arch` is the architecture the binaries run on. On a cross build, it differs from the box's.
         "_arch": attrs.string(default = architecture.configured()),
         "_build": attrs.exec_dep(providers = [RunInfo], default = "tine//go:build"),
@@ -245,11 +285,46 @@ def go_releases_snapshot_path(name: str) -> str:
     """
     return "snapshot/go/{}.json".format(name.removesuffix(".releases"))
 
+def _go_toolchains_impl(actions: AnalysisActions, arch: str, snapshot: ArtifactValue, target: str) -> list[Provider]:
+    toolchains = {}
+    for release, archives in snapshot.read_json().items():
+        archive = archives.get(arch)
+        if archive == None:
+            fail("go.releases {}: the snapshot contains no {} archive for {}".format(target, release, arch))
+        download = actions.declare_output(release + ".tar.gz")
+        actions.download_file(download.as_output(), archive["url"], sha256 = archive["sha256"], size_bytes = archive["size"])
+        root = actions.declare_output(release, dir = True)
+
+        # TODO: Unpack with ctx.actions.extract_archive once the pinned buck2 has it, so that the build
+        # doesn't need the host's tar.
+        # GNU tar applies --strip-components after it removes a leading slash. With
+        # --strip-components=1, a member named go//home/user/.bashrc is written to /home/user/.bashrc.
+        # A plain extraction keeps every member inside the output, and the Go root is its go/ directory.
+        actions.run(
+            cmd_args("/bin/sh", "-c", 'mkdir -p "$1" && tar -xzf "$2" -C "$1"', "sh", root.as_output(), download),
+            category = "go_unpack",
+            identifier = release,
+        )
+        toolchains[release] = root.project("go")
+    return [GoToolchainsInfo(toolchains = toolchains)]
+
+_go_toolchains = dynamic_actions(
+    impl = _go_toolchains_impl,
+    attrs = {
+        "arch": dynattrs.value(str),
+        "snapshot": dynattrs.artifact_value(),
+        "target": dynattrs.value(str),
+    },
+)
+
 def _go_releases_impl(ctx: AnalysisContext) -> list[Provider]:
     # A catalog declares go.releases before refresh-catalog writes its first snapshot. The catalog
     # has to load without the snapshot, because refresh-catalog runs the [snapshot] sub-target to
     # write it.
     snapshot = ctx.attrs.snapshot if ctx.attrs.snapshot != None else ctx.actions.write_json("empty-snapshot.json", {})
+    toolchains = ctx.actions.dynamic_output_new(
+        _go_toolchains(arch = ctx.attrs._arch, snapshot = snapshot, target = str(ctx.label.raw_target())),
+    )
     spec = spec_args(
         ctx.actions,
         "snapshot.spec.json",
@@ -257,19 +332,25 @@ def _go_releases_impl(ctx: AnalysisContext) -> list[Provider]:
     )
     run_snapshot = [DefaultInfo(), RunInfo(args = cmd_args(ctx.attrs._snapshot[RunInfo], spec))]
 
-    return [DefaultInfo(sub_targets = {"snapshot": run_snapshot})]
+    # The default outputs of go.releases are empty, so building go.releases runs no download.
+    return [
+        DefaultInfo(sub_targets = {"snapshot": run_snapshot}),
+        GoReleasesInfo(snapshot = snapshot, toolchains = toolchains),
+    ]
 
 _go_releases = rule(
     impl = _go_releases_impl,
     attrs = {
         "labels": attrs.list(attrs.string(), default = []),
         "snapshot": attrs.option(attrs.source(), default = None, doc = "the committed URL, sha256 and size of each release's archive, per architecture"),
+        # The go.releases target is a go_package's exec dependency, so this is the architecture of the box.
+        "_arch": attrs.string(default = architecture.configured()),
         "_snapshot": attrs.exec_dep(providers = [RunInfo], default = "tine//go:releases"),
     },
 )
 
 def go_releases(name: str, labels: list[str] = [], **kwargs) -> None:
-    """Declare the Go releases of the committed snapshot.
+    """Declare the Go releases of the committed snapshot, for a go_package to pick its toolchain from.
 
     refresh-catalog writes the snapshot to snapshot/go/<name without .releases>.json in the package.
     """

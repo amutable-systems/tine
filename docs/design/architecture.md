@@ -1031,7 +1031,9 @@ verifier, and the build is two actions so the network stays confined to the firs
    module proxy serves, so the driver points `GOPROXY` at it as a `file://` URL and go re-extracts every
    module from it, verifying against `go.sum` a second time (the fetched artifact is never trusted
    implicitly). `-mod=readonly` makes a lock that no longer agrees with `go.mod` a failure rather than a
-   silent re-resolution, and `GOTOOLCHAIN=local` keeps the box's go the only toolchain.
+   silent re-resolution, and `GOTOOLCHAIN=local` keeps go from downloading another toolchain. The build
+   runs the box's go, the toolchain that `toolchain` names, or, for a `go.releases` toolchain, the release
+   that `go_workspace` picks from the project's nearest `.go-version`.
 
 The `packages` mapping selects the main packages to build and names their outputs. A checked-out project
 often carries commands an image does not install; building those would cost time and may require

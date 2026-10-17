@@ -74,8 +74,10 @@ go.package(
 - `build_mode` sets go's `-buildmode` to `"exe"` or `"pie"`. `"pie"` builds position-independent
   executables, which the kernel loads at a random address on each run. Unset, the toolchain's default
   applies, which is `"exe"` on x86-64 and AArch64 Linux.
-- `toolchain` is a Go toolchain that builds the project instead of the box's `go`. See
-  [Building with your own Go toolchain](#building-with-your-own-go-toolchain).
+- `toolchain` is a Go toolchain that builds the project instead of the box's `go`, or
+  `catalog//:go.releases` to build it with the Go version that the project's `.go-version` names. See
+  [Building with your own Go toolchain](#building-with-your-own-go-toolchain) and
+  [Building with the Go version that a project names](#building-with-the-go-version-that-a-project-names).
 
 The binaries are ordinary artifacts, so an image installs one with an `image.ops.copy()` operation; see the
 example.
@@ -236,6 +238,83 @@ go.package(
 - `buck run :go -- version` runs the pinned `go`.
 - `bump` keeps the pin on the releases that the pattern matches. Change the pattern, such as to
   `"go1\\.28\\.[0-9]+"`, and run `bump` again to move to another minor version.
+
+## Building with the Go version that a project names
+
+Set `toolchain` to `catalog//:go.releases` to build a project with the Go version that its `.go-version`
+file names. The checkouts of Kubernetes and etcd contain such a file at their root. etcd builds its server
+module in `server/`:
+
+```Starlark
+load("@tine//box:defs.bzl", "box")
+load("@tine//go:defs.bzl", "go")
+
+box.new(
+    name = "go-toolchain.box",
+    packages = ["ca-certificates"],
+    release = "catalog//:fedora.rawhide.release",
+)
+
+go.package(
+    name = "etcd",
+    box = ":go-toolchain.box",
+    module_root = "server",
+    packages = {"etcd-server": "."},
+    toolchain = "catalog//:go.releases",
+)
+```
+
+The catalog contains the newest patch release of every minor version from Go 1.21 on. The build uses the
+catalog's release of the minor version that `.go-version` names: a project whose `.go-version` names `1.26.2`
+builds with the catalog's Go 1.26 release, such as `go1.26.10`. Go publishes a patch release only to fix
+critical problems, such as security problems. The binaries that the catalog's release builds contain those
+fixes.
+
+- The build uses the `.go-version` nearest to the module root. It looks in the module root first, then in
+  each parent directory up to the root of the source tree. etcd's `server/` contains no `.go-version`, so the
+  build uses the one at the root of the checkout.
+- `.go-version` contains one Go version, such as `1.26.8`, `go1.26.8`, `1.26` or `1.26rc1`.
+- Buck downloads a release only when a `go.package()` build uses it, and every `go.package()` that uses the
+  same release shares one download.
+- The `go` of the release runs inside the box, as with a pinned toolchain. The box does not need the
+  `golang` package, and Buck downloads the archive for the box's architecture.
+
+The build fails when:
+
+- neither the module root nor a parent directory up to the root of the source tree contains a
+  `.go-version`;
+- the `.go-version` is a symlink, is larger than 256 bytes, or names no Go version;
+- the catalog contains no release of the minor version that `.go-version` names;
+- `.go-version` names a newer patch release than the catalog contains.
+
+`catalog/snapshot/go/go.json` contains the URL, sha256 and size of the archives of every release.
+`refresh-catalog` writes it from go.dev's release list, so the refresh downloads no archive. Advance the
+Go releases to move every minor version to its newest patch release, and to add the minor versions that Go
+released since the last advance:
+
+```sh
+tine buck run tine//tools:refresh-catalog -- --go --advance
+```
+
+`--go` refreshes the Go releases and nothing else, unless `--box` also selects boxes. Without `--go`,
+`--advance` also moves the repository pins. `--box` without `--go` doesn't refresh the Go releases.
+
+- An advance rebuilds every project that builds with a minor version whose release moved.
+- `verify-catalog` fails when go.dev lists another sha256 or size for a release in the snapshot, or no
+  longer lists it.
+
+A project that declares its own `catalog` cell declares `go.releases` in it to build with
+`catalog//:go.releases`, and advances the Go releases with `--go --advance` to write the cell's
+`snapshot/go/go.json`:
+
+```Starlark
+load("@tine//go:defs.bzl", "go")
+
+go.releases(
+    name = "go.releases",
+    visibility = ["PUBLIC"],
+)
+```
 
 ## Properties and limits
 
