@@ -59,6 +59,15 @@ _BoxRootInfo = provider(
 def _repository_labels(repositories: list[Dependency]) -> list[str]:
     return sorted([str(repository.label.raw_target()) for repository in repositories])
 
+def _layer_dir(actions: AnalysisActions, name: str) -> Artifact:
+    """Declare a directory output that holds a box root or the overlay work directory for one."""
+
+    # A box root takes several gigabytes. Buck keeps every content-based version of an output until a
+    # clean, so each rebuild that changes the root adds another full copy. A rebuild that produces the
+    # same root leaves a second full copy at the placeholder path. A plain path holds one copy, which
+    # Buck deletes before the action runs again.
+    return actions.declare_output(name, dir = True, has_content_based_path = False)
+
 def _configure_repositories(
     ctx: AnalysisContext,
     repositories: list[Dependency],
@@ -150,7 +159,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
             suffix = system.package_suffix,
             name = "bootstrap.closure",
         )
-        stage1 = ctx.actions.declare_output("stage1", dir = True)
+        stage1 = _layer_dir(ctx.actions, "stage1")
         ctx.actions.run(
             cmd_args(
                 system.extract[RunInfo],
@@ -191,8 +200,8 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     )
 
     # Use the predecessor or bootstrapped root to install the box, or its layer over the parent.
-    stage2 = ctx.actions.declare_output("stage2", dir = True)
-    work = ctx.actions.declare_output("stage2.work", dir = True) if lower else None
+    stage2 = _layer_dir(ctx.actions, "stage2")
+    work = _layer_dir(ctx.actions, "stage2.work") if lower else None
     ctx.actions.run(
         cmd_args(
             box_run(
