@@ -5,6 +5,7 @@ version = 1
 path = [
     ".claude/settings.json",
     ".zed/settings.json",
+    "examples/image-go-project/hello/.go-version",
     "examples/image-go-project/nodeps/message.txt",
     "examples/image/expected.json",
     "examples/image/from-source.txt",

@@ -175,6 +175,29 @@ box.sh_test(
     ],
 )
 
+go.package(
+    name = "go-version",
+    box = ":go-toolchain.box",
+    packages = {"hello-cli": "./cmd/hello-cli"},
+    src = "hello",
+    toolchain = "catalog//:go.releases",
+)
+
+# hello/.go-version names 1.26.8, and the catalog declares a newer Go 1.26 release. The test runs
+# `go version` from `:go`, a Go 1.27 release, to read the release that built the binary. That release is
+# a Go 1.26 release newer than 1.26.8 only if the build read the minor version from hello/.go-version and
+# used the release that the catalog declares for it.
+box.sh_test(
+    name = "go-version-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = 'release=": go1[.]26[.]([0-9]+)$"; [[ "$("$1" version "$2")" =~ $release ]] && (( BASH_REMATCH[1] > 8 ))',
+    args = [
+        "$(exe :go)",
+        "$(location :go-version[hello-cli])",
+    ],
+)
+
 # The go.mod replaces a module with a directory in the checkout, so the fetch reads the go.mod in
 # that directory too.
 go.package(

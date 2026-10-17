@@ -58,8 +58,9 @@ debian_release(
     visibility = ["PUBLIC"],
 )
 
-# refresh-catalog --advance writes the newest patch release of every minor version from Go 1.21 on into
-# the snapshot.
+# A go_package whose toolchain is go.releases builds with the release of the minor version that the
+# project's .go-version names. refresh-catalog --advance writes the newest patch release of every minor
+# version from Go 1.21 on into the snapshot.
 go.releases(
     name = "go.releases",
     visibility = ["PUBLIC"],
