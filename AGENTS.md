@@ -21,8 +21,6 @@ SPDX-License-Identifier: MPL-2.0
   `reuse` and fails on a file with neither.
 - Line break documents and plans at 109 columns.
 - Comments explain *why*, not *what*; say each thing once.
-- Do not write user-facing documentation. At most, add a TODO comment where documentation should be
-  written by a human.
 
 ## Layout
 
