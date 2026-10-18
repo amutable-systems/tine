@@ -7,7 +7,8 @@
 # the failed GitHub run and amend them to the correct commit, or let this
 # workflow do it and move the change to the correct commit afterwards.
 #
-# Trigger this by adding the "update-reproducibility" label.
+# Trigger this by adding the "update-reproducibility" label. On the
+# refresh-catalog bot PR, this happens automatically when CI fails.
 name: accept reproducibility digest changes
 
 on:
@@ -16,48 +17,94 @@ on:
   # and then only push the data to the branch's expected.json.
   pull_request_target:
     types: [labeled]
+  # auto-accept refresh-catalog updates once all architectures finished
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [refresh-catalog]
 
 permissions:
   actions: read
   pull-requests: write
 
 concurrency:
-  group: update-reproducibility-${{ github.event.pull_request.number }}
+  group: update-reproducibility-${{ github.event.pull_request.head.ref || github.event.workflow_run.head_branch }}
 
 jobs:
   update:
     # The deploy key can only push to origin
-    if: github.event.label.name == 'update-reproducibility' && github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      (github.event_name == 'pull_request_target'
+       && github.event.label.name == 'update-reproducibility'
+       && github.event.pull_request.head.repo.full_name == github.repository)
+      || (github.event_name == 'workflow_run'
+          && github.event.workflow_run.conclusion == 'failure'
+          && github.event.workflow_run.event == 'pull_request'
+          && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: self
     env:
       GH_TOKEN: ${{ github.token }}
-      HEAD_REF: ${{ github.event.pull_request.head.ref }}
-      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref || github.event.workflow_run.head_branch }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
       PULL_REQUEST: ${{ github.event.pull_request.number }}
     steps:
-      # no ref: the default branch, as pull_request_target checks out
+      # no ref: the default branch, as pull_request_target and workflow_run check out
       - name: Clone repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ssh-key: ${{ secrets.DEPLOY_KEY }}
 
-      - name: GH runner setup
-        uses: ./.github/actions/gh-runner-setup
-
       - name: Find the failed CI run
         id: ci
+        env:
+          WORKFLOW_RUN: ${{ github.event.workflow_run.id }}
         run: |
-          run=$(gh run list --workflow ci.yml --commit "$HEAD_SHA" --status failure --limit 1 --json databaseId --jq '.[0].databaseId')
-          if [ -z "$run" ]; then
-              echo "::error::no failed ci run for $HEAD_SHA"
-              exit 1
+          if [ -n "$WORKFLOW_RUN" ]; then
+              run="$WORKFLOW_RUN"
+          else
+              run=$(gh run list --workflow ci.yml --commit "$HEAD_SHA" --status failure --limit 1 --json databaseId --jq '.[0].databaseId')
+              if [ -z "$run" ]; then
+                  echo "::error::no failed ci run for $HEAD_SHA"
+                  exit 1
+              fi
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
+      # On the automatic path, anything but a digest change is for a human to look at, so
+      # stop without failing.
+      - name: Check for digests to accept
+        id: check
+        env:
+          RUN: ${{ steps.ci.outputs.run }}
+          AUTOMATIC: ${{ github.event_name == 'workflow_run' }}
+        run: |
+          digests=$(gh api "repos/{owner}/{repo}/actions/runs/$RUN/artifacts" --jq '[.artifacts[].name | select(startswith("actual."))] | length')
+          if [ "$digests" = 0 ]; then
+              if [ "$AUTOMATIC" = true ]; then
+                  echo "::notice::ci run $RUN failed without digest changes"
+                  exit 0
+              fi
+              echo "::error::ci run $RUN failed without digest changes"
+              exit 1
+          fi
+          git fetch --depth 2 origin "$HEAD_SHA"
+          # The bot's commit never touches the digests itself, so this is an earlier run of this
+          # workflow, and the images do not build reproducibly.
+          if [ "$AUTOMATIC" = true ] && ! git diff --quiet "$HEAD_SHA^" "$HEAD_SHA" -- examples/image/expected.json; then
+              echo "::warning::$HEAD_SHA already updates the digests, and they changed again"
+              exit 0
+          fi
+          echo "accept=true" >> "$GITHUB_OUTPUT"
+
+      - name: GH runner setup
+        if: steps.check.outputs.accept
+        uses: ./.github/actions/gh-runner-setup
+
       # One artifact per failed arch. `gh run download` doesn't work: https://github.com/cli/cli/issues/13012
       - name: Download the digests of the failed CI run
+        if: steps.check.outputs.accept
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ github.token }}
@@ -67,8 +114,8 @@ jobs:
           path: ${{ runner.temp }}/digests
 
       - name: Accept the digests
+        if: steps.check.outputs.accept
         run: |
-          git fetch --depth 2 origin "$HEAD_SHA"
           # as git stores it, which never follows a symlink in the pull request's tree
           git show "$HEAD_SHA:examples/image/expected.json" > examples/image/expected.json
           # only regular files of the expected name, and nothing else of what the artifacts hold
@@ -80,8 +127,9 @@ jobs:
           git -c user.name='github-actions[bot]' -c user.email='noreply@amutable.com' commit --amend --no-edit -- examples/image/expected.json
 
       - name: Update the branch
+        if: steps.check.outputs.accept
         run: git push --force-with-lease="refs/heads/$HEAD_REF:$HEAD_SHA" origin "HEAD:refs/heads/$HEAD_REF"
 
       - name: Remove the label
-        if: always()
+        if: always() && github.event_name == 'pull_request_target'
         run: gh pr edit "$PULL_REQUEST" --remove-label update-reproducibility
