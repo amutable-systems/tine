@@ -3,15 +3,15 @@
     "files": [
       {
         "out": "dists/testing/InRelease",
-        "sha256": "a5f968bd92c6804ea79b9fdd7833c50eacaaddc879333c30720130f6e7ad0ff1",
-        "size": 150769,
-        "url": "https://snapshot.debian.org/archive/debian/20261003T204240Z/dists/testing/InRelease"
+        "sha256": "a44ac1da4950e6e806b256ceeac0434cf84cbff535f3d5b33006b2c8bde22b13",
+        "size": 150773,
+        "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/dists/testing/InRelease"
       },
       {
         "out": "dists/testing/non-free/binary-amd64/Packages.xz",
-        "sha256": "2d780b7fa30da03cd675135a59ae9c66910fc376e8fca153636276bcbfa8c9ea",
-        "size": 84112,
-        "url": "https://snapshot.debian.org/archive/debian/20261003T204240Z/dists/testing/non-free/binary-amd64/by-hash/SHA256/2d780b7fa30da03cd675135a59ae9c66910fc376e8fca153636276bcbfa8c9ea"
+        "sha256": "16bd8059606843d8777ccaa9e14ed63c37fd40624426bdb5656c3eb41c10b8b2",
+        "size": 84136,
+        "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/dists/testing/non-free/binary-amd64/by-hash/SHA256/16bd8059606843d8777ccaa9e14ed63c37fd40624426bdb5656c3eb41c10b8b2"
       }
     ],
     "inline": {}
@@ -62,7 +62,6 @@
     "0ebd5246c9dd94e14686a6220baf14e9163bab4108547d242afa7f2b8412ab4c": {"location":"pool/non-free/p/python-drf-spectacular-sidecar-nonfree/python3-drf-spectacular-sidecar-nonfree_2026.9.1-1_all.deb","size":2036972},
     "0ee56db6f0a47e95c25e67b84a779dcdc66fe11a881e1cea3739cd9433d8ad05": {"location":"pool/non-free/r/rar/rar_7.23-1_amd64.deb","size":433096},
     "0fe778ade452e59318d0343641b5cd0d8ed34d4cc89239fd4cb404b55f90596a": {"location":"pool/non-free/f/fonts-ubuntu/fonts-ubuntu-console_0.83-6_all.deb","size":22948},
-    "0ff389fdf2983baf5df3bcf53d50bc1ace313e6926778adc2da2b506fe87a5ff": {"location":"pool/non-free/c/cufflinks/cufflinks_2.2.1+git20190706.dc3b0cb+dfsg-1_amd64.deb","size":1680192},
     "1001da1bb12507c0f1d4ba03db747fc153935bf541fb188bb7a496b2dad57ca3": {"location":"pool/non-free/i/intel-mkl/libmkl-blacs-openmpi-ilp64_2020.4.304-7_amd64.deb","size":106240},
     "1051f500da666c4d837709c6b7440b1afd8d172665299c996e6fefaf3cc31a07": {"location":"pool/non-free/u/unrar-nonfree/libunrar-headers_7.3.1-1_all.deb","size":53320},
     "107f0d9155833f1665c4563210512705082ce09a6ea3e779c449ed4a05df4327": {"location":"pool/non-free/v/vmtk/vmtk_1.5.0+dfsg1-1_all.deb","size":158716},
@@ -126,7 +125,6 @@
     "29b9babde3837ee484e04e736e0874f77681a068054a1eb36c92a4211af7535e": {"location":"pool/non-free/m/mbrola-de5/mbrola-de5_1.0+repack2-5_all.deb","size":12026688},
     "2a8329d78442635019ae4ddbc2edb9cae9260a81c04fcb0702d5e33dabd16273": {"location":"pool/non-free/n/nvidia-graphics-drivers/nvidia-detect_550.163.01-5.1_amd64.deb","size":134204},
     "2aca23fb7f0cc04bf48db7a63f2cc0c8cd19ea9c73b69a8b732deca51d65e767": {"location":"pool/non-free/v/vmtk/libvmtk1.5_1.5.0+dfsg1-1_amd64.deb","size":1970700},
-    "2b05af59f3cab36119e4e9a7759322dd5da42ec2e48bb0960978c8c50e512098": {"location":"pool/non-free/d/drf-yasg-nonfree/python-drf-yasg-nonfree-doc_1.21.15-1_all.deb","size":331612},
     "2b2df80ddba40915e052eacd3992ca6d7bd0b88bf0c2279d4117ede70873bb11": {"location":"pool/non-free/r/rhvoice/rhvoice-russian_1.14.0-3_all.deb","size":143818572},
     "2b36a22145dd3fcb380079706d1a39afa7714499018d0a607a32325ead292500": {"location":"pool/non-free/d/doc-rfc/doc-rfc-others_20230121-1_all.deb","size":72846040},
     "2baa3d25e9bbe3fbacd54731f0fe825393e69041cbf0ec9f51f94ba186a04510": {"location":"pool/non-free/s/solvate/solvate-doc_1.0-3_all.deb","size":1015804},
@@ -205,7 +203,6 @@
     "483f071421215b0135266f73dc63d6c8fd202519d033e99cdb13ed42192aefa6": {"location":"pool/non-free/g/google-android-installers/google-android-platform-9-installer_9+r2.1785528795-1_all.deb","size":16672},
     "486960496adf2e0242252c4f6dfee6a28c96e3da22b4f7c9cd926d4e7d389d28": {"location":"pool/non-free/n/nvidia-graphics-drivers/libglx-nvidia0_550.163.01-5.1_amd64.deb","size":369040},
     "48f807b9130658d40268c6cd238310e4f97081957f1216e66c8bb40fef5c1fee": {"location":"pool/non-free/g/google-android-installers/google-android-platform-33-ext4-installer_33-ext4+r1.1785528795-1_all.deb","size":16680},
-    "49025ba5fe315844cb41b362e884320287189bf86d2c9e7c80725f34ac349626": {"location":"pool/non-free/d/drf-yasg-nonfree/python3-drf-yasg-nonfree_1.21.15-1_all.deb","size":2835928},
     "49a6ec66d48de65ec3e850ca62c3b2d7236bdc08b713c509cd3207726eabdb89": {"location":"pool/non-free/i/intel-acm/intel-acm_20210710-2_amd64.deb","size":208944},
     "49cbea3e7340332693e7b44da18b8a77112549e990e0a6203cdab8cfcb18373b": {"location":"pool/non-free/n/nvidia-graphics-drivers/nvidia-kernel-dkms_550.163.01-5.1_amd64.deb","size":41674960},
     "4b040d9282a383ecf945c433b438877ed765f6f5944c3d50cd990579204e983f": {"location":"pool/non-free/n/nvidia-graphics-drivers/xserver-xorg-video-nvidia_550.163.01-5.1_amd64.deb","size":2337900},
@@ -222,6 +219,7 @@
     "504ed55fc4454cf1e054f3a6d9ceeb18f18681207dc5a6e44d44a6aae024b2b9": {"location":"pool/non-free/n/nvidia-graphics-drivers/nvidia-egl-common_550.163.01-5.1_amd64.deb","size":130856},
     "50bc420abe9615068d23ce3f67b51839c6fbe61b082ece0368b0ad37f775854f": {"location":"pool/non-free/g/google-android-installers/google-android-platform-24-installer_24+r2.1785528795-1_all.deb","size":16660},
     "511318e369dfd9be50b2f31efc33d20bab1a68854723c6151356e2fb2a67379b": {"location":"pool/non-free/r/rhvoice/librhvoice-dev_1.14.0-3_amd64.deb","size":26088},
+    "5117b53a0d08871810abaf2cf11d7ba0afa80403787ca42578866c8bdfa2d864": {"location":"pool/non-free/d/drf-yasg-nonfree/python-drf-yasg-nonfree-doc_1.21.15-2_all.deb","size":331076},
     "514fa1fdeb0f1a281ea3c3dd7ce90487dc7ff1f42cca360b1fd0360b420263b3": {"location":"pool/non-free/s/sisu-markup-samples/sisu-markup-samples_7.1.3-1_all.deb","size":14779944},
     "5189d3653fc63f68111ba479d55b7fa0190a868da3b476dd09bd601af216ccc3": {"location":"pool/non-free/g/google-android-installers/google-android-ndk-r20b-installer_20.1.5948944+1785528795-1_amd64.deb","size":17028},
     "52443ccb524dc33f8edd7ba866200e538bd8db93c4cd59cb885a723cacdbde14": {"location":"pool/non-free/g/google-android-installers/google-android-sources-18-installer_18+1785528795-1_all.deb","size":16528},
@@ -398,6 +396,7 @@
     "97aa1675d9581fcc70d643ebfc0bd626ae0084ab42039199e3d8c2ad27c7c812": {"location":"pool/non-free/n/nvidia-graphics-drivers/nvidia-vdpau-driver_550.163.01-5.1_amd64.deb","size":625640},
     "97c1354a87dcd918ca56cc995eb52d5b21a81e74c6eaba58ede1057cd9dc7cb7": {"location":"pool/non-free/e/emacs-non-dfsg/emacs-common-non-dfsg_30.2+1-1_all.deb","size":5394016},
     "97eb1c59752f1eef58295f3b568344d040e3e5ecdf381a168e00ba5c73516be7": {"location":"pool/non-free/m/mbrola-cz2/mbrola-cz2_0.2+repack2-6_all.deb","size":7998800},
+    "981abf9573ef55d426c2fa6bb1b623f1702035ae38e05d84a71535eeea5696c3": {"location":"pool/non-free/7/7zip-rar/7zip-rar_26.04-1_amd64.deb","size":77328},
     "983f4435e0433995be2acb435c1c892f5b2ad6b77add84aac3cfe999d7b3774b": {"location":"pool/non-free/f/fonts-larabie/fonts-larabie-straight_20011216-7_all.deb","size":973380},
     "9a00a2ad9f717b82e52b217c4b60cd323352b885d6ea57e312d5ba149fcf4ed8": {"location":"pool/non-free/c/cpio-doc/cpio-doc_2.15-1_all.deb","size":13432},
     "9a110fc276538953df6de1f5bfbc2ae156f44ab2478aba7c21301628e4a2ec10": {"location":"pool/non-free/f/foiltex/foiltex_2.1.4b-6_all.deb","size":546652},
@@ -463,11 +462,11 @@
     "b86ce81e0a99f60e97fe9d004cb0968efb53a1c8bde2def62de3e79c14c046cd": {"location":"pool/non-free/m/mbrola-de2/mbrola-de2_0.0.19990106+repack2-5_all.deb","size":8463156},
     "b897fd00425402aedf6874baf827ce35c40d126bd125bfacf571e93e3c7f7554": {"location":"pool/non-free/d/dxx-rebirth/d2x-rebirth_0.60~git20260920-1_amd64.deb","size":729796},
     "b9553360ea352ac4db8049d069ac616e836c78200b7cbfb34ae19dccfd4d8c2d": {"location":"pool/non-free/i/intel-mkl/libmkl-blacs-openmpi-lp64_2020.4.304-7_amd64.deb","size":77308},
+    "b97b504d8487a4770f4f26a979e0febee535c9191d199bab7c0bcec172243497": {"location":"pool/non-free/c/cufflinks/cufflinks_2.2.1+git20190706.dc3b0cb+dfsg-1+b1_amd64.deb","size":1680052},
     "b9bfead1a230da198ab96ce70cc9fbb64dc600d914c1504eeb4c19e29f95734b": {"location":"pool/non-free/d/doc-rfc/doc-rfc-std_20230121-1_all.deb","size":13986128},
     "b9d41b1ba25e52d81de59dc0179df6d15d94bbf5cbae29c7d664022734d93df1": {"location":"pool/non-free/g/google-android-installers/google-android-build-tools-27.0.3-installer_27.0.3+1785528795-1_amd64.deb","size":17000},
     "ba2fa6d30f58912fa5347e05225dcecceeb36416e6e19e96a27f518cb9beb794": {"location":"pool/non-free/g/google-android-installers/google-android-build-tools-24.0.0-installer_24.0.0+1785528795-1_amd64.deb","size":16976},
     "baf983994ef994d5cec7d90cb97b6828089655b2b776da9cbf82fec756d2f12c": {"location":"pool/non-free/libx/libxml-compile-soap-perl/libxml-compile-soap-perl_3.28+ds-1_all.deb","size":150712},
-    "bb2eb4af6318edd21be7b03ac995bcb25a4dc6b39596355285c52fd1cd0b0e74": {"location":"pool/non-free/f/ft2-clone/ft2-clone_2.24+ds-1_amd64.deb","size":392668},
     "bb3bd0fff62b80a63e758beaa24325026d4cc266e363e5a2dd111266814ec248": {"location":"pool/non-free/g/google-android-installers/google-android-build-tools-33.0.0-installer_33.0.0+1785528795-1_amd64.deb","size":17060},
     "bb6a13d07ef3bffc15e610b921850413fc75842faf35ba22b54147b64fa85fc6": {"location":"pool/non-free/g/google-android-installers/google-android-build-tools-24.0.3-installer_24.0.3+1785528795-1_amd64.deb","size":16964},
     "bb845190eb763a87bccfb9bd04f9e3b546a1ad0218d3b286de38454015263c79": {"location":"pool/non-free/t/testu01/testu01-data_1.2.3+ds1-3_all.deb","size":16160},
@@ -565,7 +564,6 @@
     "dca4a8cb072c3d1d9466a348d52d3c623061d042430dcc956760c154c0bb583b": {"location":"pool/non-free/i/intel-mkl/libmkl-vml-avx512_2020.4.304-7_amd64.deb","size":3238380},
     "de73fa8ec18969bd1e69ebfad59ecf9cc1429b307d4a7c8d187675af1c931e89": {"location":"pool/non-free/o/ooohg/ooohg_09.2013-4_all.deb","size":73037148},
     "debd69b1ec034839656a50c666e1f88db96f4f447cf87358e9d7c5f67d862c53": {"location":"pool/non-free/g/google-android-installers/google-android-platform-32-installer_32+r1.1785528795-1_all.deb","size":16664},
-    "ded43c784ba630a2bd86f60e081916e7b4b9be370d94539eb2f0898076e586ea": {"location":"pool/non-free/7/7zip-rar/7zip-rar_26.03-2_amd64.deb","size":77436},
     "dfac5890a69d885cfe160bf0258b2470ae1168868c6320aabf979d96f97c703b": {"location":"pool/non-free/n/nvidia-graphics-drivers/libnvidia-glcore_550.163.01-5.1_amd64.deb","size":8070972},
     "e0e56b1d56f57d8a2c181dc132665ae10f58f557dc559a7e8fe794958885ee24": {"location":"pool/non-free/r/rhvoice/rhvoice-albanian_1.14.0-3_all.deb","size":8424488},
     "e115559547d7a914bd46e363c116f05deaa8d12d2160d65cda133206f9464e64": {"location":"pool/non-free/libf/libfishcamp/libfishcamp1t64_1.2+20220607003151-4_amd64.deb","size":45728},
@@ -617,6 +615,7 @@
     "f55b44436e4d7000bb9374f20295d0ff107619e79d749fb05a5f7b64e3679591": {"location":"pool/non-free/g/google-android-installers/google-android-extras-google-auto-installer_2.0.2+really2.0+1785528795-1_amd64.deb","size":16820},
     "f57ee9fba570264b232e2fe4073ba2cfeb6975dbb88a9b82e2bac9b2cd4a0e8f": {"location":"pool/non-free/g/google-android-installers/google-android-build-tools-36.0.0-installer_36.0.0+1785528795-1_amd64.deb","size":17056},
     "f5da30dd40e37d028dae1fbd127d04a07fbf55999856f06998ad4e17f185518d": {"location":"pool/non-free/g/google-android-installers/google-android-platform-34-ext10-installer_34-ext10+r1.1785528795-1_all.deb","size":16696},
+    "f5fe31578295a6a0d5eedcf027ec234a21e23b1d7e41215d3fc7073ddfa7a050": {"location":"pool/non-free/f/ft2-clone/ft2-clone_2.25+ds-1_amd64.deb","size":394008},
     "f6033a1103b98b870d1fb1a12ce705b218fe18123fb193a60b325ef5625fb4df": {"location":"pool/non-free/g/gliese/gliese_3.0.95-3_all.deb","size":173332},
     "f6acc34995608f71c331a8557c4480e6ad785977d70d95f59c2b1b04f96e2a27": {"location":"pool/non-free/g/google-android-installers/google-android-build-tools-28.0.2-installer_28.0.2+1785528795-1_amd64.deb","size":17060},
     "f6f2d2c51244bb9c4f81b50b96a13c474e94e62a90465eca67a2e110b0944d37": {"location":"pool/non-free/g/google-android-installers/google-android-platform-tools-installer_37.0.1+1785528795-1_amd64.deb","size":18836},
@@ -642,6 +641,7 @@
     "fdbeb17639566350dba9ae4eea7498b7f34ed7f2c15849b5afdeb5d654e72a7c": {"location":"pool/non-free/z/zangband/zangband_2.7.5pre1-17_amd64.deb","size":839428},
     "feaf15d6c797daa341fd3af76abaf5147f2b0c80aa4243b03ce7ec4f141db77a": {"location":"pool/non-free/n/nvidia-cg-toolkit/nvidia-cg-dev_3.1.0013-5+b1_amd64.deb","size":15396},
     "feb81b8500d48b2e42f519549eca3e0ca186c456bc41e69aa0b496806d1b1fac": {"location":"pool/non-free/n/nvidia-graphics-drivers/nvidia-smi_550.163.01-5.1_amd64.deb","size":474868},
+    "fed2eae09e9daf1065c03f54ad1ae67e2d0a95c3bc106952112928c7da8217ae": {"location":"pool/non-free/d/drf-yasg-nonfree/python3-drf-yasg-nonfree_1.21.15-2_all.deb","size":2836052},
     "ff0868935d8a79db06d3a6be4548e4d4620d83703cad883420b4d65a60fef111": {"location":"pool/non-free/s/svox/libttspico-utils_1.0+git20130326-14.1_amd64.deb","size":8816}
   }
 }
