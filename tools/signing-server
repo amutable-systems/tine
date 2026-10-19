@@ -68,14 +68,26 @@ await "the resource manager" tpm2_getcap properties-fixed
 # Token and key creation: this performs what docs/user/signing-pkcs11.md documents as the manual setup:
 # "Backend: TPM 2.0 with tpm2-pkcs11" and "Giving the key a certificate".
 
-export PKCS11_PROVIDER_MODULE=/usr/lib64/pkcs11/libtpm2_pkcs11.so
+# Fedora, Arch and Debian each install the module into a different library directory.
+for PKCS11_PROVIDER_MODULE in /usr/lib64/pkcs11/libtpm2_pkcs11.so /usr/lib/pkcs11/libtpm2_pkcs11.so \
+    /usr/lib/*-linux-gnu/pkcs11/libtpm2_pkcs11.so; do
+    if [ -e "$PKCS11_PROVIDER_MODULE" ]; then break; fi
+done
+if [ ! -e "$PKCS11_PROVIDER_MODULE" ]; then
+    echo "signing-server: found no libtpm2_pkcs11.so" >&2
+    exit 1
+fi
+export PKCS11_PROVIDER_MODULE
 
 tpm2_ptool init
 for token in SecureBoot PcrPolicy; do
     tpm2_ptool addtoken --pid=1 --label="$token" --sopin=12345678 --userpin="$pin"
     tpm2_ptool addkey --label="$token" --key-label="$token" --userpin="$pin" --algorithm=rsa2048
+    # tpm2-pkcs11 encrypts a session salt with OpenSSL while it holds the token lock. With pkcs11
+    # loaded first, OpenSSL 3 encrypts the salt through pkcs11-provider, which calls back into
+    # tpm2-pkcs11 and deadlocks on that lock.
     openssl req -new -x509 -days 30 -sha256 \
-        -provider pkcs11 -provider default \
+        -provider default -provider pkcs11 \
         -key "pkcs11:token=$token;object=$token;type=private?pin-value=$pin" \
         -subj "/CN=CI $token/" -out "$dir/$token.crt"
     tpm2_ptool addcert --label="$token" --key-label="$token" "$dir/$token.crt"

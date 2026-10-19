@@ -59,6 +59,19 @@ Every `catalog//` label then resolves to the project's catalog, including the la
 targets, and the build does not use tine's catalog. If `tine.toml` declares no `catalog` cell, `bin/tine`
 points the cell at tine's catalog.
 
+tine's own boxes, such as its tools and the box that generates signing keys, build from the catalog's
+default release. Name it in the catalog's `BUCK` file, with the `<family>.<release>` prefix of any release
+the catalog declares:
+
+```Starlark
+load("@tine//distribution:defs.bzl", "distribution")
+
+distribution.default_release("debian.testing")
+```
+
+A tine box installs the packages it lists for the default release's family. A box that lists no packages
+for that family fails to build, and so does a box that lists a package the release does not contain.
+
 A **box** is a pinned, reproducible execution environment that runs every build action. It supplies its
 package system's own tools, Python, core utilities, and the image assembly tools; these stay in the box
 and out of the built images. Both RPM releases share `catalog//:fedora.rawhide.box`, while

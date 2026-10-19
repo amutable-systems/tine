@@ -5,10 +5,11 @@
 
 load("//:tine.lock.json", _pins = "value")
 load("//box:defs.bzl", "box")
+load("//distribution:defs.bzl", "distribution")
 load("//http:defs.bzl", "http")
 load("//python:defs.bzl", "box_python_binary", "tine_python_binary")
 
-_RELEASE = "catalog//:fedora.rawhide.release"
+_RELEASE = "catalog//:default.release"
 
 # Every pinned tool is declared in //:tine.lock.json and refreshed by `tine bump` (see docs/user/images.md). Buck
 # fetches and verifies every tool except Buck2, which `bin/tine` fetches.
@@ -81,28 +82,31 @@ http.tool(
 # (hermetic), `tine//tools:importer` (relaxed), and anyone entering it as a box.
 # Derived from the main box (lockless transaction, resolved during the build), so dev tooling
 # changes never invalidate the build graph that depends on the main box.
+# The importer and the tests need the rpm toolchain, so only a Fedora release can build this box.
 box.new(
     name = "dev.box",
-    packages = [
-        "coreutils",
-        # for "importer srpm"
-        "dist-git-client",
-        "gawk",
-        "git-core",
-        # for the assertions over generated certificates
-        "openssl",
-        "rpm-build",
-        # package_system/rpm's tests sign what they build
-        "gnupg2",
-        "rpm-sign",
-        "python3-createrepo_c",
-        "python3-libdnf5",
-        # the license headers lint, see the `reuse` alias below
-        "reuse",
-        "sed",
-        # The tests of package_system/deb verify a Release with sqv, as verify.py does.
-        "sequoia-sqv",
-    ],
+    packages = distribution.select({
+        "fedora": [
+            "coreutils",
+            # for "importer srpm"
+            "dist-git-client",
+            "gawk",
+            "git-core",
+            # for the assertions over generated certificates
+            "openssl",
+            "rpm-build",
+            # package_system/rpm's tests sign what they build
+            "gnupg2",
+            "rpm-sign",
+            "python3-createrepo_c",
+            "python3-libdnf5",
+            # the license headers lint, see the `reuse` alias below
+            "reuse",
+            "sed",
+            # The tests of package_system/deb verify a Release with sqv, as verify.py does.
+            "sequoia-sqv",
+        ]
+    }),
     release = _RELEASE,
     visibility = ["PUBLIC"],
 )
@@ -155,11 +159,12 @@ tine_python_binary(
 # setup-deploy-key gets its own box, as it runs rarely.
 box.new(
     name = "deploy-key.box",
-    packages = [
-        "gh",
-        # ssh-keygen
-        "openssh-clients",
-    ],
+    # The openssh packages contain ssh-keygen.
+    packages = distribution.select({
+        "arch": ["github-cli", "openssh"],
+        "debian": ["gh", "openssh-client"],
+        "fedora": ["gh", "openssh-clients"],
+    }),
     release = _RELEASE,
 )
 
@@ -174,11 +179,12 @@ box_python_binary(
 # AWS tooling in its own box, as it's big and not always needed.
 box.new(
     name = "aws.box",
-    packages = [
-        "awscli2",
-        # virt-fw-vars, for an AMI's UEFI variable store
-        "python3-virt-firmware",
-    ],
+    # The virt-firmware packages contain virt-fw-vars, which writes an AMI's UEFI variable store.
+    packages = distribution.select({
+        "arch": ["aws-cli-v2", "virt-firmware"],
+        "debian": ["awscli", "python3-virt-firmware"],
+        "fedora": ["awscli2", "python3-virt-firmware"],
+    }),
     release = _RELEASE,
     visibility = ["PUBLIC"],
 )
@@ -238,23 +244,57 @@ command_alias(
 # sandboxes over a socket. See tools/signing-server.
 box.new(
     name = "swtpm-signing.box",
-    packages = [
-        "bash",
-        "coreutils",
-        # the resource manager swtpm lacks, and the private bus it needs; see tools/signing-server
-        "dbus-daemon",
-        "openssl",
-        "p11-kit-server",
-        "pkcs11-provider",
-        "swtpm",
-        # ukify, to read a UKI section back out in the ci.sh step
-        "systemd-ukify",
-        "tpm2-abrmd",
-        "tpm2-pkcs11",
-        "tpm2-pkcs11-tools",
-        # tpm2_ptool drives these binaries without a package dependency on them
-        "tpm2-tools",
-    ],
+    # swtpm has no resource manager, so tools/signing-server runs tpm2-abrmd on a private D-Bus. The
+    # ci.sh step runs ukify to read a UKI section back out. tpm2_ptool runs tpm2-tools binaries, but its
+    # package does not depend on tpm2-tools.
+    packages = distribution.select({
+        "arch": [
+            "bash",
+            "coreutils",
+            "dbus",
+            "openssl",
+            "p11-kit",
+            "pkcs11-provider",
+            "swtpm",
+            "systemd-ukify",
+            "tpm2-abrmd",
+            "tpm2-pkcs11",
+            "tpm2-pkcs11-tools",
+            "tpm2-tools",
+        ],
+        # Debian packages each TCTI of tpm2-tss on its own. tpm2-abrmd reaches swtpm through the swtpm TCTI,
+        # and tpm2-tools and tpm2-pkcs11 reach tpm2-abrmd through the tabrmd TCTI.
+        "debian": [
+            "bash",
+            "coreutils",
+            "dbus-daemon",
+            "libtpm2-pkcs11-1",
+            "libtpm2-pkcs11-tools",
+            "libtss2-tcti-swtpm0t64",
+            "libtss2-tcti-tabrmd0",
+            "openssl",
+            "p11-kit",
+            "pkcs11-provider",
+            "swtpm",
+            "systemd-ukify",
+            "tpm2-abrmd",
+            "tpm2-tools",
+        ],
+        "fedora": [
+            "bash",
+            "coreutils",
+            "dbus-daemon",
+            "openssl",
+            "p11-kit-server",
+            "pkcs11-provider",
+            "swtpm",
+            "systemd-ukify",
+            "tpm2-abrmd",
+            "tpm2-pkcs11",
+            "tpm2-pkcs11-tools",
+            "tpm2-tools",
+        ],
+    }),
     release = _RELEASE,
     visibility = ["PUBLIC"],
 )

@@ -280,11 +280,13 @@ ships it. Starting over is `rm -r` on that directory; nothing lives outside it.
 ## Giving the key a certificate
 
 You need to generate an X.509 certificate for a freshly created key. `openssl` takes the module from
-`PKCS11_PROVIDER_MODULE` exported above, and prompts for the PIN:
+`PKCS11_PROVIDER_MODULE` exported above, and prompts for the PIN. With tpm2-pkcs11 and OpenSSL 3,
+`openssl req` hangs when it loads the pkcs11 provider before the default provider, so the command loads
+the default provider first.
 
 ```sh
 openssl req -new -x509 -days 3650 -sha256 \
-    -provider pkcs11 -provider default \
+    -provider default -provider pkcs11 \
     -key "pkcs11:token=<token>;object=<key>;type=private" \
     -subj "/CN=<token> signing key/" \
     -out cert.pem

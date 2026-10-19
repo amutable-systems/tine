@@ -10,6 +10,7 @@
 load("@tine//box:defs.bzl", "box")
 load("@tine//distribution:arch.bzl", "arch_release", "arch_signing_keys")
 load("@tine//distribution:debian.bzl", "debian_release", "debian_signing_keys")
+load("@tine//distribution:defs.bzl", "distribution")
 load("@tine//distribution:fedora.bzl", "fedora_release", "fedora_signing_keys")
 load("@tine//platforms:architecture.bzl", "architecture")
 
@@ -192,3 +193,7 @@ box.new(
     root = True,
     visibility = ["PUBLIC"],
 )
+
+# tine's own boxes, such as the boxes in tine//tools, build from the release that default_release()
+# names. A project's catalog has to call default_release() too. It can name a release of any family.
+distribution.default_release("fedora.rawhide")

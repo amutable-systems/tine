@@ -165,6 +165,18 @@ def new(name: str, architectures: list[str], visibility: list[str] | None = None
             visibility = visibility,
         )
 
+def default_release(release: str, visibility: list[str] = ["PUBLIC"]) -> None:
+    """Declare a catalog's `default.*` targets as aliases of the targets of `release`, such as `fedora.rawhide`."""
+
+    # box.new() derives the resolver box and the distribution's platforms from the release's name, so
+    # every derived target needs an alias.
+    for role in ["release", "box", "distribution", "distribution.host"]:
+        native.alias(
+            name = "default." + role,
+            actual = ":{}.{}".format(release, role),
+            visibility = visibility,
+        )
+
 _DISTRIBUTIONS = "tine.distributions"
 
 def _release(release: str, role: str) -> str:
@@ -362,6 +374,7 @@ distribution = struct(
     alias = alias,
     aliases = aliases,
     attrs = attributes,
+    default_release = default_release,
     select = by_distribution,
     serves = serves,
     compatibility = compatibility,
