@@ -83,37 +83,42 @@ _distribution = rule(
     is_configuration_rule = True,
 )
 
-def _box_platform_impl(ctx: AnalysisContext) -> list[Provider]:
+def _box_host_impl(ctx: AnalysisContext) -> list[Provider]:
     base = ctx.attrs.base[PlatformInfo].configuration
-    box = PlatformInfo(
-        label = str(ctx.label.raw_target()),
-        configuration = ConfigurationInfo(
-            constraints = base.constraints | ctx.attrs.distribution[ConfigurationInfo].constraints,
-            values = base.values,
-        ),
-    )
+    fixed = ctx.attrs.distribution[ConfigurationInfo].constraints if ctx.attrs.distribution != None else None
+    default = ctx.attrs.default[ConfigurationInfo].constraints
     marker = ctx.attrs._exec_marker[ConstraintValueInfo]
+    label = str(ctx.label.raw_target())
 
     def configure(platform: PlatformInfo) -> PlatformInfo:
         check_unmarked(platform, marker)
-        return box
+        chosen = fixed
+        if chosen == None:
+            chosen = {setting: value for setting, value in platform.configuration.constraints.items() if setting in default} or default
+        return PlatformInfo(
+            label = label,
+            configuration = ConfigurationInfo(constraints = base.constraints | chosen, values = base.values),
+        )
 
-    return [DefaultInfo(), box, TransitionInfo(impl = configure)]
+    return [DefaultInfo(), TransitionInfo(impl = configure)]
 
-# A box takes a `_box_platform` target as its incoming transition. The transition replaces the
-# caller's configuration, so every caller reaches the same configured box. A `select()` in the
-# box's attributes then sees the distribution of the box's release.
+# A box takes a `box_host` target as its incoming transition. The transition replaces the caller's
+# configuration with `base` and a distribution. Every caller therefore reaches the same configured box,
+# and a `select()` in the box's attributes sees that distribution. With `distribution`, the box is always
+# configured for that distribution. Without it, the box is configured for the distribution of its caller.
+# A caller without a distribution, such as an `exec_dep` or a target built by its own name, gets `default`.
 # The execution platform registers no exec marker constraint, so the execution configuration is the
 # same as the host's. An `exec_dep` therefore reaches the same configured box as an ordinary
 # dependency. The host platform assumes one execution platform, for the host's architecture. A
 # project can register an execution platform for another architecture. An `exec_dep` resolved for
 # that platform still reaches the box built for the host. The actions on that platform then run
 # binaries for the wrong architecture, and Buck reports no error.
-_box_platform = rule(
-    impl = _box_platform_impl,
+box_host = rule(
+    impl = _box_host_impl,
     attrs = {
-        "base": attrs.dep(providers = [PlatformInfo]),
-        "distribution": attrs.dep(providers = [ConfigurationInfo]),
+        "base": attrs.dep(providers = [PlatformInfo], default = "tine//platforms:default"),
+        "default": attrs.dep(providers = [ConfigurationInfo], default = "catalog//:default.distribution"),
+        "distribution": attrs.option(attrs.dep(providers = [ConfigurationInfo]), default = None),
         "_exec_marker": attrs.dep(providers = [ConstraintValueInfo], default = get_exec_platform_marker()),
     },
     is_configuration_rule = True,
@@ -152,14 +157,13 @@ def new(name: str, architectures: list[str], visibility: list[str] | None = None
         family = "tine//distribution:" + family,
         visibility = visibility,
     )
-    _box_platform(
+    box_host(
         name = name + ".host",
-        base = "tine//platforms:default",
         distribution = ":" + name,
         visibility = visibility,
     )
     for arch in architectures:
-        _box_platform(
+        box_host(
             name = "{}.{}".format(name, arch),
             base = "tine//platforms:" + arch,
             distribution = ":" + name,
@@ -169,8 +173,9 @@ def new(name: str, architectures: list[str], visibility: list[str] | None = None
 def default_release(release: str, visibility: list[str] = ["PUBLIC"]) -> None:
     """Declare a catalog's `default.*` targets as aliases of the targets of `release`, such as `fedora.rawhide`."""
 
-    # box.new() derives the resolver box and the distribution's platforms from the release's name, so
-    # every derived target needs an alias.
+    # box.new() derives the distribution's platforms from the release's name, so every derived target
+    # needs an alias. tine//distribution:tools.box builds on `default.box` for a release that
+    # catalog//:releases.bzl doesn't list.
     for role in ["release", "box", "distribution", "distribution.host"]:
         native.alias(
             name = "default." + role,
@@ -346,9 +351,9 @@ def distributed(
 def serves(name: str, architectures: list[str], in_box: bool = False) -> Select:
     """`target_compatible_with` for a target `name` that exists only for `architectures`, such as a release's repository.
 
-    A target that runs in the release's box, such as its package manager, sets `in_box`. The release
-    builds its box only for `architectures`, so such a target is also incompatible on a host whose
-    architecture is not in `architectures`.
+    A target that depends on the release's root box, such as the release and its package manager, sets
+    `in_box`. The release builds its root box only for `architectures`, so such a target is also
+    incompatible on a host whose architecture is not in `architectures`.
     """
     unserved = select_incompatible("{} serves {} only".format(name, ", ".join(architectures)))
     if in_box and architecture.host() not in architectures:
@@ -389,6 +394,7 @@ distribution = struct(
     alias = alias,
     aliases = aliases,
     attrs = attributes,
+    box_host = box_host,
     default_release = default_release,
     select = by_distribution,
     serves = serves,

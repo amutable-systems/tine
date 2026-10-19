@@ -11,6 +11,7 @@ load(
     "ConfiguredPackageRepositoryInfo",
     "PackagePoolInfo",
     "PackageRepositoryInfo",
+    "RepositoryUniverseInfo",
     "box_lock_path",
     "select_package_artifacts",
     "select_repositories",
@@ -104,15 +105,15 @@ def _configure_repositories(
 
 def _solve(
     ctx: AnalysisContext,
-    release: OsReleaseInfo,
+    package_system: Dependency,
     resolver_box: Dependency,
     repositories: list[ConfiguredPackageRepositoryInfo],
     packages: list[str],
     arch: str,
 ) -> cmd_args:
     """The command resolving `packages` for `arch` in `resolver_box`, against `repositories`."""
-    system = release.package_system[PackageSystemInfo]
-    solver_caches = [solver_cache(ctx, resolver_box, release.package_system, repository, arch) for repository in repositories] if system.solver_cache else []
+    system = package_system[PackageSystemInfo]
+    solver_caches = [solver_cache(ctx, resolver_box, package_system, repository, arch) for repository in repositories] if system.solver_cache else []
     return solve_command(
         ctx = ctx,
         box = resolver_box[BoxInfo],
@@ -125,25 +126,31 @@ def _solve(
     )
 
 def _box_impl(ctx: AnalysisContext) -> list[Provider]:
-    release = ctx.attrs.release[OsReleaseInfo]
-    system = release.package_system[PackageSystemInfo]
+    # A root box takes the repositories of its release rather than the release, because the release
+    # depends on its root box.
+    release = ctx.attrs.release[OsReleaseInfo] if ctx.attrs.release != None else None
+    universe = release.repository_universe if release != None else ctx.attrs.repository_universe
+    package_system = universe[RepositoryUniverseInfo].package_system
+    system = package_system[PackageSystemInfo]
     repositories = select_repositories(
-        release.repository_universe,
+        universe,
         ctx.attrs.enable_repository_groups,
         ctx.attrs.disable_repository_groups,
     )
     configured_repositories = _configure_repositories(ctx, repositories, None)
-    names = _effective_packages(ctx.attrs.packages, ctx.attrs.parent, release.package_system)
+    parent = ctx.attrs.parent
+    names = _effective_packages(ctx.attrs.packages, parent, package_system)
 
-    resolver_box = None
-    if ctx.attrs.resolver_box != None:
-        resolver_box = ctx.attrs.resolver_box[BoxInfo]
+    resolver_dep = ctx.attrs.resolver_box
+    if resolver_dep == None and release != None:
+        resolver_dep = release.box
+    resolver_box = resolver_dep[BoxInfo] if resolver_dep != None else None
 
     transaction = ctx.attrs.lock
     if transaction == None:
-        if ctx.attrs.resolver_box == None:
+        if resolver_dep == None:
             fail("box: a root box has nothing to resolve with and requires a committed lock")
-        resolve = _solve(ctx, release, ctx.attrs.resolver_box, configured_repositories, names, ctx.attrs._arch)
+        resolve = _solve(ctx, package_system, resolver_dep, configured_repositories, names, ctx.attrs._arch)
         transaction = ctx.actions.declare_output("transaction.json")
         resolve.add("--out", transaction.as_output())
         ctx.actions.run(resolve, category = "box_resolve", allow_cache_upload = True)
@@ -183,7 +190,6 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     repository_labels = _repository_labels(repositories)
     lower = []
     installed = None
-    parent = ctx.attrs.parent
     if parent != None and ctx.attrs.layered and parent[_BoxRootInfo].repositories == repository_labels:
         lower = parent[BoxInfo].layers
         installed = parent[_BoxRootInfo].transaction
@@ -251,7 +257,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
         info,
         root,
         relaxed,
-        BoxPackagesInfo(packages = names, package_system = release.package_system),
+        BoxPackagesInfo(packages = names, package_system = package_system),
     ]
 
 _box = rule(
@@ -271,11 +277,16 @@ _box = rule(
             doc = "top-level box package names used to resolve the effective transaction",
         ),
         "parent": attrs.option(attrs.dep(providers = [BoxInfo, BoxPackagesInfo]), default = None, doc = "box whose packages this one adds to"),
-        "release": attrs.dep(providers = [OsReleaseInfo], doc = "base OS release for the box root"),
+        "release": attrs.option(attrs.dep(providers = [OsReleaseInfo]), default = None, doc = "base OS release for the box root"),
+        "repository_universe": attrs.option(
+            attrs.dep(providers = [RepositoryUniverseInfo]),
+            default = None,
+            doc = "the repositories of a root box, which can't take its release",
+        ),
         "resolver_box": attrs.option(
             attrs.exec_dep(providers = [BoxInfo]),
             default = None,
-            doc = "predecessor box used to resolve and install this box's transaction",
+            doc = "predecessor box used to resolve and install this box's transaction, by default the root box of `release`",
         ),
         # The box's incoming transition configures it for the build host, so this is the host's architecture.
         "_arch": attrs.string(default = architecture.configured(), doc = "the resolution arch"),
@@ -288,6 +299,7 @@ _box = rule(
 
 def _box_lock_impl(ctx: AnalysisContext) -> list[Provider]:
     release = ctx.attrs.release[OsReleaseInfo]
+    resolver_box = ctx.attrs.resolver_box if ctx.attrs.resolver_box != None else release.box
     repositories = _configure_repositories(
         ctx,
         select_repositories(
@@ -300,7 +312,7 @@ def _box_lock_impl(ctx: AnalysisContext) -> list[Provider]:
     packages = _effective_packages(ctx.attrs.packages, ctx.attrs.parent, release.package_system)
     return [
         DefaultInfo(),
-        RunInfo(args = _solve(ctx, release, ctx.attrs.resolver_box, repositories, packages, ctx.attrs._arch)),
+        RunInfo(args = _solve(ctx, release.package_system, resolver_box, repositories, packages, ctx.attrs._arch)),
         BoxPackagesInfo(packages = packages, package_system = release.package_system),
     ]
 
@@ -317,7 +329,11 @@ _box_lock = rule(
         "packages": attrs.list(attrs.string(), doc = "the box's top-level package names"),
         "parent": attrs.option(attrs.dep(providers = [BoxPackagesInfo]), default = None, doc = "lock of the parent box for the same architecture"),
         "release": attrs.dep(providers = [OsReleaseInfo], doc = "base OS release for the box root"),
-        "resolver_box": attrs.exec_dep(providers = [BoxInfo], doc = "box the solver runs in"),
+        "resolver_box": attrs.option(
+            attrs.exec_dep(providers = [BoxInfo]),
+            default = None,
+            doc = "box the solver runs in, by default the root box of `release`",
+        ),
         # Private: the incoming transition decides.
         "_arch": attrs.string(default = architecture.configured(), doc = "the architecture to resolve for"),
     },
@@ -331,12 +347,13 @@ _DEFAULT_PACKAGES = ["python3"]
 def new(
     name: str,
     packages: list[str] | Select,
-    release: str,
+    release: str | Select,
     architectures: list[str] = [],
     disable_repository_groups: list[str] | None = None,
     enable_repository_groups: list[str] | None = None,
-    parent: str | None = None,
+    parent: str | Select | None = None,
     resolver_box: str | None = None,
+    repository_universe: str | None = None,
     distro: str | None = None,
     root: bool = False,
     labels: list[str] = [],
@@ -345,9 +362,10 @@ def new(
 ) -> None:
     """Declare a box rooted in one base OS release.
 
-    A release names its own box beside it, so an unset `resolver_box` resolves through that sibling.
-    A `root` box has none: it bootstraps by extracting its transaction, which is how the box a
-    release names is built in the first place.
+    A release names its root box, so a box without `resolver_box` resolves through the root box of its
+    release. A `root` box has none: it bootstraps by extracting its transaction, which is how the root
+    box of a release is built in the first place. The release depends on its root box, so a root box
+    takes the release's `repository_universe` as well as `release`, which its locks resolve with.
 
     A box with a `parent` adds its own `packages` on top of that box's. Both must use the same
     package system. When both are installed from the same repositories, the box is a layer over
@@ -361,6 +379,10 @@ def new(
     The box is configured for the host and the distribution of its release, so a
     `distribution.select()` in `packages` picks the entry of the release, or else of its family.
     `distro` names the distribution target, by default the one beside `release`.
+
+    A box whose `release` is a `select()` on the distribution is configured for the distribution of
+    the target that depends on it. A target without a distribution, such as an `exec_dep`, gets the
+    catalog's default distribution. Such a box keeps no locks.
     """
     if not name.endswith(".box"):
         fail("box name must end with '.box': {}".format(name))
@@ -368,14 +390,18 @@ def new(
         fail("box: a root box bootstraps itself and takes no resolver_box: {}".format(name))
     if root and parent != None:
         fail("box: a root box bootstraps itself and takes no parent: {}".format(name))
-    if not root and resolver_box == None:
-        if not release.endswith(".release"):
-            fail("box: cannot derive a resolver box from release '{}'; pass resolver_box".format(release))
-        resolver_box = release.removesuffix(".release") + ".box"
-    if distro == None:
-        if not release.endswith(".release"):
-            fail("box: cannot derive a distribution from release '{}'; pass distro".format(release))
-        distro = release.removesuffix(".release") + ".distribution"
+    if root != (repository_universe != None):
+        fail("box: a root box, and only a root box, takes repository_universe: {}".format(name))
+    if isinstance(release, Select):
+        if resolver_box != None or distro != None or architectures:
+            fail("box: a box whose release is a select() takes no resolver_box, distro or architectures: {}".format(name))
+        incoming_transition = "tine//distribution:release.host"
+    else:
+        if distro == None:
+            if not release.endswith(".release"):
+                fail("box: cannot derive a distribution from release '{}'; pass distro".format(release))
+            distro = release.removesuffix(".release") + ".distribution"
+        incoming_transition = distro + ".host"
     stem = name.removesuffix(".box")
     packages = _DEFAULT_PACKAGES + packages
 
@@ -389,14 +415,15 @@ def new(
     _box(
         name = name,
         packages = packages,
-        release = release,
+        release = None if root else release,
+        repository_universe = repository_universe,
         resolver_box = resolver_box,
         disable_repository_groups = disable_repository_groups,
         enable_repository_groups = enable_repository_groups,
         parent = parent,
         lock = architecture.select(locks) if locks else None,
         labels = labels,
-        incoming_transition = distro + ".host",
+        incoming_transition = incoming_transition,
         # A box is built for the host. Without a lock for the host's architecture, it cannot be built.
         target_compatible_with = distribution.serves(name, architectures) if architectures else [],
         visibility = visibility,
@@ -418,7 +445,7 @@ def new(
             name = "{}.lock.{}".format(name, arch),
             packages = packages,
             release = release,
-            resolver_box = ":" + name if root else resolver_box,
+            resolver_box = resolver_box,
             disable_repository_groups = disable_repository_groups,
             enable_repository_groups = enable_repository_groups,
             parent = "{}.lock.{}".format(parent, arch) if parent != None else None,

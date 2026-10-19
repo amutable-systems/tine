@@ -442,11 +442,17 @@ Why repository ownership matters:
 
 ### Box bootstrap
 
-A box is a reproducible execution environment built from one base OS release. It supplies its package
-system's own resolver, installer and indexer, Python, core utilities, sandbox dependencies, and currently
-the image-building tools; a VM runner takes its box explicitly, so only a box asked for one carries
-that stack. The base release identifies where this userspace came from, not the only release it may
-operate on.
+A box is a reproducible execution environment built from one base OS release. A family macro declares the
+root box of each release. `<family>.<release>.box` contains the package system's own resolver, installer and
+indexer, Python, core utilities and sandbox dependencies, and it resolves every other box of the release.
+`tine//distribution:tools.box` adds the image-building tools, from one list that selects per family where
+names differ. One declaration serves every release. The tools box takes the distribution of the target that
+depends on it, and selects the release of that distribution from `catalog//:releases.bzl`. It adds its
+packages to the root box of that release. A dependency without a distribution, such as an `exec_dep`, gets
+the tools box of the catalog's default release. The release's package manager runs in the tools box of its
+release. The tools box resolves during the build, so a new tool leaves the root box and its lock alone. A VM
+runner takes its box explicitly, so only a tools box built from a Fedora release contains that stack. The
+base release identifies where this userspace came from, not the only release it may operate on.
 
 A box runs on the build host, so it is an execution dependency: a rule takes it with `attrs.exec_dep`, a
 command line with `$(location_exec)`. A target named on the command line or reached as an ordinary
@@ -497,7 +503,7 @@ the way a predecessor box verifies a successor's packages. That catches an unsig
 and a wrong key, but the verifier itself was extracted unchecked, so a root box is not a root of trust
 independent of the packages it bootstraps from.
 
-Both catalog boxes are root boxes.
+The `<family>.<release>.box` of every release is a root box.
 
 A first lock is the one thing a root box cannot produce for itself, since resolving needs a box to
 resolve in. Pointing the new box's `resolver_box` at an existing box that can run the new package
@@ -651,10 +657,10 @@ scrubs libdnf5 and ldconfig bookkeeping. Documentation and language filtering ar
 `_install_langs`. A locally built package keeps the `<directory>/<file>` location convention that maps it
 back to the input directory it came from.
 
-The default catalog declares Fedora 44 and Rawhide as separate OS releases whose package managers solve
-against their own repositories while sharing `fedora.rawhide.box`, both from the one `fedora_release()`
-bundle. It offers no CentOS Stream release: nothing publishes immutable CentOS Stream composes, so its
-pinned metadata stops resolving the moment the mirror advances, which is not a repository this can pin.
+The default catalog declares Fedora Rawhide from the `fedora_release()` bundle, which also declares the
+release's root box. Another Fedora release gets a root box of its own. It offers no CentOS Stream release:
+nothing publishes immutable CentOS Stream composes, so its pinned metadata stops resolving the moment the
+mirror advances, which is not a repository this can pin.
 
 #### Import and build flow
 
@@ -1094,15 +1100,15 @@ target being built decides and everything under it follows: an image's `parent` 
 distribution of its own, it is whatever the leaf pulling it in is. One declaration therefore serves every
 distribution, and only the alias names are per-distribution.
 
-A release serves a list of architectures, and Arch serves only x86_64. Its repositories and release
-resolve `target_compatible_with` to `select_incompatible()` for any other architecture. The release's box
-is built for the host, so its box and package manager are incompatible on a host of another architecture.
-On such a host, the release serves no architecture at all. Where a release serves no architecture, the
-transition leaves the distribution unset, and `compatibility()` makes every distributed target and alias
-incompatible. A build of `//...` then skips the Arch targets for arm64 and on an arm64 host. A target
-that runs in the Arch box, such as a type check against it, has no execution platform on an arm64 host.
-Buck reports that as an error, so a whole-cell run there leaves out every target that depends on the Arch
-box directly.
+A release serves a list of architectures, and Arch serves only x86_64. Its repositories and release resolve
+`target_compatible_with` to `select_incompatible()` for any other architecture. The release's root box is
+built for the host, so the root box and the release's package manager are incompatible on a host of another
+architecture. On such a host, the release serves no architecture at all. Where a release serves no
+architecture, the transition leaves the distribution unset, and `compatibility()` makes every distributed
+target and alias incompatible. A build of `//...` then skips the Arch targets for arm64 and on an arm64 host.
+A target that runs in the Arch root box, such as a type check against it, has no execution platform on an
+arm64 host. Buck reports that as an error, so a whole-cell run there leaves out every target that depends on
+the Arch root box directly.
 
 What varies between distributions stays where it belongs. A release names the packages a bootable system of
 its own family needs, so an image asks for the `bootable` package set rather than for concrete package names.

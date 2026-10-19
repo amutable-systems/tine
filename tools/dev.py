@@ -90,9 +90,9 @@ def _universe() -> str:
     """The query for everything a whole-cell run asks for on this host.
 
     The catalog serves Arch for x86_64 only. A build for arm64, and any build on an arm64 host, skips
-    the Arch catalog and every target that chooses Arch. A target that runs in the Arch box, such as a
+    the Arch catalog and every target that chooses Arch. A target that runs in an Arch box, such as a
     type check against it, has no execution platform on an arm64 host, and Buck reports that as an
-    error. So leave out every target that depends on the Arch box directly.
+    error. So leave out every target that depends on an Arch box directly.
     """
     cells = "(tine//... + catalog//...)"
     if platform.machine() == "x86_64":

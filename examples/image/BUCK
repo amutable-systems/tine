@@ -241,7 +241,7 @@ image.vm(
     },
     # The runner's box is independent of the image's, so every distribution boots under the
     # same harness and the VM stack is built once rather than per release.
-    box = "catalog//:fedora.rawhide.box",
+    box = "tine//distribution:tools.box",
     image = ":boot-demo",
     extensions = [":demo-confext", ":demo-ext"],
     portables = [":demo-portable", ":demo-portable-ext"],
@@ -290,7 +290,7 @@ tests.vm_smoke(
 box.sh_test(
     name = "virtual-size-test",
     labels = ["image"],
-    box = "@catalog//:fedora.rawhide.box",
+    box = "tine//distribution:tools.box",
     script = """
 raw=$1
 shift
@@ -493,7 +493,7 @@ box.sh_test(
 box.sh_test(
     name = "uki-splash-test",
     labels = ["image"],
-    box = "@catalog//:fedora.rawhide.box",
+    box = "tine//distribution:tools.box",
     script = 'test "$(ukify inspect "$1" | grep -cx ".splash:")" = "$2"',
     args = ["$(location :boot-demo[boot][uki])"] + distribution.select({"DEFAULT": ["0"], "arch": ["1"]}),
     **distribution.distributed("uki-splash-test"),
@@ -504,7 +504,7 @@ box.sh_test(
 box.sh_test(
     name = "uki-microcode-test",
     labels = ["image"],
-    box = "@catalog//:fedora.rawhide.box",
+    box = "tine//distribution:tools.box",
     test = "uki-microcode.sh",
     args = ["$(location :boot-demo.fedora[boot][uki])"] + architecture.select({name: [name] for name in ARCHITECTURES}),
 )

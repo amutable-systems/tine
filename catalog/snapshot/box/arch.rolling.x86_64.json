@@ -152,14 +152,6 @@
     "url": "https://archive.archlinux.org/repos/2026/10/24/core/os/x86_64/device-mapper-2.03.43-2-x86_64.pkg.tar.zst"
   },
   {
-    "package_id": "dosfstools-4.2-5",
-    "repo": "arch.rolling.core.repository",
-    "pkg_checksum": "03a7d8bd939a80418d9744afad00c22b91c4b411bdf9662744647c383a0ec503",
-    "source": "repo",
-    "size": 138775,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/core/os/x86_64/dosfstools-4.2-5-x86_64.pkg.tar.zst"
-  },
-  {
     "package_id": "e2fsprogs-1.47.4-1",
     "repo": "arch.rolling.core.repository",
     "pkg_checksum": "a78971bbbe0ae89d15a0cbbc952e64462edc5a6f991c1bb9cefd0539ca548bd4",
@@ -374,14 +366,6 @@
     "source": "repo",
     "size": 1607376,
     "url": "https://archive.archlinux.org/repos/2026/10/24/core/os/x86_64/leancrypto-1.9.1-1-x86_64.pkg.tar.zst"
-  },
-  {
-    "package_id": "libaio-0.3.113-5",
-    "repo": "arch.rolling.core.repository",
-    "pkg_checksum": "e746fdedefa9987ad06e918af78976917aba780be8ac51d22dcb9ded324a84ab",
-    "source": "repo",
-    "size": 23948,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/core/os/x86_64/libaio-0.3.113-5-x86_64.pkg.tar.zst"
   },
   {
     "package_id": "libarchive-3.8.10-1",
@@ -832,14 +816,6 @@
     "url": "https://archive.archlinux.org/repos/2026/10/24/core/os/x86_64/systemd-libs-262.1-1-x86_64.pkg.tar.zst"
   },
   {
-    "package_id": "systemd-ukify-262.1-1",
-    "repo": "arch.rolling.core.repository",
-    "pkg_checksum": "1f05e946ca47e78f3df2cab757148e2c5cb5fc9014dc30339b77a9656dc4c25d",
-    "source": "repo",
-    "size": 40465,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/core/os/x86_64/systemd-ukify-262.1-1-x86_64.pkg.tar.zst"
-  },
-  {
     "package_id": "tpm2-tss-4.2.0-2",
     "repo": "arch.rolling.core.repository",
     "pkg_checksum": "7aa2a963f99bcd51e4f3b2587fa8f374a7cfa09ec65749cc9a72fa6f3ad34fdc",
@@ -896,38 +872,6 @@
     "url": "https://archive.archlinux.org/repos/2026/10/24/core/os/x86_64/zstd-1.5.7-3-x86_64.pkg.tar.zst"
   },
   {
-    "package_id": "erofs-utils-1.9.4-1",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "8074e3ce7b21cf7ffb625e5b970a1706e589187cd8a6b17f2c453c94e667fcd4",
-    "source": "repo",
-    "size": 177395,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/erofs-utils-1.9.4-1-x86_64.pkg.tar.zst"
-  },
-  {
-    "package_id": "fuse-common-3.18.3-1",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "6948976906ea830ab210401402ab849e8b5211dd34952e82a92e28a9db3a7389",
-    "source": "repo",
-    "size": 2837,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/fuse-common-3.18.3-1-x86_64.pkg.tar.zst"
-  },
-  {
-    "package_id": "fuse3-3.18.3-1",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "7171289bad5b88b01b2a2737ecc2a4b0a334a2fc045b6d74c9af57aa863c9547",
-    "source": "repo",
-    "size": 146742,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/fuse3-3.18.3-1-x86_64.pkg.tar.zst"
-  },
-  {
-    "package_id": "libdeflate-1.26-1",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "3bd3b1ca9a333ab97ebb55f760963f64817b6c4c0d54747b37187f36ab60deab",
-    "source": "repo",
-    "size": 65298,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/libdeflate-1.26-1-x86_64.pkg.tar.zst"
-  },
-  {
     "package_id": "libsysprof-capture-51.0-1",
     "repo": "arch.rolling.extra.repository",
     "pkg_checksum": "4076158a6db4137615c241a7019309f8be3ceab9e5f91291385c4fb41a7c2921",
@@ -936,84 +880,12 @@
     "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/libsysprof-capture-51.0-1-x86_64.pkg.tar.zst"
   },
   {
-    "package_id": "liburing-2.15-1",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "ceaf9e41bcd5cb06efcffbc90a39628b7a5cae5490c5e6db810a792450070ad2",
-    "source": "repo",
-    "size": 272523,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/liburing-2.15-1-x86_64.pkg.tar.zst"
-  },
-  {
     "package_id": "lmdb-0.9.35-1",
     "repo": "arch.rolling.extra.repository",
     "pkg_checksum": "50ae8083860e1ffadf4fab3c173a043fd97be41f5ceda7d2e77c528cd84d2386",
     "source": "repo",
     "size": 115659,
     "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/lmdb-0.9.35-1-x86_64.pkg.tar.zst"
-  },
-  {
-    "package_id": "mtools-1:4.0.49-1",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "d5098ea3b7d1795905aa30e83cdaac9b53e081c9c08d7b02fdc2f21a7a36f449",
-    "source": "repo",
-    "size": 218437,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/mtools-1:4.0.49-1-x86_64.pkg.tar.zst"
-  },
-  {
-    "package_id": "numactl-2.0.19-1",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "699bce74daee11fa49de93999ba4e023f132bc51a7768dec845b2979d54f367d",
-    "source": "repo",
-    "size": 84828,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/numactl-2.0.19-1-x86_64.pkg.tar.zst"
-  },
-  {
-    "package_id": "python-cffi-2.1.1-1",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "0d17d222658ddcfec97c86dcf6f0e948dd611f81ee8752a44030f77b5ed0e1d1",
-    "source": "repo",
-    "size": 306348,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/python-cffi-2.1.1-1-x86_64.pkg.tar.zst"
-  },
-  {
-    "package_id": "python-cryptography-50.0.2-1",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "755b03d4e1ca8ae6ef53abba783109f6a8aeb411f589fbd91dd578097e2755e3",
-    "source": "repo",
-    "size": 1528565,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/python-cryptography-50.0.2-1-x86_64.pkg.tar.zst"
-  },
-  {
-    "package_id": "python-pefile-2024.8.26-2",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "9e306ebe8b576a3a3f1d1db658e727253f29948d4145548d4dc3419532905fe5",
-    "source": "repo",
-    "size": 173560,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/python-pefile-2024.8.26-2-any.pkg.tar.zst"
-  },
-  {
-    "package_id": "python-pycparser-3.12-1",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "dd8f407a64445e2854ddb05235a0f372918d6e84e66499741511e11b084e6ec8",
-    "source": "repo",
-    "size": 144602,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/python-pycparser-3.12-1-any.pkg.tar.zst"
-  },
-  {
-    "package_id": "qemu-img-11.1.2-1",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "666dfe6cda552f09091c1cc03fd1143293bd25f47eee4745053efa170fc32e5c",
-    "source": "repo",
-    "size": 2314765,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/qemu-img-11.1.2-1-x86_64.pkg.tar.zst"
-  },
-  {
-    "package_id": "xxhash-0.8.4-1",
-    "repo": "arch.rolling.extra.repository",
-    "pkg_checksum": "ef60bad0552de3eb8a0e1e2a07eb1bcaceaa771a5f36401a2cf0de135ffcc72b",
-    "source": "repo",
-    "size": 108215,
-    "url": "https://archive.archlinux.org/repos/2026/10/24/extra/os/x86_64/xxhash-0.8.4-1-x86_64.pkg.tar.zst"
   },
   {
     "repo": "arch.rolling.core.repository",

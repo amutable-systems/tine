@@ -3,11 +3,14 @@
 
 """OS-release identity and its native repository universe."""
 
+load("//box:runtime.bzl", "BoxInfo")
 load(":repository.bzl", "RepositoryUniverseInfo")
 
 OsReleaseInfo = provider(
     doc = "An OS release associated with one native repository universe.",
     fields = {
+        # The root box, which resolves and installs every other box of the release.
+        "box": provider_field(Dependency),
         "package_sets": provider_field(dict[str, list[str]]),
         "package_system": provider_field(Dependency),
         "repository_universe": provider_field(Dependency),
@@ -25,6 +28,7 @@ def _os_release_impl(ctx: AnalysisContext) -> list[Provider]:
     return [
         DefaultInfo(),
         OsReleaseInfo(
+            box = ctx.attrs.box,
             package_sets = package_sets,
             package_system = universe.package_system,
             repository_universe = ctx.attrs.repository_universe,
@@ -34,6 +38,7 @@ def _os_release_impl(ctx: AnalysisContext) -> list[Provider]:
 _os_release = rule(
     impl = _os_release_impl,
     attrs = {
+        "box": attrs.dep(providers = [BoxInfo], doc = "the root box of the release"),
         "package_sets": attrs.dict(
             attrs.string(),
             attrs.list(attrs.string()),

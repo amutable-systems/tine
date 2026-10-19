@@ -75,12 +75,12 @@ for that family fails to build, and so does a box that lists a package the relea
 The catalog also lists the releases that images build for in `releases.bzl`, beside its `BUCK` file. See
 "Choosing a distribution" below.
 
-A **box** is a pinned, reproducible execution environment that runs every build action. It supplies its
-package system's own tools, Python, core utilities, and the image assembly tools; these stay in the box
-and out of the built images. Both RPM releases share `catalog//:fedora.rawhide.box`, while
-`arch.rolling` and `debian.testing` have their own. A box's base release only records where its userspace
-came from: the Rawhide box also serves Fedora 44. How a box bootstraps itself is described in
-[architecture.md](../design/architecture.md).
+A **box** is a pinned, reproducible execution environment that runs every build action. Each release has a
+root box, which its release macro declares. `<family>.<release>.box`, such as `catalog//:fedora.rawhide.box`,
+contains the package system's own tools, Python and core utilities. It resolves and installs every other box
+of the release. `tine//distribution:tools.box` adds the image assembly tools on top of the root box of the
+release that the build chooses, and images build in it. The tools stay in the box and out of the built
+images. How a box bootstraps itself is described in [architecture.md](../design/architecture.md).
 
 ## Commands
 

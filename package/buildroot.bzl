@@ -41,6 +41,7 @@ def _buildroot_impl(ctx: AnalysisContext) -> list[Provider]:
 
 _buildroot = rule(
     impl = _buildroot_impl,
+    supports_incoming_transition = True,
     attrs = {
         "package_manager": attrs.dep(providers = [PackageManagerInfo]),
         "package_set": attrs.option(

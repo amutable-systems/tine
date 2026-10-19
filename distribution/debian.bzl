@@ -3,6 +3,7 @@
 
 """The conventional Debian distribution declaration."""
 
+load("//box:defs.bzl", "box")
 load("//distribution:defs.bzl", "distribution")
 load("//package:manager.bzl", "package_manager")
 load("//package:release.bzl", "os_release")
@@ -90,13 +91,28 @@ _DEBIAN_PACKAGE_SETS = {
 _COMPONENTS = ("main", "contrib", "non-free-firmware", "non-free")
 _REQUIRED = "main"
 
+# The root box of a Debian release contains the packages that resolve, verify and install a box.
+# tine//distribution:tools.box contains everything else.
+_DEBIAN_ROOT_PACKAGES = [
+    "apt",
+    "bash",
+    "coreutils",
+    "dpkg",
+    # The relaxed sandbox binds the host's nsswitch.conf. Without libnss_systemd, getpwuid() cannot find
+    # a systemd-homed caller, and ssh-keygen aborts.
+    "libnss-systemd",
+    "libseccomp2",
+    "python3",
+    # package_system/deb/verify.py runs sqv. apt depends on sqv today, but list it explicitly.
+    "sqv",
+]
+
 def _check_name(name: str) -> None:
     if not name.startswith("debian.") or name.count(".") != 1:
         fail("debian release name must be 'debian.<suite>': {}".format(name))
 
 def debian_release(
     name: str,
-    box: str,
     architectures: list[str],
     signing_keys: dict[str, str],
     suite: str | None = None,
@@ -159,16 +175,26 @@ def debian_release(
     distribution.new(name = name + ".distribution", architectures = architectures, visibility = visibility)
     os_release(
         name = name + ".release",
-        target_compatible_with = distribution.serves(name, architectures),
+        target_compatible_with = distribution.serves(name, architectures, in_box = True),
+        box = ":" + name + ".box",
         repository_universe = ":" + name + ".repositories",
         package_sets = architecture.select({arch: _package_sets(architecture.spelling(arch, "deb"), package_set_overrides) for arch in architectures}),
+        visibility = visibility,
+    )
+    box.new(
+        name = name + ".box",
+        architectures = architectures,
+        packages = _DEBIAN_ROOT_PACKAGES,
+        release = ":" + name + ".release",
+        repository_universe = ":" + name + ".repositories",
+        root = True,
         visibility = visibility,
     )
     package_manager(
         name = name + ".package-manager",
         target_compatible_with = distribution.serves(name, architectures, in_box = True),
         release = ":" + name + ".release",
-        box = box,
+        box = "tine//distribution:tools.box",
         enable_repository_groups = enable_repository_groups,
         disable_repository_groups = disable_repository_groups,
         additional_repositories = additional_repositories,

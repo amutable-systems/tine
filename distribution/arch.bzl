@@ -3,6 +3,7 @@
 
 """The conventional Arch Linux distribution declaration."""
 
+load("//box:defs.bzl", "box")
 load("//distribution:defs.bzl", "distribution")
 load("//package:manager.bzl", "package_manager")
 load("//package:release.bzl", "os_release")
@@ -55,13 +56,27 @@ _ARCH_PACKAGE_SETS = {
 # Arch has no numbered releases; a catalog pins a date in the archive instead.
 _COMPONENTS = ("core", "extra", "multilib")
 
+# The root box of an Arch release contains the packages that resolve, verify and install a box.
+# tine//distribution:tools.box contains everything else. Extracting alpm packages needs no package
+# tooling, so the root box bootstraps its own pacman.
+_ARCH_ROOT_PACKAGES = [
+    # The keyring driver takes the packagers' keys and the main keys' certifications from here.
+    "archlinux-keyring",
+    "bash",
+    "coreutils",
+    "libseccomp",
+    "pacman",
+    # The relaxed sandbox binds the host's nsswitch.conf. Without libnss_systemd, getpwuid() cannot find
+    # a systemd-homed caller, and ssh-keygen aborts.
+    "systemd-libs",
+]
+
 def _check_name(name: str) -> None:
     if not name.startswith("arch.") or name.count(".") != 1:
         fail("arch release name must be 'arch.<release>': {}".format(name))
 
 def arch_release(
     name: str,
-    box: str,
     architectures: list[str],
     signing_keys: dict[str, str],
     archive_snapshot: str | None = None,
@@ -125,16 +140,26 @@ def arch_release(
     package_sets.update(package_set_overrides)
     os_release(
         name = name + ".release",
-        target_compatible_with = distribution.serves(name, architectures),
+        target_compatible_with = distribution.serves(name, architectures, in_box = True),
+        box = ":" + name + ".box",
         repository_universe = ":" + name + ".repositories",
         package_sets = package_sets,
+        visibility = visibility,
+    )
+    box.new(
+        name = name + ".box",
+        architectures = architectures,
+        packages = _ARCH_ROOT_PACKAGES,
+        release = ":" + name + ".release",
+        repository_universe = ":" + name + ".repositories",
+        root = True,
         visibility = visibility,
     )
     package_manager(
         name = name + ".package-manager",
         target_compatible_with = distribution.serves(name, architectures, in_box = True),
         release = ":" + name + ".release",
-        box = box,
+        box = "tine//distribution:tools.box",
         enable_repository_groups = enable_repository_groups,
         disable_repository_groups = disable_repository_groups,
         additional_repositories = additional_repositories,

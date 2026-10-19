@@ -55,10 +55,10 @@ Two things do cross into the build that are worth pointing out:
 
 ## Prerequisites
 
-The build side needs nothing from you for an image built from a Fedora release: tine's catalog installs
-`pkcs11-provider` and `p11-kit-client` into its Fedora box. Signing runs in the box of the image's
-package manager. tine's Arch and Debian boxes contain neither package, so an image built from an Arch or
-Debian release can't sign with a token. On the host holding the key:
+The build side needs nothing from you for an image built from a Fedora release: tine installs
+`pkcs11-provider` and `p11-kit-client` into the tools box of a Fedora release. Signing runs in the box of the
+image's package manager. The tools box of an Arch or Debian release contains neither package, so an image
+built from an Arch or Debian release can't sign with a token. On the host holding the key:
 
 - `p11-kit-server` for the `p11-kit server` subcommand and its systemd units.
 - your backend's module and its tooling: `tpm2-pkcs11` and `tpm2-pkcs11-tools`, or `opensc`, or `softhsm`.
