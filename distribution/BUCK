@@ -4,11 +4,27 @@
 """The axis an image's distribution is selected on."""
 
 load("@prelude//:rules.bzl", "constraint_setting", "constraint_value")
+load(":defs.bzl", "FAMILIES")
 
 constraint_setting(
     name = "distribution",
     visibility = ["PUBLIC"],
 )
+
+# Distributions of one family name their packages alike, so a package list selects on the family.
+constraint_setting(
+    name = "family",
+    visibility = ["PUBLIC"],
+)
+
+[
+    constraint_value(
+        name = family,
+        constraint_setting = ":family",
+        visibility = ["PUBLIC"],
+    )
+    for family in FAMILIES
+]
 
 # No platform ever carries this value, so requiring it is how a target says it cannot be built.
 # It exists to be named in an error: an image asks for it wherever no distribution has been chosen,

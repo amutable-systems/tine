@@ -3,10 +3,10 @@
 
 """Declaring a distribution, and pointing a target at one.
 
-A distribution is one value of the `tine//distribution:distribution` constraint plus the incoming
-transition that selects it. What a value *means* is not tine's business: a catalog declares one per
-release it offers, and a consumer maps values to package managers with an ordinary `select()`, so
-this cell never has to know which distributions exist.
+A distribution is one value of the `tine//distribution:distribution` constraint, the value of its
+`tine//distribution:family` constraint, and the incoming transition that sets the two constraints.
+The catalog declares one distribution per release in its root package, so the release name
+`fedora.rawhide` names the label `catalog//:fedora.rawhide.distribution`.
 
 The transition sets the constraint only where nothing has set it yet. The target being built is
 therefore the one that decides, and every image below it, `parent` chain included, follows: a base
@@ -17,8 +17,13 @@ distribution does not serve, the transition leaves the constraint unset.
 load("@prelude//:rules.bzl", "constraint_value")
 load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 
+# The families that tine declares releases for. Each one is a value of `tine//distribution:family`.
+FAMILIES = ["arch", "debian", "fedora"]
+
 def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
     value = ctx.attrs.constraint[ConstraintValueInfo]
+    family_value = ctx.attrs.family[ConstraintValueInfo]
+    own = {value.setting.label: value, family_value.setting.label: family_value}
     served = [cpu.label for configuration in ctx.attrs.architectures for cpu in configuration[ConfigurationInfo].constraints.values()]
 
     def served_on(constraints: dict[TargetLabel, ConstraintValueInfo]) -> bool:
@@ -32,7 +37,7 @@ def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
         # A build of `//...` then skips such a target instead of failing on the missing packages.
         if value.setting.label in constraints or not served_on(constraints):
             return platform
-        constraints[value.setting.label] = value
+        constraints.update(own)
         return PlatformInfo(
             label = platform.label,
             configuration = ConfigurationInfo(
@@ -42,20 +47,23 @@ def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
         )
 
     # One target answers every question asked of a distribution: it is the key a `select()`
-    # branches on, the transition that puts it there, and a platform to build against. The
-    # configuration stays the constraint alone, so a `select()` on it matches whatever else the
-    # platform carries; the platform adds it to the base one, so choosing a distribution does not
-    # drop the cpu and os the base platform brought. A base cpu the distribution does not serve gets
-    # no distribution, as under the transition.
+    # branches on, the transition that puts it there, and a platform to build against.
+    # The configuration contains only the distribution and family constraints. A `select()` key of
+    # the distribution therefore matches whatever else the platform contains. The key also refines the
+    # key of its family, so Buck picks the distribution's branch when a `select()` has a key for the
+    # distribution and a key for its family.
+    # The platform adds the distribution and family constraints to the base platform. Choosing a
+    # distribution therefore keeps the cpu and os of the base platform. A base cpu the distribution
+    # does not serve gets neither constraint, as under the transition.
     base = ctx.attrs.base[PlatformInfo].configuration
     return [
         DefaultInfo(),
-        ConfigurationInfo(constraints = {value.setting.label: value}, values = {}),
+        ConfigurationInfo(constraints = own, values = {}),
         TransitionInfo(impl = select_distribution),
         PlatformInfo(
             label = str(ctx.label.raw_target()),
             configuration = ConfigurationInfo(
-                constraints = base.constraints | ({value.setting.label: value} if served_on(base.constraints) else {}),
+                constraints = base.constraints | (own if served_on(base.constraints) else {}),
                 values = base.values,
             ),
         ),
@@ -67,14 +75,23 @@ _distribution = rule(
         "architectures": attrs.list(attrs.dep(providers = [ConfigurationInfo]), doc = "the cpu configuration of each architecture the distribution serves"),
         "base": attrs.dep(providers = [PlatformInfo], default = "tine//platforms:default"),
         "constraint": attrs.dep(providers = [ConstraintValueInfo]),
+        "family": attrs.dep(providers = [ConstraintValueInfo]),
     },
     is_configuration_rule = True,
 )
 
 def new(name: str, architectures: list[str], visibility: list[str] | None = None) -> None:
-    """Declare a distribution of `architectures` and the constraint value `select()` keys on."""
+    """Declare a distribution of `architectures` in the family that its name starts with, and the constraint value `select()` keys on."""
     if not name.endswith(".distribution"):
         fail("distribution name must end with '.distribution': {}".format(name))
+    family = name.partition(".")[0]
+    if family not in FAMILIES:
+        fail("distribution {}: unknown family {!r}; tine knows {}".format(name, family, FAMILIES))
+    # `distribution.select()` and `distribution.set_for_package()` turn a release name such as
+    # `fedora.43` into the label `catalog//:fedora.43.distribution`. A release name can't refer to a
+    # distribution declared anywhere else.
+    if get_cell_name() != "catalog" or package_name() != "":
+        fail("distribution {}: declare it in the root package of the catalog cell, not in {}//{}".format(name, get_cell_name(), package_name()))
     constraint_value(
         name = name + ".constraint",
         constraint_setting = "tine//distribution:distribution",
@@ -88,19 +105,37 @@ def new(name: str, architectures: list[str], visibility: list[str] | None = None
         # serves no architecture there.
         architectures = configurations if architecture.host() in architectures else [],
         constraint = ":" + name + ".constraint",
+        family = "tine//distribution:" + family,
         visibility = visibility,
     )
 
 _DISTRIBUTIONS = "tine.distributions"
 
+def _release(release: str, role: str) -> str:
+    """Return the label of the target `role` of a catalog release, such as `fedora.rawhide`."""
+    family, _, version = release.partition(".")
+    if family not in FAMILIES or not version:
+        fail("{!r} is not a release; a release is named `<family>.<version>`, and the families are {}".format(release, FAMILIES))
+    return "catalog//:{}.{}".format(release, role)
+
+def _describe(name: str, described: dict[str, str]) -> dict[str, str]:
+    if "release" not in described:
+        fail("distribution {} names no release of the catalog, such as `fedora.rawhide`: {}".format(name, described))
+    if "distribution" in described:
+        fail("distribution {}: the release names the distribution, so `distribution` cannot be set: {}".format(name, described))
+    release = described["release"]
+    return {
+        "distribution": _release(release, "distribution"),
+        "package_manager": _release(release, "package-manager"),
+    } | described
+
 def set_for_package(distributions: dict[str, dict[str, str]]) -> None:
     """Declare, for one package and everything under it, which distributions its images serve.
 
-    Each entry names one distribution and describes it. Only the `distribution` key, the label of
-    the distribution target, is tine's business; the rest is whatever the package needs to know per
-    distribution, such as which package manager to solve with, and is read back with
-    `distribution.for_package()`. Declaring them here rather than in a BUCK file is what leaves one
-    place to add a distribution.
+    Each entry names one distribution of the package. Its `release` key names a release of the
+    catalog, such as `fedora.rawhide`. Its `package_manager` key defaults to the release's package
+    manager. The rest is whatever the package needs to know per distribution, and is read back with
+    `distribution.for_package()`, which also returns the `distribution` label of the release.
 
     Every image rule then defaults its `target_compatible_with` to these, so a build that has chosen
     one of them resolves, `//...` skips the rest, and naming a target directly without choosing
@@ -108,27 +143,31 @@ def set_for_package(distributions: dict[str, dict[str, str]]) -> None:
     up forgetting, becoming a target that is itself fine but depends on something incompatible,
     which buck reports as an error rather than a skip.
     """
-    for name, described in distributions.items():
-        if "distribution" not in described:
-            fail("distribution {} does not name a distribution target: {}".format(name, described))
-    write_package_value(_DISTRIBUTIONS, distributions, overwrite = True)
+    write_package_value(
+        _DISTRIBUTIONS,
+        {name: _describe(name, described) for name, described in distributions.items()},
+        overwrite = True,
+    )
 
 def for_package() -> dict[str, dict[str, str]]:
     """What this package declared, keyed by the name it calls each distribution."""
     return read_package_value(_DISTRIBUTIONS) or {}
 
-# `distribution.select`; a def of that name would shadow the builtin it wraps.
-def by_distribution(values: dict[str, typing.Any], default = []):
-    """A `select()` over the package's distributions, `default` where one has no entry.
+def _condition(key: str) -> str:
+    if key == "DEFAULT":
+        return key
+    if key in FAMILIES:
+        return "tine//distribution:" + key
+    return _release(key, "distribution")
 
-    Keyed by the names the PACKAGE file gives them rather than by distribution labels, so a package
-    list or a target that differs per distribution says which by the name the package already uses.
+# `distribution.select`; a def of that name would shadow the builtin it wraps.
+def by_distribution(values: dict[str, typing.Any]) -> Select:
+    """A `select()` keyed by family, such as `fedora`, by catalog release, such as `fedora.43`, or by `DEFAULT`.
+
+    Buck picks a release's key over the key of its family. Buck fails to configure a target that
+    matches no key.
     """
-    declared = for_package()
-    for name in values:
-        if name not in declared:
-            fail("unknown distribution {!r}; the PACKAGE file declares {}".format(name, sorted(declared)))
-    return select({described["distribution"]: values.get(name, default) for name, described in declared.items()})
+    return select({_condition(key): value for key, value in values.items()})
 
 _UNCHOSEN = "tine//distribution:no-distribution-chosen"
 

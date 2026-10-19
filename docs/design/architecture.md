@@ -319,8 +319,8 @@ so the box builds in one invocation without mutating the source tree. Its packag
 when its authored policy, resolver box, or pinned repository inputs change.
 
 `tine buck run tine//tools:refresh-catalog` refreshes the `catalog//` cell in several
-phases. Pass another catalog package after `--`, for example
-`tine buck run tine//tools:refresh-catalog -- my_project//catalog`:
+phases. Pass another package of repositories and boxes after `--`, for example
+`tine buck run tine//tools:refresh-catalog -- my_project//boxes`:
 
 0. With `--advance`, advance every repository pinned to a mirror that publishes snapshots, by rewriting
    the pin in the declaration. A remote repository rule owns its own pin arguments and carries them as metadata under a
@@ -1069,17 +1069,17 @@ zero rather than reconstructed. SELinux labels are not currently produced.
 ### Selecting a distribution
 
 Which distribution an image is built from is a configuration, and the target carries it.
-`tine//distribution` owns one constraint setting; a catalog release declares one value of it beside its
-other role targets, as `<family>.<release>.distribution`. That single target answers both questions asked
-of a distribution: it is the key a `select()` branches on, and it is the incoming transition that puts the
-value in place. Nothing in this cell knows which distributions exist, because a consumer maps values to
-package managers itself:
+`tine//distribution` declares two constraint settings, `distribution` and `family`. A catalog release
+declares one value of the distribution setting beside its other role targets, as
+`<family>.<release>.distribution`, and that target also sets the value of its family. The target is the key a
+`select()` branches on, and it is the incoming transition that sets the two values. A package maps
+releases to package managers with `distribution.select()`:
 
 ```Starlark
 package.manager(
     name = "image.package-manager",
-    base = select({
-        "catalog//:<family>.<release>.distribution": "catalog//:<family>.<release>.package-manager",
+    base = distribution.select({
+        "<family>.<release>": "catalog//:<family>.<release>.package-manager",
     }),
 )
 ```
@@ -1102,9 +1102,16 @@ that runs in the Arch box, such as a type check against it, has no execution pla
 Buck reports that as an error, so a whole-cell run there leaves out every target that depends on the Arch
 box directly.
 
-What varies between distributions stays where it belongs. A release names the packages a bootable system
-of its own family needs, so an image asks for the `bootable` package set rather than for concrete package
-names. Where a genuine difference remains, it is an ordinary select on the same constraint.
+What varies between distributions stays where it belongs. A release names the packages a bootable system of
+its own family needs, so an image asks for the `bootable` package set rather than for concrete package names.
+Where a genuine difference remains, `distribution.select()` keys it by family or by release. Every
+distribution also sets its value of the `tine//distribution:family` constraint, so a `fedora` key matches
+every Fedora release. Buck picks a release key such as `fedora.43` over the `fedora` key, because the
+configuration of the release's distribution contains the family constraint as well. `distribution.select()`
+turns the release key into `catalog//:fedora.43.distribution`. `distribution.new()` fails for a distribution
+outside the root package of the catalog cell, so every release's distribution has that label. A select
+never reads the names in a package's table. A key such as `fedora` therefore always means the family,
+whatever a package calls its distributions.
 
 Nothing supplies a default. A target declared for no distribution in particular names none of them in
 its `select()`, and is `target_compatible_with` a value no platform carries wherever none was chosen,
