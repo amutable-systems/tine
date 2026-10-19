@@ -14,6 +14,7 @@ the metadata written beside it. That is the whole reason `image_artifacts` assem
 from a dynamic action: everything else in it is known while the graph is still being built.
 """
 
+load("//distribution:defs.bzl", "distribution")
 load(":ddi.bzl", "PartitionInfo")
 load(":image.bzl", "ImageInfo", "image_metadata_subtargets")
 
@@ -103,7 +104,7 @@ def _image_artifacts_impl(ctx: AnalysisContext) -> list[Provider]:
     )
     return [DefaultInfo(default_output = directory)]
 
-image_artifacts = rule(
+_image_artifacts = rule(
     impl = _image_artifacts_impl,
     attrs = {
         "targets": attrs.list(
@@ -111,4 +112,9 @@ image_artifacts = rule(
             doc = "the targets whose published artifacts make up the release",
         ),
     },
+    supports_incoming_transition = True,
 )
+
+def image_artifacts(name: str, distro: str | None = None, visibility: list[str] | None = None, **kwargs) -> None:
+    """Gather the published artifacts of `targets`, once per distribution its package serves."""
+    _image_artifacts(name = name, **(distribution.distributed(name, distro, visibility) | kwargs))
