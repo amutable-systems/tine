@@ -134,6 +134,8 @@ box.new(
         "cryptsetup",
         "dosfstools",
         "mtools",
+        # An image's qcow2 subtarget runs qemu-img in the box of the image's package manager.
+        "qemu-img",
         "zstd",
     ],
     release = ":arch.rolling.release",
@@ -177,6 +179,8 @@ box.new(
         # the install skips recommended packages.
         "python3-cryptography",
         "python3-pefile",
+        # An image's qcow2 subtarget runs qemu-img in the box of the image's package manager.
+        "qemu-utils",
         # package_system/deb/verify.py runs sqv. apt depends on sqv today, but list it explicitly.
         "sqv",
         "systemd",
