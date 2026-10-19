@@ -1121,10 +1121,12 @@ Nothing supplies a default. A target declared for no distribution in particular 
 its `select()`, and is `target_compatible_with` a value no platform carries wherever none was chosen,
 so a build that has chosen one resolves, `//...` skips the rest, and naming one directly fails as
 incompatible rather than quietly picking, reporting the missing choice by name. A default
-would decide which distribution actually gets built and leave the others to rot. A package declares
-that list once in its `PACKAGE` file and every image rule defaults to it, because the failure mode of
-repeating it per target is a target that forgets: being compatible while depending on something
-incompatible is an error rather than a skip.
+would decide which distribution actually gets built and leave the others to rot. The list comes from
+`catalog//:releases.bzl`, or from a package's `PACKAGE` file where the package declares its own, and
+every image rule defaults to it. The failure mode of repeating it per target is a target that forgets:
+being compatible while depending on something incompatible is an error rather than a skip. Buck can't
+look up another package's targets while it loads a `BUCK` file, so the catalog lists its releases in a
+`.bzl` file that tine loads.
 
 This is deliberately not a buckconfig. A distribution is a property of the image, so it belongs in the
 declaration, where it is visible to `buck2 uquery`, can differ between two targets in one build, and does

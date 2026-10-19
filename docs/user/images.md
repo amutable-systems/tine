@@ -72,6 +72,9 @@ distribution.default_release("debian.testing")
 A tine box installs the packages it lists for the default release's family. A box that lists no packages
 for that family fails to build, and so does a box that lists a package the release does not contain.
 
+The catalog also lists the releases that images build for in `releases.bzl`, beside its `BUCK` file. See
+"Choosing a distribution" below.
+
 A **box** is a pinned, reproducible execution environment that runs every build action. It supplies its
 package system's own tools, Python, core utilities, and the image assembly tools; these stay in the box
 and out of the built images. Both RPM releases share `catalog//:fedora.rawhide.box`, while
@@ -1091,8 +1094,39 @@ nor the rules underneath. The mechanism is described in
 The examples deliberately have no default. `//examples/image:boot-demo` is declared for no distribution
 in particular, so building it by that name fails as incompatible and `//examples/image/...` skips it;
 `:boot-demo.fedora`, `:boot-demo.arch` and `:boot-demo.debian` are what build. A default would make
-whichever distribution it named the only one anybody builds, and the others would rot. A package gets
-that behaviour by saying once, in its `PACKAGE` file, which distributions its images serve:
+whichever distribution it named the only one anybody builds, and the others would rot.
+
+Every package gets that behaviour for the releases that the catalog lists in `catalog//:releases.bzl`:
+
+```Starlark
+RELEASES = {
+    "arch": "arch.rolling",
+    "debian": "debian.testing",
+    "fedora": "fedora.rawhide",
+}
+```
+
+Each key is the suffix of the alias that every image gets for that release. The key `fedora` declares
+`:boot-demo.fedora` beside `:boot-demo`. Each value is the `<family>.<release>` prefix of a release in the
+catalog. A project with its own catalog lists the releases of that catalog in its own `releases.bzl`.
+`distribution.for_package()` returns one entry per release, with the `release` name and the release's
+`distribution` and `package_manager` targets, so a BUCK file selects its package manager from the same
+table:
+
+```Starlark
+package.manager(
+    name = "image.package-manager",
+    base = distribution.select({
+        d["release"]: d["package_manager"]
+        for d in distribution.for_package().values()
+    }),
+)
+```
+
+A package that builds for other releases, or needs more per release, declares its own table in its
+`PACKAGE` file. Each entry's `release` names a release of the catalog. `package_manager` defaults to the
+release's package manager. Everything else is whatever the package needs to know per distribution, read
+back with `distribution.for_package()`:
 
 ```Starlark
 load("@tine//distribution:defs.bzl", "distribution")
@@ -1103,10 +1137,8 @@ distribution.set_for_package({
 })
 ```
 
-Each entry's `release` names a release of the catalog. `package_manager` defaults to the release's package
-manager. Everything else is whatever the package needs to know per distribution, read back with
-`distribution.for_package()`. A BUCK file selects its package manager and names its aliases from the same
-table, so a new distribution needs only a new entry.
+An empty table, `distribution.set_for_package({})`, declares no distribution. The package's images then
+build by their own names, from whichever package manager they name.
 
 A key of `distribution.select()` is a family (`arch`, `debian` or `fedora`), a release of the catalog such as
 `fedora.43`, or `DEFAULT`. A family key matches every release of that family. Buck picks a release key over

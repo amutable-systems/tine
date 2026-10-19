@@ -4,7 +4,8 @@
 """The axis an image's distribution is selected on."""
 
 load("@prelude//:rules.bzl", "constraint_setting", "constraint_value")
-load(":defs.bzl", "FAMILIES")
+load("//box:defs.bzl", "box")
+load(":defs.bzl", "FAMILIES", "distribution")
 
 constraint_setting(
     name = "distribution",
@@ -35,4 +36,28 @@ constraint_value(
     name = "no-distribution-chosen",
     constraint_setting = ":choice",
     visibility = ["PUBLIC"],
+)
+
+# The test runs once per release of the catalog. Buck picks a release's key over its family's key, and
+# `DEFAULT` applies to a release whose family has no key. The expected value comes from a plain
+# select() on the three releases. Only one of its keys matches in any configuration, so the expected
+# value doesn't depend on which key wins.
+box.sh_test(
+    name = "select-test",
+    box = "//tools:dev.box",
+    script = '[[ "$1" == "$2" ]]',
+    args = [
+        distribution.select({
+            "DEFAULT": "default",
+            "debian": "family",
+            "fedora": "family",
+            "fedora.rawhide": "release",
+        }),
+        select({
+            "catalog//:arch.rolling.distribution": "default",
+            "catalog//:debian.testing.distribution": "family",
+            "catalog//:fedora.rawhide.distribution": "release",
+        }),
+    ],
+    **distribution.distributed("select-test"),
 )

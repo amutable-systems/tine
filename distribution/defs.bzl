@@ -14,6 +14,7 @@ layer is not a distribution, it is whatever the leaf pulling it in is. For an ar
 distribution does not serve, the transition leaves the constraint unset.
 """
 
+load("@catalog//:releases.bzl", _CATALOG_RELEASES = "RELEASES")
 load("@prelude//:rules.bzl", "constraint_value")
 load("@prelude//cfg/exec_platform:marker.bzl", "get_exec_platform_marker")
 load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
@@ -200,6 +201,10 @@ def _describe(name: str, described: dict[str, str]) -> dict[str, str]:
 def set_for_package(distributions: dict[str, dict[str, str]]) -> None:
     """Declare, for one package and everything under it, which distributions its images serve.
 
+    A package that declares no distributions builds its images for every release in
+    `catalog//:releases.bzl`. An empty dict declares no distribution. The package's images then build
+    by their own names, and their `target_compatible_with` keeps the value that each target sets.
+
     Each entry names one distribution of the package. Its `release` key names a release of the
     catalog, such as `fedora.rawhide`. Its `package_manager` key defaults to the release's package
     manager. The rest is whatever the package needs to know per distribution, and is read back with
@@ -218,8 +223,11 @@ def set_for_package(distributions: dict[str, dict[str, str]]) -> None:
     )
 
 def for_package() -> dict[str, dict[str, str]]:
-    """What this package declared, keyed by the name it calls each distribution."""
-    return read_package_value(_DISTRIBUTIONS) or {}
+    """Return the distributions of this package, keyed by the name it calls each distribution."""
+    declared = read_package_value(_DISTRIBUTIONS)
+    if declared != None:
+        return declared
+    return {name: _describe(name, {"release": release}) for name, release in _CATALOG_RELEASES.items()}
 
 def _condition(key: str) -> str:
     if key == "DEFAULT":

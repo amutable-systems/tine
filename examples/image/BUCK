@@ -3,7 +3,7 @@
 
 """Image construction smoke targets.
 
-Every image here is declared once and built for each distribution the PACKAGE file declares. What
+Every image here is declared once and built for each release in `catalog//:releases.bzl`. What
 varies is the package manager, chosen by a `select()` on the distribution constraint, and the
 package sets that manager resolves; the operations themselves are the same either way. No
 distribution is the default, so what a build names is one of the per-distribution aliases each
@@ -11,7 +11,7 @@ image rule declares for itself.
 """
 
 load("@tine//box:defs.bzl", "box")
-load("@tine//distribution:defs.bzl", "distribution")
+load("@tine//distribution:defs.bzl", "FAMILIES", "distribution")
 load("@tine//image:defs.bzl", "image")
 load("@tine//package:defs.bzl", "package")
 load("@tine//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
@@ -19,8 +19,8 @@ load("@tine//python:defs.bzl", "box_python_binary")
 load("@tine//tests:defs.bzl", "tests")
 load(":expected.json", _expected = "value")
 
-# Everything a distribution decides is described in the PACKAGE file, which is the one place a
-# distribution is added; nothing below names one.
+# The catalog lists the releases in catalog//:releases.bzl. A release added there also gets images
+# here, and no target below names a release.
 DISTRIBUTIONS = distribution.for_package()
 
 # Consumer-owned solve context; project repositories can be added here. Which release it derives
@@ -266,7 +266,8 @@ tests.vm_smoke(
         # build produced rather than the `/etc` symlink to it: a `/usr`-only disk boots with a
         # volatile root, and whether anything recreates that symlink is a property of the
         # distribution's own systemd rather than of the image.
-        distribution.select({d["release"]: "grep -q '^ID={}$' /usr/lib/os-release".format(d["os_release_id"]) for d in DISTRIBUTIONS.values()}),
+        # Each family's os-release ID is the family's name.
+        distribution.select({name: "grep -q '^ID={}$' /usr/lib/os-release".format(name) for name in FAMILIES}),
         "bootctl | grep -F 'Secure Boot: disabled (setup)'",
         # The build compiled the hardware database into /usr, which is read-only here, so a guest
         # that has it got it from the build rather than from a boot-time regeneration.
@@ -415,8 +416,8 @@ image.archive(
     format = "tar",
 )
 
-# Once per distribution the PACKAGE file declares, so the test sees the select choose the arch tree
-# and none for the rest, whichever those are.
+# The test runs once per release of the catalog. It checks that the select picks the arch tree for
+# Arch and no tree for the other releases.
 box.sh_test(
     name = "tree-test",
     labels = ["image"],
