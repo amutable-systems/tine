@@ -19,7 +19,6 @@ load("//package:solver.bzl", "solve_command", "solver_cache")
 load("//package:system.bzl", "PackageSystemInfo")
 load("//package:verify.bzl", "repository_verifier")
 load("//platforms:architecture.bzl", "architecture")
-load("//platforms:defs.bzl", "host_transition")
 load(":runtime.bzl", "BoxInfo", "box_run")
 
 _REPOSITORY_PRIORITY = 99
@@ -273,13 +272,13 @@ _box = rule(
             default = None,
             doc = "predecessor box used to resolve and install this box's transaction",
         ),
-        # `host_transition` configures a box for the build host, so this is the host's architecture.
+        # The box's incoming transition configures it for the build host, so this is the host's architecture.
         "_arch": attrs.string(default = architecture.configured(), doc = "the resolution arch"),
         # BoxInfo carries this into the rest of the graph.
         "_sandbox": attrs.exec_dep(default = "tine//box:sandbox", providers = [RunInfo]),
     },
-    # A box runs on the build host. Every caller reaches the same box, whatever its configuration is.
-    cfg = host_transition,
+    # box.new() sets the incoming transition to the host platform of the release's distribution.
+    supports_incoming_transition = True,
 )
 
 def _box_lock_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -333,6 +332,7 @@ def new(
     enable_repository_groups: list[str] | None = None,
     parent: str | None = None,
     resolver_box: str | None = None,
+    distro: str | None = None,
     root: bool = False,
     labels: list[str] = [],
     visibility: list[str] | None = None,
@@ -352,6 +352,10 @@ def new(
     alone, but refresh-catalog writes a lock per architecture, so a build on any of them has one to
     start from. A box that names none resolves during the build instead, which a root box cannot do.
     A box with a `parent` can only keep a lock for an architecture that its parent keeps one for.
+
+    The box is configured for the host and the distribution of its release, so a
+    `distribution.select()` in `packages` picks the entry of the release, or else of its family.
+    `distro` names the distribution target, by default the one beside `release`.
     """
     if not name.endswith(".box"):
         fail("box name must end with '.box': {}".format(name))
@@ -363,6 +367,10 @@ def new(
         if not release.endswith(".release"):
             fail("box: cannot derive a resolver box from release '{}'; pass resolver_box".format(release))
         resolver_box = release.removesuffix(".release") + ".box"
+    if distro == None:
+        if not release.endswith(".release"):
+            fail("box: cannot derive a distribution from release '{}'; pass distro".format(release))
+        distro = release.removesuffix(".release") + ".distribution"
     stem = name.removesuffix(".box")
     packages = _DEFAULT_PACKAGES + packages
 
@@ -383,6 +391,7 @@ def new(
         parent = parent,
         lock = architecture.select(locks) if locks else None,
         labels = labels,
+        incoming_transition = distro + ".host",
         # A box is built for the host. Without a lock for the host's architecture, it cannot be built.
         target_compatible_with = distribution.serves(name, architectures) if architectures else [],
         visibility = visibility,
@@ -408,7 +417,7 @@ def new(
             disable_repository_groups = disable_repository_groups,
             enable_repository_groups = enable_repository_groups,
             parent = "{}.lock.{}".format(parent, arch) if parent != None else None,
-            incoming_transition = "tine//platforms:" + arch,
+            incoming_transition = "{}.{}".format(distro, arch),
             labels = ["tine:box-lock"],
             target_compatible_with = lock_compatible_with,
             # The lock of a child box in another package depends on this lock. Without the box's

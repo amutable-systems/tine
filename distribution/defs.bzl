@@ -15,7 +15,9 @@ distribution does not serve, the transition leaves the constraint unset.
 """
 
 load("@prelude//:rules.bzl", "constraint_value")
+load("@prelude//cfg/exec_platform:marker.bzl", "get_exec_platform_marker")
 load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
+load("//platforms:defs.bzl", "check_unmarked")
 
 # The families that tine declares releases for. Each one is a value of `tine//distribution:family`.
 FAMILIES = ["arch", "debian", "fedora"]
@@ -80,8 +82,49 @@ _distribution = rule(
     is_configuration_rule = True,
 )
 
+def _box_platform_impl(ctx: AnalysisContext) -> list[Provider]:
+    base = ctx.attrs.base[PlatformInfo].configuration
+    box = PlatformInfo(
+        label = str(ctx.label.raw_target()),
+        configuration = ConfigurationInfo(
+            constraints = base.constraints | ctx.attrs.distribution[ConfigurationInfo].constraints,
+            values = base.values,
+        ),
+    )
+    marker = ctx.attrs._exec_marker[ConstraintValueInfo]
+
+    def configure(platform: PlatformInfo) -> PlatformInfo:
+        check_unmarked(platform, marker)
+        return box
+
+    return [DefaultInfo(), box, TransitionInfo(impl = configure)]
+
+# A box takes a `_box_platform` target as its incoming transition. The transition replaces the
+# caller's configuration, so every caller reaches the same configured box. A `select()` in the
+# box's attributes then sees the distribution of the box's release.
+# The execution platform registers no exec marker constraint, so the execution configuration is the
+# same as the host's. An `exec_dep` therefore reaches the same configured box as an ordinary
+# dependency. The host platform assumes one execution platform, for the host's architecture. A
+# project can register an execution platform for another architecture. An `exec_dep` resolved for
+# that platform still reaches the box built for the host. The actions on that platform then run
+# binaries for the wrong architecture, and Buck reports no error.
+_box_platform = rule(
+    impl = _box_platform_impl,
+    attrs = {
+        "base": attrs.dep(providers = [PlatformInfo]),
+        "distribution": attrs.dep(providers = [ConfigurationInfo]),
+        "_exec_marker": attrs.dep(providers = [ConstraintValueInfo], default = get_exec_platform_marker()),
+    },
+    is_configuration_rule = True,
+)
+
 def new(name: str, architectures: list[str], visibility: list[str] | None = None) -> None:
-    """Declare a distribution of `architectures` in the family that its name starts with, and the constraint value `select()` keys on."""
+    """Declare a distribution of `architectures` in the family that its name starts with, and the constraint value `select()` keys on.
+
+    A box of the distribution's release is configured for `<name>.host`, the host platform with the
+    distribution's constraints. A lock of the box for an architecture is configured for
+    `<name>.<architecture>`.
+    """
     if not name.endswith(".distribution"):
         fail("distribution name must end with '.distribution': {}".format(name))
     family = name.partition(".")[0]
@@ -108,6 +151,19 @@ def new(name: str, architectures: list[str], visibility: list[str] | None = None
         family = "tine//distribution:" + family,
         visibility = visibility,
     )
+    _box_platform(
+        name = name + ".host",
+        base = "tine//platforms:default",
+        distribution = ":" + name,
+        visibility = visibility,
+    )
+    for arch in architectures:
+        _box_platform(
+            name = "{}.{}".format(name, arch),
+            base = "tine//platforms:" + arch,
+            distribution = ":" + name,
+            visibility = visibility,
+        )
 
 _DISTRIBUTIONS = "tine.distributions"
 

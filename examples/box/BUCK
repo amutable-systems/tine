@@ -4,6 +4,7 @@
 """Development-box smoke targets."""
 
 load("@tine//box:defs.bzl", "box")
+load("@tine//distribution:defs.bzl", "distribution")
 
 box.new(
     name = "demo.box",
@@ -28,6 +29,24 @@ box.new(
     packages = ["fish"],
     parent = ":demo.box",
     release = "catalog//:fedora.rawhide.release",
+)
+
+# Each distribution family names the package of the Python yaml module differently.
+box.new(
+    name = "demo-per-family.box",
+    packages = distribution.select({
+        "arch": ["python-yaml"],
+        "debian": ["python3-yaml"],
+        "fedora": ["python3-pyyaml"],
+    }),
+    release = "catalog//:fedora.rawhide.release",
+)
+
+box.sh_test(
+    name = "per-family-test",
+    labels = ["image"],
+    box = ":demo-per-family.box",
+    script = "python3 -c 'import yaml'",
 )
 
 box.sh_test(
