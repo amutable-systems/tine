@@ -247,52 +247,38 @@ box.new(
     # swtpm has no resource manager, so tools/signing-server runs tpm2-abrmd on a private D-Bus. The
     # ci.sh step runs ukify to read a UKI section back out. tpm2_ptool runs tpm2-tools binaries, but its
     # package does not depend on tpm2-tools.
-    packages = distribution.select({
+    packages = [
+        "bash",
+        "coreutils",
+        "openssl",
+        "pkcs11-provider",
+        "swtpm",
+        "systemd-ukify",
+        "tpm2-abrmd",
+        "tpm2-tools",
+    ]
+    + distribution.select({
         "arch": [
-            "bash",
-            "coreutils",
             "dbus",
-            "openssl",
             "p11-kit",
-            "pkcs11-provider",
-            "swtpm",
-            "systemd-ukify",
-            "tpm2-abrmd",
             "tpm2-pkcs11",
             "tpm2-pkcs11-tools",
-            "tpm2-tools",
         ],
         # Debian packages each TCTI of tpm2-tss on its own. tpm2-abrmd reaches swtpm through the swtpm TCTI,
         # and tpm2-tools and tpm2-pkcs11 reach tpm2-abrmd through the tabrmd TCTI.
         "debian": [
-            "bash",
-            "coreutils",
             "dbus-daemon",
             "libtpm2-pkcs11-1",
             "libtpm2-pkcs11-tools",
             "libtss2-tcti-swtpm0t64",
             "libtss2-tcti-tabrmd0",
-            "openssl",
             "p11-kit",
-            "pkcs11-provider",
-            "swtpm",
-            "systemd-ukify",
-            "tpm2-abrmd",
-            "tpm2-tools",
         ],
         "fedora": [
-            "bash",
-            "coreutils",
             "dbus-daemon",
-            "openssl",
             "p11-kit-server",
-            "pkcs11-provider",
-            "swtpm",
-            "systemd-ukify",
-            "tpm2-abrmd",
             "tpm2-pkcs11",
             "tpm2-pkcs11-tools",
-            "tpm2-tools",
         ],
     }),
     release = _RELEASE,
