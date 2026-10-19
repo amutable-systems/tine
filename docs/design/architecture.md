@@ -450,18 +450,22 @@ operate on.
 
 A box runs on the build host, so it is an execution dependency: a rule takes it with `attrs.exec_dep`, a
 command line with `$(location_exec)`. A target named on the command line or reached as an ordinary
-dependency is configured for the target platform instead. To build each box once, the box rule has an
-incoming transition to the host's platform. tine's execution platform registers no exec marker
-constraint, so the execution configuration is the same as the host platform's. `buck build`, `buck run`,
-execution dependencies and ordinary dependencies therefore all reach the same box. This assumes one
+dependency is configured for the target platform instead. To build each box once, the box has an
+incoming transition to the host's platform plus the constraints of its release's distribution. Each
+distribution declares that platform beside it, as `<family>.<release>.distribution.host`. tine's
+execution platform registers no exec marker constraint, so the execution configuration is the same as the
+host platform's. `buck build`, `buck run`, execution dependencies and ordinary dependencies therefore all
+reach the same box. This assumes one
 execution platform, for the host's architecture. An execution platform for another architecture, such as
 a remote arm64 one, still gets the box built for the host. Its actions then run binaries for the wrong
 architecture.
 
-A box's packages can `select()` on the architecture. A box lock is configured for its own architecture,
-so it resolves the packages for that architecture. A child box's lock reads its parent's packages from the
-parent's lock for the same architecture, because the parent box itself is configured for the host. A child
-box can therefore only keep a lock for an architecture that its parent keeps one for.
+A box's packages can `select()` on the architecture, and `distribution.select()` on the release or its
+family. A box lock is configured for its own architecture and its release's
+distribution, so it resolves the packages for that architecture and distribution. A child box's lock reads
+its parent's packages from the parent's lock for the same architecture, because the parent box itself is
+configured for the host. A child box can therefore only keep a lock for an architecture that its parent keeps
+one for.
 
 A remote repository serves one architecture, and its content depends on nothing else. Its rule has an
 incoming transition to that architecture's target platform. A box lock, the box and an image of the same

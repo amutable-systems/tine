@@ -92,3 +92,27 @@ editing the parent or bumping tine (if you derive from a tine box). A layered bo
 you do. It also refuses when resolving both package lists together picks other packages than the parent
 got, for example `libcurl` where the parent has `libcurl-minimal`. Set `layered = False` to install such a
 box on its own.
+
+## Building one box from any distribution
+
+When a box has to build from whichever release a project picks, select its packages per distribution
+family. Each family uses its own names for the same software:
+
+```Starlark
+load("@tine//distribution:defs.bzl", "distribution")
+
+box.new(
+    name = "yaml.box",
+    packages = distribution.select({
+        "arch": ["python-yaml"],
+        "debian": ["python3-yaml"],
+        "fedora": ["python3-pyyaml"],
+    }),
+    release = "catalog//:debian.testing.release",
+)
+```
+
+The box is configured for its release's distribution, so `distribution.select()` picks the entry of that
+release's family, as it does in an image. A key such as `debian.testing` names one release, and Buck picks it
+over the key of its family. If no key matches, the build fails with an error that names the box and lists the
+keys. If the release's repositories do not contain a listed package, resolving the box fails.
