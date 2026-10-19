@@ -4,16 +4,18 @@
 """The shared build cache: Buck2's remote cache API over an S3 bucket."""
 
 load("//box:defs.bzl", "box")
+load("//distribution:defs.bzl", "distribution")
 load("//python:defs.bzl", "box_python_binary", "tine_python_library")
 
 # External dependencies. Production and tests run in the same box.
 box.new(
     name = "shim.box",
-    packages = [
-        "python3-cryptography",
-        "python3-grpcio",
-    ],
-    release = "catalog//:fedora.rawhide.release",
+    packages = distribution.select({
+        "arch": ["python-cryptography", "python-grpcio"],
+        "debian": ["python3-cryptography", "python3-grpcio"],
+        "fedora": ["python3-cryptography", "python3-grpcio"],
+    }),
+    release = "catalog//:default.release",
 )
 
 _MODULES = [
