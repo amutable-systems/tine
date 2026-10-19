@@ -158,8 +158,9 @@ socket = $pkcs11_dir/sock/pkcs11
 EOF
     local config=(--config-file "$pkcs11_dir/signing.bcfg")
 
-    "${buck[@]}" build "${config[@]}" tine//examples/image-secureboot:image
-    "${buck[@]}" build "${config[@]}" 'tine//examples/image-secureboot:image[uki]' --out "$pkcs11_dir/ukis"
+    # Token signing uses the PKCS#11 provider and the p11-kit client. Only the Fedora box contains them.
+    "${buck[@]}" build "${config[@]}" tine//examples/image-secureboot:image.fedora
+    "${buck[@]}" build "${config[@]}" 'tine//examples/image-secureboot:image.fedora[uki]' --out "$pkcs11_dir/ukis"
 
     # The public key the UKI hands the booted system must be the PcrPolicy token's, and not the
     # Secure Boot one. Read each side into a variable first: a command substitution inside a `test`
@@ -175,7 +176,7 @@ EOF
     test "$pcrpkey" = "$pcr_certificate"
     test "$pcrpkey" != "$secure_boot_certificate"
 
-    if have_kvm; then "${buck[@]}" run "${config[@]}" tine//examples/image-secureboot:vm-smoke; fi
+    if have_kvm; then "${buck[@]}" run "${config[@]}" tine//examples/image-secureboot:vm-smoke.fedora; fi
 }
 
 # Nothing here needs a box, so a graph that does not analyze is reported in seconds rather than

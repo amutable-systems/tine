@@ -9,7 +9,7 @@
 # UUIDs dissection pairs them by), and that the ESP is not among them.
 set -euo pipefail
 
-directory=$1 roothash_file=$2 arch=$3
+directory=$1 roothash_file=$2 arch=$3 pkgdb_suffix=$4
 roothash=$(cat "$roothash_file")
 names=$(ls "$directory")
 
@@ -18,7 +18,7 @@ missing=0
 for expected in "$image.raw" "$image.qcow2" "$image.efi" "$image.vmlinuz" "$image.initrd" \
     "$extension.sysext.raw" "$image.Uapi16Manifest" "$image.esp.Uapi16Manifest" \
     "$image.usr.Uapi16Manifest" "$extension.sysext.Uapi16Manifest" \
-    "$image.spdx.json" "$image.cdx.json" "$image.pkgdb.sqlite" \
+    "$image.spdx.json" "$image.cdx.json" "$image.pkgdb.$pkgdb_suffix" \
     "$image.initrd.spdx.json" "$image.initrd.cdx.json" \
     "$extension.spdx.json" "$extension.cdx.json" \
     "$image.usr-$arch.${roothash:0:32}.raw" \
