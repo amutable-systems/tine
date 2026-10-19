@@ -24,7 +24,7 @@ box.new(
 ```
 
 `release` is the base the box is built from; point it at a different catalog entry when the project needs
-another base. The environment that resolves and installs the box is the one that release names beside it,
+another base. The environment that resolves and installs the box is the root box of that release,
 `catalog//:fedora.rawhide.box` here, which a `resolver_box` of your own overrides.
 
 Run the target to enter an interactive shell. Buck runs it from the directory you invoked it in, so this

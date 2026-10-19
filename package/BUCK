@@ -43,7 +43,8 @@ tine_python_library(
 
 box_python_test(
     name = "test",
-    box = "catalog//:fedora.rawhide.box",
+    # installer_test runs systemd-tmpfiles, which only the tools box contains.
+    box = "tine//distribution:tools.box",
     srcs = ["installer_test.py", "transaction_test.py"],
     deps = [":installer", ":transaction"],
 )

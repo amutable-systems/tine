@@ -80,8 +80,8 @@ http.tool(
 
 # tine's dev environment for importer and its unit tests. Used by every `box_python_test` suite
 # (hermetic), `tine//tools:importer` (relaxed), and anyone entering it as a box.
-# Derived from the main box (lockless transaction, resolved during the build), so dev tooling
-# changes never invalidate the build graph that depends on the main box.
+# The dev box layers over the tools box of the default release, so it installs only its own packages.
+# No image depends on the dev box, so a change to its packages rebuilds no image.
 # The importer and the tests need the rpm toolchain, so only a Fedora release can build this box.
 box.new(
     name = "dev.box",
@@ -111,6 +111,7 @@ box.new(
             "sequoia-sqv",
         ]
     }),
+    parent = "tine//distribution:tools.box",
     release = _RELEASE,
     visibility = ["PUBLIC"],
 )

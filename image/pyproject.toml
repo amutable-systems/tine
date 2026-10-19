@@ -5,4 +5,4 @@
 
 [tool.tine.ty]
 # artifacts.py imports the box's pefile module.
-box = "catalog//:fedora.rawhide.box"
+box = "tine//distribution:tools.box"

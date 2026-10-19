@@ -158,7 +158,7 @@ generate_signing_key = rule(
     attrs = {
         "box": attrs.exec_dep(
             providers = [BoxInfo],
-            default = "catalog//:default.box",
+            default = "tine//distribution:tools.box",
             doc = "box providing ukify",
         ),
     },
@@ -338,7 +338,7 @@ _pkcs11_signing_key = rule(
     attrs = {
         "box": attrs.exec_dep(
             providers = [BoxInfo],
-            default = "catalog//:default.box",
+            default = "tine//distribution:tools.box",
             doc = "box providing keyutil and the PKCS#11 provider",
         ),
         "certificate": attrs.option(

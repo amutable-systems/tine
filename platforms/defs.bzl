@@ -42,25 +42,12 @@ def _target_platform_impl(ctx: AnalysisContext) -> list[Provider]:
     constraints = dict()
     for configuration in ctx.attrs.configurations:
         constraints.update(configuration[ConfigurationInfo].constraints)
-
-    # A target that has to be built for one architecture whatever asked for it takes this as its
-    # incoming transition, rather than the whole build being pointed at the platform.
-    def select_platform(platform: PlatformInfo) -> PlatformInfo:
-        return PlatformInfo(
-            label = platform.label,
-            configuration = ConfigurationInfo(
-                constraints = platform.configuration.constraints | constraints,
-                values = platform.configuration.values,
-            ),
-        )
-
     return [
         DefaultInfo(),
         PlatformInfo(
             label = str(ctx.label.raw_target()),
             configuration = ConfigurationInfo(constraints = constraints, values = {}),
         ),
-        TransitionInfo(impl = select_platform),
     ]
 
 target_platform = rule(

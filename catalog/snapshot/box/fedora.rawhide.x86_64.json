@@ -40,14 +40,6 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/c/ca-certificates-2026.2.92_v9.0.319-2.fc46.noarch.rpm"
   },
   {
-    "package_id": "capstone-5.0.6-6.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "4c8833fec1aa8c79e70282061b63fdcdd585540a5dca4ac16f62acd1ab5af0c4",
-    "source": "repo",
-    "size": 1050759,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/c/capstone-5.0.6-6.fc45.x86_64.rpm"
-  },
-  {
     "package_id": "coreutils-9.12-1.fc46.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "d8688105c66960304c95293455480fdbd504c1b7b58b62ad596d0c95ad35fbcc",
@@ -80,14 +72,6 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/c/crypto-policies-20260713-2.gitc42da77.fc45.noarch.rpm"
   },
   {
-    "package_id": "cryptsetup-libs-2.8.8-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "c5e14d16e641cdfef7a1b171648093854780c8cda9ae7c5cd8ba76a7ea2cd913",
-    "source": "repo",
-    "size": 644860,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/c/cryptsetup-libs-2.8.8-1.fc46.x86_64.rpm"
-  },
-  {
     "package_id": "curl-8.23.0-1.fc46.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "ef53399f7035bbb38d15d7d54cd840a6dcdde5ec2e9ed14cda04f94bbe691244",
@@ -104,70 +88,6 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/c/cyrus-sasl-lib-2.1.28-37.fc45.x86_64.rpm"
   },
   {
-    "package_id": "daxctl-libs-85-2.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "98d8dee8dee6f1ce033fa062c04989bb278f462dc39080a7541b8be769646c4a",
-    "source": "repo",
-    "size": 43531,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/d/daxctl-libs-85-2.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "device-mapper-1.02.217-2.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "b66ceed9da17d086e89848946c2f6001dcd57da6f27616940cca3abbd2801889",
-    "source": "repo",
-    "size": 152824,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/d/device-mapper-1.02.217-2.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "device-mapper-libs-1.02.217-2.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "a9af3a9dd0a59fd256ddba827eba99155a4658ef3695d921896dd04ad0fa263a",
-    "source": "repo",
-    "size": 206307,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/d/device-mapper-libs-1.02.217-2.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "dns-root-data-2026260100-5.fc45.noarch",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "3d949a7fa8ea0566726f28b2e290db9a01f64d32ffb6e40fa351f0be76d737c9",
-    "source": "repo",
-    "size": 16675,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/d/dns-root-data-2026260100-5.fc45.noarch.rpm"
-  },
-  {
-    "package_id": "dosfstools-4.2-28.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "a27bd38f438a1d04c88c41c00f247894cc3154611ad7211e19ffe90eeaa674eb",
-    "source": "repo",
-    "size": 108008,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/d/dosfstools-4.2-28.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "e2fsprogs-1.47.4-2.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "fb3c5bfc0867a9196015246f4378a501b0f01bbe92ba6a61e0aa5ec2e2a52206",
-    "source": "repo",
-    "size": 1133981,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/e/e2fsprogs-1.47.4-2.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "e2fsprogs-libs-1.47.4-2.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "a2ef40f9bc0167f4c419bafed3656cd79f8a4349c4844ada88b95fc3b894c488",
-    "source": "repo",
-    "size": 244701,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/e/e2fsprogs-libs-1.47.4-2.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "edk2-ovmf-20260812-11.fc46.noarch",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "0df7aeef987f19b88acc7ff3925f11d76a9ed5087601f3aedf597c1ecc42c447",
-    "source": "repo",
-    "size": 19136570,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/e/edk2-ovmf-20260812-11.fc46.noarch.rpm"
-  },
-  {
     "package_id": "elfutils-libelf-0.197-1.fc46.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "80c101d9e117ea28bca9c40ff072fdfe8e2ea32b0c52bd7eea96f524cd7e9693",
@@ -182,14 +102,6 @@
     "source": "repo",
     "size": 292413,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/e/elfutils-libs-0.197-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "erofs-utils-1.9.4-2.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "ee69d76567aca27ace8e8a5c04d242193f0d9a4db7fac218ef1833cae1531d54",
-    "source": "repo",
-    "size": 255375,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/e/erofs-utils-1.9.4-2.fc46.x86_64.rpm"
   },
   {
     "package_id": "expat-2.9.0-1.fc46.x86_64",
@@ -288,14 +200,6 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/f/fmt-12.1.0-3.fc45.x86_64.rpm"
   },
   {
-    "package_id": "fuse3-libs-3.18.3-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "a687bdbc996f7132cb0ea91fd1e035082e9788a39d3edd282b02f94d722a1bbb",
-    "source": "repo",
-    "size": 104634,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/f/fuse3-libs-3.18.3-1.fc46.x86_64.rpm"
-  },
-  {
     "package_id": "gdbm-libs-1:1.26-1.fc46.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "d7d3899406c6975f8389e9fe6c3f2f3b4851791adfdd23234f32a58a5baa85b8",
@@ -326,14 +230,6 @@
     "source": "repo",
     "size": 442275,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/g/glibc-common-2.44.9000-5.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "glibc-gconv-extra-2.44.9000-5.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "605701f139a6312b68536e5e96b8ef0a96aea4ff766bc566c131a880ad639c21",
-    "source": "repo",
-    "size": 1798547,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/g/glibc-gconv-extra-2.44.9000-5.fc46.x86_64.rpm"
   },
   {
     "package_id": "glibc-minimal-langpack-2.44.9000-5.fc46.x86_64",
@@ -416,44 +312,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/g/gnutls-3.8.13-5.fc46.x86_64.rpm"
   },
   {
-    "package_id": "gnutls-dane-3.8.13-5.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "4c5bd50bb921d433f4e66935fe5692121a125444c860cd78aa8023c369e36977",
-    "source": "repo",
-    "size": 56053,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/g/gnutls-dane-3.8.13-5.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "gnutls-utils-3.8.13-5.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "2de1bfad5bb6617f4e562bb52a9553cb7977c9ddee26465917638f0024e2a885",
-    "source": "repo",
-    "size": 321287,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/g/gnutls-utils-3.8.13-5.fc46.x86_64.rpm"
-  },
-  {
     "package_id": "grep-3.12-4.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "fc9edc94917659205250f389346bda7280335543ca09b3c0c146bd457da04362",
     "source": "repo",
     "size": 308234,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/g/grep-3.12-4.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "hiredis-1.2.0-10.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "d6f37883f62e4decdc7d8af07aadae2781008e1515212d24325dc7b3c641e654",
-    "source": "repo",
-    "size": 53428,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/h/hiredis-1.2.0-10.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "igvm-libs-0.4.0-12.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "bdf22ab923fd4d5918e4782638ed8d66176b003e455e9fe90bd9a4c0c6b340e3",
-    "source": "repo",
-    "size": 238751,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/i/igvm-libs-0.4.0-12.fc46.x86_64.rpm"
   },
   {
     "package_id": "ima-evm-utils-libs-1.6.2-12.fc45.x86_64",
@@ -464,22 +328,6 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/i/ima-evm-utils-libs-1.6.2-12.fc45.x86_64.rpm"
   },
   {
-    "package_id": "intel-qpl-1.9.0-5.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "294c62ab08a935933194e62e4066492198806a60338be136915ea0251d34a1a6",
-    "source": "repo",
-    "size": 255681,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/i/intel-qpl-1.9.0-5.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "ipxe-roms-qemu-1:2.0.0^20260614git13a83f4-4.fc45.noarch",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "f64774f436ae9ab127b2a7f454d53bd0940186b0993681dd55dd95b37fd0dd8d",
-    "source": "repo",
-    "size": 1918528,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/i/ipxe-roms-qemu-2.0.0^20260614git13a83f4-4.fc45.noarch.rpm"
-  },
-  {
     "package_id": "json-c-0.18-9.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "a5149f2620f1614da734e000f05db4c211ae64559c18d781341993b7b7ae90ad",
@@ -488,36 +336,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/j/json-c-0.18-9.fc45.x86_64.rpm"
   },
   {
-    "package_id": "json-glib-1.10.8-11.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "4e0460193b3ced6d240fedf21c302c80b9c9a7fc75eb2a552a09edbb85ebd29e",
-    "source": "repo",
-    "size": 180362,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/j/json-glib-1.10.8-11.fc45.x86_64.rpm"
-  },
-  {
     "package_id": "keyutils-libs-1.6.3-8.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "798fa22c5d7c12f871e72c1155eb72f4bbbd055476cc1fa3b0c4e93b2bfbd099",
     "source": "repo",
     "size": 32230,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/k/keyutils-libs-1.6.3-8.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "kmod-34.2-6.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "e52b8bfae0790c245c6af20e950bd0b14f80959674e93a7e80fe4d6d332b2b64",
-    "source": "repo",
-    "size": 140510,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/k/kmod-34.2-6.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "kmod-libs-34.2-6.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "a31f5014c0bff1b8e16acd4232909054d7595624ecf7fa60b101b7be8c4d6bb1",
-    "source": "repo",
-    "size": 71764,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/k/kmod-libs-34.2-6.fc45.x86_64.rpm"
   },
   {
     "package_id": "krb5-libs-1.22.2-9.fc45.x86_64",
@@ -534,14 +358,6 @@
     "source": "repo",
     "size": 28151,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libacl-2.4.0-2.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "libaio-0.3.111-24.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "8d533d3b1af05c8ae3502594f7b61fd07d6878409b0938f4815b1fc00f58da1c",
-    "source": "repo",
-    "size": 23894,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libaio-0.3.111-24.fc45.x86_64.rpm"
   },
   {
     "package_id": "libarchive-3.8.9-2.fc46.x86_64",
@@ -574,14 +390,6 @@
     "source": "repo",
     "size": 137262,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libblkid-2.42.4-2.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "libbpf-2:1.8.0-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "c3010c5ca63dc036831c5a6f4001759e7ff2b7422ea7962f28fcf74513710f18",
-    "source": "repo",
-    "size": 224469,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libbpf-1.8.0-1.fc46.x86_64.rpm"
   },
   {
     "package_id": "libbrotli-1.2.1-1.fc46.x86_64",
@@ -632,14 +440,6 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libcurl-8.23.0-1.fc46.x86_64.rpm"
   },
   {
-    "package_id": "libdeflate-1.26-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "772debd82fac10e8777bda8fadd43459eb62b62c5d7d4d5ce8fd1bf9d5601ea0",
-    "source": "repo",
-    "size": 70120,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libdeflate-1.26-1.fc46.x86_64.rpm"
-  },
-  {
     "package_id": "libdnf5-5.4.6.0-1.fc46.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "de7653bd24d54add915540ec3bad1057887dfc9d1ccd1e761f7567e5b807b4a1",
@@ -662,22 +462,6 @@
     "source": "repo",
     "size": 296300,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libevent-2.1.13-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "libfdisk-2.42.4-2.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "1831ce1f986fb4cd5c3163d639e4d8d7e1f255e0a68568a6708606cea52430ad",
-    "source": "repo",
-    "size": 173697,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libfdisk-2.42.4-2.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "libfdt-1.8.1-6.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "d38dc7dba808810897d0f19a30e45f5d1aca9ac5735e95254b7f8e3eaa182b5a",
-    "source": "repo",
-    "size": 37241,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libfdt-1.8.1-6.fc46.x86_64.rpm"
   },
   {
     "package_id": "libffi-3.8.0-1.fc46.x86_64",
@@ -736,28 +520,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libgpg-error-1.61-2.fc45.x86_64.rpm"
   },
   {
-    "package_id": "libibverbs-65.0-5.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "2556ef46b03a5983da4f6054523385ce0380e5aea3433fb9704fd1cecbc54a43",
-    "source": "repo",
-    "size": 527021,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libibverbs-65.0-5.fc46.x86_64.rpm"
-  },
-  {
     "package_id": "libidn2-2.3.8-4.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "0fa37ab4df478081f6d2cc9b2ccf949ac6983d5984fbf7703a2a54b066c06ca3",
     "source": "repo",
     "size": 179409,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libidn2-2.3.8-4.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "libjpeg-turbo-3.1.4.1-2.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "aafc95db2b959bde66ebdb7c3fef234638d5aa9f6178f32e0b09244b8cb1abc5",
-    "source": "repo",
-    "size": 248418,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libjpeg-turbo-3.1.4.1-2.fc45.x86_64.rpm"
   },
   {
     "package_id": "libksba-1.8.1-1.fc46.x86_64",
@@ -800,44 +568,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libnghttp3-1.18.0-1.fc45.x86_64.rpm"
   },
   {
-    "package_id": "libnl3-3.12.0-4.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "ca248e243511f8ecac4e8053de349ea72f272395cbc5f798054123ce829bc804",
-    "source": "repo",
-    "size": 386363,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libnl3-3.12.0-4.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "libpkgconf-2.5.1-2.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "df74bfa04042ecef375e240ff1d6951d8368e0b3a3ed50d2eb6c33ab24698c60",
-    "source": "repo",
-    "size": 43629,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libpkgconf-2.5.1-2.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "libpng-2:1.6.58-2.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "d045300b150f54f300a92866dbdf82f80b19169452192698f542496c879505fc",
-    "source": "repo",
-    "size": 132241,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libpng-1.6.58-2.fc45.x86_64.rpm"
-  },
-  {
     "package_id": "libpsl-0.23.3-1.fc46.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "d5f9490f0cf6cb72d39bb0dddd96a4ca819e0efebdabdb6844377db338b4ef6d",
     "source": "repo",
     "size": 69281,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libpsl-0.23.3-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "librdmacm-65.0-5.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "d6a4bf44f8caca5a875ab84b95cb4fb3689224c4b269e64b1685fce49b320f3e",
-    "source": "repo",
-    "size": 84728,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/librdmacm-65.0-5.fc46.x86_64.rpm"
   },
   {
     "package_id": "librepo-1.21.1-1.fc46.x86_64",
@@ -864,14 +600,6 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libselinux-3.11-5.fc46.x86_64.rpm"
   },
   {
-    "package_id": "libsemanage-3.11-4.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "206899057609b5b9908f29bdca4e37f2284b33ec6d7c1b77430299209ba8c1e4",
-    "source": "repo",
-    "size": 133599,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libsemanage-3.11-4.fc46.x86_64.rpm"
-  },
-  {
     "package_id": "libsepol-3.11-2.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "72732af8cda7ac24dee63f811ba30e38beddf0b45402d495c19989a4fdc1d2a0",
@@ -880,36 +608,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libsepol-3.11-2.fc45.x86_64.rpm"
   },
   {
-    "package_id": "libslirp-4.9.5-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "0764b55d4b41d372910f9f6e78c58aedad2966f47b52f91e0836f188e2ed7b69",
-    "source": "repo",
-    "size": 84183,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libslirp-4.9.5-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "libsmartcols-2.42.4-2.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "1e331cc3fd672bd5a91536b5caef3f2bc25aa79064f4d4bb9e470ec4a6fcd76b",
-    "source": "repo",
-    "size": 90923,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libsmartcols-2.42.4-2.fc46.x86_64.rpm"
-  },
-  {
     "package_id": "libsolv-0.7.40-2.fc46.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "19fff586d1184ad662db15ad043535fe2b429fc4a27570286d91fbef63b52a9c",
     "source": "repo",
     "size": 460993,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libsolv-0.7.40-2.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "libss-1.47.4-2.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "747a4b56b20a756700f532ecbe869a29fadc196a0065cde5e3296d60082adbd1",
-    "source": "repo",
-    "size": 33000,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libss-1.47.4-2.fc45.x86_64.rpm"
   },
   {
     "package_id": "libssh-0.12.2-1.fc45.x86_64",
@@ -952,28 +656,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libtool-ltdl-2.6.2-1.fc46.x86_64.rpm"
   },
   {
-    "package_id": "libtpms-0.10.2-5.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "83244c7a97c35cf74fe4a9412d3fb58a40a1c44b1aab40d706ab139de9b11475",
-    "source": "repo",
-    "size": 441697,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libtpms-0.10.2-5.fc45.x86_64.rpm"
-  },
-  {
     "package_id": "libunistring-1.1-12.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "27df1b399519012deda5e78edd7e7ba406296a394f298e29808b1afade0069be",
     "source": "repo",
     "size": 558879,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libunistring-1.1-12.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "liburing-2.13-3.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "51a1375beb5363f6c1b12099922e2c499e533820545e1b3c463ceb964420cc13",
-    "source": "repo",
-    "size": 45531,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/liburing-2.13-3.fc45.x86_64.rpm"
   },
   {
     "package_id": "libusb1-1.0.30-2.fc45.x86_64",
@@ -1006,14 +694,6 @@
     "source": "repo",
     "size": 134081,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libxcrypt-4.5.2-4.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "libxdp-1.6.3-2.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "6865c271aef9c289d7bdc60bff14fc72780ad9db0c4809c006e16cf45dd58c01",
-    "source": "repo",
-    "size": 73177,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/libxdp-1.6.3-2.fc45.x86_64.rpm"
   },
   {
     "package_id": "libxml2-2.15.4-1.fc46.x86_64",
@@ -1056,28 +736,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/lz4-libs-1.10.0-5.fc45.x86_64.rpm"
   },
   {
-    "package_id": "lzo-2.10-17.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "6c024f501aee9092740379d6c10d1a628b15997bdb8e14e708dacfdd81394482",
-    "source": "repo",
-    "size": 72246,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/l/lzo-2.10-17.fc45.x86_64.rpm"
-  },
-  {
     "package_id": "mpdecimal-4.0.1-4.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "a3667abe646f4f31badc764e72c85310454cf3ea11a036d115c3d835006bba74",
     "source": "repo",
     "size": 100875,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/m/mpdecimal-4.0.1-4.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "mtools-4.0.49-4.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "8b826098aad3964d1687b1c59f9816df9e4e56def77b7db48c44b0cc2c97c472",
-    "source": "repo",
-    "size": 232959,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/m/mtools-4.0.49-4.fc45.x86_64.rpm"
   },
   {
     "package_id": "ncurses-base-6.6-3.fc45.noarch",
@@ -1128,28 +792,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/n/npth-1.8-5.fc45.x86_64.rpm"
   },
   {
-    "package_id": "numactl-libs-2.0.19-5.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "aaf5768a6633b3100e46f0a68c2ab06381fb57ba74ba73bbf5324f61acf01821",
-    "source": "repo",
-    "size": 32625,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/n/numactl-libs-2.0.19-5.fc45.x86_64.rpm"
-  },
-  {
     "package_id": "openldap-2.6.15-1.fc46.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "4bb172fb61ffe30cccc6aac1cef8f4e77aac7718dea38bf88267fd5226946c00",
     "source": "repo",
     "size": 279575,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/o/openldap-2.6.15-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "openssh-10.6p1-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "8818434978dd544219318270dbc55f65a75a1ea4af33ab068d38330d8f078880",
-    "source": "repo",
-    "size": 388085,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/o/openssh-10.6p1-1.fc46.x86_64.rpm"
   },
   {
     "package_id": "openssl-libs-1:4.0.3-1.fc46.x86_64",
@@ -1166,14 +814,6 @@
     "source": "repo",
     "size": 573464,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/p11-kit-0.26.5-1.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "p11-kit-client-0.26.5-1.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "9f568f6f57dd06e57c9ab9255b5179442440e20d26aa4f6b1ab446a98910740c",
-    "source": "repo",
-    "size": 247528,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/p11-kit-client-0.26.5-1.fc45.x86_64.rpm"
   },
   {
     "package_id": "p11-kit-trust-0.26.5-1.fc45.x86_64",
@@ -1208,60 +848,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/pcre2-syntax-10.47-1.fc45.2.noarch.rpm"
   },
   {
-    "package_id": "pixman-0.46.2-4.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "1603523633494e4a9ca3cf37a9eba28c7692496feb795e14490ef8d92027684f",
-    "source": "repo",
-    "size": 303814,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/pixman-0.46.2-4.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "pkcs11-provider-1.3.0-2.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "ccbbae346f3601b74541ad4c095e9e42bc5c2dad9ef2e7592193ab9217994886",
-    "source": "repo",
-    "size": 214023,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/pkcs11-provider-1.3.0-2.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "pkgconf-2.5.1-2.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "78d96539ed8d0c8b2f6d8472171b0557a6ac8fae1d251f8a0aabe31211011ba2",
-    "source": "repo",
-    "size": 50135,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/pkgconf-2.5.1-2.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "pkgconf-m4-2.5.1-2.fc45.noarch",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "3ccebd32bf2edfdb5188cbd0f7353564e48de33f7497b234ec63c5a064602d3f",
-    "source": "repo",
-    "size": 14139,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/pkgconf-m4-2.5.1-2.fc45.noarch.rpm"
-  },
-  {
-    "package_id": "pkgconf-pkg-config-2.5.1-2.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "0a3d30dc0ff550b404d6f49f04a5d97dbfc46551db3c802129aa63e4a2812206",
-    "source": "repo",
-    "size": 9746,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/pkgconf-pkg-config-2.5.1-2.fc45.x86_64.rpm"
-  },
-  {
     "package_id": "popt-1.19-11.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "09932f1a6ac2d1655d3940088d9a372f507dd560c842c523e5f8a71e204e67fd",
     "source": "repo",
     "size": 68171,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/popt-1.19-11.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "protobuf3-c-1.5.2-52.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "cad53a4fb2f80b429e3b4598c30d9a6e1e95a352c53c4e77fc895af883ba79a3",
-    "source": "repo",
-    "size": 33957,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/protobuf3-c-1.5.2-52.fc45.x86_64.rpm"
   },
   {
     "package_id": "publicsuffix-list-dafsa-20260624-2.fc45.noarch",
@@ -1288,28 +880,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/python3-3.15.0-1.fc46.x86_64.rpm"
   },
   {
-    "package_id": "python3-cffi-2.1.1-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "45a7d5d5c231e5a27dceb0811eb62f41a4b7b59b1051faa7092000b8d677b792",
-    "source": "repo",
-    "size": 337688,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/python3-cffi-2.1.1-1.fc46.x86_64.rpm"
-  },
-  {
     "package_id": "python3-createrepo_c-1.2.1-11.fc46.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "3bcf027da469ba4bde81851299d49d3b7a3928f47fd7f08b9436d75e17b49f1c",
     "source": "repo",
     "size": 70609,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/python3-createrepo_c-1.2.1-11.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "python3-cryptography-50.0.0-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "ef969060f264c5f893577aeca36ac9daaa5fc2e16261db2b2987f1eb536d8e4b",
-    "source": "repo",
-    "size": 1967863,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/python3-cryptography-50.0.0-1.fc46.x86_64.rpm"
   },
   {
     "package_id": "python3-libdnf5-5.4.6.0-1.fc46.x86_64",
@@ -1328,84 +904,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/python3-libs-3.15.0-1.fc46.x86_64.rpm"
   },
   {
-    "package_id": "python3-pefile-2024.8.26-9.fc45.noarch",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "28e73e4063e1e94b95bbe3c4d579de43a2e5849581c74f6d889ddcdc02a0da5a",
-    "source": "repo",
-    "size": 181440,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/python3-pefile-2024.8.26-9.fc45.noarch.rpm"
-  },
-  {
-    "package_id": "python3-pycparser-3.00-4.fc45.noarch",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "3df68b99f32c60e51a82b72a31c6c00fc175d0e60d03190b39b362ae05c75b4d",
-    "source": "repo",
-    "size": 146738,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/python3-pycparser-3.00-4.fc45.noarch.rpm"
-  },
-  {
     "package_id": "python3-rpm-6.1.0-1.fc46.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "4b65ca2dab27fa8e0ce62e6713c9a7eb73f91f05fbe45d691d915d6710061c1c",
     "source": "repo",
     "size": 71438,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/python3-rpm-6.1.0-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "python3-zstandard-0.25.0-7.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "6d636dbecb2120f71d00cd539129a5a1f25ebcffb3ab5504d112375b8a108a0b",
-    "source": "repo",
-    "size": 720624,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/p/python3-zstandard-0.25.0-7.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "qatlib-26.08.0-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "dbe17cc5f7c00840ca7b3801475df2ba2609ff2a78040b8b1f4d71c9b330d3b0",
-    "source": "repo",
-    "size": 278318,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/q/qatlib-26.08.0-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "qatzip-libs-2.0.0-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "7d76662ae3c7a60305d06b2c622f921ebe34e0213ac7f4343573b7d887cb7cee",
-    "source": "repo",
-    "size": 79316,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/q/qatzip-libs-2.0.0-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "qemu-common-2:11.1.2-2.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "f40acdc4a7f37fae99b0ef39234d9ad84f2a633bdf7797bdc3dbbcb20ec34238",
-    "source": "repo",
-    "size": 608104,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/q/qemu-common-11.1.2-2.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "qemu-img-2:11.1.2-2.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "08477c889b5f2d5cefab91b73cf77e32200ecde6b946f04f38973500bb5c0cf2",
-    "source": "repo",
-    "size": 2840966,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/q/qemu-img-11.1.2-2.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "qemu-system-x86-core-2:11.1.2-2.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "debf23a00e40b7c344cde71b34e16d13391e0916f927847a202e34fb189ecdd0",
-    "source": "repo",
-    "size": 9617237,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/q/qemu-system-x86-core-11.1.2-2.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "rdma-core-common-65.0-5.fc46.noarch",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "86c55186d45e534f8f2783de64a91886fd01acc6406f0d234fe6729b1ca46df5",
-    "source": "repo",
-    "size": 18797,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/r/rdma-core-common-65.0-5.fc46.noarch.rpm"
   },
   {
     "package_id": "readline-8.3-7.fc46.x86_64",
@@ -1472,22 +976,6 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/r/rpm-sign-libs-6.1.0-1.fc46.x86_64.rpm"
   },
   {
-    "package_id": "seabios-bin-1.17.0-16.fc46.noarch",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "3274e204471438f60b870eb7d271f8c78bde982aa8cade6c7c0ad2170c92e787",
-    "source": "repo",
-    "size": 138774,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/seabios-bin-1.17.0-16.fc46.noarch.rpm"
-  },
-  {
-    "package_id": "seavgabios-bin-1.17.0-16.fc46.noarch",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "32a825aa94ed245025678570372cc7d187760ddcf9683ab4ab137a07dec2e7b0",
-    "source": "repo",
-    "size": 53614,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/seavgabios-bin-1.17.0-16.fc46.noarch.rpm"
-  },
-  {
     "package_id": "sed-4.10-2.fc45.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "574d6691548d7557f787f83eb85e6310ed1f2b13d1c9499d5714df3da58777c5",
@@ -1504,76 +992,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/setup-2.15.1-2.fc45.noarch.rpm"
   },
   {
-    "package_id": "shadow-utils-2:4.20.0-2.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "a3383717d6aea514f62d9dee26eb035a525341569ee493fafc06e7971a22cdde",
-    "source": "repo",
-    "size": 1485490,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/shadow-utils-4.20.0-2.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "snappy-1.2.2-6.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "a3398edfb6a76232125e0a3f3a67b3c73da97066f73105355c666f1a195cc0c2",
-    "source": "repo",
-    "size": 44223,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/snappy-1.2.2-6.fc45.x86_64.rpm"
-  },
-  {
     "package_id": "sqlite-libs-3.54.1-1.fc46.x86_64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "607af7923d612d329065e902171c9a28e3564f1546a062dcf43769c468b74c35",
     "source": "repo",
     "size": 843802,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/sqlite-libs-3.54.1-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "swtpm-0.10.2-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "98c2e8598e6cb598902d121ca5fa8bef058c5db0ac31d24a880cf2b822f22d03",
-    "source": "repo",
-    "size": 34780,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/swtpm-0.10.2-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "swtpm-libs-0.10.2-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "be1d19fcef60f64290a283d05be94c127beffb3a5c0cbe485d1788196152b9f6",
-    "source": "repo",
-    "size": 65861,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/swtpm-libs-0.10.2-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "swtpm-tools-0.10.2-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "f0ea97ce998325baaed1245a60a36f610d6e108d303fbb011a20fcd3d428415b",
-    "source": "repo",
-    "size": 120328,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/swtpm-tools-0.10.2-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "systemd-262.1-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "aa3e1b67af25974967bd49aba1be787afa759e5fa9bc797e98c43ec6e7bcd2f3",
-    "source": "repo",
-    "size": 4921199,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/systemd-262.1-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "systemd-boot-unsigned-262.1-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "170f0a8d6428321b8bd26a485c766d3a17ff354bd16162a1e9d47ec67e7b3b4e",
-    "source": "repo",
-    "size": 141753,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/systemd-boot-unsigned-262.1-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "systemd-container-262.1-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "2847e1f41663a9a4bf340cbaccd69209cec88f98bd79857c64cf8351ea9e659c",
-    "source": "repo",
-    "size": 1101611,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/systemd-container-262.1-1.fc46.x86_64.rpm"
   },
   {
     "package_id": "systemd-libs-262.1-1.fc46.x86_64",
@@ -1584,36 +1008,12 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/systemd-libs-262.1-1.fc46.x86_64.rpm"
   },
   {
-    "package_id": "systemd-shared-262.1-1.fc46.x86_64",
+    "package_id": "systemd-standalone-sysusers-262.1-1.fc46.x86_64",
     "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "5e5cea2d6426dfd83f453d3e4c4c048d02d875b0eccb38c0dc4fc3e85c8001c7",
+    "pkg_checksum": "82543defe801729f131148bc95decbc69c0b167871c58e5ca31678f9125f2b25",
     "source": "repo",
-    "size": 2386046,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/systemd-shared-262.1-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "systemd-sysusers-262.1-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "a8b369d32de4d3164c0a1f462b3f043a859726c00a1a5acb86440724ecd5b838",
-    "source": "repo",
-    "size": 57365,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/systemd-sysusers-262.1-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "systemd-udev-262.1-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "980c9a8cf79fa92a787b211b633757daa9fe561f8f97f4b15521e7048c638209",
-    "source": "repo",
-    "size": 3139926,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/systemd-udev-262.1-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "systemd-ukify-262.1-1.fc46.noarch",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "cb90c4b1c8d81c761855695e0e660174f2c43c7a7d6f5d5ccece1facd54196f3",
-    "source": "repo",
-    "size": 78283,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/systemd-ukify-262.1-1.fc46.noarch.rpm"
+    "size": 444484,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/s/systemd-standalone-sysusers-262.1-1.fc46.x86_64.rpm"
   },
   {
     "package_id": "tpm2-tss-4.2.0-1.fc45.x86_64",
@@ -1630,62 +1030,6 @@
     "source": "repo",
     "size": 730771,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/t/tzdata-2026e-1.fc46.noarch.rpm"
-  },
-  {
-    "package_id": "unbound-libs-1.26.1-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "bdf306fb254f6d9c311bec005af4127316d270968542b74ad775d944a6ced024",
-    "source": "repo",
-    "size": 629263,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/u/unbound-libs-1.26.1-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "util-linux-core-2.42.4-2.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "5d6d921adbc3f7b93f8e59973fc9eb1a264c4c36189536ef8f52270d88d187c1",
-    "source": "repo",
-    "size": 596912,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/u/util-linux-core-2.42.4-2.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "veritysetup-2.8.8-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "c47d2c11d7ad65cc8579a9f698bb7720833a111a2b1ef17841205ac27621a976",
-    "source": "repo",
-    "size": 36584,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/v/veritysetup-2.8.8-1.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "virtiofsd-1.14.0-2.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "1669a2a1cbc56014109116d66afadbb0b27cacccdbd5b10c97043c28d86eacc8",
-    "source": "repo",
-    "size": 981901,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/v/virtiofsd-1.14.0-2.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "xen-libs-4.21.1-11.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "e0e70f4b5b123412803558f20e75a0e96cfebdd2792a71c5caa9504d24f57bc1",
-    "source": "repo",
-    "size": 689013,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/x/xen-libs-4.21.1-11.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "xen-licenses-4.21.1-11.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "6156a4b3d9305ad8477fccb3969d36838652e4d4b6a891c58efb7e417c4b542d",
-    "source": "repo",
-    "size": 44331,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/x/xen-licenses-4.21.1-11.fc46.x86_64.rpm"
-  },
-  {
-    "package_id": "xxhash-libs-0.8.4-1.fc46.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "22ecbb8c8863ab06f5ae16c4872c7fdb8dd5c7dc0a14890dc7ce8c720cffd837",
-    "source": "repo",
-    "size": 42256,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/x/xxhash-libs-0.8.4-1.fc46.x86_64.rpm"
   },
   {
     "package_id": "xz-libs-1:5.8.4-1.fc46.x86_64",
@@ -1710,13 +1054,5 @@
     "source": "repo",
     "size": 92600,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/z/zlib-ng-compat-2.3.3-6.fc45.x86_64.rpm"
-  },
-  {
-    "package_id": "zstd-1.5.7-6.fc45.x86_64",
-    "repo": "fedora.rawhide.repository",
-    "pkg_checksum": "029aaa2cb5ed995d67d80e2ba969063e5ad29b69345c0b41d7f2df70e9b5762e",
-    "source": "repo",
-    "size": 196309,
-    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-x86_64-rawhide-20261024/Packages/z/zstd-1.5.7-6.fc45.x86_64.rpm"
   }
 ]

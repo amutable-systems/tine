@@ -3,6 +3,7 @@
 
 """The conventional Fedora distribution declaration."""
 
+load("//box:defs.bzl", "box")
 load("//distribution:defs.bzl", "distribution")
 load("//package:buildroot.bzl", "buildroot")
 load("//package:manager.bzl", "package_manager")
@@ -63,6 +64,21 @@ def _merge_package_sets(
     package_sets.update(overrides)
     return package_sets
 
+# The root box of a Fedora release contains the packages that resolve, verify and install a box.
+# tine//distribution:tools.box contains everything else.
+_FEDORA_ROOT_PACKAGES = [
+    "coreutils",
+    "libseccomp",
+    "python3-createrepo_c",
+    "python3-libdnf5",
+    # The rpm drivers define rpm macros through the rpm module.
+    "python3-rpm",
+    "rpm",
+    # The relaxed sandbox binds the host's nsswitch.conf. Without libnss_systemd, getpwuid() cannot find
+    # a systemd-homed caller, and ssh-keygen aborts.
+    "systemd-libs",
+]
+
 def _check_name(name: str, family: str, version: str) -> None:
     expected = "{}.{}".format(family, version)
     if name != expected:
@@ -71,7 +87,6 @@ def _check_name(name: str, family: str, version: str) -> None:
 def fedora_release(
     name: str,
     version: str,
-    box: str,
     architectures: list[str],
     signing_keys: dict[str, str],
     baseurl: str | None = None,
@@ -115,16 +130,26 @@ def fedora_release(
     distribution.new(name = name + ".distribution", architectures = architectures, visibility = visibility)
     os_release(
         name = name + ".release",
-        target_compatible_with = distribution.serves(name, architectures),
+        target_compatible_with = distribution.serves(name, architectures, in_box = True),
+        box = ":" + name + ".box",
         repository_universe = ":" + name + ".repositories",
         package_sets = _merge_package_sets(_FEDORA_PACKAGE_SETS, package_set_overrides),
+        visibility = visibility,
+    )
+    box.new(
+        name = name + ".box",
+        architectures = architectures,
+        packages = _FEDORA_ROOT_PACKAGES,
+        release = ":" + name + ".release",
+        repository_universe = ":" + name + ".repositories",
+        root = True,
         visibility = visibility,
     )
     package_manager(
         name = name + ".package-manager",
         target_compatible_with = distribution.serves(name, architectures, in_box = True),
         release = ":" + name + ".release",
-        box = box,
+        box = "tine//distribution:tools.box",
         additional_repositories = additional_repositories,
         repository_priorities = repository_priorities,
         visibility = visibility,
@@ -132,6 +157,8 @@ def fedora_release(
     buildroot(
         name = name + ".buildroot",
         target_compatible_with = distribution.serves(name, architectures, in_box = True),
+        # The buildroot is configured for its release, so its box is the release's tools box.
+        incoming_transition = ":" + name + ".distribution",
         package_manager = ":" + name + ".package-manager",
         package_set = "buildroot",
         visibility = visibility,
