@@ -7,6 +7,8 @@
 # Named `tine`, not `root`, so same-cell labels match those in a consuming project. This must be the
 # cell's real name rather than an alias because labels retain the name of the cell they resolve to.
 tine = .
+# A project replaces tine's catalog with its own by declaring a cell of this name.
+catalog = catalog
 prelude = prelude
 none = none
 
@@ -21,7 +23,7 @@ fbsource = none
 prelude = bundled
 
 [parser]
-target_platform_detector_spec = target:tine//...->tine//platforms:default
+target_platform_detector_spec = target:tine//...->tine//platforms:default target:catalog//...->tine//platforms:default
 
 [build]
 execution_platforms = tine//platforms:default

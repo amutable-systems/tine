@@ -2055,6 +2055,7 @@ CELL_BUCKCONFIG = """# Standalone root cell. Consuming projects supply their own
 [cells]
 # Named `tine`, not `root`, so same-cell labels read `tine//...` as in a consuming project.
 tine = .
+catalog = catalog
 prelude = prelude
 none = none
 
@@ -2068,7 +2069,8 @@ fbsource = none
 prelude = bundled
 
 [parser]
-target_platform_detector_spec = target:tine//...->tine//platforms:default
+target_platform_detector_spec = target:tine//...->tine//platforms:default \\
+    target:catalog//...->tine//platforms:default
 
 [build]
 execution_platforms = tine//platforms:default
@@ -2109,8 +2111,20 @@ class TestRenderProjectBuckconfig(unittest.TestCase):
         detector = self.config()["parser"][tine.DETECTOR].split()
         # This cell's platform, not the prelude's: that is what gives the project the shared cache.
         self.assertEqual(
-            detector, [f"target:{cell}//...->tine//platforms:default" for cell in ("root", "tine")]
+            detector,
+            [f"target:{cell}//...->tine//platforms:default" for cell in ("root", "tine", "catalog")],
         )
+
+    def test_a_project_without_a_catalog_gets_tine_s(self) -> None:
+        self.assertEqual(self.config("vendor/tine")["cells"]["catalog"], "vendor/tine/catalog")
+
+    def test_a_project_catalog_replaces_tine_s(self) -> None:
+        root = scratch(self, "tine-test-project.")
+        configure_cells(root, "vendor/tine").write_text(
+            '[buckconfig.cells]\nroot = "."\ntine = "vendor/tine"\ncatalog = "os/catalog"\n'
+        )
+        (root / ".buckconfig").write_text(self.written(root))
+        self.assertEqual(tine.read_project_buckconfig(root)["cells"]["catalog"], "os/catalog")
 
     def test_the_project_runs_actions_on_the_cell_s_platform(self) -> None:
         # Copied rather than rewritten, and it is what gives the project the shared cache.
@@ -2184,6 +2198,21 @@ class TestRefreshProjectBuckconfig(unittest.TestCase):
                 self.assertEqual(config["cells"]["tine"], "vendor/tine")
                 self.assertEqual(config["cells"]["app"], "app")
                 self.assertEqual(config["buck2"], {"materializations": materializations or "deferred"})
+
+    def test_a_moved_checkout_takes_its_catalog_along(self) -> None:
+        moved = self.root / "third-party" / "tine"
+        moved.mkdir(parents=True)
+        (moved / ".buckconfig").write_text(CELL_BUCKCONFIG)
+        configure_cells(self.root, "third-party/tine")
+        self.enterContext(unittest.mock.patch.object(tine, "COMMAND_PATH", wrapper_command(moved)))
+        self.refresh()
+        self.assertEqual(self.config()["cells"]["catalog"], "third-party/tine/catalog")
+
+    def test_native_cell_declarations_keep_a_project_catalog(self) -> None:
+        self.cells.write_text("")
+        self.path.write_text("[cells]\nroot = .\ntine = vendor/tine\ncatalog = os/catalog\n")
+        self.refresh()
+        self.assertEqual(self.config()["cells"]["catalog"], "os/catalog")
 
     def test_unchanged_defaults_do_not_rewrite_the_file(self) -> None:
         before = self.path.stat()

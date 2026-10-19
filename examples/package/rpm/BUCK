@@ -7,7 +7,7 @@ load("@tine//box:defs.bzl", "box")
 load("@tine//git:defs.bzl", "git")
 load("@tine//package_system/rpm:defs.bzl", "rpm")
 
-_BUILDROOT = "tine//catalog:fedora.rawhide.buildroot"
+_BUILDROOT = "catalog//:fedora.rawhide.buildroot"
 
 git.checkout(name = "hello.source")
 

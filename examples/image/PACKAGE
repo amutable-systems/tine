@@ -13,18 +13,18 @@ load("@tine//distribution:defs.bzl", "distribution")
 
 distribution.set_for_package({
     "arch": {
-        "distribution": "tine//catalog:arch.rolling.distribution",
+        "distribution": "catalog//:arch.rolling.distribution",
         "os_release_id": "arch",
-        "package_manager": "tine//catalog:arch.rolling.package-manager",
+        "package_manager": "catalog//:arch.rolling.package-manager",
     },
     "debian": {
-        "distribution": "tine//catalog:debian.testing.distribution",
+        "distribution": "catalog//:debian.testing.distribution",
         "os_release_id": "debian",
-        "package_manager": "tine//catalog:debian.testing.package-manager",
+        "package_manager": "catalog//:debian.testing.package-manager",
     },
     "fedora": {
-        "distribution": "tine//catalog:fedora.rawhide.distribution",
+        "distribution": "catalog//:fedora.rawhide.distribution",
         "os_release_id": "fedora",
-        "package_manager": "tine//catalog:fedora.rawhide.package-manager",
+        "package_manager": "catalog//:fedora.rawhide.package-manager",
     },
 })

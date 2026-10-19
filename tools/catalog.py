@@ -45,7 +45,7 @@ from util import (
     with_retries,
 )
 
-DEFAULT_CATALOG = "tine//catalog"
+DEFAULT_CATALOG = "catalog//"
 BOX_LOCK_LABEL = "tine:box-lock"
 # Keep in sync with the lock targets `box.new` declares in box/build.bzl.
 BOX_LOCK_INFIX = ".lock."

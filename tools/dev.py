@@ -94,9 +94,10 @@ def _universe() -> str:
     type check against it, has no execution platform on an arm64 host, and Buck reports that as an
     error. So leave out every target that depends on the Arch box directly.
     """
+    cells = "(tine//... + catalog//...)"
     if platform.machine() == "x86_64":
-        return "tine//..."
-    return "tine//... - rdeps(tine//..., tine//catalog:arch.rolling.box, 1)"
+        return cells
+    return f"{cells} - rdeps({cells}, catalog//:arch.rolling.box, 1)"
 
 
 def _targets() -> list[str]:

@@ -23,10 +23,10 @@ attribute of an image or composition.
 
 ## Concepts
 
-A **catalog** is a Buck package that declares which OS releases are available to build against. For each
-release it bundles the repository definitions, the release identity and its package sets, a package
-manager (the pinned solve environment that images start from), a buildroot for package builds, and a
-box. The default catalog is [`tine//catalog`](../catalog/BUCK) and currently declares these releases:
+A **catalog** is the Buck cell named `catalog`, which declares which OS releases are available to build
+against. For each release it bundles the repository definitions, the release identity and its package
+sets, a package manager (the pinned solve environment that images start from), a buildroot for package
+builds, and a box. tine's own catalog is [`catalog//`](../catalog/BUCK) and declares these releases:
 
 - `fedora.rawhide`: pinned to an rpmrepo compose snapshot, so packages never vanish underneath the pins
 - `arch.rolling`: pinned to a day in the Arch Linux Archive, whose dated trees serve databases that never
@@ -38,17 +38,30 @@ Every one of them is pinned to a mirror that publishes immutable snapshots, whic
 have to be buildable from a committed pin at all.
 
 Each release consists of targets named `<family>.<release>.<role>`, for example
-`tine//catalog:fedora.rawhide.package-manager` or `tine//catalog:arch.rolling.release`. The pins live
+`catalog//:fedora.rawhide.package-manager` or `catalog//:arch.rolling.release`. The pins live
 as committed snapshots under [`catalog/snapshot/`](../catalog/snapshot/): repository metadata in
 `snapshot/repo/*.<architecture>.json` and frozen box transactions in
 `snapshot/box/*.<architecture>.json`. Normal builds therefore never touch the network;
-`refresh-catalog --advance` (below) advances the pins. A project can instead declare its own `//catalog`
-package with the same macros. The naming scheme and the pinning mechanism are described in
-[architecture.md](../design/architecture.md).
+`refresh-catalog --advance` (below) advances the pins. The naming scheme and the pinning mechanism are
+described in [architecture.md](../design/architecture.md).
+
+A project can declare its own catalog with the same macros. Point the `catalog` cell at its directory in
+`tine.toml`:
+
+```toml
+[buckconfig.cells]
+root = "."
+tine = "tine"
+catalog = "catalog"
+```
+
+Every `catalog//` label then resolves to the project's catalog, including the labels in tine's own
+targets, and the build does not use tine's catalog. If `tine.toml` declares no `catalog` cell, `bin/tine`
+points the cell at tine's catalog.
 
 A **box** is a pinned, reproducible execution environment that runs every build action. It supplies its
 package system's own tools, Python, core utilities, and the image assembly tools; these stay in the box
-and out of the built images. Both RPM releases share `tine//catalog:fedora.rawhide.box`, while
+and out of the built images. Both RPM releases share `catalog//:fedora.rawhide.box`, while
 `arch.rolling` and `debian.testing` have their own. A box's base release only records where its userspace
 came from: the Rawhide box also serves Fedora 44. How a box bootstraps itself is described in
 [architecture.md](../design/architecture.md).
@@ -64,9 +77,10 @@ tine buck run tine//tools:fmt
 tine buck run tine//tools:check
 ```
 
-`refresh-catalog` refreshes the default `tine//catalog` package. Pass another catalog package after `--`,
-for example `tine buck run tine//tools:refresh-catalog -- my_project//catalog`. `verify-catalog`
-performs the same generation and fails when the committed JSON differs. The pinning and refresh mechanism
+`refresh-catalog` refreshes the `catalog//` cell, which is the project's catalog if it declares one.
+Pass another catalog package after `--`, for example `tine buck run tine//tools:refresh-catalog --
+my_project//catalog`. `verify-catalog` performs the same generation and fails when the committed JSON
+differs. The pinning and refresh mechanism
 is described in [architecture.md](../design/architecture.md).
 
 ## Declaring an image
@@ -93,7 +107,7 @@ local_repository(
 
 package.manager(
     name = "project.package-manager",
-    base = "tine//catalog:fedora.rawhide.package-manager",
+    base = "catalog//:fedora.rawhide.package-manager",
     additional_repositories = [":project.repository"],
 )
 
@@ -115,7 +129,7 @@ A package manager may instead attach a branch's generated local-packages univers
 ```Starlark
 package.manager(
     name = "image.package-manager",
-    base = "tine//catalog:fedora.rawhide.package-manager",
+    base = "catalog//:fedora.rawhide.package-manager",
     local_packages = "//packages/fedora/rawhide:_local_packages",
 )
 ```
@@ -1035,7 +1049,7 @@ command_alias(
 distribution.alias(
     name = "boot-demo-qemu.fedora",
     actual = ":boot-demo-qemu",
-    distro = "//catalog:<family>.<release>.distribution",
+    distro = "catalog//:<family>.<release>.distribution",
 )
 ```
 
@@ -1048,7 +1062,7 @@ An image can also name its own distribution instead of being aliased into one:
 ```Starlark
 image.disk(
     name = "appliance",
-    distro = "//catalog:<family>.<release>.distribution",
+    distro = "catalog//:<family>.<release>.distribution",
     package_sets = ["bootable"],
     ...
 )
@@ -1070,8 +1084,8 @@ load("@tine//distribution:defs.bzl", "distribution")
 
 distribution.set_for_package({
     "<name>": {
-        "distribution": "//catalog:<family>.<release>.distribution",
-        "package_manager": "//catalog:<family>.<release>.package-manager",
+        "distribution": "catalog//:<family>.<release>.distribution",
+        "package_manager": "catalog//:<family>.<release>.package-manager",
     },
 })
 ```
@@ -1099,7 +1113,7 @@ which is git-ignored and belongs to the checkout rather than the repository:
 
 ```ini
 [parser]
-target_platform_detector_spec = target:tine//...->//catalog:<family>.<release>.distribution
+target_platform_detector_spec = target:tine//...->catalog//:<family>.<release>.distribution
 ```
 
 That platform is the base one plus the distribution's constraint, so choosing a distribution does not

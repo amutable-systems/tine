@@ -43,7 +43,7 @@ tine_python_library(
 
 box_python_test(
     name = "test",
-    box = "tine//catalog:fedora.rawhide.box",
+    box = "catalog//:fedora.rawhide.box",
     srcs = ["installer_test.py", "transaction_test.py"],
     deps = [":installer", ":transaction"],
 )

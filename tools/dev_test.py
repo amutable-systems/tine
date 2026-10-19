@@ -140,7 +140,7 @@ class TyPackages(unittest.TestCase):
                 return json.dumps(self.targets)
             self.assertEqual(
                 (command, *arguments),
-                ("build", "--show-full-simple-output", "tine//catalog:fedora.rawhide.box"),
+                ("build", "--show-full-simple-output", "catalog//:fedora.rawhide.box"),
             )
             # Buck returns an absolute output path; the fixture's project lives elsewhere.
             return str(Path(os.environ["TY_TEST_BOX"]).absolute()) + "\n"
@@ -166,11 +166,11 @@ class TyPackages(unittest.TestCase):
                     )
             buck.assert_not_called()
             (self.root / "go/pyproject.toml").write_text(
-                '[tool.tine.ty]\nbox = "tine//catalog:fedora.rawhide.box"\n'
+                '[tool.tine.ty]\nbox = "catalog//:fedora.rawhide.box"\n'
             )
             self.assertEqual(dev._ty_environment(self.root, Path("go"), python), {"python": "/box/usr"})
             buck.assert_called_once_with(
-                "build", "--show-full-simple-output", "tine//catalog:fedora.rawhide.box"
+                "build", "--show-full-simple-output", "catalog//:fedora.rawhide.box"
             )
 
     def test_rejects_invalid_packages(self) -> None:
@@ -223,7 +223,7 @@ class TyPackages(unittest.TestCase):
             '[tool.ty.environment]\npython-version = "3.12"\n'
             '[tool.ty.rules]\ninvalid-assignment = "ignore"\n'
             '[tool.ty.analysis]\nallowed-unresolved-imports = ["package_optional"]\n'
-            '[tool.tine.ty]\nbox = "tine//catalog:fedora.rawhide.box"\n'
+            '[tool.tine.ty]\nbox = "catalog//:fedora.rawhide.box"\n'
         )
         output = self.root / "merged.toml"
         dev.main(["ty-config", "--base", str(base), "--pyproject", str(manifest), "--output", str(output)])
@@ -351,7 +351,7 @@ class TyPackages(unittest.TestCase):
 
     def test_servers_with_the_same_workspace_keep_import_environments_separate(self) -> None:
         (self.root / "go/pyproject.toml").write_text(
-            '[tool.tine.ty]\nbox = "tine//catalog:fedora.rawhide.box"\n'
+            '[tool.tine.ty]\nbox = "catalog//:fedora.rawhide.box"\n'
         )
         with self.server("cargo") as cargo, self.server("go") as go:
             for package, server, kind in (("cargo", cargo, "str"), ("go", go, "int")):

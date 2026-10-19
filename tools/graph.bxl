@@ -31,6 +31,6 @@ def _impl(ctx: bxl.Context) -> None:
 analyze = bxl_main(
     impl = _impl,
     cli_args = {
-        "pattern": cli_args.string(default = "tine//..."),
+        "pattern": cli_args.string(default = "tine//... + catalog//..."),
     },
 )

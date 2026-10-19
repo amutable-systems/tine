@@ -57,15 +57,19 @@ tine//git/                pinned Git repositories with local checkout overrides
 tine//cargo/              vendored crate trees and offline Rust source builds
 tine//go/                 go.sum-verified module fetches and offline Go source builds
 tine//http/               prebuilt tools that Buck downloads and verifies
-tine//catalog/            default repositories, locks, releases, package managers, and buildroots
+catalog//                 default repositories, locks, releases, package managers, and buildroots
 tine//tools/              pinned development and catalog-refresh commands, and the boxes they run in
 tine//bin/                the command a checkout builds through, which fetches and configures Buck2
 ```
 
-The default `tine//catalog` package owns its release selection, mirrors, box choice, repository additions,
-and policy overrides. Projects can instead declare their own catalog package with tine's reusable family
-macros or low-level rules. The project's `//buildroots` package maps importer-generated
-`//buildroots/<family>:<release>` names to catalog targets.
+The default catalog is the `catalog` cell, in the `catalog/` directory of the tine checkout. It declares
+the release selection, mirrors, box choice, repository additions, and policy overrides. A project replaces
+it by declaring its own `catalog` cell, built with tine's family macros or low-level rules. Every
+`catalog//` label then resolves to the project's catalog, including the labels in tine's own targets, and
+the build does not use tine's catalog. Buck reads cells only from the root cell's configuration. `bin/tine`
+therefore writes the fallback cell into the project's generated `.buckconfig`, unless `tine.toml` declares
+the cell. The project's `//buildroots` package maps importer-generated `//buildroots/<family>:<release>`
+names to catalog targets.
 
 Catalog targets use `<family>.<release>[.<component>].<role>` names. A rolling channel occupies the release
 segment like any other release. Singular `.repository` targets own remotes, plural `.repositories` targets
@@ -307,7 +311,7 @@ cacheable build action. The generated transaction is an input to the existing dy
 so the box builds in one invocation without mutating the source tree. Its package selection changes only
 when its authored policy, resolver box, or pinned repository inputs change.
 
-`tine buck run tine//tools:refresh-catalog` refreshes the default `tine//catalog` package in several
+`tine buck run tine//tools:refresh-catalog` refreshes the `catalog//` cell in several
 phases. Pass another catalog package after `--`, for example
 `tine buck run tine//tools:refresh-catalog -- my_project//catalog`:
 
@@ -1068,7 +1072,7 @@ package managers itself:
 package.manager(
     name = "image.package-manager",
     base = select({
-        "//catalog:<family>.<release>.distribution": "//catalog:<family>.<release>.package-manager",
+        "catalog//:<family>.<release>.distribution": "catalog//:<family>.<release>.package-manager",
     }),
 )
 ```

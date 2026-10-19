@@ -19,13 +19,13 @@ box.new(
         "git",
         "python3",
     ],
-    release = "tine//catalog:fedora.rawhide.release",
+    release = "catalog//:fedora.rawhide.release",
 )
 ```
 
 `release` is the base the box is built from; point it at a different catalog entry when the project needs
 another base. The environment that resolves and installs the box is the one that release names beside it,
-`tine//catalog:fedora.rawhide.box` here, which a `resolver_box` of your own overrides.
+`catalog//:fedora.rawhide.box` here, which a `resolver_box` of your own overrides.
 
 Run the target to enter an interactive shell. Buck runs it from the directory you invoked it in, so this
 works from anywhere in the project:
@@ -71,12 +71,12 @@ can inherit its package list instead of copying it. Declare it as `parent`:
 ```Starlark
 box.new(
     name = "dev.box",
-    parent = "tine//catalog:fedora.rawhide.box",
+    parent = "catalog//:fedora.rawhide.box",
     packages = [
         "gcc",
         "git",
     ],
-    release = "tine//catalog:fedora.rawhide.release",
+    release = "catalog//:fedora.rawhide.release",
 )
 ```
 

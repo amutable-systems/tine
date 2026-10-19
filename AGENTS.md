@@ -42,7 +42,8 @@ Cell layout and architecture: [the design plan](docs/design/architecture.md). Us
 `mise.toml` puts `./bin` and `./tools` on `PATH`; every pinned tool is declared in `tine.lock.json`.
 `tine buck` runs Buck with the mounts declared by `tine mount` in `.buck/tine-mounts.toml`.
 
-- **Build everything:** `buck build tine//...`, which runs no tests.
+- **Build everything:** `buck build tine//... catalog//...`, which runs no tests. The catalog is a cell of
+  its own, so `tine//...` leaves it out.
 - **Lint (format, lint, type-check, whole-graph analysis):** `buck run tine//tools:lint`
 - **Check (lint plus the fast test suites):** `buck run tine//tools:check`
 - **Auto-format + auto-fix:** `buck run tine//tools:fmt`

@@ -181,7 +181,7 @@ another Buck2 is unsupported.
 tine buck run tine//tools:check           # lint, type-check, unit tests
 tine buck run tine//tools:fmt             # auto-format and auto-fix
 tine buck run tine//tools:verify-catalog  # assert the committed catalog lock matches
-tine buck build tine//...                 # build everything: the catalog, examples, tooling
+tine buck build tine//... catalog//...    # build everything: the catalog, examples, tooling
 tools/ci.sh                               # the whole CI pipeline: checks, builds, image tests
 ```
 
