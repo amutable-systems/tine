@@ -146,7 +146,7 @@ go.test(
 box.new(
     name = "go.box",
     packages = ["ca-certificates", "golang", "python3"],
-    release = "tine//catalog:fedora.rawhide.release",
+    release = "catalog//:fedora.rawhide.release",
 )
 ```
 
@@ -217,7 +217,7 @@ http.tool(
 box.new(
     name = "go-toolchain.box",
     packages = ["ca-certificates"],
-    release = "tine//catalog:fedora.rawhide.release",
+    release = "catalog//:fedora.rawhide.release",
 )
 
 go.package(

@@ -11,7 +11,7 @@ box.new(
         "bash",
         "coreutils",
     ],
-    release = "tine//catalog:fedora.rawhide.release",
+    release = "catalog//:fedora.rawhide.release",
 )
 
 # Same repositories as its parent, so it is a layer over it.
@@ -19,7 +19,7 @@ box.new(
     name = "demo-with-parent.box",
     packages = ["fish"],
     parent = ":demo.box",
-    release = "tine//catalog:fedora.rawhide.release",
+    release = "catalog//:fedora.rawhide.release",
 )
 
 box.new(
@@ -27,7 +27,7 @@ box.new(
     layered = False,
     packages = ["fish"],
     parent = ":demo.box",
-    release = "tine//catalog:fedora.rawhide.release",
+    release = "catalog//:fedora.rawhide.release",
 )
 
 box.sh_test(

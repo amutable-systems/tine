@@ -13,7 +13,7 @@ box.new(
         "python3-cryptography",
         "python3-grpcio",
     ],
-    release = "tine//catalog:fedora.rawhide.release",
+    release = "catalog//:fedora.rawhide.release",
 )
 
 _MODULES = [

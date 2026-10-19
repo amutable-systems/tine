@@ -72,14 +72,14 @@ The importer names a package branch by its upstream distro (`fedora`, `centos`) 
 ```Starlark
 alias(
     name = "rawhide",
-    actual = "//catalog:fedora.rawhide.buildroot",
+    actual = "catalog//:fedora.rawhide.buildroot",
     visibility = ["PUBLIC"],
 )
 ```
 
-The alias can also point to tine's default catalog (`tine//catalog:fedora.rawhide.buildroot`), but it is
-recommended to declare the OS's own `//catalog` package(s): then the OS advances its repository pins in
-its own commits, instead of whenever it updates tine.
+We recommend that the OS declares its own `catalog` cell. The OS then advances its repository pins in
+its own commits, instead of whenever it updates tine. Without its own cell, `catalog//` is tine's catalog.
+See "Concepts" in [images.md](images.md) for how to declare one.
 
 To use locally built packages in an image build, its package manager has to attach the branch's
 `//packages/`_distro_`/`_branch_`:_local_packages` universe. See `local_packages` in

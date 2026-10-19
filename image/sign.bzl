@@ -162,7 +162,7 @@ generate_signing_key = rule(
     attrs = {
         "box": attrs.exec_dep(
             providers = [BoxInfo],
-            default = "tine//catalog:fedora.rawhide.box",
+            default = "catalog//:fedora.rawhide.box",
             doc = "box providing ukify",
         ),
     },
@@ -343,7 +343,7 @@ _pkcs11_signing_key = rule(
     attrs = {
         "box": attrs.exec_dep(
             providers = [BoxInfo],
-            default = "tine//catalog:fedora.rawhide.box",
+            default = "catalog//:fedora.rawhide.box",
             doc = "box providing keyutil and the PKCS#11 provider",
         ),
         "certificate": attrs.option(

@@ -63,7 +63,7 @@ image.archive(
 box.new(
     name = "rust.box",
     packages = ["cargo", "gcc", "python3", "rust"],
-    release = "tine//catalog:fedora.rawhide.release",
+    release = "catalog//:fedora.rawhide.release",
 )
 ```
 

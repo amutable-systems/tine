@@ -23,7 +23,7 @@ box.new(
         "ca-certificates",
         "golang",
     ],
-    release = "tine//catalog:fedora.rawhide.release",
+    release = "catalog//:fedora.rawhide.release",
 )
 
 # A checked-out project needs no build file of its own: the sources default to the directory named
@@ -142,7 +142,7 @@ http.tool(
 box.new(
     name = "go-toolchain.box",
     packages = ["ca-certificates"],
-    release = "tine//catalog:fedora.rawhide.release",
+    release = "catalog//:fedora.rawhide.release",
 )
 
 go.package(
@@ -192,7 +192,7 @@ box.sh_test(
 
 package.manager(
     name = "image.package-manager",
-    base = "tine//catalog:fedora.rawhide.package-manager",
+    base = "catalog//:fedora.rawhide.package-manager",
 )
 
 # `:demo[sbom][cyclonedx]` lists the Go modules each binary was built from, next to the image's

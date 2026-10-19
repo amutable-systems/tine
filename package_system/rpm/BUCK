@@ -9,7 +9,7 @@ load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
 
 # Host tools bootstrap the box; remaining drivers run inside it. The drivers that reach for libdnf5
 # or createrepo_c are type-checked against the box that supplies them.
-_BOX = "tine//catalog:fedora.rawhide.box"
+_BOX = "catalog//:fedora.rawhide.box"
 
 tine_python_library(name = "rpmfile", srcs = ["rpmfile.py"], deps = ["//:util"])
 

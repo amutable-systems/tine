@@ -86,7 +86,8 @@ fi
 # cannot be built and the catalog cannot be verified.
 x86_only_catalog() { [ "$(uname -m)" = x86_64 ]; }
 
-# All available build targets; see tools/dev.py for why that is not always `tine//...`.
+# `universe` lists the build targets of the tine and catalog cells. tools/dev.py explains which targets
+# it leaves out.
 universe() { "${buck[@]}" run tine//tools:dev -- universe; }
 
 # `build` and `test` take no query, so they get the universe target list explicitly.
@@ -188,18 +189,18 @@ case $(uname -m) in
     x86_64) other=arm64 ;;
     *) other=x86_64 ;;
 esac
-for platform in "tine//platforms:$other" tine//catalog:debian.testing.distribution; do
+for platform in "tine//platforms:$other" catalog//:debian.testing.distribution; do
     group "graph-${platform##*:}" -- "${buck[@]}" bxl --target-platforms "$platform" tine//tools/graph.bxl:analyze -- --pattern "$pattern"
 done
 # First invocation fetches buck's pinned tools and builds the shared box; kept its own group so
 # bootstrap time stays visible.
-group box               -- "${buck[@]}" build tine//catalog:fedora.rawhide.box
+group box               -- "${buck[@]}" build catalog//:fedora.rawhide.box
 # The Arch box and the Debian box are root boxes, so each box is bootstrapped from scratch and
 # gets its own group.
 if x86_only_catalog; then
-    group arch-box      -- "${buck[@]}" build tine//catalog:arch.rolling.box
+    group arch-box      -- "${buck[@]}" build catalog//:arch.rolling.box
 fi
-group deb-box           -- "${buck[@]}" build tine//catalog:debian.testing.box
+group deb-box           -- "${buck[@]}" build catalog//:debian.testing.box
 group check             -- "${buck[@]}" run tine//tools:check
 # Every repository the catalog declares is pinned to a mirror serving immutable snapshots, so the whole
 # catalog is verifiable rather than the boxes that happen to be pinned.

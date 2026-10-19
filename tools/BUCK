@@ -8,7 +8,7 @@ load("//box:defs.bzl", "box")
 load("//http:defs.bzl", "http")
 load("//python:defs.bzl", "box_python_binary", "tine_python_binary")
 
-_RELEASE = "tine//catalog:fedora.rawhide.release"
+_RELEASE = "catalog//:fedora.rawhide.release"
 
 # Every pinned tool is declared in //:tine.lock.json and refreshed by `tine bump` (see docs/user/images.md). Buck
 # fetches and verifies every tool except Buck2, which `bin/tine` fetches.
@@ -123,7 +123,7 @@ box.python_test(
     ],
     env = {
         "TY_TEST_BINARY": "$(location_exec :ty)",
-        "TY_TEST_BOX": "$(location_exec tine//catalog:fedora.rawhide.box)",
+        "TY_TEST_BOX": "$(location_exec catalog//:fedora.rawhide.box)",
         "TY_TEST_PYTHON": "$(location_exec :python3)",
     },
     deps = ["//:util"],

@@ -7,11 +7,11 @@
 # by architecture.
 # Boxes with a resolver can derive their transaction during the build; refresh the catalog to freeze
 # one as a retained lock. Signing keys are fetched once, when a repository first declares them.
-load("//box:defs.bzl", "box")
-load("//distribution:arch.bzl", "arch_release", "arch_signing_keys")
-load("//distribution:debian.bzl", "debian_release", "debian_signing_keys")
-load("//distribution:fedora.bzl", "fedora_release", "fedora_signing_keys")
-load("//platforms:architecture.bzl", "architecture")
+load("@tine//box:defs.bzl", "box")
+load("@tine//distribution:arch.bzl", "arch_release", "arch_signing_keys")
+load("@tine//distribution:debian.bzl", "debian_release", "debian_signing_keys")
+load("@tine//distribution:fedora.bzl", "fedora_release", "fedora_signing_keys")
+load("@tine//platforms:architecture.bzl", "architecture")
 
 # What the mirror serves, and so what a box of this release keeps a committed lock for. A box only
 # ever takes architectures its release has, so state each release's once.

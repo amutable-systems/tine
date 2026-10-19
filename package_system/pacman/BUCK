@@ -100,7 +100,7 @@ package_system(
 # The planner resolves through libalpm, so its test runs in the box that carries it.
 box_python_test(
     name = "plan-test",
-    box = "tine//catalog:arch.rolling.box",
+    box = "catalog//:arch.rolling.box",
     srcs = ["alpm.py", "plan.py", "plan_test.py"],
     deps = ["//:specs", "//:util", "//package:href", "//package:transaction", "//rootfs:rootfs"],
 )

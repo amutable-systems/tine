@@ -16,7 +16,7 @@ import tomllib
 from collections.abc import Generator, Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import cast
 
 import cache_shim
@@ -39,6 +39,8 @@ SETTINGS = f"{CONFIG} or {LOCAL_SETTINGS}"
 HOME = ".buck"
 
 CELL = "tine"
+# A project that declares a cell of this name builds against its own catalog instead of tine's.
+CATALOG = "catalog"
 COMMAND = "bin/tine"
 COMMANDS = "commands"
 COMMAND_PATH = Path(__file__).with_suffix("")
@@ -1380,6 +1382,11 @@ def buckconfig_overrides(settings: dict[str, dict[str, object]], source: Path) -
     return config
 
 
+def default_catalog(cell: str) -> str:
+    """Return the path of tine's catalog in a project that has the tine cell at `cell`."""
+    return (PurePosixPath(cell) / CATALOG).as_posix()
+
+
 def render_project_buckconfig(source: Path, overrides: dict[str, dict[str, str]]) -> str:
     """Generate consuming-project defaults with explicit project overrides."""
     # The defaults are required; parse_buckconfig intentionally tolerates absent config layers.
@@ -1390,13 +1397,19 @@ def render_project_buckconfig(source: Path, overrides: dict[str, dict[str, str]]
         "",
         source.parent,
     )
+    # tine's .buckconfig gives the paths of the tine and catalog cells relative to the tine checkout.
+    # Relative to the project, those paths are wrong.
     cells_of(config).pop(CELL, None)
+    cells_of(config).pop(CATALOG, None)
     config.setdefault("cells", {}).setdefault("root", ".")
-    config.setdefault("parser", {})[DETECTOR] = (
-        f"target:root//...->{DEFAULT_PLATFORM} target:{CELL}//...->{DEFAULT_PLATFORM}"
+    config.setdefault("parser", {})[DETECTOR] = " ".join(
+        f"target:{cell}//...->{DEFAULT_PLATFORM}" for cell in ("root", CELL, CATALOG)
     )
     for section, values in overrides.items():
         config.setdefault(section, {}).update(values)
+    cells = cells_of(config)
+    if CATALOG not in cells and CELL in cells:
+        cells[CATALOG] = default_catalog(cells[CELL])
     lines = [CONFIG_HEADER]
     for section, values in config.items():
         if values:

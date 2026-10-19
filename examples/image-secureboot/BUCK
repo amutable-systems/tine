@@ -21,7 +21,7 @@ load("@tine//tests:defs.bzl", "tests")
 
 package.manager(
     name = "image.package-manager",
-    base = "tine//catalog:fedora.rawhide.package-manager",
+    base = "catalog//:fedora.rawhide.package-manager",
 )
 
 # This example serves two audiences, so it declares a key for each and picks: the tokens
@@ -197,7 +197,7 @@ image.vm(
         "firstboot.locale": "C.UTF-8",
         "firstboot.timezone": "UTC",
     },
-    box = "tine//catalog:fedora.rawhide.box",
+    box = "catalog//:fedora.rawhide.box",
     image = ":image",
     # select setup-mode firmware, so sd-boot enrolls the keys from the ESP on first
     # boot; VM then enforces Secure Boot.
