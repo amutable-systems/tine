@@ -200,12 +200,28 @@
     "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/a/acl/libacl1_2.4.0-1_amd64.deb"
   },
   {
+    "package_id": "libaio1t64_0.3.113-9_amd64",
+    "repo": "debian.testing.main.repository",
+    "pkg_checksum": "3cd9acfa69e810b7441dce73a13343b9fc912b18c40c76dfe35a27ec05bc7453",
+    "source": "repo",
+    "size": 14788,
+    "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/liba/libaio/libaio1t64_0.3.113-9_amd64.deb"
+  },
+  {
     "package_id": "libapt-pkg7.0_3.3.3_amd64",
     "repo": "debian.testing.main.repository",
     "pkg_checksum": "7cb0336456c828fcb10ae382f043d9ef4b621cbef0c44d558f8c43c222968ddc",
     "source": "repo",
     "size": 1284224,
     "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/a/apt/libapt-pkg7.0_3.3.3_amd64.deb"
+  },
+  {
+    "package_id": "libatomic1_16.2.0-3_amd64",
+    "repo": "debian.testing.main.repository",
+    "pkg_checksum": "45ee39ca0d41dc7fb29e635fb1232e85d1aadb0914d79dd3585d77c832c493d3",
+    "source": "repo",
+    "size": 10408,
+    "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/g/gcc-16/libatomic1_16.2.0-3_amd64.deb"
   },
   {
     "package_id": "libattr1_1:2.6.0-1_amd64",
@@ -384,6 +400,14 @@
     "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/libf/libffi/libffi8_3.8.0-2_amd64.deb"
   },
   {
+    "package_id": "libfuse3-4_3.18.3-1_amd64",
+    "repo": "debian.testing.main.repository",
+    "pkg_checksum": "218f0fb446e2b36d7bd16c4324ce54a3755ac3ad564ab76c5fe9b6dc18718210",
+    "source": "repo",
+    "size": 108824,
+    "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/f/fuse3/libfuse3-4_3.18.3-1_amd64.deb"
+  },
+  {
     "package_id": "libgcc-s1_16.2.0-3_amd64",
     "repo": "debian.testing.main.repository",
     "pkg_checksum": "e716dc8baad27e884c45ff83a76955047a7a9e33a80e94f9459ee996ebb800b0",
@@ -392,12 +416,28 @@
     "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/g/gcc-16/libgcc-s1_16.2.0-3_amd64.deb"
   },
   {
+    "package_id": "libglib2.0-0t64_2.90.1-2_amd64",
+    "repo": "debian.testing.main.repository",
+    "pkg_checksum": "2758906db9a6d6e2f93641c10c122c30d40935a24e965ee6ce5383c700e7cd98",
+    "source": "repo",
+    "size": 1619548,
+    "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/g/glib2.0/libglib2.0-0t64_2.90.1-2_amd64.deb"
+  },
+  {
     "package_id": "libgmp10_2:6.3.0+dfsg-5+b2_amd64",
     "repo": "debian.testing.main.repository",
     "pkg_checksum": "032743c787f0e1e644e4dcfbdb38f01be8cb150cb9633f8be5e79aba6938f349",
     "source": "repo",
     "size": 559860,
     "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/g/gmp/libgmp10_6.3.0+dfsg-5+b2_amd64.deb"
+  },
+  {
+    "package_id": "libgnutls30t64_3.8.13-1_amd64",
+    "repo": "debian.testing.main.repository",
+    "pkg_checksum": "81f7f28a3968228293cabf6a92f7d6b2a8807f64ccf57469f2ce9a06b7b226af",
+    "source": "repo",
+    "size": 1545536,
+    "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/g/gnutls28/libgnutls30t64_3.8.13-1_amd64.deb"
   },
   {
     "package_id": "libgssapi-krb5-2_1.22.1-3_amd64",
@@ -566,6 +606,22 @@
     "source": "repo",
     "size": 245568,
     "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/s/systemd/libnss-systemd_262-1_amd64.deb"
+  },
+  {
+    "package_id": "libnuma1_2.0.19-1+b2_amd64",
+    "repo": "debian.testing.main.repository",
+    "pkg_checksum": "c4175eb2a991806b5f683f7b2a6a9e444f310058763070b30417e1f1021cf04c",
+    "source": "repo",
+    "size": 22036,
+    "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/n/numactl/libnuma1_2.0.19-1+b2_amd64.deb"
+  },
+  {
+    "package_id": "libp11-kit0_0.26.5-1_amd64",
+    "repo": "debian.testing.main.repository",
+    "pkg_checksum": "7f6187247766dca57582c4fa327928fb612de3cd17a13786c1762c57357b4930",
+    "source": "repo",
+    "size": 482444,
+    "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/p/p11-kit/libp11-kit0_0.26.5-1_amd64.deb"
   },
   {
     "package_id": "libpam-modules-bin_1.7.0-8_amd64",
@@ -752,6 +808,14 @@
     "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/s/systemd/libsystemd0_262-1_amd64.deb"
   },
   {
+    "package_id": "libtasn1-6_4.21.0-2+b1_amd64",
+    "repo": "debian.testing.main.repository",
+    "pkg_checksum": "097059368c29f6bac5253cc9a4ee3b8c2f449326de016feddf5a00b896fabe49",
+    "source": "repo",
+    "size": 49292,
+    "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/libt/libtasn1-6/libtasn1-6_4.21.0-2+b1_amd64.deb"
+  },
+  {
     "package_id": "libtinfo6_6.6+20260608-2_amd64",
     "repo": "debian.testing.main.repository",
     "pkg_checksum": "14682d1f6e35df22df0fe1eb2c09418aff0e29e2ea5a7bc0aa1bcd37192ba5a7",
@@ -838,6 +902,14 @@
     "source": "repo",
     "size": 479564,
     "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/libu/libunistring/libunistring5_1.4.2-1_amd64.deb"
+  },
+  {
+    "package_id": "liburing2_2.15-1_amd64",
+    "repo": "debian.testing.main.repository",
+    "pkg_checksum": "e1034703cc586b452f4e7ed39fdeba826e338d7796b45dde3965ab47fa76cb1e",
+    "source": "repo",
+    "size": 29484,
+    "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/libu/liburing/liburing2_2.15-1_amd64.deb"
   },
   {
     "package_id": "libuuid1_2.42.4-1_amd64",
@@ -1022,6 +1094,14 @@
     "source": "repo",
     "size": 26016,
     "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/p/python3-defaults/python3_3.14.7-3_amd64.deb"
+  },
+  {
+    "package_id": "qemu-utils_1:11.1.2+ds-3_amd64",
+    "repo": "debian.testing.main.repository",
+    "pkg_checksum": "70e46bce93eb13cfb0c1daa332700b3cc55dc211eff12199e4006e42c550042d",
+    "source": "repo",
+    "size": 2040724,
+    "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/pool/main/q/qemu/qemu-utils_11.1.2+ds-3_amd64.deb"
   },
   {
     "package_id": "readline-common_8.3-4_all",
