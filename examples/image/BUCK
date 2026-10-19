@@ -27,7 +27,7 @@ DISTRIBUTIONS = distribution.for_package()
 # from is the one thing a distribution decides for an image, so it is the only select below.
 package.manager(
     name = "image.package-manager",
-    base = distribution.select({name: d["package_manager"] for name, d in DISTRIBUTIONS.items()}),
+    base = distribution.select({d["release"]: d["package_manager"] for d in DISTRIBUTIONS.values()}),
 )
 
 # A build artifact a command names through $(location), chrooted or not.
@@ -63,6 +63,7 @@ image.archive(
     packages = ["bash", "coreutils"]
     # Some extra coverage for distribution.select().
     + distribution.select({
+        "DEFAULT": [],
         "arch": ["archlinux-keyring"],
         "fedora": ["fedora-gpg-keys"],
     }),
@@ -203,12 +204,13 @@ image.disk(
     + architecture.select({
         "arm64": [],
         "x86_64": distribution.select({
+            "DEFAULT": [],
             "arch": ["amd-ucode", "intel-ucode"],
             "fedora": ["amd-ucode-firmware", "microcode_ctl"],
         }),
     })
     # Only Arch's systemd package contains portablectl.
-    + distribution.select({"arch": []}, default = ["systemd-container"]),
+    + distribution.select({"DEFAULT": ["systemd-container"], "arch": []}),
     ops = [
         # systemd-confext mounts /etc read-only by default. This image writes /etc at boot, and
         # login fails with "PAM failure, aborting" once a confext is merged.
@@ -226,7 +228,7 @@ image.disk(
     ],
     # An absolute path names a BMP the image itself ships, here the one Arch's systemd package
     # installs; the other distributions ship no BMP and embed none.
-    splash = distribution.select({"arch": "/usr/share/systemd/bootctl/splash-arch.bmp"}, default = None),
+    splash = distribution.select({"DEFAULT": None, "arch": "/usr/share/systemd/bootctl/splash-arch.bmp"}),
     # A shipped appliance has no terminal to read a man page on.
     install_docs = False,
     # Ship the qcow2 with free space past its partitions, so a VM booting it can claim it without
@@ -264,7 +266,7 @@ tests.vm_smoke(
         # build produced rather than the `/etc` symlink to it: a `/usr`-only disk boots with a
         # volatile root, and whether anything recreates that symlink is a property of the
         # distribution's own systemd rather than of the image.
-        distribution.select({name: "grep -q '^ID={}$' /usr/lib/os-release".format(d["os_release_id"]) for name, d in DISTRIBUTIONS.items()}),
+        distribution.select({d["release"]: "grep -q '^ID={}$' /usr/lib/os-release".format(d["os_release_id"]) for d in DISTRIBUTIONS.values()}),
         "bootctl | grep -F 'Secure Boot: disabled (setup)'",
         # The build compiled the hardware database into /usr, which is read-only here, so a guest
         # that has it got it from the build rather than from a boot-time regeneration.
@@ -403,7 +405,7 @@ image.layer(
     parent = ":base",
     ops = [
         image.ops.copy("tree/os", "/"),
-        image.ops.copy(distribution.select({"arch": "tree/os.arch"}, default = None), "/"),
+        image.ops.copy(distribution.select({"DEFAULT": None, "arch": "tree/os.arch"}), "/"),
     ],
 )
 
@@ -420,7 +422,7 @@ box.sh_test(
     labels = ["image"],
     box = "@tine//tools:dev.box",
     test = "tree-test.sh",
-    args = ["$(location :tree)"] + distribution.select({name: [name if name == "arch" else "none"] for name in DISTRIBUTIONS}),
+    args = ["$(location :tree)"] + distribution.select({d["release"]: [name if name == "arch" else "none"] for name, d in DISTRIBUTIONS.items()}),
     **distribution.distributed("tree-test"),
 )
 
@@ -500,7 +502,7 @@ box.sh_test(
     labels = ["image"],
     box = "@catalog//:fedora.rawhide.box",
     script = 'test "$(ukify inspect "$1" | grep -cx ".splash:")" = "$2"',
-    args = ["$(location :boot-demo[boot][uki])"] + distribution.select({"arch": ["1"]}, default = ["0"]),
+    args = ["$(location :boot-demo[boot][uki])"] + distribution.select({"DEFAULT": ["0"], "arch": ["1"]}),
     **distribution.distributed("uki-splash-test"),
 )
 

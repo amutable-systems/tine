@@ -3,28 +3,25 @@
 
 """The distributions the images in this package are built for.
 
-The one place a distribution is named. What each is called here names its targets (`:demo.arch`),
-selects the package manager the images solve with, and is what a build has to choose between:
-naming no distribution is not a build, so `//...` skips these images and building one by its bare
-name says so rather than picking one.
+The one place a distribution is named. What each is called here names its targets (`:demo.arch`)
+and is what a build has to choose between: naming no distribution is not a build, so `//...` skips
+these images and building one by its bare name says so rather than picking one. Each entry's release
+selects the package manager the images solve with.
 """
 
 load("@tine//distribution:defs.bzl", "distribution")
 
 distribution.set_for_package({
     "arch": {
-        "distribution": "catalog//:arch.rolling.distribution",
+        "release": "arch.rolling",
         "os_release_id": "arch",
-        "package_manager": "catalog//:arch.rolling.package-manager",
     },
     "debian": {
-        "distribution": "catalog//:debian.testing.distribution",
+        "release": "debian.testing",
         "os_release_id": "debian",
-        "package_manager": "catalog//:debian.testing.package-manager",
     },
     "fedora": {
-        "distribution": "catalog//:fedora.rawhide.distribution",
+        "release": "fedora.rawhide",
         "os_release_id": "fedora",
-        "package_manager": "catalog//:fedora.rawhide.package-manager",
     },
 })

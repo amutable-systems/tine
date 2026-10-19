@@ -77,11 +77,12 @@ tine buck run tine//tools:fmt
 tine buck run tine//tools:check
 ```
 
-`refresh-catalog` refreshes the `catalog//` cell, which is the project's catalog if it declares one.
-Pass another catalog package after `--`, for example `tine buck run tine//tools:refresh-catalog --
-my_project//catalog`. `verify-catalog` performs the same generation and fails when the committed JSON
-differs. The pinning and refresh mechanism
-is described in [architecture.md](../design/architecture.md).
+`refresh-catalog` refreshes the `catalog//` cell, which is the project's catalog if it declares one. A
+project declares its releases in the root package of that cell, because tine fails to load a release declared
+anywhere else. To refresh the repositories and boxes of another package, pass it after `--`, for example
+`tine buck run tine//tools:refresh-catalog -- my_project//boxes`. `verify-catalog` performs the same
+generation and fails when the committed JSON differs. The pinning and refresh mechanism is described in
+[architecture.md](../design/architecture.md).
 
 ## Declaring an image
 
@@ -589,6 +590,7 @@ Optional attributes:
 
   ```starlark
   splash = distribution.select({
+      "DEFAULT": None,
       "arch": "/usr/share/systemd/bootctl/splash-arch.bmp",
       "debian": "splash.bmp",
   }),
@@ -1083,16 +1085,36 @@ that behaviour by saying once, in its `PACKAGE` file, which distributions its im
 load("@tine//distribution:defs.bzl", "distribution")
 
 distribution.set_for_package({
-    "<name>": {
-        "distribution": "catalog//:<family>.<release>.distribution",
-        "package_manager": "catalog//:<family>.<release>.package-manager",
-    },
+    "fedora": {"release": "fedora.rawhide"},
+    "fedora-43": {"release": "fedora.43", "package_manager": "//:fedora-43.package-manager"},
 })
 ```
 
-Only the `distribution` key is tine's business. Everything beside it is whatever the package needs
-to know per distribution, read back with `distribution.for_package()`, so a BUCK file selects its
-package manager and names its aliases from the same table and one place adds a distribution.
+Each entry's `release` names a release of the catalog. `package_manager` defaults to the release's package
+manager. Everything else is whatever the package needs to know per distribution, read back with
+`distribution.for_package()`. A BUCK file selects its package manager and names its aliases from the same
+table, so a new distribution needs only a new entry.
+
+A key of `distribution.select()` is a family (`arch`, `debian` or `fedora`), a release of the catalog such as
+`fedora.43`, or `DEFAULT`. A family key matches every release of that family. Buck picks a release key over
+the key of its family, and `DEFAULT` matches where no other key does. Buck fails to configure a target that
+matches no key. The names in a package's table name its aliases, such as `:boot-demo.fedora-43`, and no
+select reads them. A release key names the distribution in the root package of the catalog cell, and tine
+fails to load a distribution declared anywhere else.
+
+To build an image for some of the package's distributions only, make it incompatible with the others. The
+aliases for the others remain, and a build of the package skips them:
+
+```Starlark
+image.disk(
+    name = "fedora-only",
+    # ...
+    target_compatible_with = distribution.select({
+        "DEFAULT": select_incompatible("fedora-only builds for Fedora only"),
+        "fedora": [],
+    }),
+)
+```
 
 Every image rule then defaults its `target_compatible_with` to them, so no target repeats it and none
 can forget it: a target that is itself unconstrained while its image is incompatible is an error
@@ -1116,9 +1138,9 @@ which is git-ignored and belongs to the checkout rather than the repository:
 target_platform_detector_spec = target:tine//...->catalog//:<family>.<release>.distribution
 ```
 
-That platform is the base one plus the distribution's constraint, so choosing a distribution does not
-drop the cpu and os the base platform carries. Nothing in the repository sets it: an unqualified target
-means "no distribution chosen" everywhere except a checkout that has said otherwise.
+That platform is the base one plus the constraints of the distribution and its family, so choosing a
+distribution does not drop the cpu and os the base platform contains. Nothing in the repository sets it: an
+unqualified target means "no distribution chosen" everywhere except a checkout that has said otherwise.
 
 A consuming project adds `//packages/fedora/rawhide:zlib-ng`, which validates package import,
 package-manager selection, buildroot assembly and RPM collection (packages with `buildroot_deps`
