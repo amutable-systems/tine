@@ -8,11 +8,11 @@ it builds. `hello/` plays that checkout.
 """
 
 load("@tine//box:defs.bzl", "box")
+load("@tine//distribution:defs.bzl", "distribution")
 load("@tine//git:defs.bzl", "git")
 load("@tine//go:defs.bzl", "go")
 load("@tine//http:defs.bzl", "http")
 load("@tine//image:defs.bzl", "image")
-load("@tine//package:defs.bzl", "package")
 load("//:tine.lock.json", _pins = "value")
 
 # The build environment for our Go projects; it never reaches an image.
@@ -190,16 +190,11 @@ box.sh_test(
     args = ["$(exe :local-replace)"],
 )
 
-package.manager(
-    name = "image.package-manager",
-    base = "catalog//:fedora.rawhide.package-manager",
-)
-
 # `:demo[sbom][cyclonedx]` lists the Go modules each binary was built from, next to the image's
 # packages.
 image.archive(
     name = "demo",
-    package_manager = ":image.package-manager",
+    package_manager = distribution.package_manager(),
     # No runtime packages needed: neither project imports anything that pulls in cgo, so both
     # binaries are static. The filesystem skeleton still comes from its package, giving the
     # copies below their place to land.
@@ -225,4 +220,5 @@ box.sh_test(
         "pkg:golang/rsc.io/quote@",
         "pkg:golang/golang.org/x/text@",
     ],
+    **distribution.distributed("sbom-test"),
 )

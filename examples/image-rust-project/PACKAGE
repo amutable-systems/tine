@@ -3,6 +3,5 @@
 
 load("@tine//distribution:defs.bzl", "distribution")
 
-# The images here build from a Fedora package manager by their own names, rather than once per
-# release of the catalog.
-distribution.set_for_package({})
+# The images here install Fedora packages, so they build only for Fedora.
+distribution.set_for_package({"fedora": {"release": "fedora.rawhide"}})

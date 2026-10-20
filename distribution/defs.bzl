@@ -171,7 +171,14 @@ def new(name: str, architectures: list[str], visibility: list[str] | None = None
         )
 
 def default_release(release: str, visibility: list[str] = ["PUBLIC"]) -> None:
-    """Declare a catalog's `default.*` targets as aliases of the targets of `release`, such as `fedora.rawhide`."""
+    """Declare a catalog's `default.*` targets as aliases of the targets of `release`, such as `fedora.rawhide`.
+
+    tine's own boxes build from `default.release`. The `box` key of the `tine` buckconfig section names a
+    release that the `default.*` targets point to instead of `release`.
+    """
+    release = read_root_config("tine", "box", release)
+    if not rule_exists(release + ".release"):
+        fail("tine.box: the catalog declares no release {!r}".format(release))
 
     # box.new() derives the distribution's platforms from the release's name, so every derived target
     # needs an alias. tine//distribution:tools.box builds on `default.box` for a release that
