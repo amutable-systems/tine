@@ -33,8 +33,9 @@ class Spec(TypedDict):
     time: str | None
 
 
-# Where the keyring package installs its build, which `pacman-key --populate` reads from.
-KEYRINGS = Path("/usr/share/pacman/keyrings")
+# Where the keyring package installs its build, which `pacman-key --populate` reads from. Arch and Fedora
+# install archlinux-keyring into /usr/share/pacman/keyrings, Debian into /usr/share/keyrings.
+KEYRINGS = (Path("/usr/share/pacman/keyrings"), Path("/usr/share/keyrings"))
 KEYRING = "archlinux"
 
 # gpg's marginal ownertrust, what archlinux-trusted assigns each main key.
@@ -64,8 +65,6 @@ def _configuration(time: str | None) -> str:
 def _populate(home: Path, spec: Spec, keyrings: Path) -> None:
     declared = {fingerprint.upper() for fingerprint in spec["keys"]}
     package = keyrings / f"{KEYRING}.gpg"
-    if not package.is_file():
-        util.fail(f"keyring: {package} is missing; the box carries no {KEYRING}-keyring")
     (home / "gpg.conf").write_text(_configuration(spec["time"]))
 
     # A certification counts only from a valid key, and validity comes from a key trusted
@@ -130,8 +129,13 @@ def _populate(home: Path, spec: Spec, keyrings: Path) -> None:
     )
 
 
-def keyring(spec: Spec, keyrings: Path = KEYRINGS) -> None:
+def keyring(spec: Spec, keyrings: Path | None = None) -> None:
     """Build a gpg home directory in which the declared main keys vouch for the repository's packagers."""
+    if keyrings is None:
+        found = [directory for directory in KEYRINGS if (directory / f"{KEYRING}.gpg").is_file()]
+        if not found:
+            util.fail(f"keyring: the box carries no {KEYRING}-keyring in {' or '.join(map(str, KEYRINGS))}")
+        keyrings = found[0]
     out = Path(spec["out"])
     # The agent's socket lives in the home directory, and a socket path is limited to a length a
     # Buck output path exceeds, so the keyring is built under scratch and what it consists of is
