@@ -9,6 +9,7 @@ configured with, and never handles credentials itself.
 
 import argparse
 import base64
+import compression.zstd
 import concurrent.futures
 import errno
 import hashlib
@@ -24,13 +25,30 @@ from typing import Any
 # The only block size the EBS direct APIs take.
 BLOCK_SIZE = 512 * 1024
 GIB = 1024**3
+# Biggest possible zstd frame header, for reading the decompressed size.
+ZSTD_FRAME_HEADER_MAX = 18
 
 
-def data_blocks(disk: Path) -> Iterator[tuple[int, bytes]]:
-    """Yield each block of `disk` that holds anything but zeros, with its index.
+def zstd_size(disk: Path) -> int | None:
+    """The decompressed size of a zstd-compressed `disk`, or None for an uncompressed one."""
+    with disk.open("rb") as f:
+        header = f.read(ZSTD_FRAME_HEADER_MAX)
+    try:
+        size = compression.zstd.get_frame_info(header).decompressed_size
+    except compression.zstd.ZstdError:
+        return None
+    if size is None:
+        sys.exit(f"ami-import: {disk} does not record its decompressed size")
+    return size
 
-    Holes are never read, so a sparse disk costs its allocated size rather than its apparent one.
-    """
+
+def disk_size(disk: Path) -> int:
+    """The size of `disk`, decompressed if it is zstd-compressed."""
+    size = zstd_size(disk)
+    return disk.stat().st_size if size is None else size
+
+
+def _allocated_blocks(disk: Path) -> Iterator[tuple[int, bytes]]:
     with disk.open("rb") as f:
         fd = f.fileno()
         size = os.fstat(fd).st_size
@@ -45,10 +63,32 @@ def data_blocks(disk: Path) -> Iterator[tuple[int, bytes]]:
                 raise
             end = os.lseek(fd, start, os.SEEK_HOLE)
             for index in range(start // BLOCK_SIZE, (end + BLOCK_SIZE - 1) // BLOCK_SIZE):
-                block = os.pread(fd, BLOCK_SIZE, index * BLOCK_SIZE).ljust(BLOCK_SIZE, b"\0")
-                if block.count(0) != BLOCK_SIZE:
-                    yield index, block
+                yield index, os.pread(fd, BLOCK_SIZE, index * BLOCK_SIZE).ljust(BLOCK_SIZE, b"\0")
             offset = (end + BLOCK_SIZE - 1) // BLOCK_SIZE * BLOCK_SIZE
+
+
+def _decompressed_blocks(disk: Path, size: int) -> Iterator[tuple[int, bytes]]:
+    with compression.zstd.open(disk) as f:
+        index = 0
+        while block := f.read(BLOCK_SIZE):
+            yield index, block.ljust(BLOCK_SIZE, b"\0")
+            index += 1
+        # The snapshot was started with the size the first frame records.
+        if f.tell() != size:
+            sys.exit(f"ami-import: {disk} decompresses to {f.tell()} bytes, not the {size} its header says")
+
+
+def data_blocks(disk: Path) -> Iterator[tuple[int, bytes]]:
+    """Yield each block of `disk` that holds anything but zeros, with its index.
+
+    A zstd-compressed disk is decompressed on the fly. Holes of an uncompressed one are never read,
+    so a sparse disk costs its allocated size rather than its apparent one.
+    """
+    size = zstd_size(disk)
+    blocks = _allocated_blocks(disk) if size is None else _decompressed_blocks(disk, size)
+    for index, block in blocks:
+        if block.count(0) != BLOCK_SIZE:
+            yield index, block
 
 
 def checksum(block: bytes) -> str:
@@ -83,7 +123,7 @@ def upload(aws: Aws, disk: Path, name: str, jobs: int) -> str:
     if aws("ec2", "get-ebs-encryption-by-default")["EbsEncryptionByDefault"]:
         sys.exit("ami-import: EBS encryption by default is enabled for this account and region; disable it")
 
-    size = (disk.stat().st_size + GIB - 1) // GIB
+    size = (disk_size(disk) + GIB - 1) // GIB
     snapshot = str(
         aws(
             "ebs",
@@ -152,7 +192,7 @@ def register(aws: Aws, parameters: dict[str, Any], name: str, snapshot: str, tpm
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("disk", type=Path, help="the .raw disk to upload")
+    parser.add_argument("disk", type=Path, help="the .raw[.zst] disk to upload")
     parser.add_argument("parameters", type=Path, help="the disk's RegisterImage parameters (.ami.json)")
     parser.add_argument("--name", help="the image name, instead of the parameters'; EC2 requires it unique")
     parser.add_argument("--region", help="the region to import into, instead of the CLI's configured one")
