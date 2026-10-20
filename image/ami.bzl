@@ -44,8 +44,8 @@ def declare_ami(
 
     The bundle holds the disk and the `RegisterImage` parameters, which `aws ec2 register-image
     --cli-input-json` takes as they are once the import adds the snapshot. Running the subtarget
-    imports the bundle with `importer`. With a `secure_boot_certificate`, the parameters include the
-    UEFI variable store that enrolls it; `box` provides the tool that writes it.
+    imports the disk with them, using `importer`. With a `secure_boot_certificate`, the parameters
+    include the UEFI variable store that enrolls it; `box` provides the tool that writes it.
     """
     register = {
         "Architecture": ARCHITECTURES[arch].ec2,
@@ -90,7 +90,7 @@ def declare_ami(
     bundle = actions.symlinked_dir("ami", contents)
     return [
         DefaultInfo(default_output = bundle),
-        RunInfo(args = cmd_args(importer, bundle)),
+        RunInfo(args = cmd_args(importer, disk, parameters)),
     ]
 
 def _with_uefi_data_impl(
