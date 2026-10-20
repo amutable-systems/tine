@@ -22,6 +22,7 @@ import libdnf5.rpm
 import specs
 from util import fail
 
+import macros
 import rootfs
 import transaction
 
@@ -75,7 +76,12 @@ def load_base(
     # Do not let host detection affect provider selection.
     base.get_vars().set("arch", arch)
     base.get_vars().set("basearch", arch)
+    # Each distribution's dnf5 package enables its own set of libdnf5 plugins in the box. Arch's
+    # enables one whose library it does not install, and setup() then fails.
+    cfg.plugins = False
     base.setup()
+    # libdnf5 reads the rpm database of `installroot` through the box's rpm.
+    macros.define()
 
     sack = base.get_repo_sack()
     for repo in repos:
