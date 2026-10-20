@@ -82,6 +82,18 @@ if [ "$mode" = github ]; then
     trap 'printf "::endgroup::\n::error::ci group %s failed\n" "$groupname"' ERR
 fi
 
+# TINE_BOX names the release whose boxes every group builds with, such as arch.rolling. Nested Buck
+# runs, such as the ones `check` starts, take no command-line configuration, so the setting goes into
+# the project's configuration for as long as this script runs.
+box_config=.buckconfig.d/tine-box
+box_cleanup() { rm -f "$box_config"; }
+box_cleanup
+if [ -n "${TINE_BOX:-}" ]; then
+    mkdir -p .buckconfig.d
+    printf '[tine]\nbox = %s\n' "$TINE_BOX" > "$box_config"
+    trap box_cleanup EXIT
+fi
+
 # The catalog pins Arch repositories for x86_64 only. On another architecture, the Arch root box
 # cannot be built and the catalog cannot be verified.
 x86_only_catalog() { [ "$(uname -m)" = x86_64 ]; }
@@ -90,12 +102,22 @@ x86_only_catalog() { [ "$(uname -m)" = x86_64 ]; }
 # it leaves out.
 universe() { "${buck[@]}" run tine//tools:dev -- universe; }
 
-# `build` and `test` take no query, so they get the universe target list explicitly.
+# `build` and `test` take no query, so they get the universe target list explicitly. An image builds
+# in the tools box of its own release, so TINE_BOX doesn't change most images. With TINE_BOX set, the
+# list only contains the targets that depend on the catalog's default release or default boxes. The run
+# with the default boxes builds and tests the rest. Every image depends on tine//distribution:tools.box,
+# which is configured for the image's release. Only cquery tells the tools box of the default release
+# apart from the tools box of another release.
 whole_cell() {
     local verb=$1 query listing targets
     shift
     query=$(universe)
-    listing=$("${buck[@]}" uquery "$query")
+    if [ -n "${TINE_BOX:-}" ]; then
+        query="rdeps($query, set(catalog//:default.release tine//distribution:tools.box))"
+        listing=$("${buck[@]}" cquery "$query" | sed 's/ (.*)$//' | sort -u)
+    else
+        listing=$("${buck[@]}" uquery "$query")
+    fi
     mapfile -t targets <<< "$listing"
     # There are a lot of targets which are incompatible everywhere (image base without a chosen distribution, a
     # signing token without config, etc.), don't fail on them.
@@ -137,7 +159,7 @@ secureboot_pkcs11() {
     pkcs11_dir=$(mktemp -d)
     "${buck[@]}" run tine//tools:signing-server -- "$pkcs11_dir" > "$pkcs11_dir/log" 2>&1 &
     server_pid=$!
-    trap pkcs11_cleanup EXIT
+    trap 'pkcs11_cleanup; box_cleanup' EXIT
     until [ -S "$pkcs11_dir/sock/pkcs11" ]; do
         # Any setup failure exits the server before it gets to listen; its log then says why.
         kill -0 "$server_pid" 2> /dev/null || return 1
@@ -190,7 +212,14 @@ case $(uname -m) in
     x86_64) other=arm64 ;;
     *) other=x86_64 ;;
 esac
-for platform in "tine//platforms:$other" catalog//:debian.testing.distribution; do
+platforms=(catalog//:debian.testing.distribution)
+# The catalog's default.* aliases have no architecture constraint. With TINE_BOX=arch.rolling, the
+# analysis for arm64 fails on catalog//:default.release, because Arch serves x86_64 only. The run with
+# the default boxes analyzes the other architecture.
+if [ -z "${TINE_BOX:-}" ]; then
+    platforms=("tine//platforms:$other" "${platforms[@]}")
+fi
+for platform in "${platforms[@]}"; do
     group "graph-${platform##*:}" -- "${buck[@]}" bxl --target-platforms "$platform" tine//tools/graph.bxl:analyze -- --pattern "$pattern"
 done
 # First invocation fetches buck's pinned tools and builds the shared box; kept its own group so
