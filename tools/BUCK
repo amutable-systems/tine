@@ -82,34 +82,51 @@ http.tool(
 # (hermetic), `tine//tools:importer` (relaxed), and anyone entering it as a box.
 # The dev box layers over the tools box of the default release, so it installs only its own packages.
 # No image depends on the dev box, so a change to its packages rebuilds no image.
-# The importer and the tests need the rpm toolchain, so only a Fedora release can build this box.
+# The dev box contains the package tooling of its own family only. The tests of the importer and of
+# package_system/rpm skip themselves in a dev box without rpmbuild. The plan test of package_system/pacman
+# skips itself in a dev box without libalpm.
 box.new(
     name = "dev.box",
-    packages = distribution.select({
+    packages = [
+        "coreutils",
+        "gawk",
+        # for the assertions over a release's description
+        "jq",
+        # for the assertions over generated certificates
+        "openssl",
+        # the license headers lint, see the `reuse` alias below
+        "reuse",
+        "sed",
+    ]
+    + distribution.select({
+        "arch": [
+            "diffutils",
+            "git",
+            "gnupg",
+            "sequoia-sqv",
+            "tar",
+        ],
+        "debian": [
+            "git",
+            "gnupg",
+            # The tools box resolves awk to mawk, and the dev box installs gawk too. Without mawk in
+            # this list, the dev box resolves awk to gawk alone and can't layer over the tools box.
+            "mawk",
+            "sqv",
+        ],
         "fedora": [
-            "coreutils",
-            # for "importer srpm"
+            # `importer srpm` runs dist-git-client.
             "dist-git-client",
-            "gawk",
             "git-core",
-            # for the assertions over a release's description
-            "jq",
-            # for the assertions over generated certificates
-            "openssl",
-            "rpm-build",
-            # package_system/rpm's tests sign what they build
             "gnupg2",
-            "rpm-sign",
             "python3-createrepo_c",
             "python3-libdnf5",
-            # package_system/rpm's drivers define rpm macros through the rpm module.
             "python3-rpm",
-            # the license headers lint, see the `reuse` alias below
-            "reuse",
-            "sed",
-            # The tests of package_system/deb verify a Release with sqv, as verify.py does.
+            "rpm-build",
+            # The tests of package_system/rpm sign the packages that they build.
+            "rpm-sign",
             "sequoia-sqv",
-        ]
+        ],
     }),
     parent = "tine//distribution:tools.box",
     release = _RELEASE,

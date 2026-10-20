@@ -12,7 +12,7 @@ box.new(
         "bash",
         "coreutils",
     ],
-    release = "catalog//:fedora.rawhide.release",
+    release = "catalog//:default.release",
 )
 
 # Same repositories as its parent, so it is a layer over it.
@@ -20,7 +20,7 @@ box.new(
     name = "demo-with-parent.box",
     packages = ["fish"],
     parent = ":demo.box",
-    release = "catalog//:fedora.rawhide.release",
+    release = "catalog//:default.release",
 )
 
 box.new(
@@ -28,7 +28,7 @@ box.new(
     layered = False,
     packages = ["fish"],
     parent = ":demo.box",
-    release = "catalog//:fedora.rawhide.release",
+    release = "catalog//:default.release",
 )
 
 # Each distribution family names the package of the Python yaml module differently.
@@ -39,7 +39,7 @@ box.new(
         "debian": ["python3-yaml"],
         "fedora": ["python3-pyyaml"],
     }),
-    release = "catalog//:fedora.rawhide.release",
+    release = "catalog//:default.release",
 )
 
 box.sh_test(

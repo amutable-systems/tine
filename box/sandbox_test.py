@@ -441,6 +441,9 @@ def _run_relaxed(layers: tuple[Path, ...], host: Path, script: str) -> subproces
             *("--relaxed", "--ro-bind", f"/usr:{host}"),
             *("--", str(host / "bin/sh"), "-c", script),
         ],
+        # Arch's dynamic loader searches only /usr/lib, which the test's tools tree replaces, so the lib
+        # and lib64 links do not lead it to the bound /usr.
+        env=os.environ | {"LD_LIBRARY_PATH": str(host / "lib")},
         capture_output=True,
         text=True,
     )

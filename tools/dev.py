@@ -6,7 +6,6 @@
 import argparse
 import json
 import os
-import platform
 import subprocess
 import sys
 import tomllib
@@ -87,25 +86,16 @@ def _orphan_tests(cell: Path) -> list[Path]:
 
 
 def _universe() -> str:
-    """The query for everything a whole-cell run asks for on this host.
-
-    The catalog serves Arch for x86_64 only. A build for arm64, and any build on an arm64 host, skips
-    the Arch catalog and every target that chooses Arch. A target that runs in an Arch box, such as a
-    type check against it, has no execution platform on an arm64 host, and Buck reports that as an
-    error. So leave out every target that depends on an Arch box directly.
-    """
-    cells = "(tine//... + catalog//...)"
-    if platform.machine() == "x86_64":
-        return cells
-    return f"{cells} - rdeps({cells}, catalog//:arch.rolling.box, 1)"
+    """The query for everything a whole-cell run asks for."""
+    return "tine//... + catalog//..."
 
 
 def _targets() -> list[str]:
     """What `_universe()` matches, to hand to a command that takes no query.
 
     Named explicitly, a target incompatible by design (an image base without a chosen distribution, a
-    signing token without a configured token, an Arch target on an arm64 host) is an error rather than
-    a skip, so a command given these needs `--skip-incompatible-targets`.
+    signing token without a configured token, an Arch box on an arm64 host) is an error rather than a
+    skip, so a command given these needs `--skip-incompatible-targets`.
     """
     return buck_output("uquery", _universe()).split()
 

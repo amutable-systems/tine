@@ -9,6 +9,10 @@ load("@tine//package_system/rpm:defs.bzl", "rpm")
 
 _BUILDROOT = "catalog//:fedora.rawhide.buildroot"
 
+# The checks query the packages with rpm. The root box of the buildroot's release contains rpm, and the dev
+# box contains it only when it builds from a Fedora release.
+_CHECK_BOX = "catalog//:fedora.rawhide.box"
+
 git.checkout(name = "hello.source")
 
 # The archive path runs %prep and emits both binary and source RPMs. It exists separately from the
@@ -26,7 +30,7 @@ rpm.package(
 box.sh_test(
     name = "hello-archive-test",
     labels = ["image"],
-    box = "@tine//tools:dev.box",
+    box = _CHECK_BOX,
     script = 'python3 "$@"',
     args = ["$(source hello_archive_check.py)", "$(location :hello-archive)"],
 )
@@ -49,7 +53,7 @@ rpm.package(
 box.sh_test(
     name = "hello-dev-test",
     labels = ["image"],
-    box = "@tine//tools:dev.box",
+    box = _CHECK_BOX,
     script = 'python3 "$@"',
     args = [
         "$(source hello_dev_check.py)",
@@ -75,7 +79,7 @@ rpm.package(
 box.sh_test(
     name = "hello-tree-test",
     labels = ["image"],
-    box = "@tine//tools:dev.box",
+    box = _CHECK_BOX,
     script = 'python3 "$@"',
     args = [
         "$(source hello_tree_check.py)",
