@@ -308,23 +308,20 @@ done
     args = ["$(location :boot-demo.fedora)", "$(location :boot-demo.fedora[qcow2])", "$(location :boot-demo.fedora[vmdk])"],
 )
 
-# The AMI bundle carries the disk, and registers it for the image's architecture with a root volume of its
-# virtual_size.
+# The AMI parameters register the disk for the image's architecture with a root volume of its virtual_size.
 box.sh_test(
     name = "ami-test",
     labels = ["image"],
     box = "@tine//tools:dev.box",
     script = """
-cmp "$1/disk.raw" "$2"
 python3 -c '
 import json, sys
 register = json.load(open(sys.argv[1]))
 assert register["Architecture"] == sys.argv[2], register
 assert register["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] == 2, register
-' "$1/register.json" "$3"
+' "$@"
 """,
-    args = ["$(location :boot-demo.fedora[ami])", "$(location :boot-demo.fedora)"]
-    + architecture.select({name: [spellings.ec2] for name, spellings in ARCHITECTURES.items()}),
+    args = ["$(location :boot-demo.fedora[ami])"] + architecture.select({name: [spellings.ec2] for name, spellings in ARCHITECTURES.items()}),
 )
 
 # data-disk has no ESP partition, so image.disk builds it without systemd-boot, UKIs or an initrd.

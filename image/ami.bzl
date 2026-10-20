@@ -5,6 +5,7 @@
 
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//platforms:architecture.bzl", "ARCHITECTURES")
+load(":publish.bzl", "PublishedInfo")
 
 # What `RegisterImage` accepts in an image name besides letters and digits.
 _NAME_PUNCTUATION = "()[] ./-'@_"
@@ -40,12 +41,13 @@ def declare_ami(
     secure_boot_certificate: Artifact | None,
     virtual_size: str | None,
 ) -> list[Provider]:
-    """Declare the AMI bundle of a bootable disk, for its `[ami]` subtarget.
+    """Declare the AMI RegisterImage parameters of a bootable disk, for its `[ami]` subtarget.
 
-    The bundle holds the disk and the `RegisterImage` parameters, which `aws ec2 register-image
-    --cli-input-json` takes as they are once the import adds the snapshot. Running the subtarget
-    imports the disk with them, using `importer`. With a `secure_boot_certificate`, the parameters
-    include the UEFI variable store that enrolls it; `box` provides the tool that writes it.
+    `aws ec2 register-image --cli-input-json` takes them as they are once the import adds the snapshot.
+    The subtarget publishes them as `<basename>.ami.json`, so that a release carries everything an import
+    needs besides the disk. Running the subtarget imports the disk with `importer`. With a
+    `secure_boot_certificate`, the parameters include the UEFI variable store that enrolls it; `box`
+    provides the tool that writes it.
     """
     register = {
         "Architecture": ARCHITECTURES[arch].ec2,
@@ -71,10 +73,11 @@ def declare_ami(
     if virtual_size != None:
         register["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] = _gib(virtual_size)
 
+    name = "{}.ami.json".format(basename)
     if secure_boot_certificate == None:
-        parameters = actions.write_json("ami-register.json", register)
+        parameters = actions.write_json(name, register)
     else:
-        parameters = actions.declare_output("ami-register.json")
+        parameters = actions.declare_output(name)
         actions.dynamic_output_new(
             _with_uefi_data(
                 out = parameters.as_output(),
@@ -82,14 +85,11 @@ def declare_ami(
                 uefi_data = _uefi_data(actions, box, secure_boot_certificate),
             ),
         )
-    contents = {
-        # Links, not copies: the disk is sparse, as its partitions are mostly empty.
-        "disk.raw": disk,
-        "register.json": parameters,
-    }
-    bundle = actions.symlinked_dir("ami", contents)
     return [
-        DefaultInfo(default_output = bundle),
+        # Building an AMI builds the disk, as for any other format; only the parameters are published,
+        # as a release carries the disk already.
+        DefaultInfo(default_output = parameters, other_outputs = [disk]),
+        PublishedInfo(artifacts = {name: parameters}),
         RunInfo(args = cmd_args(importer, disk, parameters)),
     ]
 

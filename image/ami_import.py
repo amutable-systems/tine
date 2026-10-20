@@ -152,8 +152,8 @@ def register(aws: Aws, parameters: dict[str, Any], name: str, snapshot: str, tpm
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("disk", type=Path, help="the disk to upload")
-    parser.add_argument("parameters", type=Path, help="the disk's `RegisterImage` parameters")
+    parser.add_argument("disk", type=Path, help="the .raw disk to upload")
+    parser.add_argument("parameters", type=Path, help="the disk's RegisterImage parameters (.ami.json)")
     parser.add_argument("--name", help="the image name, instead of the parameters'; EC2 requires it unique")
     parser.add_argument("--region", help="the region to import into, instead of the CLI's configured one")
     parser.add_argument("--jobs", type=int, default=16, help="blocks to upload in parallel")

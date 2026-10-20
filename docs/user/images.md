@@ -642,8 +642,8 @@ identity when copied out of the build, exactly matching the UKI's `<image_id>_<v
 The `[qcow2]`, `[raw.zst]` and `[vmdk]` subtargets re-encode the raw disk into a compact qcow2, a compressed
 raw, or a compressed (streamOptimized) VMDK for VMware and cloud importers on demand, each publishing one
 `image.DiskConversionInfo`; the encodings are reachable only through those
-subtargets, because one result cannot carry the same provider type twice. `[ami]` is the raw disk with the
-parameters an Amazon Machine Image is registered with, see [aws.md](aws.md). The target has no aggregate
+subtargets, because one result cannot carry the same provider type twice. `[ami]` publishes the parameters
+an Amazon Machine Image of the raw disk is registered with, see [aws.md](aws.md). The target has no aggregate
 bootable-image provider: it returns `image.ImageInfo`, `image.DdiInfo`, `image.InitrdInfo`,
 `image.ImageDirectoryInfo`, `image.UkiInfo`, and `image.PublishedInfo` independently. A disk that does not
 boot has no `[uki]`, `[initrd]`, `[boot]` or `[ami]` subtargets, returns no `image.InitrdInfo` or

@@ -10,11 +10,11 @@ file format but an object in one EC2 region of one account: it refers to an EBS 
 and records how instances boot it (architecture, boot mode, TPM, network driver). tine builds everything
 that is a function of the image, and uploads it as a separate `buck run` step that uses your AWS login.
 
-## The AMI bundle
+## The AMI
 
-Every bootable [image.disk](images.md#imagedisk) has an `[ami]` subtarget: the raw disk and the
-parameters to register it with. `buck build` it to get the bundle, `buck run` it to
-[import](#importing-an-ami) it.
+Every bootable [image.disk](images.md#imagedisk) has an `[ami]` subtarget. `buck build` it to build the
+disk and an `<IMAGE_ID>_<IMAGE_VERSION>_<arch>.ami.json` with its registration parameters.
+`buck run` it to [import](#importing-an-ami) the disk.
 
 Nothing about the disk is specific to EC2: every initrd supports
 [systemd IMDS](https://www.freedesktop.org/software/systemd/man/devel/systemd-imds.html) for passing
