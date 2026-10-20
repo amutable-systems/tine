@@ -9,9 +9,9 @@ it builds. `hello/` plays that checkout.
 
 load("@tine//box:defs.bzl", "box")
 load("@tine//cargo:defs.bzl", "cargo")
+load("@tine//distribution:defs.bzl", "distribution")
 load("@tine//git:defs.bzl", "git")
 load("@tine//image:defs.bzl", "image")
-load("@tine//package:defs.bzl", "package")
 
 # The build environment for our Rust projects; it never reaches an image.
 box.new(
@@ -91,15 +91,10 @@ image.install(
     ],
 )
 
-package.manager(
-    name = "image.package-manager",
-    base = "catalog//:fedora.rawhide.package-manager",
-)
-
 # `:demo[sbom][cyclonedx]` reports the crates the binary was built from, next to the image's packages.
 image.archive(
     name = "demo",
-    package_manager = ":image.package-manager",
+    package_manager = distribution.package_manager(),
     ops = [image.ops.install_from(":demo.install")],
     format = "tar",
 )
@@ -118,4 +113,5 @@ box.sh_test(
         "pkg:cargo/serde_json@",
         "pkg:cargo/anyhow@",
     ],
+    **distribution.distributed("sbom-test"),
 )

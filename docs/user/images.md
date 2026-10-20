@@ -60,13 +60,22 @@ targets, and the build does not use tine's catalog. If `tine.toml` declares no `
 points the cell at tine's catalog.
 
 tine's own boxes, such as its tools and the box that generates signing keys, build from the catalog's
-default release. Name it in the catalog's `BUCK` file, with the `<family>.<release>` prefix of any release
-the catalog declares:
+default release. An image builds in the tools box of its own release. A release has boxes only for the
+architectures it serves, so its images build only on a host of one of those architectures. Arch serves
+x86_64 only, so Arch images don't build on an arm64 host. Name the default release in the catalog's
+`BUCK` file, with the `<family>.<release>` prefix of any release the catalog declares:
 
 ```Starlark
 load("@tine//distribution:defs.bzl", "distribution")
 
 distribution.default_release("debian.testing")
+```
+
+To build with the boxes of another release of the catalog, set `box` in the `tine` section of the
+project's `.buckconfig`, or pass it for one build:
+
+```sh
+tine buck build -c tine.box=arch.rolling //...
 ```
 
 A tine box installs the packages it lists for the default release's family. A box that lists no packages
@@ -113,8 +122,9 @@ may be rearranged; load them directly only from inside the cell.
 
 An initial image fixes one package manager for its whole lifetime; every derived image and terminal output
 inherits it and its box. Take a catalog package manager, optionally extend it with project repositories,
-and create the initial image. For example, a project can expose locally built packages without adding them
-to its OS release:
+and create the initial image. An image that names the package manager of one release also names that
+release's distribution, so that it builds in the tools box of that release. For example, a project can
+expose locally built packages without adding them to its OS release:
 
 ```Starlark
 local_repository(
@@ -130,6 +140,7 @@ package.manager(
 
 image.layer(
     name = "project.image",
+    distro = "catalog//:fedora.rawhide.distribution",
     package_manager = ":project.package-manager",
     packages = ["project"],
 )
