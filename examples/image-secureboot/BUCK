@@ -135,10 +135,12 @@ image.disk(
 # out trusting it. See docs/user/aws.md.
 box.sh_test(
     name = "uefi-data-test",
-    args = ["$(location :image[ami][uefi-data])", "$(location {}[cert])".format(_SIGNING)],
+    args = ["$(location :image[ami])", "$(location {}[cert])".format(_SIGNING)],
     box = "@tine//tools:aws.box",
     script = """
-virt-fw-vars --input "$1" --output-json /dev/stdout | python3 -c '
+uefi_data=$(mktemp)
+python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["UefiData"])' "$1/register.json" > "$uefi_data"
+virt-fw-vars --input "$uefi_data" --output-json /dev/stdout | python3 -c '
 import json, ssl, sys
 cert = ssl.PEM_cert_to_DER_cert(open(sys.argv[1]).read())
 variables = {v["name"]: bytes.fromhex(v["data"]) for v in json.load(sys.stdin)["variables"]}
