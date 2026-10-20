@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Import an AMI bundle into EC2: upload its disk as an EBS snapshot, then register the image.
+"""Import a disk into EC2: upload it as an EBS snapshot, then register it with its AMI parameters.
 
 Every AWS call goes through the `aws` CLI, so this uses whatever login and region the CLI is
 configured with, and never handles credentials itself.
@@ -137,9 +137,8 @@ def upload(aws: Aws, disk: Path, name: str, jobs: int) -> str:
     return snapshot
 
 
-def register(aws: Aws, bundle: Path, name: str, snapshot: str, tpm: bool) -> str:
-    """Register the image from the bundle's parameters, booting `snapshot`, and return its ID."""
-    parameters = json.loads((bundle / "register.json").read_text())
+def register(aws: Aws, parameters: dict[str, Any], name: str, snapshot: str, tpm: bool) -> str:
+    """Register the image with `parameters`, booting `snapshot`, and return its ID."""
     if not tpm:
         del parameters["TpmSupport"]
     parameters["Name"] = name
@@ -153,8 +152,9 @@ def register(aws: Aws, bundle: Path, name: str, snapshot: str, tpm: bool) -> str
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("bundle", type=Path, help="the AMI bundle to import")
-    parser.add_argument("--name", help="the image name, instead of the bundle's; EC2 requires it unique")
+    parser.add_argument("disk", type=Path, help="the disk to upload")
+    parser.add_argument("parameters", type=Path, help="the disk's `RegisterImage` parameters")
+    parser.add_argument("--name", help="the image name, instead of the parameters'; EC2 requires it unique")
     parser.add_argument("--region", help="the region to import into, instead of the CLI's configured one")
     parser.add_argument("--jobs", type=int, default=16, help="blocks to upload in parallel")
     parser.add_argument(
@@ -166,13 +166,14 @@ def main() -> None:
     args = parser.parse_args()
 
     aws = Aws(args.region)
-    name = args.name or json.loads((args.bundle / "register.json").read_text())["Name"]
+    parameters = json.loads(args.parameters.read_text())
+    name = args.name or parameters["Name"]
     # Names are unique per account and region; find out before spending the upload.
     if aws("ec2", "describe-images", "--owners=self", f"--filters=Name=name,Values={name}")["Images"]:
         sys.exit(f"ami-import: an image named {name!r} exists already; pass another --name")
 
-    snapshot = upload(aws, args.bundle / "disk.raw", name, args.jobs)
-    print(register(aws, args.bundle, name, snapshot, args.tpm))
+    snapshot = upload(aws, args.disk, name, args.jobs)
+    print(register(aws, parameters, name, snapshot, args.tpm))
 
 
 if __name__ == "__main__":
