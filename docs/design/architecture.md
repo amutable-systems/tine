@@ -445,14 +445,14 @@ Why repository ownership matters:
 A box is a reproducible execution environment built from one base OS release. A family macro declares the
 root box of each release. `<family>.<release>.box` contains the package system's own resolver, installer and
 indexer, Python, core utilities and sandbox dependencies, and it resolves every other box of the release.
-`tine//distribution:tools.box` adds the image-building tools, from one list that selects per family where
-names differ. One declaration serves every release. The tools box takes the distribution of the target that
-depends on it, and selects the release of that distribution from `catalog//:releases.bzl`. It adds its
-packages to the root box of that release. A dependency without a distribution, such as an `exec_dep`, gets
-the tools box of the catalog's default release. The release's package manager runs in the tools box of its
-release. The tools box resolves during the build, so a new tool leaves the root box and its lock alone. A VM
-runner takes its box explicitly, so only a tools box built from a Fedora release contains that stack. The
-base release identifies where this userspace came from, not the only release it may operate on.
+`tine//distribution:tools.box` adds the image-building tools, the VM stack and the PKCS#11 client, from one
+list that selects per family where names differ. One declaration serves every release. The tools box takes
+the distribution of the target that depends on it, and selects the release of that distribution from
+`catalog//:releases.bzl`. It adds its packages to the root box of that release. A dependency without a
+distribution, such as an `exec_dep`, gets the tools box of the catalog's default release. The release's
+package manager runs in the tools box of its release. The tools box resolves during the build, so a new tool
+leaves the root box and its lock alone. The base release identifies where this userspace came from, not the
+only release it may operate on.
 
 A box runs on the build host, so it is an execution dependency: a rule takes it with `attrs.exec_dep`, a
 command line with `$(location_exec)`. A target named on the command line or reached as an ordinary

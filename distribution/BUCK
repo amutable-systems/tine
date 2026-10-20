@@ -74,8 +74,11 @@ _RELEASE = distribution.select(
 
 # Images and buildroots run in the tools box of the release that the build chooses. An execution
 # dependency, and a build that chooses no release, get the tools box of the catalog's default release.
-# catalog//:releases.bzl has to list every release that images build for. A release missing from it
-# gets the root box of the default release.
+# A catalog can make a release of any family its default release, and signing and VMs run in that box.
+# The package list therefore names the VM stack and the PKCS#11 client for every family. An image runs its
+# package operations in the tools box of its own release, and the root box of that release contains the
+# package system of its family. catalog//:releases.bzl has to list every release that images build for.
+# A release missing from it gets the root box of the default release.
 box.new(
     name = "tools.box",
     packages = (
@@ -87,6 +90,12 @@ box.new(
             "mtools",
             "systemd-ukify",
             "zstd",
+            # Signing with a PKCS#11 token loads pkcs11-provider, which loads p11-kit's client module.
+            "pkcs11-provider",
+            # image.vm takes this box. systemd-vmspawn runs the guest, virtiofsd shares the image's
+            # extensions with it, and swtpm gives it a vTPM for measured boot.
+            "swtpm",
+            "virtiofsd",
         ]
         + distribution.select({
             "arch": [
@@ -94,13 +103,16 @@ box.new(
                 "cryptsetup",
                 # The uki driver resolves module dependencies through libkmod.
                 "kmod",
+                # libp11-kit contains p11-kit's PKCS#11 client module.
+                "libp11-kit",
+                "openssh",
                 # ukify needs python-cryptography and python-pefile to sign UKIs and parse PEs, but
                 # systemd-ukify only lists them as optional dependencies.
                 "python-cryptography",
                 "python-pefile",
                 # An image's qcow2 subtarget runs qemu-img.
                 "qemu-img",
-                # The systemd package contains udev, repart, tmpfiles, sysusers and bootctl.
+                # The systemd package contains udev, repart, tmpfiles, sysusers, bootctl and vmspawn.
                 "systemd",
             ],
             "debian": [
@@ -108,14 +120,19 @@ box.new(
                 "kmod",
                 # kmod/kmod.py loads libkmod.so.2 with dlopen(), and no package in this list depends on it.
                 "libkmod2",
+                "openssh-client",
+                # p11-kit-modules contains p11-kit's PKCS#11 client module.
+                "p11-kit-modules",
                 # ukify imports `cryptography` and `pefile`. systemd-ukify only recommends their packages,
                 # and the install skips recommended packages.
                 "python3-cryptography",
                 "python3-pefile",
                 "qemu-utils",
+                "swtpm-tools",
                 "systemd",
                 "systemd-boot-efi",
                 "systemd-boot-tools",
+                "systemd-container",
                 "systemd-repart",
                 # systemd-tpm contains systemd-measure, which ukify runs to sign the policy for the
                 # expected PCRs.
@@ -125,31 +142,31 @@ box.new(
             "fedora": [
                 # The uki driver resolves module dependencies through libkmod.
                 "kmod-libs",
-                # Signing with a PKCS#11 token loads the provider and the p11-kit client.
+                "openssh",
                 "p11-kit-client",
-                "pkcs11-provider",
                 # ukify needs python3-cryptography and python3-pefile to sign UKIs and parse PEs, but
                 # systemd-ukify only weakly depends on them.
                 "python3-cryptography",
                 "python3-pefile",
                 "qemu-img",
-                "systemd-udev",
-                "veritysetup",
-                # image.vm takes this box. systemd-vmspawn runs the guest, virtiofsd shares the image's
-                # extensions with it, and swtpm gives it a vTPM for measured boot. swtpm-tools contains
-                # swtpm_setup, which vmspawn runs to initialize the TPM state.
-                "openssh",
-                "swtpm",
+                # swtpm-tools contains swtpm_setup, which vmspawn runs to initialize the TPM state.
                 "swtpm-tools",
                 "systemd-container",
-                "virtiofsd",
+                "systemd-udev",
+                "veritysetup",
             ],
         })
+        # qemu and its EDK2 firmware are packaged per guest architecture. A box only runs guests of its
+        # own architecture.
         + distribution.select({
-            "arch": [],
-            "debian": [],
-            # qemu and its EDK2 firmware are packaged per guest architecture. A box only runs guests of its
-            # own architecture.
+            "arch": architecture.select({
+                "arm64": [],
+                "x86_64": ["edk2-ovmf", "qemu-system-x86"],
+            }),
+            "debian": architecture.select({
+                "arm64": ["qemu-efi-aarch64", "qemu-system-arm"],
+                "x86_64": ["ovmf", "qemu-system-x86"],
+            }),
             "fedora": architecture.select({
                 "arm64": ["edk2-aarch64", "qemu-system-aarch64-core", "qemu-device-uefi-vars"],
                 "x86_64": ["edk2-ovmf", "qemu-system-x86-core"],
