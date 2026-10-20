@@ -44,9 +44,8 @@ def declare_ami(
 
     The bundle holds the disk and the `RegisterImage` parameters, which `aws ec2 register-image
     --cli-input-json` takes as they are once the import adds the snapshot. Running the subtarget
-    imports the bundle with `importer`. With a `secure_boot_certificate`, the bundle also holds the
-    UEFI variable store that enrolls it, also as the subtarget's `[uefi-data]`; `box` provides the
-    tool that writes it.
+    imports the bundle with `importer`. With a `secure_boot_certificate`, the parameters include the
+    UEFI variable store that enrolls it; `box` provides the tool that writes it.
     """
     register = {
         "Architecture": ARCHITECTURES[arch].ec2,
@@ -72,20 +71,46 @@ def declare_ami(
     if virtual_size != None:
         register["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] = _gib(virtual_size)
 
+    if secure_boot_certificate == None:
+        parameters = actions.write_json("ami-register.json", register)
+    else:
+        parameters = actions.declare_output("ami-register.json")
+        actions.dynamic_output_new(
+            _with_uefi_data(
+                out = parameters.as_output(),
+                register = register,
+                uefi_data = _uefi_data(actions, box, secure_boot_certificate),
+            ),
+        )
     contents = {
         # Links, not copies: the disk is sparse, as its partitions are mostly empty.
         "disk.raw": disk,
-        "register.json": actions.write_json("ami-register.json", register),
+        "register.json": parameters,
     }
-    sub_targets = {}
-    if secure_boot_certificate != None:
-        contents["uefi-data"] = _uefi_data(actions, box, secure_boot_certificate)
-        sub_targets["uefi-data"] = [DefaultInfo(default_output = contents["uefi-data"])]
     bundle = actions.symlinked_dir("ami", contents)
     return [
-        DefaultInfo(default_output = bundle, sub_targets = sub_targets),
+        DefaultInfo(default_output = bundle),
         RunInfo(args = cmd_args(importer, bundle)),
     ]
+
+def _with_uefi_data_impl(
+    actions: AnalysisActions,
+    out: OutputArtifact,
+    register: dict[str, typing.Any],
+    uefi_data: ArtifactValue,
+) -> list[Provider]:
+    # The store is base64 already, which is what RegisterImage takes.
+    actions.write_json(out, register | {"UefiData": uefi_data.read_string().strip()})
+    return []
+
+_with_uefi_data = dynamic_actions(
+    impl = _with_uefi_data_impl,
+    attrs = {
+        "out": dynattrs.output(),
+        "register": dynattrs.value(dict[str, typing.Any]),
+        "uefi_data": dynattrs.artifact_value(),
+    },
+)
 
 def _uefi_data(actions: AnalysisActions, box: BoxInfo, certificate: Artifact) -> Artifact:
     """The instance's initial UEFI variable store, which trusts `certificate` as PK, KEK, and db.
