@@ -13,9 +13,16 @@ import unittest
 from pathlib import Path
 from typing import override
 
-import createrepo
-import plan
 import transaction
+
+try:
+    import createrepo
+    import plan
+except ModuleNotFoundError as error:
+    # The dev box contains libdnf5 and createrepo_c only when it builds from a Fedora release.
+    if error.name not in ("createrepo_c", "libdnf5"):
+        raise
+    raise unittest.SkipTest(f"the box contains no {error.name}") from error
 
 SPEC = """\
 Name: {name}

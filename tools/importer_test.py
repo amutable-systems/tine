@@ -47,6 +47,12 @@ NDIST = DIST + NATIVE_DIST
 _RPM_CACHE: dict[tuple[str, str, str, bytes, tuple[str, ...]], dict[Path, bytes]] = {}
 
 
+def setUpModule() -> None:
+    # The dev box contains rpmbuild only when it builds from a Fedora release.
+    if shutil.which("rpmbuild") is None:
+        raise unittest.SkipTest("the box contains no rpmbuild")
+
+
 def git(*args: str, cwd: Path) -> str:
     return subprocess.run(
         ["git", *args], cwd=cwd, check=True, text=True, stdout=subprocess.PIPE

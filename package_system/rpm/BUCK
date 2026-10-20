@@ -7,9 +7,8 @@ load("//box:test.bzl", "box_python_test")
 load("//package:system.bzl", "package_system")
 load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
 
-# Host tools bootstrap the box; remaining drivers run inside it. The drivers that reach for libdnf5
-# or createrepo_c are type-checked against the box that supplies them.
-_BOX = "catalog//:fedora.rawhide.box"
+# The drivers that import libdnf5, createrepo_c or rpm are type-checked against the dev box.
+_BOX = "tine//tools:dev.box"
 
 tine_python_library(name = "rpmfile", srcs = ["rpmfile.py"], deps = ["//:util"])
 
@@ -73,16 +72,14 @@ tine_python_binary(
 
 box_python_test(
     name = "plan-test",
-    box = "tine//tools:dev.box",
+    box = _BOX,
     srcs = ["createrepo.py", "plan.py", "plan_test.py"],
     deps = [":macros", "//:specs", "//:util", "//package:transaction", "//rootfs:rootfs"],
 )
 
-# The dev box rather than the shared one: the verifier's tests sign packages they build, which takes
-# rpmbuild, gpg and rpmsign.
 box_python_test(
     name = "test",
-    box = "tine//tools:dev.box",
+    box = _BOX,
     srcs = ["keyring.py", "rpmkeys.py", "verify.py", "verify_test.py"],
     deps = ["//:specs", "//:util"],
 )

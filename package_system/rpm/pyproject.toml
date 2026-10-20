@@ -5,4 +5,14 @@
 
 [tool.tine.ty]
 # libdnf5 and createrepo_c come from the driver's runtime environment.
-box = "catalog//:fedora.rawhide.box"
+box = "tine//tools:dev.box"
+
+[tool.ty.analysis]
+# The dev box contains libdnf5, createrepo_c and rpm only when it builds from a Fedora release. In a dev
+# box of another family, ty leaves the modules unresolved and checks the rest of the drivers.
+allowed-unresolved-imports = ["createrepo_c", "libdnf5", "libdnf5.**", "rpm"]
+
+[tool.ty.rules]
+# ty fails the check on an unused `ty: ignore` comment. The comments on the calls into libdnf5,
+# createrepo_c and rpm are unused in a dev box without the modules.
+unused-ignore-comment = "ignore"

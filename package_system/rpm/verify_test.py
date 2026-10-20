@@ -6,6 +6,7 @@
 Uses local (mock) GPG keys and packages.
 """
 
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -25,6 +26,12 @@ BuildArch: noarch
 %description
 %files
 """
+
+
+def setUpModule() -> None:
+    # The dev box contains rpmbuild only when it builds from a Fedora release.
+    if shutil.which("rpmbuild") is None:
+        raise unittest.SkipTest("the box contains no rpmbuild")
 
 
 def _run(*command: str) -> str:

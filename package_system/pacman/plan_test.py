@@ -6,6 +6,7 @@
 buck test tine//package_system/pacman:plan-test
 """
 
+import ctypes
 import hashlib
 import json
 import tempfile
@@ -18,6 +19,14 @@ import plan
 import transaction
 
 EPOCH = 1739577600
+
+
+def setUpModule() -> None:
+    # The dev box contains libalpm only when it builds from an Arch release.
+    try:
+        ctypes.CDLL(alpm.SONAME)
+    except OSError as error:
+        raise unittest.SkipTest(f"the box contains no {alpm.SONAME}") from error
 
 
 def _entry(name: str, **fields: list[str]) -> dict[str, list[str]]:

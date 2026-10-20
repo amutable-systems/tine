@@ -1106,9 +1106,8 @@ built for the host, so the root box and the release's package manager are incomp
 architecture. On such a host, the release serves no architecture at all. Where a release serves no
 architecture, the transition leaves the distribution unset, and `compatibility()` makes every distributed
 target and alias incompatible. A build of `//...` then skips the Arch targets for arm64 and on an arm64 host.
-A target that runs in the Arch root box, such as a type check against it, has no execution platform on an
-arm64 host. Buck reports that as an error, so a whole-cell run there leaves out every target that depends on
-the Arch root box directly.
+On such a host, no compatible target depends on the Arch root box, so a whole-cell run is `//...` on every
+host.
 
 What varies between distributions stays where it belongs. A release names the packages a bootable system of
 its own family needs, so an image asks for the `bootable` package set rather than for concrete package names.
