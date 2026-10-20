@@ -139,7 +139,7 @@ box.sh_test(
     box = "@tine//tools:aws.box",
     script = """
 uefi_data=$(mktemp)
-python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["UefiData"])' "$1/register.json" > "$uefi_data"
+python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["UefiData"])' "$1" > "$uefi_data"
 virt-fw-vars --input "$uefi_data" --output-json /dev/stdout | python3 -c '
 import json, ssl, sys
 cert = ssl.PEM_cert_to_DER_cert(open(sys.argv[1]).read())
