@@ -582,6 +582,13 @@ box.sh_test(
         arch: [arch, "{}/actual.{}.json".format(package_name(), arch)] + [item for target in targets for item in target]
         for arch, targets in _reproducibility_targets.items()
     }),
+    # expected.json records the digests of images that the catalog's default boxes build. The boxes of
+    # another release build the same images with other tools, which write different bytes.
+    target_compatible_with = []
+    if read_config("tine", "box") == None
+    else select({
+        "DEFAULT": select_incompatible("expected.json records the digests that the catalog's default boxes build"),
+    }),
 )
 
 box_python_binary(
