@@ -19,7 +19,9 @@ tine_python_binary(
     deps = [":rpmfile", "//archive:cpio", "//package:extractor"],
 )
 
-tine_python_binary(name = "install", main = "install.py", boxes = [_BOX], deps = ["//:util", "//package:installer"])
+tine_python_library(name = "macros", srcs = ["macros.py"], boxes = [_BOX])
+
+tine_python_binary(name = "install", main = "install.py", boxes = [_BOX], deps = [":macros", "//:util", "//package:installer"])
 
 # The capture driver implements the terminal-image contract, so it takes that library.
 tine_python_binary(name = "pkgdb", main = "pkgdb.py", deps = ["//:specs", "//:util", "//image:finalize"])
@@ -35,7 +37,7 @@ tine_python_binary(
     name = "plan",
     main = "plan.py",
     boxes = [_BOX],
-    deps = ["//:specs", "//:util", "//package:transaction", "//rootfs:rootfs"],
+    deps = [":macros", "//:specs", "//:util", "//package:transaction", "//rootfs:rootfs"],
 )
 
 tine_python_binary(name = "build", main = "build.py", deps = ["//:specs", "//:util", "//rootfs:rootfs"])
@@ -73,7 +75,7 @@ box_python_test(
     name = "plan-test",
     box = "tine//tools:dev.box",
     srcs = ["createrepo.py", "plan.py", "plan_test.py"],
-    deps = ["//:specs", "//:util", "//package:transaction", "//rootfs:rootfs"],
+    deps = [":macros", "//:specs", "//:util", "//package:transaction", "//rootfs:rootfs"],
 )
 
 # The dev box rather than the shared one: the verifier's tests sign packages they build, which takes

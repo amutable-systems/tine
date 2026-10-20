@@ -27,7 +27,7 @@ from util import fail
 
 import finalize
 
-# Matches install.py:DBPATH.
+# Matches macros.py:DBPATH.
 DBPATH = "usr/lib/sysimage/rpm/rpmdb.sqlite"
 
 

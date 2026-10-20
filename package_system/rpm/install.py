@@ -9,11 +9,9 @@ The same driver bootstraps boxes, assembles buildroots, and extends image
 layers. It parks the rpmdb and removes nondeterministic bookkeeping before capture.
 """
 
-import os
 import shutil
 import sqlite3
 import sys
-import tempfile
 from pathlib import Path
 from typing import override
 
@@ -21,8 +19,8 @@ import libdnf5
 from util import fail
 
 import installer
-
-DBPATH = "usr/lib/sysimage/rpm"
+import macros
+from macros import DBPATH
 
 CACHEDIR = Path("/var/tmp/install-cache")
 
@@ -56,21 +54,6 @@ class TransactionCallbacks(libdnf5.rpm.TransactionCallbacks):
         print(error, file=sys.stderr)
 
 
-def limit_langs(langs: list[str]) -> None:
-    """Restrict the `%lang()`-marked files rpm installs to the given languages.
-
-    libdnf5 exposes neither a macro API nor an equivalent option, so this has to arrive through
-    rpm's own macro path. XDG_CONFIG_HOME is the entry that keeps it inside this driver: writing
-    /etc/rpm/macros.* instead would need a bind mount arranged by the action, outside the
-    package system. The directory lives in the action's temporary space, which Buck clears
-    before that action next runs.
-    """
-    config = Path(tempfile.mkdtemp(prefix="rpmconfig.")) / "rpm"
-    config.mkdir()
-    (config / "macros").write_text("%_install_langs {}\n".format(":".join(langs)))
-    os.environ["XDG_CONFIG_HOME"] = str(config.parent)
-
-
 def install(
     rpms_dir: Path,
     installroot: Path,
@@ -81,8 +64,6 @@ def install(
     langs: list[str] | None = None,
     docs: bool = True,
 ) -> None:
-    if langs:
-        limit_langs(langs)
     base = libdnf5.base.Base()
     cfg = base.get_config()
     cfg.installroot = str(installroot)
@@ -102,7 +83,10 @@ def install(
     cfg.ignorearch = True
     base.get_vars().set("arch", arch)
     base.get_vars().set("basearch", arch)
+    # The box's libdnf5 plugins differ by distribution, as in plan.py.
+    cfg.plugins = False
     base.setup()
+    macros.define(langs)
 
     sack = base.get_repo_sack()
     paths = [str(p) for p in sorted(rpms_dir.glob("*.rpm"))]
