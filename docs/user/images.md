@@ -78,9 +78,9 @@ The catalog also lists the releases that images build for in `releases.bzl`, bes
 A **box** is a pinned, reproducible execution environment that runs every build action. Each release has a
 root box, which its release macro declares. `<family>.<release>.box`, such as `catalog//:fedora.rawhide.box`,
 contains the package system's own tools, Python and core utilities. It resolves and installs every other box
-of the release. `tine//distribution:tools.box` adds the image assembly tools on top of the root box of the
-release that the build chooses, and images build in it. The tools stay in the box and out of the built
-images. How a box bootstraps itself is described in [architecture.md](../design/architecture.md).
+of the release. `tine//distribution:tools.box` adds the image assembly tools and the VM stack on top of the
+root box of the release that the build chooses, and images build in it. The tools stay in the box and out of
+the built images. How a box bootstraps itself is described in [architecture.md](../design/architecture.md).
 
 ## Commands
 
