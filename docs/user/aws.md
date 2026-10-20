@@ -57,6 +57,20 @@ The import needs these IAM permissions:
 
 ## Importing an AMI
 
+Disk partitions often have a lot of empty space, e.g. an ESP sized for future updates. Only the blocks
+holding data are uploaded. This only works with unencrypted snapshots, so the import refuses to run while
+[EBS encryption by default](https://docs.aws.amazon.com/ebs/latest/userguide/encryption-by-default.html)
+is enabled for the region.
+
+If the import fails while uploading, EC2 cancels the incomplete snapshot after an hour. If it fails while
+registering, the completed snapshot stays; the import printed its ID, delete it with
+`aws ec2 delete-snapshot`.
+
+### Development mode
+
+This is the convenient way for testing: Building and uploading are a single command, but the entire build
+has access to your AWS login from above. Don't do this on untrusted projects!
+
 Run the disk's `[ami]` subtarget:
 
 ```sh
@@ -72,14 +86,30 @@ This prints the new AMI ID. Options:
 - `--jobs`: the number of blocks uploaded in parallel, 16 by default.
 - `--no-tpm`: register the AMI without a NitroTPM, for arm64 bare metal instance types.
 
-Disk partitions often have a lot of empty space, e.g. an ESP sized for future updates. Only the blocks
-holding data are uploaded. This only works with unencrypted snapshots, so the import refuses to run while
-[EBS encryption by default](https://docs.aws.amazon.com/ebs/latest/userguide/encryption-by-default.html)
-is enabled for the region.
+### Importing from a release
 
-If the import fails while uploading, EC2 cancels the incomplete snapshot after an hour. If it fails while
-registering, the completed snapshot stays; the import printed its ID, delete it with
-`aws ec2 delete-snapshot`.
+For production, building and uploading should happen as two separate steps, with user and credential
+isolation. Add the AMI parameters to your release artifacts:
+
+```Starlark
+image.artifacts(
+    name = "release",
+    targets = [":image[raw.zst]", ":image[ami]", ...],
+)
+```
+
+Build the `image.artifacts` target in the build step, without AWS credentials.
+
+In the upload step, log into AWS and upload the AMI from these two files, with the same options as above.
+Do that from a trusted checkout such as your project's `main`, not an untrusted development branch.
+Verify files you did not just build yourself, e.g. downloaded from a release, against the release's
+signed checksums first.
+
+```sh
+tine buck run tine//image:ami-import -- /dir/image_1_x86-64.raw.zst /dir/image_1_x86-64.ami.json
+```
+
+This decompresses the disk on the fly during upload.
 
 ## Running an instance with credentials
 

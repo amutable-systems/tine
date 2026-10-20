@@ -7,10 +7,12 @@ buck test tine//image:test
 """
 
 import base64
+import compression.zstd
 import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from typing import override
 
 import ami_import
 from ami_import import BLOCK_SIZE
@@ -55,6 +57,37 @@ class DataBlocksTest(unittest.TestCase):
 
     def test_empty_disk_has_no_blocks(self) -> None:
         self.assertEqual(list(ami_import.data_blocks(self.disk(3 * BLOCK_SIZE, {}))), [])
+
+    def test_size(self) -> None:
+        self.assertEqual(ami_import.disk_size(self.disk(BLOCK_SIZE + 10, {3: b"x"})), BLOCK_SIZE + 10)
+
+
+class CompressedDataBlocksTest(DataBlocksTest):
+    """The same disks, zstd-compressed as a release's `.raw.zst`, but still named `.raw`.
+
+    The name must not matter, only the content.
+    """
+
+    @override
+    def disk(self, size: int, writes: dict[int, bytes]) -> Path:
+        disk = super().disk(size, writes)
+        # as `zstd` writes it from a file, with the decompressed size in the frame header
+        disk.write_bytes(compression.zstd.compress(disk.read_bytes()))
+        return disk
+
+    def test_more_than_the_header_says(self) -> None:
+        disk = self.disk(BLOCK_SIZE, {0: b"x"})
+        with disk.open("ab") as f:
+            f.write(compression.zstd.compress(b"y"))
+        with self.assertRaisesRegex(SystemExit, "decompresses to 524289 bytes, not the 524288"):
+            list(ami_import.data_blocks(disk))
+
+    def test_no_size_in_header(self) -> None:
+        disk = self.disk(BLOCK_SIZE, {})
+        with compression.zstd.ZstdFile(disk, "w") as f:
+            f.write(b"x")
+        with self.assertRaisesRegex(SystemExit, "does not record its decompressed size"):
+            ami_import.disk_size(disk)
 
 
 class ChecksumTest(unittest.TestCase):
