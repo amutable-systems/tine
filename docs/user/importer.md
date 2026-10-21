@@ -201,10 +201,13 @@ of the tree, where `rename(2)` on one of its directories fails with `EXDEV`, as 
 Buck ignores, and `%install` can copy them into the RPMs. See
 [Building from a local checkout instead](git.md#building-from-a-local-checkout-instead).
 
-Two per-package maps in `_properties.json` can adapt the build to that checkout. `in_place_specs` selects
+Three per-package maps in `_properties.json` can adapt the build to that checkout. `in_place_specs` selects
 an RPM spec by a path relative to the checkout root. The spec's directory also supplies its Source/Patch
-files and relative includes. `in_place_rpmbuild_options` adds CLI options after the common
-`rpmbuild_options` and any dev-mode defaults. The two properties can be used independently.
+files and relative includes. `in_place_packaging` takes the spec and its Source/Patch files from a dist-git
+commit that the checkout pins; see [Taking the packaging from a pin in the
+checkout](#taking-the-packaging-from-a-pin-in-the-checkout). A package cannot set both `in_place_specs` and
+`in_place_packaging`. `in_place_rpmbuild_options` adds CLI options after the common `rpmbuild_options` and
+any dev-mode defaults.
 
 For example, suppose an imported `hello` package has `rpm/hello.spec` in its developer checkout and
 supports `--with=upstream` for building from that tree. Its branch's `_properties.json` can contain:
@@ -222,7 +225,60 @@ Mount the checkout over the package's source slot:
 tine mount add packages/fedora/rawhide/hello.source ~/Projects/hello
 ```
 
-Without an `in_place_specs` entry, a source-tree build keeps the imported spec and its declared sources.
-Without a source-tree override, the normal archive build ignores both properties. These overrides do
-not change the imported BuildRequires or subpackage list; `rpm-metadata` uses only the common
-`rpmbuild_options`.
+Without an `in_place_specs` or `in_place_packaging` entry, a source-tree build keeps the imported spec and
+its declared sources. Without a source-tree override, the normal archive build ignores all three maps.
+These overrides do not change the imported BuildRequires or subpackage list; `rpm-metadata` uses only the
+common `rpmbuild_options`.
+
+#### Taking the packaging from a pin in the checkout
+
+A project such as systemd tests its main branch against a fixed commit of the distribution's dist-git
+repository. To build with the spec and Source/Patch files of that commit instead of the imported ones, map
+the package to the path of a pin file in its checkout:
+
+```json
+{ "in_place_packaging": { "systemd": "packaging.json" } }
+```
+
+The pin file is a JSON object that maps each distro to its pin. A branch under `packages/<distro>/` uses
+the entry of its distro, so the branches of every distro can share one pin file. An entry is a JSON object
+with the string keys `url`, `branch` and `commit`, and no other keys:
+
+```json
+{
+  "fedora": {
+    "url": "https://src.fedoraproject.org/rpms/systemd.git",
+    "branch": "rawhide",
+    "commit": "57cbcf979ce2dd872a871c59e87d2c65dfa996e6"
+  },
+  "centos": {
+    "url": "https://src.fedoraproject.org/rpms/systemd.git",
+    "branch": "rawhide",
+    "commit": "57cbcf979ce2dd872a871c59e87d2c65dfa996e6"
+  }
+}
+```
+
+The build fails if the pin file has no entry for the branch's distro. It checks only that entry, so an entry
+for another distro can have other keys. `commit` is a full commit hash in lowercase. The build fetches
+`branch` from `url` over the network and fails unless `commit` is on that branch. It then builds
+`<package>.spec` from that commit and copies every file at the top of the commit's tree into rpmbuild's
+`SOURCES`. The imported spec and its declared sources are not used. The fetch reads only the pin file: an
+edit elsewhere in the checkout does not fetch again, and a change to the pin file does, also when the change
+is in the entry of another distro. A missing pin file fails the build with Buck's message that the path does
+not exist in the checkout.
+
+The pinned spec can declare other subpackages than the imported metadata. A build with `in_place_packaging`
+prints the difference instead of failing on it, and emits the declared subpackages that it built. A build of
+a declared sub-target that the pinned spec does not produce, such as `:systemd[systemd-imds]`, fails. An
+image that installs a subpackage that the pinned spec does not produce gets the package of that name from
+the distribution's repositories, if the package exists there and its dependencies allow it. Archive builds
+and `in_place_specs` builds fail on any difference.
+
+The buildroot still contains the imported BuildRequires. If the pinned spec requires a package that the
+imported spec does not, rpmbuild fails with `Failed build dependencies:` until the package is imported again
+at a commit with that BuildRequires.
+
+The branch's generated `BUCK` passes `in_place_packaging` to the build only if its `rpm_branch()` call has
+an `in_place_packaging` line and a `distro` line. `import`, and an `update` that takes new commits,
+regenerate the `BUCK` with both lines.

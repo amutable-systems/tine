@@ -5,6 +5,7 @@
 
 import contextlib
 import errno
+import io
 import shutil
 import subprocess
 import tempfile
@@ -40,6 +41,7 @@ class BuildRpm(unittest.TestCase):
         build_dir: Path | None = None,
         spec_file: Path | None = None,
         subpackages: list[str] | None = None,
+        packaging: Path | None = None,
     ) -> build.Spec:
         """Return a complete driver spec for one test build."""
         return build.Spec(
@@ -56,6 +58,7 @@ class BuildRpm(unittest.TestCase):
             in_place_rpmbuild_options=["--define", "local_option yes"],
             rpmbuild_options=["--define", "common_option yes"],
             source_tree=str(source_tree) if source_tree is not None else None,
+            packaging=str(packaging) if packaging is not None else None,
         )
 
     def invoke(
@@ -168,6 +171,63 @@ class BuildRpm(unittest.TestCase):
         self.assertEqual(list((topdir / "CHECKOUT").iterdir()), [])
         self.assertFalse((topdir / "SOURCES" / "auxiliary").exists())
         self.assertEqual(local_spec.read_text(), "Name: from-checkout\nSource1: helper\n")
+
+    def pinned_packaging(self) -> tuple[Path, Path]:
+        """Return a checkout and a dist-git tree with a spec, a patch and a directory of tests."""
+        source = self.scratch / "checkout"
+        source.mkdir()
+        packaging = self.project / "packaging"
+        (packaging / "tests").mkdir(parents=True)
+        (packaging / "example.spec").write_text("Name: pinned\nPatch0: fix.patch\n")
+        (packaging / "fix.patch").write_text("pinned patch\n")
+        (packaging / "tests" / "main.fmf").write_text("summary: test\n")
+        return source, packaging
+
+    def test_pinned_packaging_replaces_the_declared_spec_and_sources(self) -> None:
+        source, packaging = self.pinned_packaging()
+        specification = self.specification(source, spec_file=packaging / "example.spec", packaging=packaging)
+
+        command, _cwd, _environment, topdir, _binds = self.invoke(specification)
+
+        self.assertEqual(command[-1], "/build/SPECS/example.spec")
+        self.assertFalse([argument for argument in command if argument.startswith("_sourcedir")])
+        self.assertIn("Name: pinned\n", (topdir / "SPECS" / "example.spec").read_text())
+        self.assertEqual(
+            sorted(path.name for path in (topdir / "SOURCES").iterdir()), ["example.spec", "fix.patch"]
+        )
+        self.assertEqual((topdir / "SOURCES" / "fix.patch").read_text(), "pinned patch\n")
+
+    def produce(self, *names: str) -> Callable[[Path], None]:
+        def produce(topdir: Path) -> None:
+            built = topdir / "RPMS/x86_64"
+            built.mkdir(parents=True)
+            for name in names:
+                (built / f"{name}-1-7.test.x86_64.rpm").write_text(f"{name}\n")
+
+        return produce
+
+    def test_pinned_packaging_reports_a_subpackage_mismatch_without_failing(self) -> None:
+        source, packaging = self.pinned_packaging()
+        specification = self.specification(
+            source,
+            spec_file=packaging / "example.spec",
+            packaging=packaging,
+            subpackages=["example", "example-imds"],
+        )
+
+        with contextlib.redirect_stderr(io.StringIO()) as stderr:
+            self.invoke(specification, self.produce("example", "example-ukify"))
+
+        self.assertIn("declared but not produced: ['example-imds']", stderr.getvalue())
+        self.assertIn("produced but not declared: ['example-ukify-1-7.test.x86_64.rpm']", stderr.getvalue())
+        subpackages = self.project / "subpackages-out"
+        self.assertEqual(sorted(path.name for path in subpackages.iterdir()), ["example.rpm"])
+        self.assertEqual((subpackages / "example.rpm").read_text(), "example\n")
+
+    def test_imported_packaging_fails_on_a_subpackage_mismatch(self) -> None:
+        specification = self.specification(None, subpackages=["example", "example-imds"])
+        with self.assertRaisesRegex(SystemExit, r"declared but not produced: \['example-imds'\]"):
+            self.invoke(specification, self.produce("example"))
 
     def test_spec_path_cannot_escape_the_source_tree(self) -> None:
         source = self.scratch / "checkout"
