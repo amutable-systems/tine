@@ -187,10 +187,17 @@ in native Buck configuration.
 When the tine cell is the project root itself, it is a standalone checkout. Its `.buckconfig` is source
 configuration and is not regenerated; put Buck overrides directly in that file rather than in TOML.
 
-The `.buckconfig.local` update only replaces tine's generated block, which contains project ignores and
-Git-derived image version components. Text outside that block is preserved.
+The `.buckconfig.local` update only replaces tine's generated block, which contains project ignores,
+Git-derived image version components and, while mounts are declared, the dev targets. Text outside that
+block is preserved.
 Configured ignores are merged with VCS metadata exclusions and Git ignores; a project-owned
 `[project] ignore` in `.buckconfig.local` is rejected because it would replace the generated list.
+`[tine] dev` lists the project paths that `project.is_dev()` builds in dev mode. The block writes the
+project's own entries followed by every mounted target, so a mount selects dev mode without configuration.
+Without mounts the block leaves the key out. While mounts are declared, a `[tine] dev` in `.buckconfig.local`
+is rejected. The block comes first in that file, and a later entry would replace the merged value. A tool
+that runs Buck directly under a build reads the same file and sees the same dev targets. A `-c` flag on the
+outer command would not reach such a tool.
 The version components live under `[tine]` as `version-base`, `version-count`, `version-height`,
 `version-commit`, and, for uncommitted work, `version-dirty`. Each image renders those components against
 its own label budget; see "Image versioning" in [images.md](../user/images.md).

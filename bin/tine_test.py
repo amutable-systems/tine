@@ -1929,6 +1929,36 @@ class TestBuckCommand(unittest.TestCase):
         gitdirs.assert_not_called()
         self.assertTrue(execve)
 
+    def build_mounted(self, *targets: str) -> dict[str, dict[str, str]]:
+        table = tine.encode_mount_table(list(targets), {})
+        with self.running(), unittest.mock.patch.dict(os.environ, {tine.TINE_MOUNTS_ENV: table}):
+            tine.buck_command(["build", "//x"])
+        return read_generated_buckconfig(self.root / tine.LOCAL)
+
+    def test_mounted_targets_build_in_dev_mode(self) -> None:
+        self.assertEqual(
+            self.build_mounted("packages/b.source", "packages/a.source")[tine.SECTION][tine.DEV],
+            "packages/a.source, packages/b.source",
+        )
+
+    def test_the_projects_dev_targets_are_kept_beside_the_mounted_ones(self) -> None:
+        (self.root / ".buckconfig").write_text(
+            "[cells]\nroot = .\n[tine]\ndev = tools/app, packages/a.source\n"
+        )
+        self.assertEqual(
+            self.build_mounted("packages/a.source")[tine.SECTION][tine.DEV], "tools/app, packages/a.source"
+        )
+
+    def test_without_mounts_buck_reads_the_projects_dev_targets(self) -> None:
+        (self.root / ".buckconfig").write_text("[cells]\nroot = .\n[tine]\ndev = tools/app\n")
+        self.assertNotIn(tine.DEV, self.build_mounted().get(tine.SECTION, {}))
+
+    def test_local_dev_targets_would_drop_the_mounted_ones(self) -> None:
+        (self.root / tine.LOCAL).write_text("[tine]\ndev = tools/app\n")
+        with self.assertRaisesRegex(SystemExit, "would replace the mounted targets"):
+            self.build_mounted("packages/a.source")
+        self.assertNotIn(tine.DEV, self.build_mounted().get(tine.SECTION, {}))
+
     def test_completing_writes_no_shared_config(self) -> None:
         defaults = Path(__file__).with_name("tine.buckconfig")
         for cell in (".", "vendor/tine"):
@@ -2029,7 +2059,7 @@ class TestBuckCommand(unittest.TestCase):
                     unittest.mock.patch.object(tine, "refresh_local_buckconfig") as refresh,
                 ):
                     tine.buck_command(["build", "tine//..."])
-                refresh.assert_called_once_with(self.root, list(tine.VCS_IGNORES), None)
+                refresh.assert_called_once_with(self.root, list(tine.VCS_IGNORES), None, [])
 
     def test_a_run_without_a_home_gets_one(self) -> None:
         environment = dict(os.environ)
