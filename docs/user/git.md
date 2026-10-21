@@ -48,11 +48,21 @@ A mount is also what makes a `cargo.package()`, `go.package()` or `rpm.package()
 its build directory survives between runs, and an edit recompiles just what changed. See
 [Rust source builds](../design/architecture.md#rust-source-builds).
 
+To build a checkout that is committed to the project incrementally, list its project path under `[tine]
+dev` in `.buckconfig`, or as `[buckconfig.tine] dev` in `tine.toml` or `tine.local.toml`. Separate several
+paths with commas. tine adds every mounted target to that list. While mounts are declared, tine
+rejects a `[tine] dev` entry in `.buckconfig.local`, because it would replace the mounted targets.
+
+```toml
+[buckconfig.tine]
+dev = "packages/hello/hello"
+```
+
 The override has a few constraints:
 
 - Only a `git.fetch()` or `git.checkout()` target can be mounted, anything else is rejected.
-- The directory must contain at least one file. An empty mount point or uninitialized submodule falls back
-  to the remote fetch.
+- A directory in the project must contain at least one file. An empty directory, such as an uninitialized
+  submodule, falls back to the remote fetch. A mounted directory counts as a checkout even when it is empty.
 - Every file not excluded by `.gitignore` or `[project] ignore` is a build input. tine merges both, plus
   VCS metadata directories, into the generated ignore list; put build outputs in `.gitignore` and
   anything Git tracks but Buck should not see in `[project] ignore`.
