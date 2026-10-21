@@ -16,12 +16,14 @@ def _tool_impl(ctx: AnalysisContext) -> list[Provider]:
             category = "unzstd",
         )
         src = out
-    providers = [DefaultInfo(default_output = src)]
+    root = src.project(ctx.attrs.strip_prefix) if ctx.attrs.strip_prefix else src
     if not ctx.attrs.directory:
-        providers.append(RunInfo(args = cmd_args(src, ctx.attrs.args)))
-    elif ctx.attrs.path != None:
+        program = root.project(ctx.attrs.path) if ctx.attrs.path != None else root
+        return [DefaultInfo(default_output = program), RunInfo(args = cmd_args(program, ctx.attrs.args))]
+    providers = [DefaultInfo(default_output = root)]
+    if ctx.attrs.path != None:
         # `buck run` needs the whole unpacked archive, because a program such as go reads the files beside it.
-        providers.append(RunInfo(args = cmd_args(src.project(ctx.attrs.path), ctx.attrs.args, hidden = src)))
+        providers.append(RunInfo(args = cmd_args(root.project(ctx.attrs.path), ctx.attrs.args, hidden = src)))
     return providers
 
 _tool = rule(
@@ -31,6 +33,7 @@ _tool = rule(
         "directory": attrs.bool(default = False),
         "path": attrs.option(attrs.string(), default = None),
         "src": attrs.source(allow_directory = True),
+        "strip_prefix": attrs.option(attrs.string(), default = None),
         # Only set for compressed downloads: an unconditional dep would cycle, since the decompressor
         # is a tine_python_binary and the bootstrap interpreter is itself an http_tool.
         "unzstd": attrs.option(attrs.exec_dep(providers = [RunInfo]), default = None),
@@ -72,23 +75,26 @@ def http_tool(
             size_bytes = size_bytes,
             urls = urls,
         )
-        src = ":{}-download".format(name)
+        strip_prefix = None
     else:
+        # http_archive strips a prefix with GNU tar's --strip-components, which tar applies after it
+        # removes a leading slash. With --strip-components=1, a member named go//home/user/.bashrc is
+        # written to /home/user/.bashrc. A plain extraction keeps every member inside the output, and
+        # _tool then uses the prefix directory inside the output.
         http_archive(
             name = name + "-download",
             sha256 = sha256,
             size_bytes = size_bytes,
-            strip_prefix = architecture.select({cpu: e.get("strip_prefix") for cpu, e in platforms.items()}),
-            sub_targets = [] if directory else [path],
             urls = urls,
         )
-        src = ":{}-download".format(name) if directory else ":{}-download[{}]".format(name, path)
+        strip_prefix = architecture.select({cpu: e.get("strip_prefix") for cpu, e in platforms.items()})
     _tool(
         name = name,
         args = args or [],
         directory = directory,
-        path = path if directory else None,
-        src = src,
+        path = path,
+        src = ":{}-download".format(name),
+        strip_prefix = strip_prefix,
         unzstd = "tine//http:unzstd" if compressed else None,
         visibility = visibility,
     )
