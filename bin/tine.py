@@ -1718,17 +1718,16 @@ def prepare_buck(
     return config, mounts or []
 
 
-def before_shim(
-    root: Path,
-    config: dict[str, dict[str, str]],
-    settings: dict[str, dict[str, object]],
-    isolation: str | None,
-) -> list[str]:
+def before_shim(root: Path, settings: dict[str, dict[str, object]], isolation: str | None) -> list[str]:
     """Ready Buck to build the shim, and return the Buck command to do it with.
 
     The generated block is written without the cache address; the Buck command after the shim
     serves writes it back.
     """
+    # The shim builds before prepare_buck() refreshes the defaults, and a tine checkout that changed
+    # them, such as by adding a cell its own targets name, cannot build it with the old ones.
+    refresh_project_buckconfig(root, buckconfig_overrides(settings, root / CONFIG))
+    config = read_project_buckconfig(root)
     ensure_buck2_binary(settings, wrapper_cell_root())
     # HACK: `--no-remote-cache` does not keep `download_file` from probing the CAS, and Buck retries a
     # cache that is not serving yet for 45s before it gives up on the probe. Temporarily disable the
@@ -1756,7 +1755,7 @@ def buck_command(argv: list[str]) -> None:
         # runs. The cost is that its pin comes from the outer checkout rather than a mounted cell's.
         # TINE_MOUNTS means entering the namespace already re-executed this, which ensured it once.
         if command.subcommand not in BUCK_COMMAND_NO_ACTION and not os.environ.get(TINE_MOUNTS_ENV):
-            cache_shim.ensure(cache, lambda: before_shim(root, config, settings, command.isolation))
+            cache_shim.ensure(cache, lambda: before_shim(root, settings, command.isolation))
     # A completing shell must neither download nor rewrite shared configuration on a keypress.
     config, mounts = prepare_buck(
         root, settings, ["buck", *argv], refresh_config=command.subcommand != "complete"

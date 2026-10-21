@@ -1879,11 +1879,19 @@ class TestBuckCommand(unittest.TestCase):
         cache = self.configure_cache()
         tine.refresh_local_buckconfig(self.root, [], cache)
         with self.running():
-            buck = tine.before_shim(
-                self.root, tine.read_project_buckconfig(self.root), tine.project_settings(self.root), "x"
-            )
+            buck = tine.before_shim(self.root, tine.project_settings(self.root), "x")
         self.assertEqual(buck, [str(self.binary), "--no-buckd", tine.FLAG_ISOLATION, "x"])
         self.assertNotIn(tine.RE_CLIENT, read_generated_buckconfig(self.root / tine.LOCAL))
+
+    def test_the_shim_builds_with_the_defaults_of_the_current_checkout(self) -> None:
+        """The shim is a target of the tine cell, so it needs the cells that checkout declares now."""
+        configure_cells(self.root, "tine")
+        checkout = self.root / "tine"
+        checkout.mkdir()
+        (checkout / ".buckconfig").write_text("[cells]\ntine = .\ncatalog = catalog\n")
+        with self.running():
+            tine.before_shim(self.root, tine.project_settings(self.root), None)
+        self.assertEqual(tine.cells_of(tine.read_project_buckconfig(self.root))["catalog"], "tine/catalog")
 
     def test_a_changed_address_reaches_the_next_invocation(self) -> None:
         """Each command's daemon reads the current configuration, so a new address only needs writing."""
