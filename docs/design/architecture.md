@@ -707,12 +707,16 @@ An `rpm_package` action:
 1. obtains the shared base root from its `BuildrootInfo`;
 2. resolves and installs its BuildRequires delta, preferring RPMs from `buildroot_packages` over upstream;
 3. overlays the base and delta, stages its spec/sources in Buck action scratch, and runs `rpmbuild -ba`,
-   or `rpmbuild -bb --build-in-place` on a volatile overlay of a populated source tree. The project is
-   read-only until the driver exits;
+   or `rpmbuild -bb --build-in-place` on a volatile overlay of a populated source tree. With
+   `in_place_packaging`, a separate action first fetches the dist-git commit that the tree pins, and the
+   build takes its spec and Source/Patch files from that commit. The project is read-only until the driver
+   exits;
 4. freezes `%autorelease`, `_buildhost`, the dist tag, and the per-package source date epoch;
 5. collects binary RPMs and the source RPM into one output directory, carrying its package-system identity
    in `LocalPackageInfo`;
-6. exposes each declared binary subpackage as a Buck sub-target and checks that declared outputs exist.
+6. exposes each declared binary subpackage as a Buck sub-target and checks that declared outputs exist. With
+   pinned packaging, it prints the subpackages that differ from the declared ones instead of failing,
+   because the pinned spec can declare other subpackages than the imported metadata.
 
 The build currently uses `--nocheck`. Automatically generated debuginfo/debugsource RPMs are retained in the
 directory output but are tolerated rather than exposed as declared sub-targets. Successful build scratch is
@@ -1702,9 +1706,10 @@ belong to one package system are listed in its own section instead:
   than the SHA-256 pinning everything else here uses.
 - `cargo-auditable` is a pinned upstream release binary rather than a source-built one, so the Rust build
   path is not itself part of the source-trust chain.
-- Three build steps reach the network instead of downloading content with a recorded byte hash: Rust Git
+- Four build steps reach the network instead of downloading content with a recorded byte hash: Rust Git
   dependencies use commit hashes from the lock file, project fetches use the commit passed to
-  `git.fetch()`, and Go verifies module downloads against the committed `go.sum`.
+  `git.fetch()`, the RPM packaging fetch uses the commit in the pin file of `in_place_packaging`, and Go
+  verifies module downloads against the committed `go.sum`.
 - Crate downloads carry no recorded size, so Buck learns it from an HTTP HEAD whenever a download action
   executes. A cold daemon therefore needs the network even when every crate is already cached.
 - Repository metadata is trusted on first use: neither Fedora's GA trees nor the pinned mirrors serve a

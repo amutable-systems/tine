@@ -94,6 +94,36 @@ box.sh_test(
     ],
 )
 
+# hello-pinned builds the same checkout with the spec and sources of the dist-git commit that
+# rpm/packaging.json pins for fedora. The pin names a bundle in the project, so the fetch needs no network.
+# The pinned spec doesn't produce hello-imported-only. The build reports the missing subpackage and doesn't
+# fail.
+rpm.package(
+    name = "hello-pinned",
+    package = "hello",
+    buildroot = _BUILDROOT,
+    build_requires = ["gcc"],
+    in_place_packaging = "rpm/packaging.json",
+    in_place_packaging_distro = "fedora",
+    release = "1",
+    source_date_epoch = 1754006400,
+    source_tree = ":hello.source",
+    subpackages = ["hello", "hello-imported-only"],
+)
+
+box.sh_test(
+    name = "hello-pinned-test",
+    distro = _DISTRO,
+    labels = ["image"],
+    box = _CHECK_BOX,
+    script = 'python3 "$@"',
+    args = [
+        "$(source hello_pinned_check.py)",
+        "$(location :hello-pinned)",
+        "$(location :hello-pinned[hello])",
+    ],
+)
+
 # A derived package manager adds the locally built hello to the release's repositories. Fedora's
 # repositories contain a newer hello. The solver picks the local hello only if the derived package manager
 # gives the local repository its priority.

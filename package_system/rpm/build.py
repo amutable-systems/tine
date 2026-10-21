@@ -59,6 +59,9 @@ class Spec(TypedDict):
     rpmbuild_options: list[str]
     # A prepared source tree to build in place, or None to unpack the declared sources through %prep.
     source_tree: str | None
+    # `packaging` is the dist-git tree at the commit that `source_tree` pins, or None. Its files replace
+    # `sources`.
+    packaging: str | None
 
 
 def build_rpm(spec: Spec) -> int:
@@ -121,8 +124,13 @@ def _build_rpm(spec: Spec, topdir: Path, out: Path, subpackages: Path) -> int:
         staged_spec = topdir / "SPECS" / spec_file.name
         chroot_spec = Path("/build/SPECS") / spec_file.name
         sourcedir = None
-        for src in spec["sources"]:
-            s = Path(src)
+        sources = [Path(src) for src in spec["sources"]]
+        if spec["packaging"] is not None:
+            # rpmbuild -bb does not check that Source and Patch files exist, but the spec's scriptlets
+            # and macros read them from SOURCES. A dist-git repository contains them at its top level,
+            # and its subdirectories, such as tests/, contain no sources.
+            sources = sorted(path for path in Path(spec["packaging"]).iterdir() if path.is_file())
+        for s in sources:
             # A spec may modify SOURCES, so it must not share the source artifact's inode.
             util.clone_file(s, topdir / "SOURCES" / s.name)
 
@@ -195,7 +203,11 @@ def _build_rpm(spec: Spec, topdir: Path, out: Path, subpackages: Path) -> int:
     print(f"collected {len(produced)} binary rpms{source_output} into {spec['out']}", file=sys.stderr)
 
     if spec["subpackages"]:
-        _emit_subpackages({name: subpackages / f"{name}.rpm" for name in spec["subpackages"]}, produced)
+        _emit_subpackages(
+            {name: subpackages / f"{name}.rpm" for name in spec["subpackages"]},
+            produced,
+            strict=spec["packaging"] is None,
+        )
 
     return 0
 
@@ -205,8 +217,8 @@ def main(argv: list[str] | None = None) -> int:
     return build_rpm(specs.parse(Spec, "build_rpm", argv))
 
 
-def _emit_subpackages(declared: dict[str, Path], produced: dict[str, Path]) -> None:
-    """Match declared subpackages to output NVRA names and verify the exact set."""
+def _emit_subpackages(declared: dict[str, Path], produced: dict[str, Path], *, strict: bool) -> None:
+    """Match declared subpackages to output NVRA names, and fail on any difference if `strict`."""
     names_by_len = sorted(declared, key=len, reverse=True)
     patterns = {name: re.compile(rf"^{re.escape(name)}-[^-]+-[^-]+\.[^.]+\.rpm$") for name in declared}
 
@@ -224,15 +236,20 @@ def _emit_subpackages(declared: dict[str, Path], produced: dict[str, Path]) -> N
         f for f in produced if f not in set(matched.values()) and not re.search(r"-debug(info|source)-", f)
     )
     if missing or unexpected:
-        util.fail(
+        report = (
             "subpackage fidelity gate failed:\n"
             f"  declared but not produced: {missing}\n"
             f"  produced but not declared: {unexpected}"
         )
+        if strict:
+            util.fail(report)
+        # The declared subpackages come from the imported spec, and a pinned spec can differ from it.
+        # Buck fails a build of a declared sub-target that this build did not produce.
+        print(f"{report}\nThe pinned packaging differs from the imported metadata.", file=sys.stderr)
 
-    for name, out_path in declared.items():
-        util.clone_file(produced[matched[name]], out_path, allow_link=True)
-    print(f"emitted {len(declared)} subpackage sub-targets", file=sys.stderr)
+    for name, fname in matched.items():
+        util.clone_file(produced[fname], declared[name], allow_link=True)
+    print(f"emitted {len(matched)} subpackage sub-targets", file=sys.stderr)
 
 
 if __name__ == "__main__":

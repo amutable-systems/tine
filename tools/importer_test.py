@@ -1696,6 +1696,7 @@ class RegenerateBuck(unittest.TestCase):
     CURATION = {
         "buildroot": "//buildroots/myos:base",
         "buildroot_only_packages": ["glibc32"],
+        "in_place_packaging": {"gcc": "packaging/pins.json"},
         "in_place_rpmbuild_options": {"glibc": ["--with=upstream"]},
         "in_place_specs": {"glibc": "packaging/fedora/glibc.spec"},
         "seed_only_packages": ["gcc"],
@@ -1710,6 +1711,8 @@ class RegenerateBuck(unittest.TestCase):
         # real packages are loaded and listed...
         self.assertIn('load(":gcc.json", _gcc = "value")', buck)
         self.assertIn('    "glibc": _glibc,', buck)
+        # The importer takes the distro from the name of the branch's parent directory.
+        self.assertIn('    distro = "fedora",', buck)
         # ...but the curation file is never a PACKAGES entry.
         self.curate()
         self.assertNotIn('"_properties": _properties,', self.buck())
@@ -1729,7 +1732,13 @@ class RegenerateBuck(unittest.TestCase):
         self.assertIn('load(":_properties.json", _properties = "value")', buck)
         for key in self.CURATION:
             self.assertIn(f'_properties.get("{key}"', buck)
-        for value in ("//buildroots/myos:base", "glibc32", "--with=upstream", "--with=basic"):
+        for value in (
+            "//buildroots/myos:base",
+            "glibc32",
+            "packaging/pins.json",
+            "--with=upstream",
+            "--with=basic",
+        ):
             self.assertNotIn(value, buck)
 
     def test_formatter_stable(self) -> None:

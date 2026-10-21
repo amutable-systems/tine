@@ -51,6 +51,8 @@ def _declare_rpm_package(
     buildroot: str,
     meta: SrcpkgMetadata,
     buildroot_packages: list[str],
+    in_place_packaging: str | None = None,
+    in_place_packaging_distro: str | None = None,
     in_place_rpmbuild_options: list[str] = [],
     in_place_spec: str | None = None,
     rpmbuild_options: list[str] = [],
@@ -81,6 +83,8 @@ def _declare_rpm_package(
         subpackages = _by_architecture(meta, lambda rpm_arch: sorted(meta.binaries[rpm_arch])),
         build_requires = _by_architecture(meta, lambda rpm_arch: _build_requires(meta, rpm_arch)),
         buildroot_packages = buildroot_packages,
+        in_place_packaging = in_place_packaging,
+        in_place_packaging_distro = in_place_packaging_distro,
         in_place_rpmbuild_options = in_place_rpmbuild_options,
         in_place_spec = in_place_spec,
         rpmbuild_options = rpmbuild_options,
@@ -308,12 +312,17 @@ def rpm_branch(
     buildroot: str,
     packages: dict[str, PackageMetadata],
     buildroot_only_packages: list[str] = [],
+    distro: str | None = None,
+    in_place_packaging: dict[str, str] = {},
     in_place_rpmbuild_options: dict[str, list[str]] = {},
     in_place_specs: dict[str, str] = {},
     seed_only_packages: list[str] = [],
     rpmbuild_options: dict[str, list[str]] = {},
 ) -> None:
     """Declare a branch, its self-hosting buildroot edges, and its local-packages universe."""
+    if in_place_packaging and distro == None:
+        # The importer writes `distro` into a BUCK it regenerates. An older BUCK doesn't pass it.
+        fail("rpm_branch: in_place_packaging needs the branch's distro; regenerate the branch's BUCK with the importer")
     metadata = {name: _parse_metadata(meta) for name, meta in packages.items()}
     for pin in seed_only_packages:
         if pin not in metadata:
@@ -356,6 +365,8 @@ def rpm_branch(
             buildroot = buildroot,
             meta = metadata[name],
             buildroot_packages = [":" + dep for dep in locks[name]],
+            in_place_packaging = in_place_packaging.get(name),
+            in_place_packaging_distro = distro if name in in_place_packaging else None,
             in_place_rpmbuild_options = in_place_rpmbuild_options.get(name, []),
             in_place_spec = in_place_specs.get(name),
             rpmbuild_options = rpmbuild_options.get(name, []),
