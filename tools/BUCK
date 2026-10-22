@@ -105,8 +105,10 @@ box.new(
             "gnupg",
             "sequoia-sqv",
             "tar",
+            "util-linux",
         ],
         "debian": [
+            "fdisk",
             "git",
             "gnupg",
             # The tools box resolves awk to mawk, and the dev box installs gawk too. Without mawk in
@@ -126,6 +128,7 @@ box.new(
             # The tests of package_system/rpm sign the packages that they build.
             "rpm-sign",
             "sequoia-sqv",
+            "util-linux",
         ],
     }),
     parent = "tine//distribution:tools.box",
