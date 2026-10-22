@@ -384,6 +384,15 @@ class TestRelaxed(unittest.TestCase):
             self.assertFalse(namespaces["isolate_network"])
             self.assertFalse(namespaces["become_root"])
 
+    def test_path_keeps_the_host_order_and_appends_missing_base_directories(self) -> None:
+        with (
+            _project() as (_, tools),
+            unittest.mock.patch.dict(os.environ, {"PATH": "/home/u/bin:/usr/bin"}),
+        ):
+            launch = _launch("--tools", str(tools), "--relaxed", "--", "true")
+
+        self.assertEqual(launch.environment["PATH"], "/home/u/bin:/usr/bin:/usr/sbin:/bin:/sbin")
+
     def test_a_development_box_may_choose_its_shell_after_entry(self) -> None:
         with _project() as (_, tools):
             launch = _launch("--tools", str(tools), "--relaxed", "--box", "dev")

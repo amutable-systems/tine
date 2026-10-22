@@ -130,6 +130,12 @@ def _relocate(value: str, cwd: str) -> str:
     return value.replace(cwd + "/", _PROJECT + "/")
 
 
+def _relaxed_path(path: str) -> str:
+    directories = path.split(os.pathsep) if path else []
+    missing = [d for d in _BASE_ENV["PATH"].split(os.pathsep) if d not in directories]
+    return os.pathsep.join(directories + missing)
+
+
 def _relaxed(tools: str, stage: Stage) -> list[Filesystem]:
     """Mount pinned userspace over a host-integrated root."""
     out: list[Filesystem] = []
@@ -384,6 +390,12 @@ def _launch(args: Options, tools: str, stage: Stage) -> Launch:
             filesystems.append(Bind(backing, "/var/tmp"))
 
     environment = dict(os.environ) if args.relaxed else dict(_BASE_ENV)
+    if args.relaxed:
+        # The host's PATH can lack a directory that the box installs programs into. A Debian box
+        # installs tpm2-abrmd into /usr/sbin, and an Arch host has no /usr/sbin on PATH. Without the
+        # base directories, running tpm2-abrmd in a Debian box on an Arch host fails with "command
+        # not found".
+        environment["PATH"] = _relaxed_path(environment.get("PATH", ""))
     if not args.relaxed and args.bind_cwd and "BUCK_SCRATCH_PATH" in os.environ:
         environment["BUCK_SCRATCH_PATH"] = os.environ["BUCK_SCRATCH_PATH"]
     if args.source_date_epoch is not None:
