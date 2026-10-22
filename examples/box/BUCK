@@ -66,5 +66,5 @@ box.sh_test(
     name = "layered-run-test",
     labels = ["image"],
     box = ":demo-with-parent.box",
-    script = "HOME=/tmp fish --command 'echo hello' | grep -qx hello",
+    script = "test \"$(HOME=/tmp fish --command 'echo hello')\" = hello",
 )
