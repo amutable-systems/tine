@@ -263,7 +263,7 @@ class TestCaptureOnExit(unittest.TestCase):
             with rootfs.capture_on_exit(output):
                 pass
 
-        capture.assert_called_once_with(output)
+        capture.assert_called_once_with(output, None)
 
     def test_capture_failure_does_not_hide_body_failure(self) -> None:
         output = Path("output")
@@ -286,6 +286,32 @@ class TestCaptureOnExit(unittest.TestCase):
             rootfs.capture_on_exit("output"),
         ):
             pass
+
+
+class TestCapture(unittest.TestCase):
+    def test_keeps_an_opaque_mark_only_where_a_lower_layer_has_the_directory(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
+            lower, upper = Path(directory) / "lower", Path(directory) / "upper"
+            (lower / "usr/share/doc/old").mkdir(parents=True)
+            (lower / "usr/share/doc/old/file").write_text("old")
+            for name in ("old", "new"):
+                (upper / "usr/share/doc" / name).mkdir(parents=True, exist_ok=True)
+                os.setxattr(str(upper / "usr/share/doc" / name), b"user.overlay.opaque", b"y")
+
+            rootfs.capture(upper, [lower])
+
+            self.assertEqual(rootfs.deletions(upper), [Path("usr/share/doc/old/.wh..wh..opq")])
+            self.assertRaises(OSError, os.getxattr, str(upper / "usr/share/doc/new"), b"user.overlay.opaque")
+
+    def test_keeps_every_opaque_mark_without_lower_layers(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
+            tree = Path(directory)
+            (tree / "new").mkdir()
+            os.setxattr(str(tree / "new"), b"user.overlay.opaque", b"y")
+
+            rootfs.capture(tree)
+
+            self.assertEqual(rootfs.deletions(tree), [Path("new/.wh..wh..opq")])
 
 
 class TestDeletions(unittest.TestCase):
