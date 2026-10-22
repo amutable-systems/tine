@@ -148,8 +148,23 @@ def _is_opaque(d: Path) -> bool:
         return False
 
 
-def capture(tree: Path) -> None:
-    """Rewrite native overlay state and unstorable names into regular marker files."""
+def _in_lower(lower: Path, rel: Path) -> bool:
+    """Return whether the stored layer `lower` has an entry at `rel`, without following its symlinks."""
+    path = lower
+    for part in rel.parts:
+        if path.is_symlink() or not path.is_dir():
+            return False
+        path = path / _escape(part)
+        if not os.path.lexists(path):
+            return False
+    return True
+
+
+def capture(tree: Path, lowers: Sequence[Path] | None = None) -> None:
+    """Rewrite native overlay state and unstorable names into regular marker files.
+
+    `lowers` are the stored layers below `tree`, if `tree` is an overlay upper directory.
+    """
     # Buck must be able to delete and rename through package-supplied read-only directories.
     for p in tree.rglob("*"):
         st = p.lstat()
@@ -163,28 +178,36 @@ def capture(tree: Path) -> None:
             continue
         if stat.S_ISDIR(st.st_mode) and _is_opaque(p):
             os.removexattr(str(p), _OPAQUE_XATTR)
-            (p / _OPAQUE).write_bytes(b"")
+            # overlayfs marks a directory of the upper layer opaque when the directory is renamed
+            # into a directory that a lower layer also contains. dpkg unpacks every new directory
+            # under a temporary name and renames it into place, so a Debian layer gets an opaque mark
+            # on every new directory.
+            # The mark hides nothing when no lower layer has an entry at the path, so capture() writes
+            # no marker for it.
+            rel = p.relative_to(tree)
+            if lowers is None or any(_in_lower(lower, rel) for lower in lowers):
+                (p / _OPAQUE).write_bytes(b"")
         escaped = _escape(p.name)
         if escaped != p.name:
             p.rename(p.parent / escaped)
 
 
 @contextmanager
-def capture_on_exit(tree: str | Path) -> Generator[Path]:
+def capture_on_exit(tree: str | Path, lowers: Sequence[Path] | None = None) -> Generator[Path]:
     """Capture a tree after use without hiding an error from the body."""
     tree = Path(tree)
     try:
         yield tree
     except BaseException as error:
         try:
-            capture(tree)
+            capture(tree, lowers)
         except BaseException as capture_error:
             error.add_note(
                 f"rootfs capture of {tree} also failed: {capture_error.__class__.__name__}: {capture_error}"
             )
         raise
     else:
-        capture(tree)
+        capture(tree, lowers)
 
 
 # Root setup.
@@ -328,7 +351,7 @@ def rootfs(
             work.mkdir(parents=True, exist_ok=True)
             if upperdir is not None:
                 # Enter before registering the unmount so capture runs after it.
-                stack.enter_context(capture_on_exit(upper))
+                stack.enter_context(capture_on_exit(upper, resolved))
             # capture() rewrites the upperdir, which overlayfs must no longer own by then, so a
             # captured upper needs a strict unmount. An ephemeral one is read by nobody: detach it
             # like every other mount and let the kernel finish in the background.
