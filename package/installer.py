@@ -118,6 +118,11 @@ def _normalize(installroot: Path, spec: InstallSpec) -> None:
     (installroot / "var/cache/ldconfig/aux-cache").unlink(missing_ok=True)
     # from systemd-udev's scriptlet, not meant for images (see systemd docs/BUILDING_IMAGES.md)
     (installroot / "var/lib/systemd/random-seed").unlink(missing_ok=True)
+    # Fedora's archlinux-keyring runs `pacman-key --init` in a scriptlet. The command generates a new
+    # private key on every install. A root that contains the keyring then differs between two builds,
+    # and every action that runs in the root misses the shared cache. tine's pacman drivers keep their
+    # keyring in a directory of their own.
+    shutil.rmtree(installroot / "etc/pacman.d/gnupg", ignore_errors=True)
     if spec["box_config"]:
         _configure_box(installroot)
 
