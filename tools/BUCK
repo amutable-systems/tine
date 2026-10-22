@@ -181,8 +181,11 @@ box_python_binary(
 # AWS tooling in its own box, as it's big and not always needed.
 box.new(
     name = "aws.box",
+    # uefi-data-test in examples/image-secureboot runs mktemp from coreutils. Fedora installs coreutils as a
+    # dependency of the other packages, and Arch does not.
+    packages = ["coreutils"]
     # The virt-firmware packages contain virt-fw-vars, which writes an AMI's UEFI variable store.
-    packages = distribution.select({
+    + distribution.select({
         "arch": ["aws-cli-v2", "virt-firmware"],
         "debian": ["awscli", "python3-virt-firmware"],
         "fedora": ["awscli2", "python3-virt-firmware"],
