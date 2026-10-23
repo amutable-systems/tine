@@ -160,23 +160,38 @@ tine_python_binary(
     visibility = ["PUBLIC"],
 )
 
+# Debian testing has no gh package, so setup-deploy-key runs GitHub's own build of gh in every box.
+http.tool(
+    name = "gh",
+    path = "bin/gh",
+    spec = _pins["gh"],
+)
+
 # setup-deploy-key gets its own box, as it runs rarely.
 box.new(
     name = "deploy-key.box",
-    # The openssh packages contain ssh-keygen.
-    packages = distribution.select({
-        "arch": ["github-cli", "openssh"],
-        "debian": ["gh", "openssh-client"],
-        "fedora": ["gh", "openssh-clients"],
+    # gh runs git to find the repository of the checkout, and it verifies GitHub's certificate against the
+    # box's CA certificates. The openssh packages contain ssh-keygen.
+    packages = ["ca-certificates"]
+    + distribution.select({
+        "arch": ["git", "openssh"],
+        "debian": ["git", "openssh-client"],
+        "fedora": ["git-core", "openssh-clients"],
     }),
     release = _RELEASE,
 )
 
-# PUBLIC: run by repository admin once. Relaxed, it uses the host's gh login and checkout.
 box_python_binary(
-    name = "setup-deploy-key",
+    name = "setup-deploy-key-driver",
     box = ":deploy-key.box",
     main = "setup_deploy_key.py",
+)
+
+# PUBLIC: run by repository admin once. Relaxed, it uses the host's gh login and checkout.
+command_alias(
+    name = "setup-deploy-key",
+    args = ["--gh", "$(location_exec :gh)"],
+    exe = ":setup-deploy-key-driver",
     visibility = ["PUBLIC"],
 )
 

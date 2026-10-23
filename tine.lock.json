@@ -161,5 +161,23 @@
         "strip_prefix": "go"
       }
     }
+  },
+  "gh": {
+    "repository": "cli/cli",
+    "release": "v2.103.0",
+    "platforms": {
+      "arm64": {
+        "artifact": "gh_2.103.0_linux_arm64.tar.gz",
+        "sha256": "7f322df34e624d14f5ec0c4acb121fd6dfa14392fdbbd1066aa8e0a05ac3721e",
+        "size": 13658228,
+        "strip_prefix": "gh_2.103.0_linux_arm64"
+      },
+      "x86_64": {
+        "artifact": "gh_2.103.0_linux_amd64.tar.gz",
+        "sha256": "fdd768eb70f6409f80fcfa9f3a1c0adf0fc98d827ab3ce0bed2ac22762c5d786",
+        "size": 15030338,
+        "strip_prefix": "gh_2.103.0_linux_amd64"
+      }
+    }
   }
 }
