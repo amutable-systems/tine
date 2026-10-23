@@ -61,6 +61,9 @@ _DEBIAN_PACKAGE_SETS = {
         "systemd",
         "systemd-boot-efi",
         "systemd-boot-tools",
+        # Debian puts systemd-repart and systemd-keyutil into the systemd-repart package. The systemd
+        # package doesn't depend on systemd-repart.
+        "systemd-repart",
         "systemd-sysv",
         "udev",
         "util-linux",
