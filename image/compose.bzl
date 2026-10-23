@@ -490,6 +490,11 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
             "{}.initrd".format(basename): boot.initrd,
             "{}.vmlinuz".format(basename): boot.kernel,
         }
+        boot_kinds = {
+            "{}.efi".format(basename): "uki",
+            "{}.initrd".format(basename): "initrd",
+            "{}.vmlinuz".format(basename): "kernel",
+        }
         boot_providers = [initrd_info, uki]
     else:
         top = identity
@@ -510,6 +515,7 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
         manifests = composed.info.manifests
         boot_sub_targets = {}
         boot_artifacts = {}
+        boot_kinds = {}
         boot_providers = []
 
     raw = composed.info.disk
@@ -553,7 +559,11 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
             # A re-encoding is publishable in its own right, so a release can gather the subtarget
             # rather than the disk; it is not in the disk's own set, which would build every
             # encoding whenever anything materializes the release.
-            PublishedInfo(artifacts = {conversion.image.basename: conversion.image}),
+            PublishedInfo(
+                artifacts = {conversion.image.basename: conversion.image},
+                image = basename,
+                kinds = {conversion.image.basename: conversion.format},
+            ),
             conversion,
         ]
 
@@ -564,14 +574,20 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
     # that partition puts on a machine and nothing the image happens to hold besides, and one for
     # the disk, which is what an installation of it leaves behind.
     artifacts = {raw.basename: raw} | boot_artifacts
+    kinds = {raw.basename: "disk"} | boot_kinds
     for name, listing in manifests.items():
-        artifacts["{}.{}.Uapi16Manifest".format(basename, name)] = listing
+        published_name = "{}.{}.Uapi16Manifest".format(basename, name)
+        artifacts[published_name] = listing
+        kinds[published_name] = "listing"
     whole = composed.info.manifest
     if whole != None:
         artifacts[whole.basename] = whole
+        kinds[whole.basename] = "listing"
 
     published = PublishedInfo(
         artifacts = artifacts,
+        image = basename,
+        kinds = kinds,
         partitions = [partition for partition in composed.info.partitions if partition.definition["type"] != "esp"],
     )
 
