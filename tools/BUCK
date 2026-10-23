@@ -100,6 +100,8 @@ box.new(
             "rpm-sign",
             "python3-createrepo_c",
             "python3-libdnf5",
+            # package_system/rpm's drivers define rpm macros through the rpm module.
+            "python3-rpm",
             # the license headers lint, see the `reuse` alias below
             "reuse",
             "sed",

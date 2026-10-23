@@ -248,6 +248,14 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/f/fedora-repos-rawhide-46-0.3.noarch.rpm"
   },
   {
+    "package_id": "file-libs-5.48-3.fc46.aarch64",
+    "repo": "fedora.rawhide.repository",
+    "pkg_checksum": "9c4b38f0aa4b1949e23b3e343fa3d8dfc1271560aa9edb7f7d5f99bbfc4032e3",
+    "source": "repo",
+    "size": 899211,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/f/file-libs-5.48-3.fc46.aarch64.rpm"
+  },
+  {
     "package_id": "filesystem-3.18-59.fc45.aarch64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "e6e0d5aa6c9f502aa66aaabab308a150f05c5def40c2b9a850bcf0043c25e512",
@@ -438,6 +446,14 @@
     "source": "repo",
     "size": 50529,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/h/hiredis-1.2.0-10.fc45.aarch64.rpm"
+  },
+  {
+    "package_id": "ima-evm-utils-libs-1.6.2-12.fc45.aarch64",
+    "repo": "fedora.rawhide.repository",
+    "pkg_checksum": "f385b63f1307bbb6f3fd21d7a264b2a8ee4a037fee844ba48e65bbda1329766e",
+    "source": "repo",
+    "size": 30353,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/i/ima-evm-utils-libs-1.6.2-12.fc45.aarch64.rpm"
   },
   {
     "package_id": "ipxe-roms-qemu-1:2.0.0^20260614git13a83f4-4.fc45.noarch",
@@ -664,6 +680,14 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/l/libfido2-1.17.0-6.fc46.aarch64.rpm"
   },
   {
+    "package_id": "libfsverity-1.7-4.fc45.aarch64",
+    "repo": "fedora.rawhide.repository",
+    "pkg_checksum": "08923ce125fc70888206f4c4e4ead73756d2fd1025b87abe25cd7e6b4a1e2366",
+    "source": "repo",
+    "size": 18990,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/l/libfsverity-1.7-4.fc45.aarch64.rpm"
+  },
+  {
     "package_id": "libgcc-16.2.1-2.fc46.1.aarch64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "6e758ecdc0188146e8158d609e8d847ad78c0904b51288f8dfa57605a69aa998",
@@ -678,6 +702,14 @@
     "source": "repo",
     "size": 552476,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/l/libgcrypt-1.12.4-1.fc46.aarch64.rpm"
+  },
+  {
+    "package_id": "libgomp-16.2.1-2.fc46.1.aarch64",
+    "repo": "fedora.rawhide.repository",
+    "pkg_checksum": "2b8c553a30fbe783af7fd8f00e08a911eff139773e176f68a8db86c88dd5433c",
+    "source": "repo",
+    "size": 389946,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/l/libgomp-16.2.1-2.fc46.1.aarch64.rpm"
   },
   {
     "package_id": "libgpg-error-1.61-2.fc45.aarch64",
@@ -1296,6 +1328,14 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/p/python3-pycparser-3.00-4.fc45.noarch.rpm"
   },
   {
+    "package_id": "python3-rpm-6.1.0-1.fc46.aarch64",
+    "repo": "fedora.rawhide.repository",
+    "pkg_checksum": "977d704d792a894b2a27de4df51f93d85f6a421dc8aad41da1481293648fdbad",
+    "source": "repo",
+    "size": 70416,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/p/python3-rpm-6.1.0-1.fc46.aarch64.rpm"
+  },
+  {
     "package_id": "python3-zstandard-0.25.0-7.fc46.aarch64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "c4983a93e5d31bb1c64078d418210de6439c23d09ef3c244d21f536471b192ca",
@@ -1376,6 +1416,14 @@
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/r/rpm-6.1.0-1.fc46.aarch64.rpm"
   },
   {
+    "package_id": "rpm-build-libs-6.1.0-1.fc46.aarch64",
+    "repo": "fedora.rawhide.repository",
+    "pkg_checksum": "2f1145c193a04e4486a1f165769b736bd5f1f40433c0b5ea45526674457790cf",
+    "source": "repo",
+    "size": 123537,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/r/rpm-build-libs-6.1.0-1.fc46.aarch64.rpm"
+  },
+  {
     "package_id": "rpm-libs-6.1.0-1.fc46.aarch64",
     "repo": "fedora.rawhide.repository",
     "pkg_checksum": "954b4246279fe0c77f7e0dc70993188f97c79613facaa18ac2de07f471de5594",
@@ -1390,6 +1438,14 @@
     "source": "repo",
     "size": 906560,
     "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/r/rpm-sequoia-1.10.3-1.fc46.aarch64.rpm"
+  },
+  {
+    "package_id": "rpm-sign-libs-6.1.0-1.fc46.aarch64",
+    "repo": "fedora.rawhide.repository",
+    "pkg_checksum": "ab0d2169d3f79b350f708e713031991685942093b5ca0b93bbc413db52fc23ea",
+    "source": "repo",
+    "size": 26734,
+    "url": "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46/f46-aarch64-rawhide-20261017/Packages/r/rpm-sign-libs-6.1.0-1.fc46.aarch64.rpm"
   },
   {
     "package_id": "sed-4.10-2.fc45.aarch64",
