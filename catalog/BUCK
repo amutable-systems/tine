@@ -46,6 +46,8 @@ box.new(
     packages = [
         "rpm",
         "python3-libdnf5",
+        # The rpm drivers define rpm macros through the rpm module.
+        "python3-rpm",
         "python3-createrepo_c",
         "coreutils",
         "libseccomp",
