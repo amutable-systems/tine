@@ -1,10 +1,8 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Configured native package managers."""
+"""Native package managers, and the repository configuration that their consumers run in a box."""
 
-load("//:specs.bzl", "spec_args")
-load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//distribution:defs.bzl", "distribution")
 load("//platforms:architecture.bzl", "architecture")
 load(":local_packages.bzl", "LocalPackageUniverseInfo")
@@ -13,106 +11,53 @@ load(
     ":repository.bzl",
     "ConfiguredPackageRepositoryInfo",
     "LocalPackageRepositoryInfo",
-    "PackagePoolInfo",
     "PackageRepositoryInfo",
+    "check_repository",
+    "configure_repository",
     "merge_repositories",
     "select_repositories",
 )
 load(":solver.bzl", "solver_cache")
 load(":system.bzl", "PackageSystemInfo")
-load(":verify.bzl", "repository_verifier")
 
 _LOCAL_REPOSITORY_PRIORITY = 50
 _REMOTE_REPOSITORY_PRIORITY = 99
 
-def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
-    system = ctx.attrs.package_system[PackageSystemInfo]
-    if system.index == None:
-        fail("package system {} indexes no local repositories".format(ctx.attrs.package_system.label))
-
-    # Every consumer of a promised artifact would have to assert a content-based path; keep the plain one.
-    repo = ctx.actions.declare_output("repo", dir = True, has_content_based_path = False)
-    index = cmd_args(
-        box_run(box = ctx.attrs.box[BoxInfo], exe = system.index),
-        spec_args(
-            ctx.actions,
-            "index.spec.json",
-            {
-                "out": repo.as_output(),
-                "packages": [],
-                "packages_dirs": ctx.attrs.package_dirs,
-            },
-        ),
-    )
-    ctx.actions.run(index, category = "repository_index")
-    return [DefaultInfo(default_output = repo)]
-
-_materialize_local_repository = anon_rule(
-    impl = _materialize_local_repository_impl,
-    attrs = {
-        "box": attrs.dep(providers = [BoxInfo]),
-        "package_dirs": attrs.list(attrs.source()),
-        "package_system": attrs.dep(providers = [PackageSystemInfo]),
-    },
-    artifact_promise_mappings = {
-        "repo": lambda p: p[DefaultInfo].default_outputs[0],
-    },
+# ManagedRepository is a repository of a package manager before a consumer configures it for the box
+# that the consumer runs in.
+ManagedRepository = record(
+    dependency = Dependency,
+    priority = int,
 )
 
-def materialize_local_repository(
-    ctx: AnalysisContext,
-    box: Dependency,
-    package_system: Dependency,
-    package_dirs: list[Artifact],
-) -> Artifact:
-    """Materialize local package directories in their consumer's execution context."""
-    return ctx.actions.anon_target(
-        _materialize_local_repository,
-        {
-            "box": box,
-            "name": "//local-repository:materialize",
-            "package_dirs": package_dirs,
-            "package_system": package_system,
-        },
-    ).artifact("repo")
-
 PackageManagerInfo = provider(
-    doc = "The box and repository selection used for native package operations.",
+    doc = "The repository selection used for native package operations, in whichever box the consumer runs them.",
     fields = {
-        # Target architecture for resolving/installing packages (not the box'es, that's an exec_dep and
-        # runs as the host arch)
+        # The architecture that packages are resolved and installed for. The box runs as the host
+        # architecture.
         "arch": provider_field(str),
-        "box": provider_field(Dependency),
         "local_packages": provider_field(Dependency | None, default = None),
         "package_sets": provider_field(dict[str, list[str]]),
         "package_system": provider_field(Dependency),
-        "repositories": provider_field(list[ConfiguredPackageRepositoryInfo]),
-        "solver_caches": provider_field(list[Artifact]),
+        "repositories": provider_field(list[ManagedRepository]),
     },
 )
 
 def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
     if ctx.attrs.base != None:
-        if ctx.attrs.release != None or ctx.attrs.box != None:
-            fail("derived package_manager cannot set release or box")
+        if ctx.attrs.release != None:
+            fail("derived package_manager cannot set release")
         if ctx.attrs.enable_repository_groups or ctx.attrs.disable_repository_groups:
             fail("derived package_manager cannot change repository groups")
         base = ctx.attrs.base[PackageManagerInfo]
-        box_dep = base.box
         package_system = base.package_system
         package_sets = base.package_sets
-        configured_by_id = {configured.id: configured for configured in base.repositories}
-        repositories = []
-        for configured in base.repositories:
-            if configured.dependency == None:
-                fail("package_manager base contains inline repository '{}'".format(configured.id))
-            repositories.append(configured.dependency)
-        solver_caches = list(base.solver_caches)
+        priorities = {managed.dependency.label.name: managed.priority for managed in base.repositories}
+        repositories = [managed.dependency for managed in base.repositories]
         local_packages = ctx.attrs.local_packages if ctx.attrs.local_packages != None else base.local_packages
     else:
-        if ctx.attrs.release == None or ctx.attrs.box == None:
-            fail("package_manager requires release and box when base is not set")
-        box_dep = ctx.attrs.box
+        if ctx.attrs.release == None:
+            fail("package_manager requires release when base is not set")
         release_info = ctx.attrs.release[OsReleaseInfo]
         package_system = release_info.package_system
         package_sets = release_info.package_sets
@@ -121,8 +66,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
             ctx.attrs.enable_repository_groups,
             ctx.attrs.disable_repository_groups,
         )
-        configured_by_id = {}
-        solver_caches = []
+        priorities = {}
         local_packages = ctx.attrs.local_packages
 
     repositories = merge_repositories(package_system, repositories + ctx.attrs.additional_repositories)
@@ -135,76 +79,49 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
     for rid in ctx.attrs.repository_priorities:
         if rid not in by_id:
             fail("priority override names unknown repository '{}'".format(rid))
-
-    box = box_dep[BoxInfo]
-    configured_repositories = []
-    keyrings = {}
     for repository in repositories:
-        repo = repository[PackageRepositoryInfo]
+        check_repository("package_manager", repository)
+
+    managed = []
+    for repository in repositories:
         rid = repository.label.name
-        configured = configured_by_id.get(rid)
-        local = repository.get(LocalPackageRepositoryInfo)
-        packages = None
-        verifier = None
-        if configured != None:
-            directory = configured.directory
-            default_priority = configured.priority
-            baseurl = configured.baseurl
-            packages = configured.packages
-            verifier = configured.verifier
-        else:
-            default_priority = _LOCAL_REPOSITORY_PRIORITY if local != None else _REMOTE_REPOSITORY_PRIORITY
-            if local != None:
-                directory = materialize_local_repository(
-                    ctx,
-                    box_dep,
-                    package_system,
-                    local.package_dirs,
-                )
-                baseurl = None
-            elif repo.dir != None:
-                directory = repo.dir
-                baseurl = repo.baseurl
-                if baseurl == None:
-                    fail("remote repository '{}' has no base URL".format(rid))
-                packages = repository[PackagePoolInfo].value
-                verifier = repository_verifier(ctx, box, rid, repo.signing_keys, package_system, directory, keyrings, repo.pinned_at)
-            else:
-                fail("package_manager: repository '{}' has no directory".format(rid))
-        priority = ctx.attrs.repository_priorities.get(rid, default_priority)
-        configured = ConfiguredPackageRepositoryInfo(
-            id = rid,
-            dependency = repository,
-            directory = directory,
-            priority = priority,
-            baseurl = baseurl,
-            packages = packages,
-            verifier = verifier,
+        default_priority = _LOCAL_REPOSITORY_PRIORITY if repository.get(LocalPackageRepositoryInfo) != None else _REMOTE_REPOSITORY_PRIORITY
+        managed.append(
+            ManagedRepository(
+                dependency = repository,
+                priority = ctx.attrs.repository_priorities.get(rid, priorities.get(rid, default_priority)),
+            ),
         )
-        if rid not in configured_by_id and package_system[PackageSystemInfo].solver_cache:
-            solver_caches.append(
-                solver_cache(
-                    ctx,
-                    box_dep,
-                    package_system,
-                    configured,
-                    ctx.attrs._arch,
-                )
-            )
-        configured_repositories.append(configured)
 
     return [
         DefaultInfo(),
         PackageManagerInfo(
             arch = ctx.attrs._arch,
-            box = box_dep,
             package_sets = package_sets,
             package_system = package_system,
-            repositories = configured_repositories,
-            solver_caches = solver_caches,
+            repositories = managed,
             local_packages = local_packages,
         ),
     ]
+
+def configure_repositories(
+    ctx: AnalysisContext,
+    package_manager: PackageManagerInfo,
+    box: Dependency,
+) -> (list[ConfiguredPackageRepositoryInfo], list[Artifact]):
+    """Configure the package manager's repositories for a consumer that runs in `box`.
+
+    Return the configured repositories and the solver caches of the package system.
+    """
+    package_system = package_manager.package_system
+    configured_repositories = []
+    solver_caches = []
+    for managed in package_manager.repositories:
+        configured = configure_repository(ctx, managed.dependency, managed.priority, package_system, box, {})
+        if package_system[PackageSystemInfo].solver_cache:
+            solver_caches.append(solver_cache(ctx, box, package_system, configured, package_manager.arch))
+        configured_repositories.append(configured)
+    return configured_repositories, solver_caches
 
 _package_manager = rule(
     impl = _package_manager_impl,
@@ -214,7 +131,6 @@ _package_manager = rule(
             default = [],
         ),
         "base": attrs.option(attrs.dep(providers = [PackageManagerInfo]), default = None),
-        "box": attrs.option(attrs.dep(providers = [BoxInfo]), default = None),
         "disable_repository_groups": attrs.list(attrs.string(), default = []),
         "enable_repository_groups": attrs.list(attrs.string(), default = []),
         "local_packages": attrs.option(

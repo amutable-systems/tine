@@ -7,11 +7,12 @@ load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//platforms:architecture.bzl", "architecture")
 load(":local_packages.bzl", "LocalPackageUniverseInfo", "select_local_packages")
-load(":manager.bzl", "PackageManagerInfo", "materialize_local_repository")
+load(":manager.bzl", "PackageManagerInfo", "configure_repositories")
 load(
     ":repository.bzl",
     "ConfiguredPackageRepositoryInfo",
     "LocalPackageInfo",
+    "materialize_local_repository",
     "select_package_artifacts",
 )
 load(":solver.bzl", "solve_command")
@@ -27,19 +28,19 @@ _RootInfo = provider(
 def resolve_packages(
     ctx: AnalysisContext,
     package_manager_dep: Dependency,
+    box_dep: Dependency,
     install: list[str],
     stack: list[Artifact],
     extra_packages: list[Artifact] = [],
     local_seed: list[str] | None = None,
     identifier: str | None = None,
 ) -> Artifact:
-    """Plan an install and select its exact package artifacts.
+    """Plan an install in `box_dep` and select its exact package artifacts.
 
     A manager with local packages offers the seed's runtime closure of locally built packages to
     the solver; `local_seed` widens that seed beyond this request, e.g. to a whole layer stack."""
     package_manager = package_manager_dep[PackageManagerInfo]
-    configured_repositories = package_manager.repositories
-    box = package_manager.box[BoxInfo]
+    configured_repositories, solver_caches = configure_repositories(ctx, package_manager, box_dep)
     system = package_manager.package_system[PackageSystemInfo]
 
     if package_manager.local_packages != None:
@@ -55,7 +56,7 @@ def resolve_packages(
     if extra_packages:
         extra_repo = materialize_local_repository(
             ctx,
-            package_manager.box,
+            box_dep,
             package_manager.package_system,
             extra_packages,
         )
@@ -74,13 +75,13 @@ def resolve_packages(
     tx = ctx.actions.declare_output(prefix + "transaction.json")
     plan = solve_command(
         ctx = ctx,
-        box = box,
+        box = box_dep[BoxInfo],
         system = system,
         repositories = plan_repositories,
         install = install,
         arch = package_manager.arch,
         output = tx.as_output(),
-        solver_caches = package_manager.solver_caches,
+        solver_caches = solver_caches,
         lowers = stack,
         spec_name = prefix + "solve.spec.json",
     )
@@ -98,18 +99,18 @@ def resolve_packages(
 def _install_actions(
     ctx: AnalysisContext,
     package_manager_dep: Dependency,
+    box_dep: Dependency,
     install: list[str],
     stack: list[Artifact],
     extra_packages: list[Artifact],
 ) -> Artifact:
     package_manager = package_manager_dep[PackageManagerInfo]
     system = package_manager.package_system[PackageSystemInfo]
-    box = package_manager.box[BoxInfo]
-    closure = resolve_packages(ctx, package_manager_dep, install, stack, extra_packages)
+    closure = resolve_packages(ctx, package_manager_dep, box_dep, install, stack, extra_packages)
     out = ctx.actions.declare_output("install.delta" if stack else "root", dir = True)
     work = ctx.actions.declare_output("install.work", dir = True) if stack else None
     cmd = cmd_args(
-        box_run(box = box, exe = system.install),
+        box_run(box = box_dep[BoxInfo], exe = system.install),
         spec_args(
             ctx.actions,
             "install.spec.json",
@@ -130,12 +131,13 @@ def _install_actions(
     return out
 
 def _install_packages_impl(ctx: AnalysisContext) -> list[Provider]:
-    root = _install_actions(ctx, ctx.attrs.package_manager, ctx.attrs.install, [], ctx.attrs.extra_packages)
+    root = _install_actions(ctx, ctx.attrs.package_manager, ctx.attrs.box, ctx.attrs.install, [], ctx.attrs.extra_packages)
     return [DefaultInfo(default_output = root), _RootInfo(root = root)]
 
 _install_packages = anon_rule(
     impl = _install_packages_impl,
     attrs = {
+        "box": attrs.dep(providers = [BoxInfo]),
         "extra_packages": attrs.list(attrs.source(), default = []),
         "install": attrs.list(attrs.string()),
         "package_manager": attrs.dep(providers = [PackageManagerInfo]),
@@ -148,6 +150,7 @@ _install_packages = anon_rule(
 def install_packages(
     ctx: AnalysisContext,
     package_manager: Dependency,
+    box: Dependency,
     install: list[str],
     stack: list[Artifact] = [],
     extra_packages: list[Artifact] = [],
@@ -156,6 +159,7 @@ def install_packages(
         root = ctx.actions.anon_target(
             _install_packages,
             {
+                "box": box,
                 "extra_packages": extra_packages,
                 "install": sorted(install),
                 "name": "//install-packages:{}".format(package_manager.label.name),
@@ -164,4 +168,4 @@ def install_packages(
         ).artifact("root")
         # A promise is resolved before the anon target is analysed, so its path kind is asserted here.
         return ctx.actions.assert_short_path(ctx.actions.assert_has_content_based_path(root), short_path = "root")
-    return _install_actions(ctx, package_manager, install, stack, extra_packages)
+    return _install_actions(ctx, package_manager, box, install, stack, extra_packages)

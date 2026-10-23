@@ -228,13 +228,12 @@ PackageSystemInfo (one package system's drivers)
         │                           ├── RepositoryUniverseInfo
         │                           │          │
         └───────────────────────────┴── OsReleaseInfo
-                                               ├── box transaction ── BoxInfo ──┬── package build
-                                               │                                ├── image tooling
+                                               ├── box transaction ── BoxInfo ──┬── image tooling
                                                │                                │
-                                               └────────────────────────────────┴── PackageManagerInfo
-                                                                              ├── image installation
-                                                                              └── BuildrootInfo
-                                                                                     └── package build
+                                               │                                ├── image installation
+                                               └── PackageManagerInfo ──────────┤
+                                                                                └── BuildrootInfo
+                                                                                       └── package build
 ```
 
 The providers have deliberately narrow roles:
@@ -251,42 +250,45 @@ The providers have deliberately narrow roles:
   configuration policy, not an intrinsic repository property. A repository is not inherently owned by an
   OS release.
 - `LocalPackageRepositoryInfo` identifies a repository assembled from package artifacts in the build graph.
-  It carries package directories, not the box that produced them; a consuming package manager generates
-  its repository metadata with its own box.
+  It lists package directories, not the box that produced them; a consumer generates its repository
+  metadata with its own box.
 - `RepositoryUniverseInfo` defines one homogeneous solve universe: required repositories, named optional
   groups, and groups enabled by default. Selection preserves declaration order, de-duplicates identical
   targets, and rejects conflicting repository IDs.
 - `OsReleaseInfo` associates named native package sets with one repository universe and supplies the base
   of a box. Its target label carries the release identity.
-- `PackageManagerInfo` is an immutable solve environment. Each ordered `ConfiguredPackageRepositoryInfo`
-  record carries the repository ID, materialized directory, effective priority, base URL, and optional
-  declaration dependency. The dependency is analysis-only and is absent for an inline repository made from
-  package-build inputs. The manager also carries reusable solver caches, chooses a box, and carries its
-  release's package sets. A derived manager inherits this state and can add repositories without repeating
-  or rematerializing inherited release policy.
+- `PackageManagerInfo` is an immutable solve environment without a box. It lists its repositories in
+  order with their effective priorities, and names its package system and its release's package sets. A
+  consumer, such as an image or a buildroot, configures the repositories for the box it runs in. Each
+  `ConfiguredPackageRepositoryInfo` record then contains the repository ID, materialized directory,
+  effective priority, base URL, verifier and optional declaration dependency. A derived manager
+  inherits the repositories and can add repositories without repeating inherited release policy.
 - `LocalPackageUniverseInfo` describes a universe of locally built packages together with the imported
   runtime Requires/Provides metadata needed to select an install request's closure among them.
-- `BuildrootInfo` materializes the shared base root from explicit packages or a release package set.
+- `BuildrootInfo` materializes the shared base root from explicit packages or a release package set,
+  and names the box that installed it. A package build on the root runs in that box.
 - `BoxInfo` contains a runnable root filesystem as a stack of layers, and the sandbox used to enter it.
-  Its target label establishes provenance; the box may serve compatible package managers for other
-  releases.
+  Its target label establishes provenance.
 
-Solver caches are anonymous targets keyed by resolver box, package system, configured repository,
-architecture, and execution platform. Matching boxes and package managers therefore consume one shared
-cache artifact, while distinct solver contexts remain isolated.
+Solver caches, local repository indexes and the keyrings that images and buildroots verify with are anonymous
+targets. Each is keyed by its box and package system, and by its inputs: a solver cache by its repository and
+architecture, an index by its package directories, and a keyring by its keys and the time they are checked
+at. Consumers that run in the same box therefore share one artifact, while distinct solver contexts remain
+isolated.
 
 This split is visible in the default catalog. Several releases of one family are separate OS releases whose
-package managers solve against their own repositories while sharing one box, and a release may model
+package managers solve against their own repositories, and a release may model
 some of its repositories as required, some as a default group, and some as an optional group a package
 manager enables. A family macro declares that whole standard target bundle and its package sets while
 accepting overrides for mirrors, repositories, priorities, and package policy. Buildroots resolve the
 release's `buildroot` package set rather than duplicating native package names in the buildroot
 declaration.
 
-An initial image normally fixes one package manager for the lifetime of the logical image and derives its
-box from that manager. Every derived image and terminal output inherits both. Box-only images are also
-supported, but cannot install native packages. A package target names a buildroot because its shared base
-root, not OS identity alone, is its relevant input.
+An initial image normally fixes one package manager for the lifetime of the logical image, and every derived
+image and terminal output inherits it. An initial image runs in the tools box, as "Box bootstrap" describes,
+and a derived image runs in the box of its parent. An image without a package manager cannot install native
+packages. A package target names a buildroot because its shared base root, not OS identity alone, is its
+relevant input.
 
 ### Catalog pinning and refresh
 
@@ -433,15 +435,14 @@ input package directory. They are projected directly from the producing target r
 second pool.
 
 A repository that declares signing keys verifies package signatures after fetching them. The repository
-cannot verify them itself, because that takes a box and the box a release names is built from the
-release's own repositories; so the package manager or the box rule declares the verification with the box
-it has: one keyring per set of declared key files (validated against the committed fingerprints), shared by
-the repositories declaring that set, or the key files themselves for a system whose verify program reads
-them as they are, and the selector then verifies what a transaction selects from that
+cannot verify them itself, because that takes a box and the box a release names is built from the release's
+own repositories; so the image, buildroot or box rule that installs the packages declares the verification
+with the box it runs in: one keyring per set of declared key files (validated against the committed
+fingerprints), shared by the repositories declaring that set, or the key files themselves for a system whose
+verify program reads them as they are, and the selector then verifies what a transaction selects from that
 repository in one action, publishing the closure's copies of those packages. One action per closure and
-repository, as the overhead of launching the sandbox and `rpmverify` per package is unbearably high. A
-derived manager inherits the verifier. The unverified pool is only being used by the repository
-configuration code.
+repository, as the overhead of launching the sandbox and `rpmverify` per package is unbearably high. The
+unverified pool is only being used by the repository configuration code.
 
 Why repository ownership matters:
 
@@ -458,22 +459,24 @@ indexer, Python, core utilities and sandbox dependencies, and it resolves every 
 list that selects per family where names differ. One declaration serves every release. The tools box takes
 the distribution of the target that depends on it, and selects the release of that distribution from
 `catalog//:releases.bzl`. It adds its packages to the root box of that release. A dependency without a
-distribution, such as an `exec_dep`, gets the tools box of the catalog's default release. The release's
-package manager runs in the tools box of its release. The tools box resolves during the build, so a new tool
-leaves the root box and its lock alone. The base release identifies where this userspace came from, not the
-only release it may operate on.
+distribution, such as an `exec_dep`, gets the tools box of the catalog's default release. An image runs in
+the tools box, so it builds with the tools of its own release. A package manager names no box, and an image
+runs the plan and install of its package manager in the tools box as well. The tools box resolves during the
+build, so a new tool leaves the root box and its lock alone. The base release identifies where this userspace
+came from, not the only release it may operate on.
 
-A box runs on the build host, so it is an execution dependency: a rule takes it with `attrs.exec_dep`, a
-command line with `$(location_exec)`. A target named on the command line or reached as an ordinary
-dependency is configured for the target platform instead. To build each box once, the box has an
+A box runs on the build host. A rule usually takes it as an execution dependency with `attrs.exec_dep`, and a
+command line with `$(location_exec)`. An image, a buildroot and a VM runner take the tools box as an ordinary
+dependency, so that the tools box takes their distribution. A signing key and a test take it as an execution
+dependency, because their work doesn't depend on a release. A target named on the command line or reached as
+an ordinary dependency is configured for the target platform instead. To build each box once, the box has an
 incoming transition to the host's platform plus the constraints of its release's distribution. Each
-distribution declares that platform beside it, as `<family>.<release>.distribution.host`. tine's
-execution platform registers no exec marker constraint, so the execution configuration is the same as the
-host platform's. `buck build`, `buck run`, execution dependencies and ordinary dependencies therefore all
-reach the same box. This assumes one
-execution platform, for the host's architecture. An execution platform for another architecture, such as
-a remote arm64 one, still gets the box built for the host. Its actions then run binaries for the wrong
-architecture.
+distribution declares that platform beside it, as `<family>.<release>.distribution.host`. tine's execution
+platform registers no exec marker constraint, so the execution configuration is the same as the host
+platform's. `buck build`, `buck run`, execution dependencies and ordinary dependencies therefore all reach
+the same box. This assumes one execution platform, for the host's architecture. An execution platform for
+another architecture, such as a remote arm64 one, still gets the box built for the host. Its actions then run
+binaries for the wrong architecture.
 
 A box's packages can `select()` on the architecture, and `distribution.select()` on the release or its
 family. A box lock is configured for its own architecture and its release's
@@ -590,7 +593,7 @@ Native package installation has three phases shared by buildroots and images:
 2. **Select.** Use the resulting transaction to select package files from repository pools, verified after
    download if the repository declares signing keys, named with the package system's declared suffix so its
    installer finds them. A local repository is materialized by
-   an anonymous indexing target using the consuming package manager's box. The same path handles
+   an anonymous indexing target using the consumer's box. The same path handles
    package-build inputs and lets the solve choose between local and upstream packages.
    Extra packages arrive on two mutually exclusive paths: a package build passes its explicit
    `buildroot_deps` outputs, while a package manager with attached `local_packages` computes the request's
@@ -609,8 +612,8 @@ left with its own transaction and nothing else. `package/repository.bzl` owns th
 rule (the repository's current route wins while it carries the content, a lock's transport is the
 fallback once it does not, and a size that disagrees is skew) is stated once for both.
 
-The package manager assigns default priorities when it configures repositories: local repositories use 50
-and remote repositories use 99, with target-specific overrides applied by `package.manager()`. A planner
+The package manager assigns its repositories their default priorities: local repositories use 50 and remote
+repositories use 99, with target-specific overrides applied by `package.manager()`. A planner
 action carries its repositories as `{id, directory, priority, baseurl}` objects in its spec.
 `encode_repositories()` projects them from `ConfiguredPackageRepositoryInfo`; the record's `dependency` is
 deliberately stripped because Buck dependencies are analysis-only and not JSON-serializable. `plan.py`
@@ -633,9 +636,9 @@ form. A fresh root receives the `uninitialized` machine-id marker systemd initia
 incremental installs preserve any existing machine ID.
 
 `LocalPackageInfo` intentionally does not carry the producer's box. `local_repository` checks that its
-packages use one native package system and remains a box-independent declaration. The consuming package
-manager materializes deterministic repository metadata with its own box; anonymous materializations with
-the same box, package system, and ordered package directories share one action.
+packages use one native package system and remains a box-independent declaration. An image or a buildroot
+that installs from it materializes deterministic repository metadata with the box it runs in; anonymous
+materializations with the same box, package system, and ordered package directories share one action.
 
 ### The RPM package system
 
@@ -1112,13 +1115,12 @@ distribution of its own, it is whatever the leaf pulling it in is. One declarati
 distribution, and only the alias names are per-distribution.
 
 A release serves a list of architectures, and Arch serves only x86_64. Its repositories and release resolve
-`target_compatible_with` to `select_incompatible()` for any other architecture. The release's root box is
-built for the host, so the root box and the release's package manager are incompatible on a host of another
-architecture. On such a host, the release serves no architecture at all. Where a release serves no
-architecture, the transition leaves the distribution unset, and `compatibility()` makes every distributed
-target and alias incompatible. A build of `//...` then skips the Arch targets for arm64 and on an arm64 host.
-On such a host, no compatible target depends on the Arch root box, so a whole-cell run is `//...` on every
-host.
+`target_compatible_with` to `select_incompatible()` for any other architecture. The release's boxes are built
+for the host, so its boxes are incompatible on a host of another architecture. On such a host, the release
+serves no architecture at all. Where a release serves no architecture, the transition leaves the distribution
+unset, and `compatibility()` makes every distributed target and alias incompatible. A build of `//...` then
+skips the Arch targets for arm64 and on an arm64 host. On such a host, no compatible target depends on an
+Arch box, so a whole-cell run is `//...` on every host.
 
 What varies between distributions stays where it belongs. A release names the packages a bootable system of
 its own family needs, so an image asks for the `bootable` package set rather than for concrete package names.
@@ -1153,12 +1155,11 @@ whether the key is set or not, so CI does not depend on it.
 
 ### Image construction
 
-The `image.layer` rule creates either an initial image from a package manager or box, or a derived image from
-`parent`. `image.ImageInfo` carries the package manager, its box, an ordered stack of filesystem deltas,
-deferred tmpfiles snippets, and the canonical lazy package-database and SBOM artifacts. A derived image
-inherits the construction configuration but declares fresh metadata for its completed stack, so one
-composition cannot silently switch package sources or tooling environments between stages. A box may
-be supplied directly for an initial image that never installs native packages.
+The `image.layer` rule creates either an initial image, optionally from a package manager, or a derived image
+from `parent`. `image.ImageInfo` carries the package manager, the box the image runs in, an ordered stack of
+filesystem deltas, deferred tmpfiles snippets, and the canonical lazy package-database and SBOM artifacts. A
+derived image inherits the construction configuration but declares fresh metadata for its completed stack, so
+one composition cannot silently switch package sources or tooling environments between stages.
 
 Each `image.layer` call applies one ordered operation sequence in one action and persists exactly one overlay
 upper. A layer's `packages` and `package_sets` are rule attributes rather than operations: it installs them
@@ -1205,9 +1206,11 @@ an archive or disk format.
 Package installation and image tooling remain separate concerns:
 
 - the bootstrap `package_manager` determines what native packages can be resolved;
-- that manager's `box` supplies every layer driver and terminal image tool;
+- the image's box supplies every layer driver and terminal image tool, and runs the manager's resolver and
+  installer;
 - `local_repository` declares compatible package outputs and infers their package system from
-  `LocalPackageInfo`; a consuming package manager materializes its repository metadata with its own box;
+  `LocalPackageInfo`; an image or a buildroot that installs from it materializes its repository metadata
+  with the box it runs in;
 - a derived package manager adds such repositories to a base manager's configured selection;
 - a manager's `local_packages` instead selects locally built packages per install by runtime closure.
 
@@ -1573,8 +1576,8 @@ The current vocabulary follows the actual responsibilities:
 - the package system defines operations;
 - the repository universe defines membership and normal enablement policy;
 - the OS release defines identity, selects a repository universe, and may provide a box's base;
-- the package manager defines one exact solve universe and box; derived managers compose additional
-  repositories and priority overrides without changing their inherited release or box;
+- the package manager defines one exact solve universe; derived managers compose additional repositories and
+  priority overrides without changing their inherited release;
 - the buildroot materializes the shared base packages.
 
 This is also why a release is not called a distribution target: two releases of one family are separate
@@ -1593,10 +1596,9 @@ package ecosystems, not every possible image content type.
 ### Separate a box's base release from its target releases
 
 A box is a tools root with a concrete OS userspace, so its base release records where its packages and
-identity came from. That does not make it part of a package manager's target OS identity: one box can
-still operate on every compatible release. An image normally obtains this explicit box dependency
-through its package manager, making reuse visible and content-keyed while avoiding duplicated compatible
-tooling roots. Box-only images remain available when no native package resolution is needed.
+identity came from. That does not make it part of a package manager's target OS identity. A package manager
+names no box, so every image of a release shares the tools box of that release rather than one tooling root
+per package manager.
 
 ### Use one sandbox boundary and let drivers mount target roots
 

@@ -113,6 +113,7 @@ def _initrd_image_impl(ctx: AnalysisContext) -> list[Provider]:
     tools = ctx.attrs._tools[ImageToolsInfo]
     image = declare_image(
         ctx,
+        box = ctx.attrs._box,
         tools = tools,
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
@@ -214,6 +215,7 @@ def _archive_impl(ctx: AnalysisContext) -> list[Provider]:
     tools = ctx.attrs._tools[ImageToolsInfo]
     image = declare_image(
         ctx,
+        box = ctx.attrs._box,
         tools = tools,
         identifier = "image",
         package_manager = ctx.attrs.package_manager,
@@ -258,6 +260,7 @@ def _extension_impl(ctx: AnalysisContext) -> list[Provider]:
         parent = ctx.attrs.parent[ImageInfo]
     image = declare_image(
         ctx,
+        box = ctx.attrs._box,
         tools = tools,
         identifier = "image",
         package_manager = ctx.attrs.package_manager,
@@ -294,6 +297,7 @@ _extension = rule(
 def _portable_impl(ctx: AnalysisContext) -> list[Provider]:
     image = declare_image(
         ctx,
+        box = ctx.attrs._box,
         tools = ctx.attrs._tools[ImageToolsInfo],
         identifier = "image",
         package_manager = ctx.attrs.package_manager,
@@ -338,6 +342,7 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
 
     root = declare_image(
         ctx,
+        box = ctx.attrs._box,
         tools = tools,
         identifier = "root",
         install_docs = ctx.attrs.install_docs,

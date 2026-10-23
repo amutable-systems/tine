@@ -1,13 +1,15 @@
 # SPDX-FileCopyrightText: Amutable GmbH <https://amutable.com/>
 # SPDX-License-Identifier: MPL-2.0
 
-"""Native package repositories, universes, and dynamic transaction selection."""
+"""Native package repositories, universes, dynamic transaction selection, and repository configuration for a consumer's box."""
 
+load("//:specs.bzl", "spec_args")
+load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//distribution:defs.bzl", "distribution")
 load("//platforms:architecture.bzl", "architecture")
 load("//platforms:defs.bzl", "architecture_transition")
 load(":system.bzl", "PackageSystemInfo")
-load(":verify.bzl", "Verifier", "verify_packages")
+load(":verify.bzl", "Verifier", "repository_verifier", "verify_packages")
 
 PackageArtifactInfo = record(
     artifact = Artifact,
@@ -286,7 +288,7 @@ PackageRepositoryInfo = provider(
     doc = "A repository belonging to one native package system.",
     fields = {
         "baseurl": provider_field(str | None, default = None),
-        # Local declarations are materialized by a consuming package manager.
+        # None for a local repository, which the consumer of a package manager indexes in its own box.
         "dir": provider_field(Artifact | None, default = None),
         "package_system": provider_field(Dependency),
         # When the pinned snapshot was published, ISO 8601 in UTC; None for a rolling repository.
@@ -890,3 +892,109 @@ def select_package_artifacts(
         )
     )
     return output
+
+def _materialize_local_repository_impl(ctx: AnalysisContext) -> list[Provider]:
+    system = ctx.attrs.package_system[PackageSystemInfo]
+    if system.index == None:
+        fail("package system {} indexes no local repositories".format(ctx.attrs.package_system.label))
+
+    # Every consumer of a promised artifact would have to assert a content-based path; keep the plain one.
+    repo = ctx.actions.declare_output("repo", dir = True, has_content_based_path = False)
+    index = cmd_args(
+        box_run(box = ctx.attrs.box[BoxInfo], exe = system.index),
+        spec_args(
+            ctx.actions,
+            "index.spec.json",
+            {
+                "out": repo.as_output(),
+                "packages": [],
+                "packages_dirs": ctx.attrs.package_dirs,
+            },
+        ),
+    )
+    ctx.actions.run(index, category = "repository_index")
+    return [DefaultInfo(default_output = repo)]
+
+_materialize_local_repository = anon_rule(
+    impl = _materialize_local_repository_impl,
+    attrs = {
+        "box": attrs.dep(providers = [BoxInfo]),
+        "package_dirs": attrs.list(attrs.source()),
+        "package_system": attrs.dep(providers = [PackageSystemInfo]),
+    },
+    artifact_promise_mappings = {
+        "repo": lambda p: p[DefaultInfo].default_outputs[0],
+    },
+)
+
+def materialize_local_repository(
+    ctx: AnalysisContext,
+    box: Dependency,
+    package_system: Dependency,
+    package_dirs: list[Artifact],
+) -> Artifact:
+    """Materialize local package directories in their consumer's execution context."""
+    return ctx.actions.anon_target(
+        _materialize_local_repository,
+        {
+            "box": box,
+            "name": "//local-repository:materialize",
+            "package_dirs": package_dirs,
+            "package_system": package_system,
+        },
+    ).artifact("repo")
+
+def check_repository(owner: str, repository: Dependency) -> None:
+    """Fail for a remote repository that no consumer could install from.
+
+    `owner` starts the failure message, such as `package_manager` or `box`.
+    """
+    if repository.get(LocalPackageRepositoryInfo) != None:
+        return
+    repo = repository[PackageRepositoryInfo]
+    rid = repository.label.name
+    if repo.dir == None:
+        fail("{}: repository '{}' has no directory".format(owner, rid))
+    if repo.baseurl == None:
+        fail("{}: repository '{}' has no base URL".format(owner, rid))
+    missing = [fingerprint for fingerprint, file in repo.signing_keys.items() if file == None]
+    if missing:
+        fail("{}: repository '{}': signing key(s) {} are not in the catalog yet; run refresh-catalog".format(owner, rid, missing))
+
+def configure_repository(
+    ctx: AnalysisContext,
+    repository: Dependency,
+    priority: int,
+    package_system: Dependency,
+    box: Dependency | BoxInfo | None,
+    keyrings: dict[str, Artifact],
+) -> ConfiguredPackageRepositoryInfo:
+    """Configure `repository` for a consumer that runs in `box`, which also verifies its packages.
+
+    With `box` None, nothing verifies the repository's packages. Only a box's resolve action and the
+    bootstrap of a root box pass None. A local repository is indexed in `box`, which has to be a dependency.
+    """
+    rid = repository.label.name
+    local = repository.get(LocalPackageRepositoryInfo)
+    if local != None:
+        if not isinstance(box, Dependency):
+            fail("repository '{}': a local repository is indexed in the box of its consumer".format(rid))
+        return ConfiguredPackageRepositoryInfo(
+            id = rid,
+            dependency = repository,
+            directory = materialize_local_repository(ctx, box, package_system, local.package_dirs),
+            priority = priority,
+        )
+    repo = repository[PackageRepositoryInfo]
+    verifier = None
+    if box != None:
+        verifier = repository_verifier(ctx, box, rid, repo.signing_keys, package_system, repo.dir, keyrings, repo.pinned_at)
+    return ConfiguredPackageRepositoryInfo(
+        id = rid,
+        dependency = repository,
+        directory = repo.dir,
+        priority = priority,
+        baseurl = repo.baseurl,
+        packages = repository[PackagePoolInfo].value,
+        verifier = verifier,
+    )

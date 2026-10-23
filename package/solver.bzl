@@ -51,7 +51,9 @@ def _solver_cache_impl(ctx: AnalysisContext) -> list[Provider]:
     repository = ConfiguredPackageRepositoryInfo(
         id = ctx.attrs.repository_id,
         directory = ctx.attrs.repository_dir,
-        priority = ctx.attrs.priority,
+        # A solver cache contains the parsed metadata, which does not depend on the priority that a
+        # solve gives the repository.
+        priority = 0,
         baseurl = ctx.attrs.baseurl,
     )
     # Every consumer of a promised artifact would have to assert a content-based path; keep the plain one.
@@ -83,7 +85,6 @@ _solver_cache = anon_rule(
         "baseurl": attrs.option(attrs.string(), default = None),
         "box": attrs.dep(providers = [BoxInfo]),
         "package_system": attrs.dep(providers = [PackageSystemInfo]),
-        "priority": attrs.int(),
         "repository_dir": attrs.source(),
         "repository_id": attrs.string(),
     },
@@ -107,7 +108,6 @@ def solver_cache(
             "baseurl": repository.baseurl,
             "box": box,
             "package_system": package_system,
-            "priority": repository.priority,
             "repository_dir": repository.directory,
             "repository_id": repository.id,
         },

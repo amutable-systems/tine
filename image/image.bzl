@@ -5,7 +5,7 @@
 
 load("//:specs.bzl", "executable", "spec_args", "spec_argument")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
-load("//distribution:defs.bzl", "distribution")
+load("//distribution:defs.bzl", "TOOLS_BOX_ATTR", "distribution")
 load("//package:install.bzl", "resolve_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
@@ -583,32 +583,23 @@ def declare_image(
 
     The layer installs `packages` and `package_sets` as one request before its operations run, so
     every operation sees the packages this layer adds. `keys` names the signing keys this layer's
-    operations use, so that the action can reach one held outside the build.
+    operations use, so that the action can reach one held outside the build. An initial image runs in
+    `box`, and a derived image runs in the box of its parent.
     """
     # Every image rule's version reaches its layers through here, which makes this the one place
     # that has to catch one no declaration macro resolved.
     check_version("image version", version)
     if parent != None:
-        if box != None or package_manager != None:
-            fail("image: parent cannot be combined with box or package_manager")
+        if package_manager != None:
+            fail("image: parent cannot be combined with package_manager")
         box = parent.box
         package_manager = parent.package_manager
         layers = parent.layers
         tmpfiles = parent.tmpfiles + tmpfiles
         parent_install_specs = parent.install_specs
     else:
-        if package_manager != None:
-            manager_box = package_manager[PackageManagerInfo].box
-            if box != None and box.label != manager_box.label:
-                fail(
-                    "image box {} does not match package manager box {}".format(
-                        box.label,
-                        manager_box.label,
-                    )
-                )
-            box = manager_box
         if box == None:
-            fail("image requires parent, package_manager, or box")
+            fail("image: an image without a parent requires a box")
         layers = []
         parent_install_specs = []
 
@@ -627,6 +618,7 @@ def declare_image(
             closure = resolve_packages(
                 ctx,
                 package_manager,
+                box,
                 install_specs,
                 layers,
                 identifier = identifier,
@@ -788,13 +780,14 @@ IMAGE_ATTRS = {
         doc = "deferred tmpfiles.d lines for paths, modes, and xattrs; ownership is ignored",
     ),
     "version": attrs.string(default = "0", doc = "SBOM source version"),
+    "_box": TOOLS_BOX_ATTR,
 } | IMAGE_TOOLS_ATTR
 
 def _image_impl(ctx: AnalysisContext) -> list[Provider]:
     image = declare_image(
         ctx,
         tools = ctx.attrs._tools[ImageToolsInfo],
-        box = ctx.attrs.box,
+        box = ctx.attrs._box,
         install_docs = ctx.attrs.install_docs,
         install_langs = ctx.attrs.install_langs,
         ops = ctx.attrs.ops,
@@ -815,11 +808,6 @@ _image = rule(
     supports_incoming_transition = True,
     attrs = IMAGE_ATTRS
     | {
-        "box": attrs.option(
-            attrs.exec_dep(providers = [BoxInfo]),
-            default = None,
-            doc = "the execution environment fixed for an initial image and all derived artifacts",
-        ),
         "package_manager": attrs.option(
             attrs.dep(providers = [PackageManagerInfo]),
             default = None,

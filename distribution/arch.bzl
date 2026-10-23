@@ -159,7 +159,6 @@ def arch_release(
         name = name + ".package-manager",
         target_compatible_with = distribution.serves(name, architectures, in_box = True),
         release = ":" + name + ".release",
-        box = "tine//distribution:tools.box",
         enable_repository_groups = enable_repository_groups,
         disable_repository_groups = disable_repository_groups,
         additional_repositories = additional_repositories,
