@@ -17,7 +17,7 @@ load(
     "check_name",
     "image_providers",
 )
-load(":publish.bzl", "PublishedInfo", "published_metadata_subtargets")
+load(":publish.bzl", "PublishedFile", "PublishedInfo", "published_metadata_subtargets")
 load(
     ":sign.bzl",
     "SigningKeyInfo",
@@ -88,6 +88,8 @@ def _declare_preset(
     systemd_arch: str,
     basename: str,
     filename: str,
+    kind: str,
+    subkind: str | None,
     copy_files: list[str],
     seed: str | None,
     verity_key: SigningKeyInfo | None,
@@ -98,7 +100,8 @@ def _declare_preset(
     """Declare a DDI of one verity protected root partition, and return the providers of its rule.
 
     `basename` is <name>_<version>_<arch>, which names the metadata of the logical image. `filename`
-    names the DDI and adds the class suffix of an extension to `basename`.
+    names the DDI and adds the class suffix of an extension to `basename`. It is also the DDI's image
+    in the release's description, so that a sysext and a confext of one name are two images.
     """
     # The partitions match the definitions systemd-repart --make-ddi uses, so that a DDI does not
     # depend on the systemd version of the box that builds it.
@@ -128,16 +131,17 @@ def _declare_preset(
     info = output.info
     published = PublishedInfo(
         artifacts = {
-            info.disk.basename: info.disk,
-            info.manifest.basename: info.manifest,
-            info.root_hash.hash.basename: info.root_hash.hash,
+            info.disk.basename: PublishedFile(artifact = info.disk, kind = kind, subkind = subkind),
+            info.manifest.basename: PublishedFile(artifact = info.manifest, kind = "listing", subkind = "uapi16manifest"),
+            info.root_hash.hash.basename: PublishedFile(artifact = info.root_hash.hash, kind = "roothash"),
         },
+        image = filename,
     )
     return image_providers(
         default_outputs = [info.disk],
         extra = [info, published] + extra,
         image = image,
-        sub_targets = output.sub_targets | published_metadata_subtargets(image, basename),
+        sub_targets = output.sub_targets | published_metadata_subtargets(image, basename, filename),
     )
 
 def declare_extension(
@@ -217,6 +221,8 @@ def declare_extension(
         # systemd recognizes the suffixes .sysext.raw and .confext.raw. No suffix names a DDI with
         # the two classes, so it gets the plain .raw suffix.
         filename = basename + (suffixes[0] if len(suffixes) == 1 else ""),
+        kind = "extension",
+        subkind = "+".join([class_name for class_name, _ in _CLASSES if class_name in classes]),
         copy_files = copy_files,
         seed = seed,
         verity_key = verity_key,
@@ -257,6 +263,8 @@ def declare_portable(
         # portablectl takes the image name from the file name up to the first "_", and
         # systemd-sysupdate matches a transfer against <name>_<version>_<arch>.raw.
         filename = basename,
+        kind = "portable",
+        subkind = None,
         copy_files = ["/"],
         seed = seed,
         verity_key = verity_key,

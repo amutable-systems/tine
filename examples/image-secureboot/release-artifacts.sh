@@ -6,28 +6,73 @@
 # The release directory is where every published name meets. Assert the set the example publishes,
 # that each listing is named after what it describes, that the verity pair is named after the two
 # halves of the root hash (which is what lets systemd-sysupdate give the partitions it writes the
-# UUIDs dissection pairs them by), and that the ESP is not among them.
+# UUIDs dissection pairs them by), and that the ESP is not among them. Assert that the release's
+# description lists every published file with its kind and image, and gives the verity root hash to
+# the usr partition and the extension.
 set -euo pipefail
 
-directory=$1 roothash_file=$2 arch=$3 pkgdb_suffix=$4
+directory=$1 roothash_file=$2 arch=$3 pkgdb_suffix=$4 pkgdb_system=$5
 roothash=$(cat "$roothash_file")
 names=$(ls "$directory")
+description=$directory/artifacts_$arch.json
 
 image="image_0_$arch" extension="demo-ext_0_$arch"
-missing=0
+usr="$image.usr-$arch.${roothash:0:32}.raw" usr_verity="$image.usr-$arch-verity.${roothash:32:32}.raw"
+failed=0
+fail() {
+    echo "release: $*" >&2
+    failed=1
+}
+
 for expected in "$image.raw" "$image.qcow2" "$image.efi" "$image.vmlinuz" "$image.initrd" \
     "$extension.sysext.raw" "$image.Uapi16Manifest" "$image.esp.Uapi16Manifest" \
     "$image.usr.Uapi16Manifest" "$extension.sysext.Uapi16Manifest" \
     "$image.spdx.json" "$image.cdx.json" "$image.pkgdb.$pkgdb_suffix" \
     "$image.initrd.spdx.json" "$image.initrd.cdx.json" \
-    "$extension.spdx.json" "$extension.cdx.json" \
-    "$image.usr-$arch.${roothash:0:32}.raw" \
-    "$image.usr-$arch-verity.${roothash:32:32}.raw"; do
-    grep -qx "$expected" <<< "$names" || { echo "release: $expected is missing" >&2; missing=1; }
+    "$extension.spdx.json" "$extension.cdx.json" "$extension.sysext.roothash" \
+    "artifacts_$arch.json" "$usr" "$usr_verity"; do
+    grep -qx "$expected" <<< "$names" || fail "$expected is missing"
 done
 # Its listing is published, because what it carries is on the disk; the partition itself is not.
 if grep '\.raw$' <<< "$names" | grep -q esp; then
-    echo "release: the ESP partition must not be published" >&2
-    missing=1
+    fail "the ESP partition must not be published"
 fi
-exit "$missing"
+
+[ "$(jq -r .arch "$description")" = "$arch" ] || fail "the description names another architecture"
+if ! diff <(jq -r '.files | keys[]' "$description" | LC_ALL=C sort) \
+    <(grep -vx "artifacts_$arch.json" <<< "$names" | LC_ALL=C sort) >&2; then
+    fail "the description lists other files than the release holds"
+fi
+
+# Each line names a file and the [image, kind, subkind] the description gives it, null where it has
+# none.
+while read -r name want; do
+    got=$(jq -c --arg name "$name" '.files[$name] | [.image, .kind, .subkind]' "$description")
+    [ "$got" = "$want" ] || fail "$name is described as $got, not $want"
+done <<EOF
+$image.raw ["$image","disk","raw"]
+$image.qcow2 ["$image","disk","qcow2"]
+$image.efi ["$image","uki",null]
+$image.vmlinuz ["$image","kernel",null]
+$image.initrd ["$image","initrd",null]
+$image.Uapi16Manifest ["$image","listing","uapi16manifest"]
+$image.usr.Uapi16Manifest ["$image","listing","uapi16manifest"]
+$image.spdx.json ["$image","sbom","spdx"]
+$image.cdx.json ["$image","sbom","cyclonedx"]
+$image.pkgdb.$pkgdb_suffix ["$image","pkgdb","$pkgdb_system"]
+$image.initrd.spdx.json ["$image.initrd","sbom","spdx"]
+$usr ["$image","partition","usr"]
+$usr_verity ["$image","partition","usr-verity"]
+$extension.sysext.raw ["$extension.sysext","extension","sysext"]
+$extension.sysext.Uapi16Manifest ["$extension.sysext","listing","uapi16manifest"]
+$extension.sysext.roothash ["$extension.sysext","roothash",null]
+$extension.spdx.json ["$extension.sysext","sbom","spdx"]
+EOF
+
+# Only the usr partition and the extension carry a verity root hash.
+extension_hash=$(cat "$directory/$extension.sysext.roothash")
+want=$(printf '%s %s\n' "$usr" "$roothash" "$extension.sysext.raw" "$extension_hash" | LC_ALL=C sort)
+hashed='.files | to_entries[] | select(.value.root_hash) | "\(.key) \(.value.root_hash)"'
+got=$(jq -r "$hashed" "$description" | LC_ALL=C sort)
+[ "$got" = "$want" ] || fail "the root hashes are $got, not $want"
+exit "$failed"

@@ -66,7 +66,7 @@ load(
     "symlink",
     "write_file",
 )
-load(":publish.bzl", "PublishedInfo", "published_metadata_subtargets")
+load(":publish.bzl", "PublishedFile", "PublishedInfo", "published_metadata_subtargets")
 load(
     ":sign.bzl",
     "resolve_signing_key",
@@ -486,9 +486,9 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
             "uki": [DefaultInfo(default_output = uki.ukis, sub_targets = uki_subtargets(uki)), uki],
         }
         boot_artifacts = {
-            "{}.efi".format(basename): boot.uki,
-            "{}.initrd".format(basename): boot.initrd,
-            "{}.vmlinuz".format(basename): boot.kernel,
+            "{}.efi".format(basename): PublishedFile(artifact = boot.uki, kind = "uki"),
+            "{}.initrd".format(basename): PublishedFile(artifact = boot.initrd, kind = "initrd"),
+            "{}.vmlinuz".format(basename): PublishedFile(artifact = boot.kernel, kind = "kernel"),
         }
         boot_providers = [initrd_info, uki]
     else:
@@ -553,7 +553,10 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
             # A re-encoding is publishable in its own right, so a release can gather the subtarget
             # rather than the disk; it is not in the disk's own set, which would build every
             # encoding whenever anything materializes the release.
-            PublishedInfo(artifacts = {conversion.image.basename: conversion.image}),
+            PublishedInfo(
+                artifacts = {conversion.image.basename: PublishedFile(artifact = conversion.image, kind = "disk", subkind = conversion.format)},
+                image = basename,
+            ),
             conversion,
         ]
 
@@ -563,15 +566,16 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
     # partition nothing ever writes back. The listings join them: one per partition, naming what
     # that partition puts on a machine and nothing the image happens to hold besides, and one for
     # the disk, which is what an installation of it leaves behind.
-    artifacts = {raw.basename: raw} | boot_artifacts
+    artifacts = {raw.basename: PublishedFile(artifact = raw, kind = "disk", subkind = "raw")} | boot_artifacts
     for name, listing in manifests.items():
-        artifacts["{}.{}.Uapi16Manifest".format(basename, name)] = listing
+        artifacts["{}.{}.Uapi16Manifest".format(basename, name)] = PublishedFile(artifact = listing, kind = "listing", subkind = "uapi16manifest")
     whole = composed.info.manifest
     if whole != None:
-        artifacts[whole.basename] = whole
+        artifacts[whole.basename] = PublishedFile(artifact = whole, kind = "listing", subkind = "uapi16manifest")
 
     published = PublishedInfo(
         artifacts = artifacts,
+        image = basename,
         partitions = [partition for partition in composed.info.partitions if partition.definition["type"] != "esp"],
     )
 

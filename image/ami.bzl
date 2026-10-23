@@ -5,7 +5,7 @@
 
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 load("//platforms:architecture.bzl", "ARCHITECTURES")
-load(":publish.bzl", "PublishedInfo")
+load(":publish.bzl", "PublishedFile", "PublishedInfo")
 
 # What `RegisterImage` accepts in an image name besides letters and digits.
 _NAME_PUNCTUATION = "()[] ./-'@_"
@@ -89,7 +89,7 @@ def declare_ami(
         # Building an AMI builds the disk, as for any other format; only the parameters are published,
         # as a release carries the disk already.
         DefaultInfo(default_output = parameters, other_outputs = [disk]),
-        PublishedInfo(artifacts = {name: parameters}),
+        PublishedInfo(artifacts = {name: PublishedFile(artifact = parameters, kind = "ami")}, image = basename),
         RunInfo(args = cmd_args(importer, disk, parameters)),
     ]
 
