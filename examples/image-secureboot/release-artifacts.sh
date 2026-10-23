@@ -7,8 +7,9 @@
 # that each listing is named after what it describes, that the verity pair is named after the two
 # halves of the root hash (which is what lets systemd-sysupdate give the partitions it writes the
 # UUIDs dissection pairs them by), and that the ESP is not among them. Assert that the release's
-# description lists every published file with its kind and image, and gives the verity root hash to
-# the usr partition and the extension.
+# description lists every published file with its kind, gives the built ones their image and the
+# verity root hash to the usr partition and the extension, and that the author hook's
+# SHA256SUMS.<arch> covers the update payloads.
 set -euo pipefail
 
 directory=$1 roothash_file=$2 arch=$3 pkgdb_suffix=$4 pkgdb_system=$5
@@ -67,6 +68,7 @@ $extension.sysext.raw ["$extension.sysext","extension","sysext"]
 $extension.sysext.Uapi16Manifest ["$extension.sysext","listing","uapi16manifest"]
 $extension.sysext.roothash ["$extension.sysext","roothash",null]
 $extension.spdx.json ["$extension.sysext","sbom","spdx"]
+SHA256SUMS.$arch [null,"checksums","sha256sums"]
 EOF
 
 # Only the usr partition and the extension carry a verity root hash.
@@ -75,4 +77,15 @@ want=$(printf '%s %s\n' "$usr" "$roothash" "$extension.sysext.raw" "$extension_h
 hashed='.files | to_entries[] | select(.value.root_hash) | "\(.key) \(.value.root_hash)"'
 got=$(jq -r "$hashed" "$description" | LC_ALL=C sort)
 [ "$got" = "$want" ] || fail "the root hashes are $got, not $want"
+
+# The payloads are named here rather than taken by kind, so a wrong choice of kinds shows.
+want=$({
+    printf '%s\n' "$image.efi" "$extension.sysext.raw"
+    grep "^$image\.usr-" <<< "$names"
+} | LC_ALL=C sort)
+got=$(cut -d ' ' -f 3- "$directory/SHA256SUMS.$arch" | LC_ALL=C sort)
+[ "$got" = "$want" ] || fail "SHA256SUMS.$arch lists $got, not $want"
+if ! (cd "$directory" && sha256sum --check --quiet "SHA256SUMS.$arch") >&2; then
+    fail "SHA256SUMS.$arch has another hash"
+fi
 exit "$failed"

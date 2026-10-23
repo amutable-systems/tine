@@ -1405,7 +1405,10 @@ so requesting either format runs the same SBOM action. A metadata view publishes
 conversion does: `[sbom]` and `[pkgdb]` carry an `image.PublishedInfo` naming them after the image they
 describe, so a release gathers what a scanner reads while an image's own published set stays what an
 update transfers. Every `image.PublishedInfo` must name its image and give each file a kind, which
-`image.artifacts` writes into the release's description.
+`image.artifacts` writes into the release's description. A project's author hook may add files to a
+release once it is gathered. It should run in a box like any other build action, but it is the one action
+whose box tine does not choose, because the project's own rule builds its command. The release declares
+the kind of each file it adds.
 
 `image.disk` is one rule that owns the complete composition action graph. Provider-oriented action
 helpers are shared with the standalone `image.layer`, `image.uki`, and terminal-format

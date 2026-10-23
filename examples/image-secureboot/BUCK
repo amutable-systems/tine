@@ -12,6 +12,8 @@ certificate whether it is held in the graph or by a token.
 The signed demo-ext system extension shows verity signing for a sysext DDI, with the image
 enforcing the signature through its sysext.conf image policy.
 
+The release shows an author hook, which adds the SHA256SUMS.<arch> of the update payloads.
+
 Every image here is built for each release in `catalog//:releases.bzl`, so a build names one of the
 per-distribution aliases, such as `:image.fedora`.
 """
@@ -20,7 +22,9 @@ load("@tine//box:defs.bzl", "box")
 load("@tine//distribution:defs.bzl", "distribution")
 load("@tine//image:defs.bzl", "image")
 load("@tine//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
+load("@tine//python:defs.bzl", "tine_python_binary")
 load("@tine//tests:defs.bzl", "tests")
+load(":sha256sums.bzl", "sha256sums_hook")
 
 # This example serves two audiences, so it declares a key for each and picks: the tokens
 # `-c secure-boot-signing.{token,pin-file,socket}` configures, or pairs generated into buck-out for
@@ -155,8 +159,8 @@ image.sysext(
 # Everything a release of this example publishes, gathered under the names it publishes them
 # under: the disk and its qcow2 encoding, the UKI, the kernel and initrd a direct kernel boot
 # needs, the signed extension, the /usr partitions an update transfers, and the SBOMs and
-# package database. Each name comes from the target that built the artifact, so nothing here
-# decides what anything is called.
+# package database. Each name comes from the target that built the artifact. The only name decided
+# here is that of the SHA256SUMS.<arch> the author hook adds.
 image.artifacts(
     name = "release",
     targets = [
@@ -168,6 +172,22 @@ image.artifacts(
         ":image[qcow2]",
         ":image[sbom]",
     ],
+    # The author hook hashes the update payloads.
+    author_hook = ":sha256sums",
+    author_hook_outputs = architecture.select(
+        {name: {"SHA256SUMS.{}".format(spellings.systemd): {"kind": "checksums", "subkind": "sha256sums"}} for name, spellings in ARCHITECTURES.items()}
+    ),
+)
+
+sha256sums_hook(
+    name = "sha256sums",
+    box = "@tine//tools:dev.box",
+    driver = ":sha256sums-driver",
+)
+
+tine_python_binary(
+    name = "sha256sums-driver",
+    main = "sha256sums.py",
 )
 
 # What the policy protects against: the same extension shape without a signature. Standalone

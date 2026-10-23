@@ -730,10 +730,10 @@ image_0_x86-64.vmlinuz
 
 The rule decides no name of a built file: it unions what each target published and reads a partition's name
 back from the metadata beside it, which is why it assembles the directory from a dynamic action. The only
-name it adds is its description's, see below. Two targets publishing one name is an error rather than a
-silent overwrite. The `usr` and `usr-verity` UUIDs above are the two halves of that build's verity root hash,
-and `%M_@v_%a.usr-%a.@u.raw` in a transfer is how systemd-sysupdate reads one back to give the partition it
-writes the UUID dissection pairs them by.
+names it adds are its description's and those of its author hook's outputs, see below. Two targets publishing
+one name is an error rather than a silent overwrite. The `usr` and `usr-verity` UUIDs above are the two
+halves of that build's verity root hash, and `%M_@v_%a.usr-%a.@u.raw` in a transfer is how systemd-sysupdate
+reads one back to give the partition it writes the UUID dissection pairs them by.
 
 The release carries a description of its files, `artifacts_<arch>.json`. The `arch` in its name and in its
 top-level `arch` key is the architecture the release is built for, spelled as systemd does, as in `x86-64`
@@ -753,13 +753,15 @@ The `files` key maps each published name to an entry with these fields:
   - `pkgdb` with the package system as its subkind, `rpm`, `deb` or `pacman`.
   - `listing` with the subkind `uapi16manifest`.
   - `ami` is the [AMI](aws.md) registration parameters and has no subkind.
+  - An author hook's output has the kind and subkind the release gives it, as described below.
 - `image`: This names the image the file belongs to. All files of one image share this value, so a consumer
   can find the usr partition that goes with a UKI, or the SBOM that describes an extension, without parsing
   names. For a disk it is the prefix the disk's files are published under, `image_0_x86-64` above. For an
   extension or a portable image it is the DDI's file name without `.raw`, `demo-ext_0_x86-64.sysext`
   above, so that a sysext and a confext of one name are two images. The initrd's SBOM and package database
   describe the initrd rather than the disk, so they form an image of their own named `<prefix>.initrd`. The
-  initrd file itself stays in the disk's image.
+  initrd file itself stays in the disk's image. A file of the release as a whole, such as an author hook's
+  output, has no `image`.
 - `root_hash`: This is the verity root hash of the partition verity protects in a disk, or of an extension
   or a portable image. Other files have no `root_hash`.
 
@@ -798,6 +800,43 @@ A consumer can match on these fields rather than file names. The excerpt below a
     }
   }
 }
+```
+
+A release usually needs more than the built files, for example update metadata. A project can add such files
+with an author hook. Once the release's files are gathered, the rule runs `author_hook` as
+`<author_hook> --artifacts <file> --files <dir> --out-dir <dir>`. The `--artifacts` file describes the files
+the hook is given. It is not the release's description, which also lists the hook's own outputs, so nothing
+the hook writes can cover the published description. The `--files` directory holds the published files other
+than the description, under their published names. The author hook writes each name of `author_hook_outputs`
+into `--out-dir`, and a missing one fails the hook's action. A name consists of letters, digits, `.`, `_`,
+`~` and `-`. It must not be published already, and a clash with a partition's name, which is known only once
+the partitions are built, fails only then. The release takes those files and nothing else, and its
+description gives each the `kind` and optional `subkind` that `author_hook_outputs` maps it to.
+
+The author hook must only add to a release. It must not modify a published file or anything under `--files`
+or `--artifacts`, because these are the build's own outputs. `author_hook` is a `RunInfo`, which should come
+from a rule of the project that runs its driver with `box.run`, so that the hook runs in a box like any other
+build action. tine cannot check that, because it does not choose the hook's box. The command can carry
+further arguments, such as a tool the build produced. Signing a release in its author hook is not
+recommended.
+
+An output belongs to the release of one architecture, so a name that carries the architecture lets the
+releases of several architectures share one directory, as the description does. A step that publishes them
+can still combine such files, for example into the one `SHA256SUMS` that systemd-sysupdate reads, and sign
+it.
+
+```Starlark
+image.artifacts(
+    name = "release",
+    targets = [":image", ":image[qcow2]", ":image[sbom]", ":image[pkgdb]", ":demo-ext"],
+    # :sha256sums is a rule of the project that returns box.run(box = …, exe = …) as its RunInfo. Its
+    # driver hashes the update payloads into SHA256SUMS.<arch>.
+    author_hook = ":sha256sums",
+    author_hook_outputs = architecture.select({
+        name: {"SHA256SUMS.{}".format(spellings.systemd): {"kind": "checksums", "subkind": "sha256sums"}}
+        for name, spellings in ARCHITECTURES.items()
+    }),
+)
 ```
 
 `image.DdiInfo` contains the optional `image.RootHashInfo` when verity is enabled. The completed
