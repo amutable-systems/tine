@@ -13,10 +13,6 @@ Do not load image.bzl here: it consumes the provider, so that would close a load
 
 load("//box:runtime.bzl", "BoxInfo", "box_run")
 
-# The sandbox forwards PKCS#11 calls rather than holding a backend module, so this is the only module
-# it ever loads, whatever the key is held by.
-_CLIENT_MODULE = "/usr/lib64/pkcs11/p11-kit-client.so"
-
 # Reads a certificate through the same OpenSSL provider the signing tools load the key with, so a
 # token's certificate needs no second way to address it. Not on PATH, hence the full path.
 _KEYUTIL = "/usr/lib/systemd/systemd-keyutil"
@@ -322,10 +318,9 @@ def _pkcs11_signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
         private_key = uri + "private?pin-source=file:" + sandbox_pin,
         private_key_source = "provider:pkcs11",
         ro_binds = {host_directory: _SIGNING_CONFIG_DIR + host_directory, pin_file: sandbox_pin},
-        setenv = {
-            "P11_KIT_SERVER_ADDRESS": "unix:path={}".format(sandbox_socket),
-            "PKCS11_PROVIDER_MODULE": _CLIENT_MODULE,
-        },
+        # pkcs11-provider loads p11-kit's proxy module, and every box configures p11-kit to load its
+        # client module, see package/installer.py.
+        setenv = {"P11_KIT_SERVER_ADDRESS": "unix:path={}".format(sandbox_socket)},
     )
     return [
         # `[cert]` for the same reason a generated key has one: an image installs a certificate as a

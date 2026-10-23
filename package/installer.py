@@ -101,6 +101,14 @@ def _configure_box(installroot: Path) -> None:
         # Minimal boxes need not install systemd's factory configuration.
         nsswitch.write_text(MINIMAL_NSSWITCH)
 
+    # Signing actions reach a PKCS#11 token through p11-kit's client module. Each distribution installs
+    # p11-kit-client.so in a different directory. p11-kit looks up a relative module name in its own
+    # module directory, so the relative name works in every box. Without P11_KIT_SERVER_ADDRESS, the
+    # client module provides no token.
+    modules = installroot / "etc/pkcs11/modules"
+    modules.mkdir(parents=True, exist_ok=True)
+    (modules / "p11-kit-client.module").write_text("module: p11-kit-client.so\n")
+
     # Create the mountpoint for the sandbox's resolver bind.
     resolv = installroot / "etc/resolv.conf"
     resolv.unlink(missing_ok=True)
