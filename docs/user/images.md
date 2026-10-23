@@ -59,11 +59,11 @@ Every `catalog//` label then resolves to the project's catalog, including the la
 targets, and the build does not use tine's catalog. If `tine.toml` declares no `catalog` cell, `bin/tine`
 points the cell at tine's catalog.
 
-tine's own boxes, such as its tools and the box that generates signing keys, build from the catalog's
-default release. An image builds in the tools box of its own release. A release has boxes only for the
-architectures it serves, so its images build only on a host of one of those architectures. Arch serves
-x86_64 only, so Arch images don't build on an arm64 host. Name the default release in the catalog's
-`BUCK` file, with the `<family>.<release>` prefix of any release the catalog declares:
+tine's own boxes, such as its tools and the box that generates signing keys, build from the catalog's default
+release. A release has boxes only for the architectures it serves, so its images build only on a host of one
+of those architectures. Arch serves x86_64 only, so Arch images don't build on an arm64 host. Name the
+default release in the catalog's `BUCK` file, with the `<family>.<release>` prefix of any release the catalog
+declares:
 
 ```Starlark
 load("@tine//distribution:defs.bzl", "distribution")
@@ -123,11 +123,12 @@ load("@tine//image:defs.bzl", "image")
 The modules behind the facade, such as `image.bzl` and `compose.bzl`, are implementation structure and
 may be rearranged; load them directly only from inside the cell.
 
-An initial image fixes one package manager for its whole lifetime; every derived image and terminal output
-inherits it and its box. Take a catalog package manager, optionally extend it with project repositories,
-and create the initial image. An image that names the package manager of one release also names that
-release's distribution, so that it builds in the tools box of that release. For example, a project can
-expose locally built packages without adding them to its OS release:
+An initial image fixes one package manager for its whole lifetime, and every derived image and terminal
+output inherits it. An image runs in the tools box of the release that the build chooses, or in the tools box
+of the catalog's default release when the build chooses none. An image that names the package manager of one
+release therefore also names that release's distribution. Take a catalog package manager, optionally extend
+it with project repositories, and create the initial image. For example, a project can expose locally built
+packages without adding them to its OS release:
 
 ```Starlark
 local_repository(
@@ -171,8 +172,8 @@ resolve upstream (details in [architecture.md](../design/architecture.md)).
 
 ## Images and operations
 
-`image.layer` has two construction modes. An initial image supplies `package_manager` or `box`; a derived
-image supplies `parent` and inherits that image's package manager and box. A call with operations applies one
+`image.layer` has two construction modes. An initial image may supply `package_manager`; a derived image
+supplies `parent` and inherits that image's package manager. A call with operations applies one
 ordered operation sequence in one action and persists exactly one delta:
 
 - `packages` and `package_sets` are rule attributes rather than operations: a layer installs them as one

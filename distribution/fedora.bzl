@@ -149,7 +149,6 @@ def fedora_release(
         name = name + ".package-manager",
         target_compatible_with = distribution.serves(name, architectures, in_box = True),
         release = ":" + name + ".release",
-        box = "tine//distribution:tools.box",
         additional_repositories = additional_repositories,
         repository_priorities = repository_priorities,
         visibility = visibility,

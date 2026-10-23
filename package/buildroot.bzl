@@ -3,12 +3,14 @@
 
 """Shared native package buildroots."""
 
+load("//distribution:defs.bzl", "TOOLS_BOX_ATTR")
 load(":install.bzl", "install_packages")
 load(":manager.bzl", "PackageManagerInfo")
 
 BuildrootInfo = provider(
-    doc = "A base root and package manager used to build native packages.",
+    doc = "A base root, and the package manager and box that build native packages on it.",
     fields = {
+        "box": provider_field(Dependency),
         "package_manager": provider_field(Dependency),
         "root": provider_field(Artifact),
     },
@@ -30,10 +32,11 @@ def _buildroot_impl(ctx: AnalysisContext) -> list[Provider]:
             fail("buildroot: unknown package set {!r}".format(ctx.attrs.package_set))
     if not packages:
         fail("buildroot: packages or package_set must be specified")
-    root = install_packages(ctx, ctx.attrs.package_manager, packages)
+    root = install_packages(ctx, ctx.attrs.package_manager, ctx.attrs._box, packages)
     return [
         DefaultInfo(default_output = root),
         BuildrootInfo(
+            box = ctx.attrs._box,
             root = root,
             package_manager = ctx.attrs.package_manager,
         ),
@@ -54,6 +57,7 @@ _buildroot = rule(
             default = [],
             doc = "explicit packages installed in every package buildroot",
         ),
+        "_box": TOOLS_BOX_ATTR,
     },
 )
 

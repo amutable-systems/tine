@@ -18,9 +18,54 @@ Verifier = record(
     repository = Artifact,
 )
 
+def _build_keyring(
+    actions: AnalysisActions,
+    box: BoxInfo,
+    system: PackageSystemInfo,
+    keys: dict[str, typing.Any],
+    time: str | None,
+    keyring: Artifact,
+    name: str,
+) -> None:
+    actions.run(
+        cmd_args(
+            box_run(box = box, exe = system.keyring),
+            spec_args(actions, name + ".spec.json", {"keys": keys, "out": keyring.as_output(), "time": time}),
+        ),
+        category = "keyring",
+        identifier = name,
+    )
+
+def _keyring_impl(ctx: AnalysisContext) -> list[Provider]:
+    # Every consumer of a promised artifact would have to assert a content-based path; keep the plain one.
+    keyring = ctx.actions.declare_output("keyring", dir = True, has_content_based_path = False)
+    _build_keyring(
+        ctx.actions,
+        ctx.attrs.box[BoxInfo],
+        ctx.attrs.package_system[PackageSystemInfo],
+        ctx.attrs.keys,
+        ctx.attrs.time,
+        keyring,
+        "keyring",
+    )
+    return [DefaultInfo(default_output = keyring)]
+
+_keyring = anon_rule(
+    impl = _keyring_impl,
+    attrs = {
+        "box": attrs.dep(providers = [BoxInfo]),
+        "keys": attrs.dict(attrs.string(), attrs.source()),
+        "package_system": attrs.dep(providers = [PackageSystemInfo]),
+        "time": attrs.option(attrs.string(), default = None),
+    },
+    artifact_promise_mappings = {
+        "keyring": lambda providers: providers[DefaultInfo].default_outputs[0],
+    },
+)
+
 def repository_verifier(
     ctx: AnalysisContext,
-    box: BoxInfo,
+    box: BoxInfo | Dependency,
     id: str,
     signing_keys: dict[str, Artifact | None],
     package_system: Dependency,
@@ -31,10 +76,13 @@ def repository_verifier(
     """The verifier for repository `id`'s packages in a consumer that verifies with `box`.
 
     The keyring is built from the declared keys, any others are refused. None for a repository without
-    declared keys. Repositories declaring the same keys share one keyring: `keyrings` is the caller's
-    cache of those built so far, one per consumer and package system, so the same key set is not
-    imported and certified once per repository that trusts it. A system whose verify program reads
-    key files as they are has no keyring driver, and is handed the declared ones.
+    declared keys. A system whose verify program reads key files as they are has no keyring driver, and
+    is handed the declared ones.
+
+    A `box` given as a dependency builds the keyring in an anonymous target, which every consumer that
+    verifies with the same box and keys shares. Only the bootstrap root of a root box is no target and
+    passes a BoxInfo. `keyrings` then caches the keyrings that the caller built so far, so repositories
+    declaring the same keys share one keyring instead of declaring the same output twice.
 
     `pinned_at` is when the repository's snapshot was published: signatures are judged as of then,
     so a pinned snapshot verifies the same way however long after it is built.
@@ -44,14 +92,25 @@ def repository_verifier(
     system = package_system[PackageSystemInfo]
     if system.verify == None:
         fail("repository '{}': package system {} verifies no signatures".format(id, package_system.label))
-    missing = [fingerprint for fingerprint, file in signing_keys.items() if file == None]
-    if missing:
-        fail("repository '{}': signing key(s) {} are not in the catalog yet; run refresh-catalog".format(id, missing))
-    verify = box_run(box = box, exe = system.verify)
+    box_info = box[BoxInfo] if isinstance(box, Dependency) else box
+    verify = box_run(box = box_info, exe = system.verify)
     if system.keyring == None:
         return Verifier(keys = {"keys": signing_keys, "time": pinned_at}, verify = verify, repository = directory)
 
     fingerprints = sorted(signing_keys)
+    if isinstance(box, Dependency):
+        keyring = ctx.actions.anon_target(
+            _keyring,
+            {
+                "box": box,
+                "keys": signing_keys,
+                "name": "//keyring:" + "-".join([fingerprint[-8:] for fingerprint in fingerprints]),
+                "package_system": package_system,
+                "time": pinned_at,
+            },
+        ).artifact("keyring")
+        return Verifier(keys = {"keyring": keyring}, verify = verify, repository = directory)
+
     key = str(package_system.label) + " " + str(pinned_at) + " " + " ".join(fingerprints)
     keyring = keyrings.get(key)
     if keyring == None:
@@ -59,18 +118,7 @@ def repository_verifier(
         # same output twice, which fails loudly rather than sharing wrongly.
         name = "keyring-" + "-".join([fingerprint[-8:] for fingerprint in fingerprints])
         keyring = ctx.actions.declare_output(name, dir = True)
-        ctx.actions.run(
-            cmd_args(
-                box_run(box = box, exe = system.keyring),
-                spec_args(
-                    ctx.actions,
-                    name + ".spec.json",
-                    {"keys": signing_keys, "out": keyring.as_output(), "time": pinned_at},
-                ),
-            ),
-            category = "keyring",
-            identifier = name,
-        )
+        _build_keyring(ctx.actions, box_info, system, signing_keys, pinned_at, keyring, name)
         keyrings[key] = keyring
     return Verifier(keys = {"keyring": keyring}, verify = verify, repository = directory)
 

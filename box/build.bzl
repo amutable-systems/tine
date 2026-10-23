@@ -9,16 +9,15 @@ load("//package:release.bzl", "OsReleaseInfo")
 load(
     "//package:repository.bzl",
     "ConfiguredPackageRepositoryInfo",
-    "PackagePoolInfo",
-    "PackageRepositoryInfo",
     "RepositoryUniverseInfo",
     "box_lock_path",
+    "check_repository",
+    "configure_repository",
     "select_package_artifacts",
     "select_repositories",
 )
 load("//package:solver.bzl", "solve_command", "solver_cache")
 load("//package:system.bzl", "PackageSystemInfo")
-load("//package:verify.bzl", "repository_verifier")
 load("//platforms:architecture.bzl", "architecture")
 load(":runtime.bzl", "BoxInfo", "box_run")
 
@@ -69,38 +68,18 @@ def _layer_dir(actions: AnalysisActions, name: str) -> Artifact:
     # Buck deletes before the action runs again.
     return actions.declare_output(name, dir = True, has_content_based_path = False)
 
-def _configure_repositories(
+def _box_repositories(
     ctx: AnalysisContext,
     repositories: list[Dependency],
-    verifier_box: BoxInfo | None,
+    package_system: Dependency,
+    verifier_box: Dependency | BoxInfo | None,
 ) -> list[ConfiguredPackageRepositoryInfo]:
-    """The box's repositories at the native default priority.
-
-    Their packages are verified by `verifier_box`. Use None only for bootstrapping the root box, as
-    that has nothing to verify with."""
-    configured = []
+    """The box's repositories at the native default priority, verified in `verifier_box` unless it is None."""
     keyrings = {}
+    configured = []
     for repository in repositories:
-        repo = repository[PackageRepositoryInfo]
-        rid = repository.label.name
-        if repo.dir == None:
-            fail("box: repository '{}' has no bootstrap directory".format(rid))
-        if repo.baseurl == None:
-            fail("box: repository '{}' has no bootstrap base URL".format(rid))
-        verifier = None
-        if verifier_box != None:
-            verifier = repository_verifier(ctx, verifier_box, rid, repo.signing_keys, repo.package_system, repo.dir, keyrings, repo.pinned_at)
-        configured.append(
-            ConfiguredPackageRepositoryInfo(
-                id = rid,
-                dependency = repository,
-                directory = repo.dir,
-                priority = _REPOSITORY_PRIORITY,
-                baseurl = repo.baseurl,
-                packages = repository[PackagePoolInfo].value,
-                verifier = verifier,
-            )
-        )
+        check_repository("box", repository)
+        configured.append(configure_repository(ctx, repository, _REPOSITORY_PRIORITY, package_system, verifier_box, keyrings))
     return configured
 
 def _solve(
@@ -137,7 +116,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.attrs.enable_repository_groups,
         ctx.attrs.disable_repository_groups,
     )
-    configured_repositories = _configure_repositories(ctx, repositories, None)
+    configured_repositories = _box_repositories(ctx, repositories, package_system, None)
     parent = ctx.attrs.parent
     names = _effective_packages(ctx.attrs.packages, parent, package_system)
 
@@ -200,7 +179,10 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     packages = select_package_artifacts(
         ctx,
         transaction,
-        repositories = _configure_repositories(ctx, repositories, installer_box),
+        # With the resolver box as a dependency, the keyrings are anonymous targets. Every box that
+        # resolves through the same resolver box shares them. A root box has no resolver box and verifies
+        # with its stage1 root, which is no target.
+        repositories = _box_repositories(ctx, repositories, package_system, resolver_dep if resolver_dep != None else installer_box),
         suffix = system.package_suffix,
         installed = installed,
     )
@@ -300,13 +282,14 @@ _box = rule(
 def _box_lock_impl(ctx: AnalysisContext) -> list[Provider]:
     release = ctx.attrs.release[OsReleaseInfo]
     resolver_box = ctx.attrs.resolver_box if ctx.attrs.resolver_box != None else release.box
-    repositories = _configure_repositories(
+    repositories = _box_repositories(
         ctx,
         select_repositories(
             release.repository_universe,
             ctx.attrs.enable_repository_groups,
             ctx.attrs.disable_repository_groups,
         ),
+        release.package_system,
         None,
     )
     packages = _effective_packages(ctx.attrs.packages, ctx.attrs.parent, release.package_system)

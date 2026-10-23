@@ -73,6 +73,7 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
             install_packages(
                 ctx,
                 package_manager_dep,
+                base_buildroot.box,
                 ctx.attrs.build_requires,
                 stack = buildroot,
                 extra_packages = extra_packages,
@@ -95,7 +96,7 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     sub_outputs = {s: subpackages.project(s + ".rpm") for s in ctx.attrs.subpackages}
 
     build = cmd_args(
-        box_run(box = package_manager.box[BoxInfo], exe = system.build),
+        box_run(box = base_buildroot.box[BoxInfo], exe = system.build),
         spec_args(
             ctx.actions,
             "build.spec.json",
