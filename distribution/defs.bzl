@@ -410,9 +410,9 @@ def distributed(
 def serves(name: str, architectures: list[str], in_box: bool = False) -> Select:
     """`target_compatible_with` for a target `name` that exists only for `architectures`, such as a release's repository.
 
-    A target that depends on the release's root box, such as the release and its package manager, sets
-    `in_box`. The release builds its root box only for `architectures`, so such a target is also
-    incompatible on a host whose architecture is not in `architectures`.
+    A target that depends on the release's root box, such as the release, its package manager and its
+    buildroot, sets `in_box`. The release builds its root box only for `architectures`, so such a target
+    is also incompatible on a host whose architecture is not in `architectures`.
     """
     unserved = select_incompatible("{} serves {} only".format(name, ", ".join(architectures)))
     if in_box and architecture.host() not in architectures:
