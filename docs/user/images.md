@@ -745,6 +745,29 @@ release, and so does a target that names no image. The excerpt below also gather
 }
 ```
 
+A release usually needs more than the built files, for example update metadata. A project can add such files
+with an author hook. `author_hook` names an executable that the rule runs as
+`<author_hook> --artifacts artifacts_<arch>.json --files <dir> --out-dir <dir> <author_hook_args>`.
+The `--files` directory holds the published files under their published names. The names in
+`author_hook_outputs` are taken from `--out-dir` into the release, beside the published files and
+`artifacts_<arch>.json`. Anything else the author hook writes is dropped, and a name that clashes fails.
+With `author_hook_local_only` the author hook runs on this host and is not cached, as for an external
+Secure Boot key. That makes it safe for the author to read host state such as a signing key. The flag
+grants no access of its own, so the project's author has to find and open that state itself.
+
+The author hook must only add to a release. It must not modify a published file or the listing, and every
+name in `author_hook_outputs` must be new. It also must not modify the files under `--files`. Those are the
+build's own outputs, and when the hook runs locally the directory links to them rather than holding copies.
+
+```Starlark
+image.artifacts(
+    name = "release",
+    targets = [":image", ":image[qcow2]", ":image[sbom]", ":image[pkgdb]", ":demo-ext"],
+    author_hook = ":release-author",  # a RunInfo: a box.run of the project's own driver
+    author_hook_outputs = ["targets_x86-64.json"],
+)
+```
+
 `image.DdiInfo` contains the optional `image.RootHashInfo` when verity is enabled. The completed
 `image.ImageInfo` includes the ESP layer, so another image can use the bootable image as its parent without
 relying on a generated

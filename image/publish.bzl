@@ -15,6 +15,10 @@ from a dynamic action: everything else in it is known while the graph is still b
 
 The release also carries info about each file. `artifacts_<arch>.json` lists published files with
 their kind and image, so a consumer can read roles rather than match on a naming scheme.
+An `author_hook` given to `image_artifacts` can read that listing about the files and add files of
+its own. This way a project may construct an update payload or describe a release in a custom
+format. The author hook must only add files and not modify. The release takes nothing from it but
+the names in `author_hook_outputs`. A name the release already holds fails the build.
 """
 
 load("//:specs.bzl", "spec_args")
@@ -84,8 +88,18 @@ Gathering = record(
     root_hashes = field(dict[str, Artifact]),
 )
 
+# This describes the author hook of a release. It holds the hook's command, the names it writes, and
+# how it runs.
+AuthorHook = record(
+    args = field(list[typing.Any]),
+    execution = field(dict[str, typing.Any]),
+    outputs = field(list[str]),
+    run = field(RunInfo),
+)
+
 def _assemble_impl(
     actions: AnalysisActions,
+    author_hook: AuthorHook | None,
     blocks: list[Artifact],
     directory: OutputArtifact,
     gathering: Gathering,
@@ -127,6 +141,30 @@ def _assemble_impl(
         fail("image_artifacts: {} is published by a target but is the name of the listing".format(listing_name))
     release = published | {listing_name: listing}
 
+    if author_hook != None:
+        # The author hook sees the files under their published names and writes into a directory
+        # of its own, from which the release links only the names in author_hook_outputs.
+        files = actions.symlinked_dir("files", published)
+        authored = actions.declare_output("authored", dir = True)
+        actions.run(
+            cmd_args(
+                author_hook.run,
+                "--artifacts",
+                listing,
+                "--files",
+                files,
+                "--out-dir",
+                authored.as_output(),
+                author_hook.args,
+            ),
+            category = "author_hook",
+            **author_hook.execution,
+        )
+        for name in author_hook.outputs:
+            if name in release:
+                fail("image_artifacts: author_hook output {} clashes with a published name".format(name))
+            release[name] = authored.project(name)
+
     # Symlinks, not copies: a release is mostly disk images, and every one of them already exists.
     actions.symlinked_dir(directory, release)
     return []
@@ -134,6 +172,7 @@ def _assemble_impl(
 _assemble = dynamic_actions(
     impl = _assemble_impl,
     attrs = {
+        "author_hook": dynattrs.option(dynattrs.value(AuthorHook)),
         "blocks": dynattrs.list(dynattrs.value(Artifact)),
         "directory": dynattrs.output(),
         "gathering": dynattrs.value(Gathering),
@@ -141,6 +180,35 @@ _assemble = dynamic_actions(
         "tree": dynattrs.dict(str, dynattrs.value(Artifact)),
     },
 )
+
+def _check_plain_name(what: str, name: str) -> str:
+    if "/" in name or name.startswith(".") or name == "":
+        fail("image_artifacts: {} must be a plain file name, got {!r}".format(what, name))
+    return name
+
+def _author_hook(ctx: AnalysisContext) -> AuthorHook | None:
+    if ctx.attrs.author_hook == None:
+        for what in ("author_hook_args", "author_hook_local_only", "author_hook_outputs"):
+            if getattr(ctx.attrs, what):
+                fail("image_artifacts: {} needs author_hook".format(what))
+        return None
+    if not ctx.attrs.author_hook_outputs:
+        fail("image_artifacts: author_hook needs author_hook_outputs")
+    for index, name in enumerate(ctx.attrs.author_hook_outputs):
+        _check_plain_name("author_hook output", name)
+        if name in ctx.attrs.author_hook_outputs[:index]:
+            fail("image_artifacts: author_hook output {} is listed twice".format(name))
+    execution = {}
+    if ctx.attrs.author_hook_local_only:
+        # As with an external signing key, what the author hook reads from the host is no action
+        # input.
+        execution = {"allow_cache_upload": False, "local_only": True}
+    return AuthorHook(
+        args = ctx.attrs.author_hook_args,
+        execution = execution,
+        outputs = ctx.attrs.author_hook_outputs,
+        run = ctx.attrs.author_hook[RunInfo],
+    )
 
 def _image_artifacts_impl(ctx: AnalysisContext) -> list[Provider]:
     if not ctx.attrs.targets:
@@ -183,6 +251,7 @@ def _image_artifacts_impl(ctx: AnalysisContext) -> list[Provider]:
     directory = ctx.actions.declare_output("artifacts", dir = True)
     ctx.actions.dynamic_output_new(
         _assemble(
+            author_hook = _author_hook(ctx),
             blocks = blocks,
             directory = directory.as_output(),
             gathering = Gathering(
@@ -204,6 +273,19 @@ image_artifacts = rule(
     impl = _image_artifacts_impl,
     attrs = {
         "arch": attrs.enum(ARCHITECTURES.keys(), default = architecture.configured(), doc = "The architecture the release is for. It names the listing."),
+        "author_hook": attrs.option(
+            attrs.dep(providers = [RunInfo]),
+            default = None,
+            doc = "This adds files to the release and never replaces one. It runs as <author_hook> --artifacts <listing> --files <dir> --out-dir <dir> <author_hook_args>.",
+        ),
+        "author_hook_args": attrs.list(attrs.arg(), default = [], doc = "These arguments are appended to the author hook's command."),
+        "author_hook_local_only": attrs.bool(
+            default = False,
+            doc = "This runs the author hook on this host and never caches it. It is for a hook that reads host state such as a signing key.",
+        ),
+        "author_hook_outputs": attrs.list(
+            attrs.string(), default = [], doc = "These are the file names the author hook writes to --out-dir. Each one joins the release."
+        ),
         "targets": attrs.list(
             attrs.dep(providers = [PublishedInfo]),
             doc = "the targets whose published artifacts make up the release",
