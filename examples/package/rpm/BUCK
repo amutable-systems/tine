@@ -5,6 +5,8 @@
 
 load("@tine//box:defs.bzl", "box")
 load("@tine//git:defs.bzl", "git")
+load("@tine//image:defs.bzl", "image")
+load("@tine//package:defs.bzl", "package")
 load("@tine//package_system/rpm:defs.bzl", "rpm")
 
 _BUILDROOT = "catalog//:fedora.rawhide.buildroot"
@@ -85,4 +87,40 @@ box.sh_test(
         "$(source hello_tree_check.py)",
         "$(location :hello-tree)",
     ],
+)
+
+# A derived package manager adds the locally built hello to the release's repositories. Fedora's
+# repositories contain a newer hello. The solver picks the local hello only if the derived package manager
+# gives the local repository its priority.
+package.local_repository(
+    name = "hello.repository",
+    packages = [":hello-archive"],
+)
+
+package.manager(
+    name = "hello.package-manager",
+    base = "catalog//:fedora.rawhide.package-manager",
+    additional_repositories = [":hello.repository"],
+)
+
+image.layer(
+    name = "hello-image.layer",
+    distro = "catalog//:fedora.rawhide.distribution",
+    package_manager = ":hello.package-manager",
+    packages = ["hello"],
+)
+
+image.archive(
+    name = "hello-image",
+    distro = "catalog//:fedora.rawhide.distribution",
+    format = "tar",
+    parent = ":hello-image.layer",
+)
+
+box.sh_test(
+    name = "hello-image-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = 'tar -tf "$1" | grep -E "^(\\./)?usr/share/tine-package/archive$" > /dev/null',
+    args = ["$(location :hello-image)"],
 )
