@@ -1273,7 +1273,7 @@ an image from those packages. Neither target exists in this repository.
 moves to the newest release in the index that its `releases` names.
 
 Update one or more pinned tools by name (`buck2`, `starlark-fmt`, `python3`, `ruff`, `ty`, `syft`,
-`cargo-auditable`, `seaweedfs`, `go`):
+`cargo-auditable`, `seaweedfs`, `go`, `gh`):
 
 ```sh
 tine bump --tool ruff --tool ty
