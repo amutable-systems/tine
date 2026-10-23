@@ -229,6 +229,13 @@ def for_package() -> dict[str, dict[str, str]]:
         return declared
     return {name: _describe(name, {"release": release}) for name, release in _CATALOG_RELEASES.items()}
 
+def package_manager() -> Select:
+    """Return the package manager of the release that a build chooses for this package."""
+    declared = for_package()
+    if not declared:
+        fail("distribution.package_manager(): this package declares no distribution, so name a package manager")
+    return by_distribution({described["release"]: described["package_manager"] for described in declared.values()})
+
 def _condition(key: str) -> str:
     if key == "DEFAULT":
         return key
@@ -389,5 +396,6 @@ distribution = struct(
     distributed = distributed,
     for_package = for_package,
     new = new,
+    package_manager = package_manager,
     set_for_package = set_for_package,
 )

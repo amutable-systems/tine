@@ -19,14 +19,8 @@ per-distribution aliases, such as `:image.fedora`.
 load("@tine//box:defs.bzl", "box")
 load("@tine//distribution:defs.bzl", "distribution")
 load("@tine//image:defs.bzl", "image")
-load("@tine//package:defs.bzl", "package")
 load("@tine//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load("@tine//tests:defs.bzl", "tests")
-
-package.manager(
-    name = "image.package-manager",
-    base = distribution.select({d["release"]: d["package_manager"] for d in distribution.for_package().values()}),
-)
 
 # This example serves two audiences, so it declares a key for each and picks: the tokens
 # `-c secure-boot-signing.{token,pin-file,socket}` configures, or pairs generated into buck-out for
@@ -78,13 +72,13 @@ _PCR_SIGNING = ":pcr-signing.token" if SIGN_WITH_TOKEN else ":pcr-signing"
 # its packages, its operations, and how the cpio the UKI carries is compressed.
 image.initrd(
     name = "image.initrd",
-    package_manager = ":image.package-manager",
+    package_manager = distribution.package_manager(),
     compression = "none",
 )
 
 image.disk(
     name = "image",
-    package_manager = ":image.package-manager",
+    package_manager = distribution.package_manager(),
     initrd = ":image.initrd",
     definitions = image.DEFAULT_SIGNED_USR_VERITY_PARTITIONS,
     package_sets = ["bootable"],
@@ -182,7 +176,7 @@ image.artifacts(
 # matters; the marker is for the smoke test's permissive counter-check.
 image.sysext(
     name = "demo-ext-unsigned",
-    package_manager = ":image.package-manager",
+    package_manager = distribution.package_manager(),
     ops = [image.ops.mkdir("/usr/share/tine-unsigned")],
     install_docs = False,
 )

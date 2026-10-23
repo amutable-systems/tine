@@ -1076,16 +1076,14 @@ Which distribution an image is built from is a configuration, and the target car
 `tine//distribution` declares two constraint settings, `distribution` and `family`. A catalog release
 declares one value of the distribution setting beside its other role targets, as
 `<family>.<release>.distribution`, and that target also sets the value of its family. The target is the key a
-`select()` branches on, and it is the incoming transition that sets the two values. A package maps
-releases to package managers with `distribution.select()`:
+`select()` branches on, and it is the incoming transition that sets the two values. An image takes the
+package manager of its release from `distribution.package_manager()`, which selects among the package
+managers of the package's releases:
 
 ```Starlark
-package.manager(
-    name = "image.package-manager",
-    base = distribution.select({
-        "<family>.<release>": "catalog//:<family>.<release>.package-manager",
-    }),
-)
+distribution.select({
+    "<family>.<release>": "catalog//:<family>.<release>.package-manager",
+})
 ```
 
 Every rule that declares a logical image accepts a `distro`. A target that names none is
