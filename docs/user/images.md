@@ -1109,19 +1109,20 @@ RELEASES = {
 Each key is the suffix of the alias that every image gets for that release. The key `fedora` declares
 `:boot-demo.fedora` beside `:boot-demo`. Each value is the `<family>.<release>` prefix of a release in the
 catalog. A project with its own catalog lists the releases of that catalog in its own `releases.bzl`.
-`distribution.for_package()` returns one entry per release, with the `release` name and the release's
-`distribution` and `package_manager` targets, so a BUCK file selects its package manager from the same
-table:
+
+`distribution.package_manager()` returns the package manager of the release that a build chooses. Pass
+it as an image's `package_manager`:
 
 ```Starlark
-package.manager(
-    name = "image.package-manager",
-    base = distribution.select({
-        d["release"]: d["package_manager"]
-        for d in distribution.for_package().values()
-    }),
+image.archive(
+    name = "demo",
+    package_manager = distribution.package_manager(),
+    packages = ["bash"],
+    format = "tar",
 )
 ```
+
+To add repositories of your own, pass it as the `base` of a `package.manager()` instead.
 
 A package that builds for other releases, or needs more per release, declares its own table in its
 `PACKAGE` file. Each entry's `release` names a release of the catalog. `package_manager` defaults to the
