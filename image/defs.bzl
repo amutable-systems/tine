@@ -61,7 +61,7 @@ load(
     "symlink",
     "write_file",
 )
-load(":publish.bzl", "PublishedInfo", "image_artifacts")
+load(":publish.bzl", "PublishedFile", "PublishedInfo", "image_artifacts")
 load(
     ":sign.bzl",
     "SigningKeyInfo",
@@ -136,4 +136,6 @@ image = struct(
     DiskConversionInfo = DiskConversionInfo,
     InitrdInfo = InitrdInfo,
     PublishedInfo = PublishedInfo,
+    # The record PublishedInfo keys by published name.
+    PublishedFile = PublishedFile,
 )

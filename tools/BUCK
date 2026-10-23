@@ -92,6 +92,8 @@ box.new(
             "dist-git-client",
             "gawk",
             "git-core",
+            # for the assertions over a release's description
+            "jq",
             # for the assertions over generated certificates
             "openssl",
             "rpm-build",

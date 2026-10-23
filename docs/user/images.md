@@ -684,15 +684,16 @@ boot has no `[uki]`, `[initrd]`, `[boot]` or `[ami]` subtargets, returns no `ima
 `image.PublishedInfo` is what a target contributes to a release, keyed by the name it is published under:
 for a disk the raw image, the UKI, the kernel and the initrd, plus the partitions, and for an
 extension its DDI. Each rule names what it builds, so anything gathering a release reads those
-names instead of composing names of its own. A partition is the exception and travels as a typed
-`PartitionInfo`: its name contains the
-type and UUID repart assigned, so it exists only after the build, and a consumer reads it back out of the
-metadata written beside the partition. The ESP is not published: what it carries is transferred by other
-means, and no update writes the partition back. The format subtargets publish themselves rather than
-travelling in the disk's own set, so gathering a release does not build every encoding of it. So do the
-metadata views: `[sbom]` publishes both formats and `[pkgdb]` one file named after the format its package
-system keeps the database in, each named after the image they describe, and for a disk `[initrd][sbom]`
-covers what only early boot has.
+names instead of composing names of its own. Each name maps to an `image.PublishedFile`, which holds the
+artifact, its kind and its optional subkind, and the provider's required `image` field names the image
+they belong to. Both end up in the release's description below. A partition is the exception and travels as a
+typed `PartitionInfo`: its name contains the type and UUID repart assigned, so it exists only after the
+build, and a consumer reads it back out of the metadata written beside the partition. The ESP is not
+published: what it carries is transferred by other means, and no update writes the partition back. The format
+subtargets publish themselves rather than travelling in the disk's own set, so gathering a release does not
+build every encoding of it. So do the metadata views: `[sbom]` publishes both formats and `[pkgdb]` one file
+named after the format its package system keeps the database in, each named after the image they describe,
+and for a disk `[initrd][sbom]` covers what only early boot has.
 A scanner then reads a release without unpacking anything in it, and a release that lists no view builds
 none.
 
@@ -707,9 +708,14 @@ image.artifacts(
 ```
 
 ```text
+artifacts_x86-64.json
+demo-ext_0_x86-64.sysext.Uapi16Manifest
 demo-ext_0_x86-64.sysext.raw
+demo-ext_0_x86-64.sysext.roothash
+image_0_x86-64.Uapi16Manifest
 image_0_x86-64.cdx.json
 image_0_x86-64.efi
+image_0_x86-64.esp.Uapi16Manifest
 image_0_x86-64.initrd
 image_0_x86-64.pkgdb.sqlite
 image_0_x86-64.qcow2
@@ -718,14 +724,82 @@ image_0_x86-64.spdx.json
 image_0_x86-64.usr-x86-64.0a72787674a137eaabf7aa97c82a72ee.raw
 image_0_x86-64.usr-x86-64-verity.94dcef64374b73274b88fe1a9ff45b31.raw
 image_0_x86-64.usr-x86-64-verity-sig.cb66a98640e5450aa028a8bf473ac0ea.raw
+image_0_x86-64.usr.Uapi16Manifest
 image_0_x86-64.vmlinuz
 ```
 
-The rule decides no name: it unions what each target published and reads a partition's name back from the
-metadata beside it, which is why it assembles the directory from a dynamic action. Two targets publishing
-one name is an error rather than a silent overwrite. The `usr` and `usr-verity` UUIDs above are the two
-halves of that build's verity root hash, and `%M_@v_%a.usr-%a.@u.raw` in a transfer is how
-systemd-sysupdate reads one back to give the partition it writes the UUID dissection pairs them by.
+The rule decides no name of a built file: it unions what each target published and reads a partition's name
+back from the metadata beside it, which is why it assembles the directory from a dynamic action. The only
+name it adds is its description's, see below. Two targets publishing one name is an error rather than a
+silent overwrite. The `usr` and `usr-verity` UUIDs above are the two halves of that build's verity root hash,
+and `%M_@v_%a.usr-%a.@u.raw` in a transfer is how systemd-sysupdate reads one back to give the partition it
+writes the UUID dissection pairs them by.
+
+The release carries a description of its files, `artifacts_<arch>.json`. The `arch` in its name and in its
+top-level `arch` key is the architecture the release is built for, spelled as systemd does, as in `x86-64`
+or `arm64`. It is part of the name so that the releases of several architectures can share one directory.
+The `files` key maps each published name to an entry with these fields:
+
+- `kind`: This says what kind of file it is, and the optional `subkind` refines it. A consumer that does not
+  care about the `subkind` matches on the `kind` alone. These are the kinds and their subkinds:
+  - `disk` with the format as its subkind, `raw`, `qcow2`, `raw.zst` or `vmdk`.
+  - `partition` with the type its definition gives as its subkind, such as `usr`, `usr-verity`,
+    `usr-verity-sig` or `root`.
+  - `uki`, `kernel` and `initrd`, which have no subkind.
+  - `extension` with its classes as its subkind, `sysext`, `confext` or `sysext+confext`.
+  - `portable`, which has no subkind.
+  - `roothash` is the verity root hash file of an extension or a portable image and has no subkind.
+  - `sbom` with the format as its subkind, `spdx` or `cyclonedx`.
+  - `pkgdb` with the package system as its subkind, `rpm`, `deb` or `pacman`.
+  - `listing` with the subkind `uapi16manifest`.
+  - `ami` is the [AMI](aws.md) registration parameters and has no subkind.
+- `image`: This names the image the file belongs to. All files of one image share this value, so a consumer
+  can find the usr partition that goes with a UKI, or the SBOM that describes an extension, without parsing
+  names. For a disk it is the prefix the disk's files are published under, `image_0_x86-64` above. For an
+  extension or a portable image it is the DDI's file name without `.raw`, `demo-ext_0_x86-64.sysext`
+  above, so that a sysext and a confext of one name are two images. The initrd's SBOM and package database
+  describe the initrd rather than the disk, so they form an image of their own named `<prefix>.initrd`. The
+  initrd file itself stays in the disk's image.
+- `root_hash`: This is the verity root hash of the partition verity protects in a disk, or of an extension
+  or a portable image. Other files have no `root_hash`.
+
+A consumer can match on these fields rather than file names. The excerpt below also gathers
+`:image[initrd][sbom]`.
+
+```json
+{
+  "arch": "x86-64",
+  "files": {
+    "demo-ext_0_x86-64.sysext.raw": {
+      "image": "demo-ext_0_x86-64.sysext",
+      "kind": "extension",
+      "root_hash": "…",
+      "subkind": "sysext"
+    },
+    "image_0_x86-64.cdx.json": {
+      "image": "image_0_x86-64",
+      "kind": "sbom",
+      "subkind": "cyclonedx"
+    },
+    "image_0_x86-64.efi": {
+      "image": "image_0_x86-64",
+      "kind": "uki"
+    },
+    "image_0_x86-64.initrd.spdx.json": {
+      "image": "image_0_x86-64.initrd",
+      "kind": "sbom",
+      "subkind": "spdx"
+    },
+    "image_0_x86-64.usr-x86-64.0a72787674a137eaabf7aa97c82a72ee.raw": {
+      "image": "image_0_x86-64",
+      "kind": "partition",
+      "root_hash": "0a72787674a137eaabf7aa97c82a72ee94dcef64374b73274b88fe1a9ff45b31",
+      "subkind": "usr"
+    }
+  }
+}
+```
+
 `image.DdiInfo` contains the optional `image.RootHashInfo` when verity is enabled. The completed
 `image.ImageInfo` includes the ESP layer, so another image can use the bootable image as its parent without
 relying on a generated

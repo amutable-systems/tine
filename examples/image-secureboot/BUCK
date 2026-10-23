@@ -283,11 +283,12 @@ box.sh_test(
     test = "release-artifacts.sh",
     args = ["$(location :release)", "$(location :image[roothash])"]
     + architecture.select({name: [spellings.systemd] for name, spellings in ARCHITECTURES.items()})
-    # Each package system publishes its package database in its own file format.
+    # Each package system publishes its package database in its own file format, and the release's
+    # description names the package system.
     + distribution.select({
-        "arch": ["tar.zst"],
-        "debian": ["tar.zst"],
-        "fedora": ["sqlite"],
+        "arch": ["tar.zst", "pacman"],
+        "debian": ["tar.zst", "deb"],
+        "fedora": ["sqlite", "rpm"],
     }),
     **distribution.distributed("release-artifacts-test"),
 )
