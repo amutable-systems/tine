@@ -691,6 +691,7 @@ image.artifacts(
 ```
 
 ```text
+artifacts_x86-64.json
 demo-ext_0_x86-64.sysext.raw
 image_0_x86-64.cdx.json
 image_0_x86-64.efi
@@ -710,6 +711,63 @@ metadata beside it, which is why it assembles the directory from a dynamic actio
 one name is an error rather than a silent overwrite. The `usr` and `usr-verity` UUIDs above are the two
 halves of that build's verity root hash, and `%M_@v_%a.usr-%a.@u.raw` in a transfer is how
 systemd-sysupdate reads one back to give the partition it writes the UUID dissection pairs them by.
+
+The release carries a file `artifacts_<arch>.json`, which says more about a published file. The `arch` is
+spelled as systemd does, as in `x86-64` or `arm64`. Each entry has the following fields:
+
+- `kind`: This says what kind of file it is. It is `uki`, `kernel`, `initrd`, `disk` (the raw disk), the
+  wrapping format (`qcow2`, `raw.zst`, `vmdk`), partition type (`usr`, `usr-verity`, `usr-verity-sig`),
+  `sysext`, `confext`, `extension` (an extension DDI with both classes), `portable`, `roothash` (the verity
+  root hash file of such a DDI), `sbom`, `pkgdb`, or `listing` (a `Uapi16Manifest`).
+  A partition type is given without an explicit architecture, so `usr-x86-64-verity` becomes `usr-verity`.
+- `image`: This names the image the file belongs to. All files of one image share this value, so a consumer
+  can find the usr partition that goes with a UKI, or the SBOM that describes an extension, without parsing
+  names. The value is the prefix those files are published under. In the example above it is
+  `image_0_x86-64`. The initrd's SBOM and package database describe the initrd rather than the disk, so they
+  form a group of their own named `<prefix>.initrd`. The initrd file itself stays in the disk's group.
+- `root_hash`: This is the verity root hash of a usr partition, an extension, or a portable image.
+
+A consumer can match on these fields rather than file names. A published name without a kind fails the
+release, and so does a target that names no image. The excerpt below also gathers `:image[initrd][sbom]`.
+
+```json
+{
+ "arch": "x86-64",
+ "files": {
+  "image_0_x86-64.efi": {"image": "image_0_x86-64", "kind": "uki"},
+  "image_0_x86-64.usr-x86-64.0a72787674a137eaabf7aa97c82a72ee.raw": {
+   "image": "image_0_x86-64", "kind": "usr", "root_hash": "0a72787674a137eaabf7aa97c82a72ee94dcef64374b73274b88fe1a9ff45b31"
+  },
+  "image_0_x86-64.spdx.json": {"image": "image_0_x86-64", "kind": "sbom"},
+  "image_0_x86-64.initrd.spdx.json": {"image": "image_0_x86-64.initrd", "kind": "sbom"},
+  "demo-ext_0_x86-64.sysext.raw": {"image": "demo-ext_0_x86-64", "kind": "sysext", "root_hash": "…"}
+ }
+}
+```
+
+A release usually needs more than the built files, for example update metadata. A project can add such files
+with an author hook. `author_hook` names an executable that the rule runs as
+`<author_hook> --artifacts artifacts_<arch>.json --files <dir> --out-dir <dir> <author_hook_args>`.
+The `--files` directory holds the published files under their published names. The names in
+`author_hook_outputs` are taken from `--out-dir` into the release, beside the published files and
+`artifacts_<arch>.json`. Anything else the author hook writes is dropped, and a name that clashes fails.
+With `author_hook_local_only` the author hook runs on this host and is not cached, as for an external
+Secure Boot key. That makes it safe for the author to read host state such as a signing key. The flag
+grants no access of its own, so the project's author has to find and open that state itself.
+
+The author hook must only add to a release. It must not modify a published file or the listing, and every
+name in `author_hook_outputs` must be new. It also must not modify the files under `--files`. Those are the
+build's own outputs, and when the hook runs locally the directory links to them rather than holding copies.
+
+```Starlark
+image.artifacts(
+    name = "release",
+    targets = [":image", ":image[qcow2]", ":image[sbom]", ":image[pkgdb]", ":demo-ext"],
+    author_hook = ":release-author",  # a RunInfo: a box.run of the project's own driver
+    author_hook_outputs = ["targets_x86-64.json"],
+)
+```
+
 `image.DdiInfo` contains the optional `image.RootHashInfo` when verity is enabled. The completed
 `image.ImageInfo` includes the ESP layer, so another image can use the bootable image as its parent without
 relying on a generated

@@ -88,6 +88,7 @@ def _declare_preset(
     systemd_arch: str,
     basename: str,
     filename: str,
+    kind: str,
     copy_files: list[str],
     seed: str | None,
     verity_key: SigningKeyInfo | None,
@@ -131,6 +132,12 @@ def _declare_preset(
             info.disk.basename: info.disk,
             info.manifest.basename: info.manifest,
             info.root_hash.hash.basename: info.root_hash.hash,
+        },
+        image = basename,
+        kinds = {
+            info.disk.basename: kind,
+            info.manifest.basename: "listing",
+            info.root_hash.hash.basename: "roothash",
         },
     )
     return image_providers(
@@ -217,6 +224,8 @@ def declare_extension(
         # systemd recognizes the suffixes .sysext.raw and .confext.raw. No suffix names a DDI with
         # the two classes, so it gets the plain .raw suffix.
         filename = basename + (suffixes[0] if len(suffixes) == 1 else ""),
+        # The listing names the class of a DDI with one class, and "extension" for one with both.
+        kind = classes[0] if len(classes) == 1 else "extension",
         copy_files = copy_files,
         seed = seed,
         verity_key = verity_key,
@@ -257,6 +266,7 @@ def declare_portable(
         # portablectl takes the image name from the file name up to the first "_", and
         # systemd-sysupdate matches a transfer against <name>_<version>_<arch>.raw.
         filename = basename,
+        kind = "portable",
         copy_files = ["/"],
         seed = seed,
         verity_key = verity_key,
