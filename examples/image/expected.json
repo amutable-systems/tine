@@ -1,7 +1,7 @@
 {
   "arm64": {
     "boot-demo.fedora": {
-      "sha256": "8665a4c963a1fb864bcc9a6a3b99e93f24f15de8d82e2c590154d49bf8737158"
+      "sha256": "b3eabadfa3be5d846b7b714083d0110de7859f0fec5d3ba3b4a830e4298bad59"
     },
     "boot-demo.fedora[boot][initrd]": {
       "sha256": "416d17586fd07a6ca4b1cdd714ddddebcdb1b387408080d74120d38775b429d3"
@@ -13,10 +13,10 @@
       "sha256": "0ac5a443ac328179a14201c1af1745d10ca38ea92781513fc726a7ecf77d9452"
     },
     "boot-demo.fedora[disk-manifest]": {
-      "sha256": "6a8b96e72fb62223eaf7833246d744924e49bbceb4575dc8d89c21b99ec1d73a"
+      "sha256": "3ce941642b974ca0d0b07fc759d61c9fd0eaed2f839ae74232c49c1cdbe40a63"
     },
     "boot-demo.fedora[manifests][esp]": {
-      "sha256": "fea3c484d6358020b29ce5a7eb832d7ed4f7f70245a911d51daa37ff9c0a7133"
+      "sha256": "b808be5c2c6210d4b743c32d6e9bfa4c3abc27f3424db763483f165210a44f76"
     },
     "boot-demo.fedora[manifests][usr]": {
       "sha256": "ee8f1a4cfe60b59d09431b9b3817d79847a8bb1c88898c343f623ddab16c4344"
@@ -36,7 +36,7 @@
   },
   "x86_64": {
     "boot-demo.fedora": {
-      "sha256": "cc34a41708354aaeb63e011f7b1e88515a6e864da5e3bf1422d21b9fd1d94798"
+      "sha256": "ea149bd5f2e3c9a5609f7811fcae9600f78ca7c62678d2bd4ff3f634731fc3ec"
     },
     "boot-demo.fedora[boot][initrd]": {
       "sha256": "2351cb6b3740905b5ff8a0db73bc69806f18b0adc95ca4cf52a911dab624bd91"
@@ -48,10 +48,10 @@
       "sha256": "729bef5cf49ebe7e08d8858f06bb62d8d955ccaf783626c86c1d8fcade3c246d"
     },
     "boot-demo.fedora[disk-manifest]": {
-      "sha256": "b4b28aa23845f4da0ff054974371187e4f495903b972f9c7c0d2d3a1c6235909"
+      "sha256": "3ce1630ed7e2c0115f236e6e80e709ee1c5f85ebda844876d9101d14f603aa19"
     },
     "boot-demo.fedora[manifests][esp]": {
-      "sha256": "baeda051d9c26ccf8534e676339fd69fcde429db4ac366ec28fc04e1b6a43c70"
+      "sha256": "da1bced2ab13ce1f29a141835463622b6ef96980cb7f016da4ba7c99410452be"
     },
     "boot-demo.fedora[manifests][usr]": {
       "sha256": "ac3924de3373b7ee354d8b644757fbed32e53b4d814e0b633969fbeef2082dd4"
