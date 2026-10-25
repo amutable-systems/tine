@@ -3,15 +3,15 @@
     "files": [
       {
         "out": "dists/testing/InRelease",
-        "sha256": "a44ac1da4950e6e806b256ceeac0434cf84cbff535f3d5b33006b2c8bde22b13",
+        "sha256": "64ed65b31258e0fcd325f9a580f26969e7c198cdcb780ceb02beac1fdd33afc6",
         "size": 150773,
-        "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/dists/testing/InRelease"
+        "url": "https://snapshot.debian.org/archive/debian/20261024T203415Z/dists/testing/InRelease"
       },
       {
         "out": "dists/testing/contrib/binary-amd64/Packages.xz",
-        "sha256": "6c0a5b9c64e19a4a22fa8290ed8e85fb4ba5215d33d468ed8eb88419e0449604",
-        "size": 47956,
-        "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/dists/testing/contrib/binary-amd64/by-hash/SHA256/6c0a5b9c64e19a4a22fa8290ed8e85fb4ba5215d33d468ed8eb88419e0449604"
+        "sha256": "95c8f4bc3910bf27e87ddf3f98b3b0cc58828a1c99ae206cd7da84a1d4f30811",
+        "size": 48332,
+        "url": "https://snapshot.debian.org/archive/debian/20261024T203415Z/dists/testing/contrib/binary-amd64/by-hash/SHA256/95c8f4bc3910bf27e87ddf3f98b3b0cc58828a1c99ae206cd7da84a1d4f30811"
       }
     ],
     "inline": {}
@@ -202,8 +202,10 @@
     "a986152f9eef0ba9b6bc54fd4b81503c9ab1a8cd3ba16a4d9fb8392899fe11d0": {"location":"pool/contrib/r/reminiscence/reminiscence_0.2.1-3_amd64.deb","size":114760},
     "a9a5434417d5e420c8a53b7fc2da05c9c50f44d6d9b2227ff89e9614e9f360ea": {"location":"pool/contrib/r/ruby-googlecharts/ruby-googlecharts_1.6.12-3_all.deb","size":16092},
     "adc9ffa75572adfd80d3b2b3cf8e1075f32f32d615b7ca26cae485954ccbb4b8": {"location":"pool/contrib/z/zfs-linux/zfs-dkms_2.4.4-1_all.deb","size":2519076},
+    "ae9c52524acebce76c0c4d24054041b453f492dd6ae727415343c86110d9a8f5": {"location":"pool/contrib/e/exult/exult-studio_1.12.1-3_amd64.deb","size":1626356},
     "b095e1b688f0a648b1b3403b3e20264000b3ccf09e30fad97b45abdc4e2c4347": {"location":"pool/contrib/n/nvidia-support/nvidia-installer-cleanup_20240109+1_amd64.deb","size":13924},
     "b0f6e9b035a70d52e1488a73d2b5889624592429cdf1b41b6751de00c1055889": {"location":"pool/contrib/h/hannah-foo2zjs/hannah-foo2zjs_6+b1_amd64.deb","size":16684},
+    "b18aece8524268f52444579cb52b7e302756c984440689f44ebddc84d6a7a2cb": {"location":"pool/contrib/e/exult/exult_1.12.1-3_amd64.deb","size":8869380},
     "b2a4c1d493976e9e7c8654511f1d78a800b806950ae25c073207247c3917fd8d": {"location":"pool/contrib/t/taradino/taradino_20251222-2_amd64.deb","size":452216},
     "b35743447d7f00793fd05e4cbef57fc0aaf2930e0494bd0921d9938a2e849a00": {"location":"pool/contrib/z/zfs-linux/libnvpair3linux_2.4.4-1_amd64.deb","size":58016},
     "b3b421ea8566a5338af72f5dcb635ec69cc9075d4d7569b5ae0301a4dcd5eb67": {"location":"pool/contrib/e/esix/esix_1-4_all.deb","size":41692},

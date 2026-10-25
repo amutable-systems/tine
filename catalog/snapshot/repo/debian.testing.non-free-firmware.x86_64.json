@@ -3,15 +3,15 @@
     "files": [
       {
         "out": "dists/testing/InRelease",
-        "sha256": "a44ac1da4950e6e806b256ceeac0434cf84cbff535f3d5b33006b2c8bde22b13",
+        "sha256": "64ed65b31258e0fcd325f9a580f26969e7c198cdcb780ceb02beac1fdd33afc6",
         "size": 150773,
-        "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/dists/testing/InRelease"
+        "url": "https://snapshot.debian.org/archive/debian/20261024T203415Z/dists/testing/InRelease"
       },
       {
         "out": "dists/testing/non-free-firmware/binary-amd64/Packages.xz",
         "sha256": "d799cd66f274cf6496f2dc3c8301e95e16f72e06ff5575540a5339ebfb5d0e77",
         "size": 10596,
-        "url": "https://snapshot.debian.org/archive/debian/20261017T204620Z/dists/testing/non-free-firmware/binary-amd64/by-hash/SHA256/d799cd66f274cf6496f2dc3c8301e95e16f72e06ff5575540a5339ebfb5d0e77"
+        "url": "https://snapshot.debian.org/archive/debian/20261024T203415Z/dists/testing/non-free-firmware/binary-amd64/by-hash/SHA256/d799cd66f274cf6496f2dc3c8301e95e16f72e06ff5575540a5339ebfb5d0e77"
       }
     ],
     "inline": {}

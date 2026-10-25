@@ -33,7 +33,7 @@ fedora_release(
     architectures = _FEDORA_ARCHITECTURES,
     box = ":fedora.rawhide.box",
     rpmrepo_mirror = "https://rpmrepo-gateway.amutable.workers.dev/v2/mirror/public/f46",
-    rpmrepo_snapshot = "f46-$basearch-rawhide-20261017",
+    rpmrepo_snapshot = "f46-$basearch-rawhide-20261024",
     # should be at most two; drop the previous version after the regular mass rebuild is done
     signing_keys = fedora_signing_keys("46", "45"),
     visibility = ["PUBLIC"],
@@ -97,7 +97,7 @@ box.new(
 arch_release(
     name = "arch.rolling",
     architectures = _ARCH_ARCHITECTURES,
-    archive_snapshot = "2026/10/17",
+    archive_snapshot = "2026/10/24",
     box = ":arch.rolling.box",
     signing_keys = arch_signing_keys(),
     visibility = ["PUBLIC"],
@@ -148,7 +148,7 @@ box.new(
 debian_release(
     name = "debian.testing",
     architectures = _DEBIAN_ARCHITECTURES,
-    archive_snapshot = "20261017T204620Z",
+    archive_snapshot = "20261024T203415Z",
     box = ":debian.testing.box",
     # The archive signs a Release with its current key and with the previous key.
     signing_keys = debian_signing_keys("archive-key-12", "archive-key-13"),
