@@ -131,7 +131,6 @@ box.python_test(
     ],
     env = {
         "TY_TEST_BINARY": "$(location_exec :ty)",
-        "TY_TEST_BOX": "$(location_exec catalog//:fedora.rawhide.box)",
         "TY_TEST_PYTHON": "$(location_exec :python3)",
     },
     deps = ["//:util"],
@@ -346,6 +345,13 @@ command_alias(
 command_alias(
     name = "ty-config",
     args = ["ty-config"],
+    exe = ":dev",
+    visibility = ["PUBLIC"],
+)
+
+command_alias(
+    name = "ty-check",
+    args = ["ty-check"],
     exe = ":dev",
     visibility = ["PUBLIC"],
 )

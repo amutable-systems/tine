@@ -117,6 +117,21 @@ class TyPackages(unittest.TestCase):
         }
         for package in ("cargo", "go", "shared"):
             (self.root / package).mkdir()
+        # The layers of a box, bottom first. Each module is installed where one of the distributions
+        # installs it. shadowed.py is in both layers, and the upper layer's VALUE is an int.
+        self.layers = [self.root / "box/lower", self.root / "box/upper"]
+        for layer, module, text in (
+            (self.layers[0], "usr/lib64/python3.14/site-packages/libdnf5.py", ""),
+            (self.layers[0], "usr/lib/python3/dist-packages/createrepo_c.py", ""),
+            (self.layers[0], "usr/lib/python3.14/site-packages/shadowed.py", 'VALUE: str = "lower"\n'),
+            (self.layers[1], "usr/lib/python3.14/site-packages/pefile.py", ""),
+            (self.layers[1], "usr/lib/python3.14/site-packages/shadowed.py", "VALUE: int = 42\n"),
+        ):
+            (layer / module).parent.mkdir(parents=True, exist_ok=True)
+            (layer / module).write_text(text)
+        # The box's [layers] subtarget lists the layers relative to the project.
+        self.listing = self.root / "box/layers.json"
+        self.listing.write_text(json.dumps([str(layer.relative_to(self.root)) for layer in self.layers]))
         for package in ("cargo", "go"):
             (self.root / package / "pyproject.toml").write_text("# Python project marker for Zed.\n")
         (self.root / "ty.toml").write_text(
@@ -127,6 +142,17 @@ class TyPackages(unittest.TestCase):
         (self.root / "shared/helper.py").write_text("from util import VALUE\n")
         (self.root / "util.py").write_text("VALUE: int = 42\n")
 
+    def buck_output(self, command: str, *arguments: str) -> str:
+        """Answer the Buck commands the editor's ty runs for the fixture."""
+        match (command, *arguments):
+            case ("uquery", *_):
+                return json.dumps(self.targets)
+            case ("build", "--show-full-simple-output", "catalog//:fedora.rawhide.box[layers]"):
+                return str(self.listing)
+            case ("root", "--kind", "project"):
+                return str(self.root)
+        self.fail(f"unexpected Buck command: {command} {arguments}")
+
     def launch(self, package: str) -> tuple[list[str], dict[str, str]]:
         args = argparse.Namespace(
             package=package,
@@ -135,19 +161,9 @@ class TyPackages(unittest.TestCase):
             arguments=["server"],
         )
 
-        def buck_output(command: str, *arguments: str) -> str:
-            if command == "uquery":
-                return json.dumps(self.targets)
-            self.assertEqual(
-                (command, *arguments),
-                ("build", "--show-full-simple-output", "catalog//:fedora.rawhide.box"),
-            )
-            # Buck returns an absolute output path; the fixture's project lives elsewhere.
-            return str(Path(os.environ["TY_TEST_BOX"]).absolute()) + "\n"
-
         with (
             mock.patch.object(dev, "_cell_root", return_value=self.root),
-            mock.patch.object(dev, "buck_output", side_effect=buck_output),
+            mock.patch.object(dev, "buck_output", side_effect=self.buck_output),
             mock.patch.object(dev.os, "execve") as execute,
         ):
             dev._ty(args)
@@ -157,7 +173,7 @@ class TyPackages(unittest.TestCase):
     def test_builds_a_box_only_for_opted_in_packages(self) -> None:
         # The generated config is read outside Buck's working directory.
         python = Path(os.environ["TY_TEST_PYTHON"]).absolute()
-        with mock.patch.object(dev, "buck_output", return_value="/box\n") as buck:
+        with mock.patch.object(dev, "buck_output", side_effect=self.buck_output) as buck:
             for package in (".", "cargo", "go"):
                 with self.subTest(package=package):
                     self.assertEqual(
@@ -168,9 +184,21 @@ class TyPackages(unittest.TestCase):
             (self.root / "go/pyproject.toml").write_text(
                 '[tool.tine.ty]\nbox = "catalog//:fedora.rawhide.box"\n'
             )
-            self.assertEqual(dev._ty_environment(self.root, Path("go"), python), {"python": "/box/usr"})
-            buck.assert_called_once_with(
-                "build", "--show-full-simple-output", "catalog//:fedora.rawhide.box"
+            lower, upper = self.layers
+            self.assertEqual(
+                dev._ty_environment(self.root, Path("go"), python),
+                {
+                    "python": str(python),
+                    "extra-paths": [
+                        str(upper / "usr/lib/python3.14/site-packages"),
+                        str(lower / "usr/lib/python3.14/site-packages"),
+                        str(lower / "usr/lib64/python3.14/site-packages"),
+                        str(lower / "usr/lib/python3/dist-packages"),
+                    ],
+                },
+            )
+            buck.assert_any_call(
+                "build", "--show-full-simple-output", "catalog//:fedora.rawhide.box[layers]"
             )
 
     def test_rejects_invalid_packages(self) -> None:
@@ -386,3 +414,9 @@ class TyPackages(unittest.TestCase):
                         self.assertEqual([item["code"] for item in diagnostics], ["unresolved-import"] * 3)
                     else:
                         self.assertEqual(diagnostics, [])
+
+            with self.subTest(package="go", import_name="upper layer"):
+                diagnostics = go.check(
+                    self.root / "go/layer_probe.py", "from shadowed import VALUE\nvalue: int = VALUE\n"
+                )
+                self.assertEqual(diagnostics, [])

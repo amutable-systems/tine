@@ -363,22 +363,48 @@ def _ty_zed_files(cell: Path, targets: dict[str, dict[str, list[str]]]) -> None:
         write_if_changed(settings, marker + json.dumps(configuration, indent=2) + "\n")
 
 
+def _box_search_paths(layers: Sequence[Path]) -> list[Path]:
+    """The directories of a box's layers that contain third-party Python modules, top layer first.
+
+    ty reads one Python environment, and a box splits its packages over several layers. ty takes the
+    standard library from its own stubs, so the box only has to provide these search paths.
+    """
+    return [
+        directory
+        for layer in reversed(layers)
+        # Debian installs modules into dist-packages, and Fedora installs compiled ones under lib64.
+        for pattern in ("usr/lib*/python3*/site-packages", "usr/lib/python3/dist-packages")
+        for directory in sorted(layer.glob(pattern))
+    ]
+
+
 def _ty_environment(cell: Path, package: Path, python: Path) -> dict[str, object]:
-    """Select pinned Python or the package's explicitly requested box-provided imports."""
+    """Select pinned Python and the package's explicitly requested box-provided imports."""
     manifest = cell / package / "pyproject.toml"
     config = tomllib.loads(manifest.read_text(encoding="utf-8")) if manifest.is_file() else {}
+    # The editor reads this from .buck, not the working directory of the Buck command.
+    environment: dict[str, object] = {"python": str(python.absolute())}
     box = config.get("tool", {}).get("tine", {}).get("ty", {}).get("box")
     if box is not None:
         if not isinstance(box, str) or not box.endswith(".box"):
             fail(f"{manifest}: tool.tine.ty.box must name a Buck box target")
         # Tests use boxes even for stdlib-only sources, so their runtime is not an editor requirement.
         # Build the explicitly chosen box only for the package whose server is starting.
-        outputs = buck_output("build", "--show-full-simple-output", box).splitlines()
-        if len(outputs) != 1:
-            fail(f"{manifest}: expected one box output for {box}, got {outputs}")
-        python = Path(outputs[0]) / "usr"
-    # The editor reads this from .buck, not the working directory of the Buck command.
-    return {"python": str(python.absolute())}
+        listing = Path(buck_output("build", "--show-full-simple-output", f"{box}[layers]"))
+        project = Path(buck_output("root", "--kind", "project"))
+        layers = [project / layer for layer in json.loads(listing.read_text(encoding="utf-8"))]
+        environment["extra-paths"] = [str(path) for path in _box_search_paths(layers)]
+    return environment
+
+
+def _ty_check(args: argparse.Namespace) -> None:
+    command = [args.ty, "check", "--project", args.project, "--python", args.python]
+    for path in _box_search_paths(args.layer):
+        command += ["--extra-search-path", str(path)]
+    if returncode := subprocess.run([*command, *args.files]).returncode:
+        sys.exit(returncode)
+    # ty reports through its exit status alone, so the output Buck tracks only says that it passed.
+    args.output.touch()
 
 
 def _ty(args: argparse.Namespace) -> None:
@@ -450,6 +476,15 @@ def main(argv: list[str] | None = None) -> None:
     ty_config.add_argument("--pyproject", type=Path, required=True)
     ty_config.add_argument("--output", type=Path, required=True)
     ty_config.set_defaults(func=_ty_config)
+
+    ty_check = sub.add_parser("ty-check", help="type-check against the pinned Python and a box's layers")
+    ty_check.add_argument("--python", required=True, help="pinned standalone Python")
+    ty_check.add_argument("--ty", required=True)
+    ty_check.add_argument("--layer", type=Path, action="append", default=[], help="box layer, bottom first")
+    ty_check.add_argument("--output", type=Path, required=True)
+    ty_check.add_argument("--project", required=True, help="the isolated tree with its ty.toml")
+    ty_check.add_argument("files", nargs="+")
+    ty_check.set_defaults(func=_ty_check)
 
     ty = sub.add_parser("ty", help="run pinned ty in a package's Python environment")
     ty.add_argument("--python", required=True, help="pinned standalone Python for stdlib-only packages")

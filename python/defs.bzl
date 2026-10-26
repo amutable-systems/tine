@@ -40,46 +40,26 @@ def _ty_check_impl(ctx: AnalysisContext) -> list[Provider]:
     contents["ty.toml"] = config
     tree = ctx.actions.symlinked_dir("tree", contents)
 
-    # ty reports through its exit status alone, so stamp the output buck tracks once it is happy.
-    runner = ctx.actions.write(
-        "run.sh",
-        [
-            "#!/bin/sh",
-            "set -eu",
-            'output="$1"',
-            "shift",
-            '"$@"',
-            ': > "$output"',
-        ],
-        is_executable = True,
-    )
-
-    # ty runs on the host and reads the interpreter and site-packages from one `--python` directory
-    # directly in buck-out/. If we ever want/need to support running ty on a layered box, this has to
-    # create a sandbox which does the overlaying, and run ty in that.
-    def single_layer(box: Dependency) -> Artifact:
-        layers = box[BoxInfo].layers
-        if len(layers) != 1:
-            fail("ty_check: {} is a layered box, not currently supported".format(box.label.raw_target()))
-        return layers[0]
-
     # A driver's third-party imports resolve inside the box it runs in, so check it once per declared
     # box. Always name an environment, since ty otherwise falls back to the host interpreter and a
     # driver's imports would resolve against whatever the developer happens to have installed.
-    environments = {box.label.name: cmd_args(single_layer(box), format = "{}/usr") for box in ctx.attrs.boxes}
+    environments = {box.label.name: box[BoxInfo].layers for box in ctx.attrs.boxes}
     outputs = []
-    for name, python in (environments or {"stdlib": cmd_args(ctx.attrs._python[DefaultInfo].default_outputs[0])}).items():
+    for name, layers in (environments or {"stdlib": []}).items():
         output = ctx.actions.declare_output("checked-" + name)
         command = cmd_args(
-            runner,
-            output.as_output(),
+            ctx.attrs._ty_check[RunInfo],
+            "--ty",
             ctx.attrs._ty[RunInfo],
-            "check",
+            "--python",
+            ctx.attrs._python[DefaultInfo].default_outputs[0],
             "--project",
             tree,
-            "--python",
-            python,
+            "--output",
+            output.as_output(),
         )
+        for layer in layers:
+            command.add("--layer", layer)
         command.add([tree.project(path) for path in check])
         ctx.actions.run(command, category = "ty", identifier = name)
         outputs.append(output)
@@ -97,6 +77,7 @@ _ty_check = rule(
         "_config_tool": attrs.exec_dep(default = "tine//tools:ty-config", providers = [RunInfo]),
         "_python": attrs.exec_dep(default = "tine//tools:python3"),
         "_ty": attrs.exec_dep(default = "tine//tools:ty", providers = [RunInfo]),
+        "_ty_check": attrs.exec_dep(default = "tine//tools:ty-check", providers = [RunInfo]),
     },
 )
 
