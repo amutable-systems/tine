@@ -235,7 +235,12 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
         repositories = repository_labels,
         transaction = transaction,
     )
-    sub_targets = {"transaction": [DefaultInfo(default_output = transaction)]}
+    sub_targets = {
+        # Buck prints no path for a target with several default outputs, so a tool that reads a box's
+        # layers, such as the editor's ty, builds this list instead. It lists the layers bottom first.
+        "layers": [DefaultInfo(default_output = ctx.actions.write_json("layers.json", info.layers), other_outputs = info.layers)],
+        "transaction": [DefaultInfo(default_output = transaction)],
+    }
 
     # Running a box target is an interactive act, so its RunInfo is the host-integrated relaxed
     # entry. Build actions never reach it: they take BoxInfo and construct their own hermetic
