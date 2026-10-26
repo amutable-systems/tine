@@ -74,18 +74,18 @@
   },
   "ty": {
     "repository": "astral-sh/ty",
-    "release": "0.0.91",
+    "release": "0.0.92",
     "platforms": {
       "arm64": {
         "artifact": "ty-aarch64-unknown-linux-musl.tar.gz",
-        "sha256": "238dd696f23fb81fc2509f66ebec4b9977441c21f52bc1991dea98b27861ccf4",
-        "size": 13134441,
+        "sha256": "ad762b522fbb78f4340f186342761f71ae9f33fd250931106ef81a7e1442f71e",
+        "size": 13211501,
         "strip_prefix": "ty-aarch64-unknown-linux-musl"
       },
       "x86_64": {
         "artifact": "ty-x86_64-unknown-linux-musl.tar.gz",
-        "sha256": "b662ade01d92fa8914bffc445e6a85b034dde3eaecde501d94e05128db09637e",
-        "size": 14264216,
+        "sha256": "dc5415e1c0bf1f6f7093f04cba7dda201b25fe41bad091c0de63764264dac98c",
+        "size": 14392419,
         "strip_prefix": "ty-x86_64-unknown-linux-musl"
       }
     }
@@ -126,17 +126,17 @@
   },
   "seaweedfs": {
     "repository": "seaweedfs/seaweedfs",
-    "release": "4.50",
+    "release": "4.51",
     "platforms": {
       "arm64": {
         "artifact": "linux_arm64.tar.gz",
-        "sha256": "8bbd74337e233dbcbdc65e765f937a7334acc588ebb09dc0136b8692d9380311",
-        "size": 41894166
+        "sha256": "4772e7de6a3b8711eb53587a1c156aee67ebfc24536d15d85cd74a0d70ad53ec",
+        "size": 41901804
       },
       "x86_64": {
         "artifact": "linux_amd64.tar.gz",
-        "sha256": "8fc88061421a74d1cd486d1cd9dc5874d6495f9ed17fed8fa677bb16bd195b07",
-        "size": 47534942
+        "sha256": "c03be37416a8ee672c77766e20b22a4e1430744c3af2668599a4b6eeaec14cee",
+        "size": 47534485
       }
     }
   },
