@@ -1180,10 +1180,11 @@ from the release's package sets, so moving an image between distributions change
 nor the rules underneath. The mechanism is described in
 [architecture.md](../design/architecture.md#selecting-a-distribution).
 
-The examples deliberately have no default. `//examples/image:boot-demo` is declared for no distribution
+The repository sets no default. `//examples/image:boot-demo` is declared for no distribution
 in particular, so building it by that name fails as incompatible and `//examples/image/...` skips it;
-`:boot-demo.fedora`, `:boot-demo.arch` and `:boot-demo.debian` are what build. A default would make
-whichever distribution it named the only one anybody builds, and the others would rot.
+`:boot-demo.fedora`, `:boot-demo.arch` and `:boot-demo.debian` are what build. A default in the
+repository would make whichever distribution it named the only one anybody builds, and the others would
+rot. Your own checkout can set a default with the `distribution` key of the `tine` buckconfig section.
 
 Every package gets that behaviour for the releases that the catalog lists in `catalog//:releases.bzl`:
 
@@ -1274,18 +1275,22 @@ tine//examples/image:boot-demo is incompatible with tine//platforms:default
     (tine//distribution:no-distribution-chosen unsatisfied)
 ```
 
-A distribution is also a platform, so a developer who builds one of them all day can name it as the
-default for unqualified targets in `.buckconfig.local`, below the block `bin/tine` generates there,
-which is git-ignored and belongs to the checkout rather than the repository:
+If you build one distribution all day, set the `distribution` key of the `tine` section to the name of
+its alias. Put it in `.buckconfig.local`, below the block that `bin/tine` generates there. git ignores
+that file, so the setting applies to your checkout only:
 
 ```ini
-[parser]
-target_platform_detector_spec = target:tine//...->catalog//:<family>.<release>.distribution
+[tine]
+distribution = arch
 ```
 
-That platform is the base one plus the constraints of the distribution and its family, so choosing a
-distribution does not drop the cpu and os the base platform contains. Nothing in the repository sets it: an
-unqualified target means "no distribution chosen" everywhere except a checkout that has said otherwise.
+`//examples/image:boot-demo` then builds what `:boot-demo.arch` builds, and the build shares its outputs
+with the alias. The aliases still build their own distributions. A package whose table has no entry of
+that name still fails to build a target by its own name. To set the key for one build, pass
+`-c tine.distribution=arch`.
+
+With the key set, `buck test` runs a test of that distribution by its own name only. The test's alias
+for that distribution still builds, but `buck test` of the alias runs no test.
 
 A consuming project adds `//packages/fedora/rawhide:zlib-ng`, which validates package import,
 package-manager selection, buildroot assembly and RPM collection (packages with `buildroot_deps`

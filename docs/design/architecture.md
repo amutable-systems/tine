@@ -1120,7 +1120,7 @@ outside the root package of the catalog cell, so every release's distribution ha
 never reads the names in a package's table. A key such as `fedora` therefore always means the family,
 whatever a package calls its distributions.
 
-Nothing supplies a default. A target declared for no distribution in particular names none of them in
+The repository supplies no default. A target declared for no distribution in particular names none of them in
 its `select()`, and is `target_compatible_with` a value no platform carries wherever none was chosen,
 so a build that has chosen one resolves, `//...` skips the rest, and naming one directly fails as
 incompatible rather than quietly picking, reporting the missing choice by name. A default
@@ -1133,9 +1133,12 @@ being compatible while depending on something incompatible is an error rather th
 look up another package's targets while it loads a `BUCK` file, so the catalog lists its releases in a
 `.bzl` file that tine loads.
 
-This is deliberately not a buckconfig. A distribution is a property of the image, so it belongs in the
-declaration, where it is visible to `buck2 uquery`, can differ between two targets in one build, and does
-not reconfigure the world when it changes.
+The list of distributions is deliberately not a buckconfig. A distribution is a property of the image,
+so it belongs in the declaration, where it is visible to `buck2 uquery`, can differ between two targets in
+one build, and does not reconfigure the world when it changes. The `distribution` key of the `tine`
+buckconfig section only sets which entry of a package's table a target's own name builds. A developer
+who builds one distribution all day sets it in `.buckconfig.local`. The aliases build every distribution
+whether the key is set or not, so CI does not depend on it.
 
 ### Image construction
 

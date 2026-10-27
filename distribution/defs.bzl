@@ -238,9 +238,10 @@ def set_for_package(distributions: dict[str, dict[str, str]]) -> None:
 
     Every image rule then defaults its `target_compatible_with` to these, so a build that has chosen
     one of them resolves, `//...` skips the rest, and naming a target directly without choosing
-    fails. Saying it once per package is the point: repeating it per target is how one target ends
-    up forgetting, becoming a target that is itself fine but depends on something incompatible,
-    which buck reports as an error rather than a skip.
+    fails. The `distribution` key of the `tine` buckconfig section names the entry that a target's
+    own name builds instead. Saying it once per package is the point: repeating it per target is how
+    one target ends up forgetting, becoming a target that is itself fine but depends on something
+    incompatible, which buck reports as an error rather than a skip.
     """
     write_package_value(
         _DISTRIBUTIONS,
@@ -255,11 +256,19 @@ def for_package() -> dict[str, dict[str, str]]:
         return declared
     return {name: _describe(name, {"release": release}) for name, release in _CATALOG_RELEASES.items()}
 
+def _single() -> bool:
+    """Return whether this package builds for the catalog's only release."""
+    return read_package_value(_DISTRIBUTIONS) == None and len(_CATALOG_RELEASES) == 1
+
 def _implied() -> str | None:
     """Return the distribution that this package's targets build for when they name none, or None."""
-    if read_package_value(_DISTRIBUTIONS) != None or len(_CATALOG_RELEASES) != 1:
+    if _single():
+        return _release(_CATALOG_RELEASES.values()[0], "distribution")
+    chosen = read_root_config("tine", "distribution")
+    declared = for_package()
+    if chosen == None or chosen not in declared:
         return None
-    return _release(_CATALOG_RELEASES.values()[0], "distribution")
+    return declared[chosen]["distribution"]
 
 def package_manager() -> Select:
     """Return the package manager of the release that a build chooses for this package."""
@@ -294,13 +303,17 @@ def compatibility():
     else. A package that declared no distributions constrains nothing. Rules tine owns get this
     through their macros; a rule it does not own, such as a prelude one over an image, asks here.
 
-    A package that builds for the catalog's only release gets no constraint either. A rule that tine
-    does not own takes no incoming transition. The select would make a target of that rule
-    incompatible wherever it is built by its own name.
+    A package that builds for the catalog's only release, or for the distribution that the
+    `distribution` key of the `tine` buckconfig section names, gets no constraint either. A rule
+    that tine does not own takes no incoming transition. The select would make a target of that
+    rule incompatible wherever it is built by its own name.
     """
     declared = for_package()
     if not declared or _implied() != None:
         return []
+    return _any(declared)
+
+def _any(declared: dict[str, dict[str, str]]) -> Select:
     targets = [described["distribution"] for described in declared.values()]
     return select({target: [] for target in targets} | {"DEFAULT": [_UNCHOSEN]})
 
@@ -310,8 +323,11 @@ def _chosen(distro: str) -> list[str] | Select:
     The transition leaves the distribution unset for an architecture that `distro` does not serve,
     and the target is then incompatible.
     """
-    if for_package() and _implied() == None:
-        return compatibility()
+    declared = for_package()
+    if declared:
+        # A target built by its own name for the distribution that tine.distribution names is also
+        # built for every other distribution of the package through its aliases.
+        return _any(declared)
     return select({distro: [], "DEFAULT": [_UNCHOSEN]})
 
 def attributes(distro: str | None = None, visibility: list[str] | None = None) -> dict:
@@ -346,9 +362,10 @@ def aliases(
     of a package that builds for the catalog's only release, because it builds for that release by
     its own name.
     """
-    if distro != None or _implied() != None:
+    if distro != None or _single():
         return
     declared = for_package()
+    chosen = read_root_config("tine", "distribution")
     for suffix in sorted(declared):
         alias(
             name = "{}.{}".format(name, suffix),
@@ -356,6 +373,9 @@ def aliases(
             distro = declared[suffix]["distribution"],
             visibility = visibility,
             compatible_with = compatible_with,
+            # The target's own name already runs the test for the distribution that
+            # tine.distribution names. If the alias ran it too, `buck test //...` would run it twice.
+            test = suffix != chosen,
         )
 
 def distributed(
@@ -376,10 +396,8 @@ def distributed(
     `//...` then fails instead of skipping both.
     """
     compatible_with = [] if target_compatible_with == None else target_compatible_with
-    if distro == None:
-        distro = _implied()
     aliases(name, distro, visibility, compatible_with)
-    result = attributes(distro, visibility)
+    result = attributes(distro if distro != None else _implied(), visibility)
     result["target_compatible_with"] = result.get("target_compatible_with", []) + compatible_with
     return result
 
@@ -396,11 +414,17 @@ def serves(name: str, architectures: list[str], in_box: bool = False) -> Select:
     return architecture.select({arch: [] if arch in architectures else unserved for arch in ARCHITECTURES})
 
 def _distribution_alias_impl(ctx: AnalysisContext) -> list[Provider]:
-    return ctx.attrs.actual.providers
+    test = ctx.attrs.actual.get(ExternalRunnerTestInfo)
+    if ctx.attrs.test or test == None:
+        return ctx.attrs.actual.providers
+    return [provider for provider in ctx.attrs.actual.providers if provider != test]
 
 _distribution_alias = rule(
     impl = _distribution_alias_impl,
-    attrs = {"actual": attrs.dep()},
+    attrs = {
+        "actual": attrs.dep(),
+        "test": attrs.bool(default = True, doc = "whether `buck test` runs the target's test through the alias"),
+    },
     supports_incoming_transition = True,
 )
 
@@ -410,12 +434,14 @@ def alias(
     distro: str,
     visibility: list[str] | None = None,
     compatible_with: list[str] | Select = [],
+    test: bool = True,
 ) -> None:
     """The same target, built for another distribution.
 
     Everything below it is reconfigured, so one declaration serves every distribution rather than
     being written out once per distribution. The alias is incompatible with an architecture the
-    distribution does not serve, and it takes the target's own `compatible_with`.
+    distribution does not serve, and it takes the target's own `compatible_with`. With `test = False`,
+    `buck test` does not run the target's test through the alias.
     """
     _distribution_alias(
         name = name,
@@ -423,6 +449,7 @@ def alias(
         incoming_transition = distro,
         target_compatible_with = _chosen(distro) + compatible_with,
         visibility = visibility,
+        test = test,
     )
 
 distribution = struct(
