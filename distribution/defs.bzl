@@ -283,16 +283,6 @@ def package_manager() -> Select:
         fail("distribution.package_manager(): this package declares no distribution, so name a package manager")
     return by_distribution({described["release"]: described["package_manager"] for described in declared.values()})
 
-def box_release() -> Select:
-    """Return the `release` of a box that builds from the release of the target that depends on it.
-
-    A target without a distribution, and a target of a release that catalog//:releases.bzl doesn't
-    list, gets the catalog's default release.
-    """
-    return by_distribution(
-        {release: _release(release, "release") for release in _CATALOG_RELEASES.values()} | {"DEFAULT": "catalog//:default.release"},
-    )
-
 def _condition(key: str) -> str:
     if key == "DEFAULT":
         return key
@@ -308,6 +298,16 @@ def by_distribution(values: dict[str, typing.Any]) -> Select:
     matches no key.
     """
     return select({_condition(key): value for key, value in values.items()})
+
+def release_target(role: str) -> Select:
+    """Return a `select()` of the catalog target `role`, such as `box`, of the release that a build chooses.
+
+    A build that chooses no release, or a release that `catalog//:releases.bzl` doesn't list, gets the
+    target of the catalog's default release.
+    """
+    return by_distribution(
+        {release: _release(release, role) for release in _CATALOG_RELEASES.values()} | {"DEFAULT": "catalog//:default." + role},
+    )
 
 _UNCHOSEN = "tine//distribution:no-distribution-chosen"
 
@@ -473,7 +473,6 @@ distribution = struct(
     aliases = aliases,
     attrs = attributes,
     box_host = box_host,
-    box_release = box_release,
     default_release = default_release,
     select = by_distribution,
     serves = serves,
@@ -482,5 +481,6 @@ distribution = struct(
     for_package = for_package,
     new = new,
     package_manager = package_manager,
+    release_target = release_target,
     set_for_package = set_for_package,
 )

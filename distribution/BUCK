@@ -65,8 +65,6 @@ box.sh_test(
 # A box whose release is a select() on the distribution takes this as its incoming transition.
 distribution.box_host(name = "release.host")
 
-_RELEASE = distribution.box_release()
-
 # Images, buildroots and VMs run in the tools box of the release that the build chooses. An execution
 # dependency, and a build that chooses no release, get the tools box of the catalog's default release.
 # Images of every family sign and boot in the tools box of their release, so the package list names the
@@ -168,9 +166,8 @@ box.new(
             }),
         })
     ),
-    release = _RELEASE,
-    # Each release names its root box `<family>.<release>.box`.
-    parent = select_map(_RELEASE, lambda release: release.removesuffix(".release") + ".box"),
+    release = distribution.release_target("release"),
+    parent = distribution.release_target("box"),
     # The Fedora root box installs systemd-standalone-sysusers, and the tools box needs systemd, which
     # conflicts with it. The tools box therefore installs its parent's packages again rather than
     # layering over the root box.
