@@ -51,7 +51,11 @@ def _effective_packages(packages: list[str], parent: Dependency | None, package_
 # Layering information for a box that uses this one as a parent.
 _BoxRootInfo = provider(
     fields = {
-        "repositories": provider_field(list[str]),
+        "arch": provider_field(str),
+        # The box that resolves and installs a layer over this one. It is None for a root box, which
+        # resolves its own layers.
+        "resolver": provider_field(Dependency | None),
+        "selected": provider_field(list[Dependency]),
         "transaction": provider_field(Artifact),
     },
 )
@@ -104,6 +108,77 @@ def _solve(
         solver_caches = solver_caches,
     )
 
+def _resolve(
+    ctx: AnalysisContext,
+    package_system: Dependency,
+    resolver_box: Dependency,
+    repositories: list[ConfiguredPackageRepositoryInfo],
+    packages: list[str],
+    arch: str,
+) -> Artifact:
+    """Resolve `packages` for `arch` in `resolver_box` into a transaction."""
+    resolve = _solve(ctx, package_system, resolver_box, repositories, packages, arch)
+    transaction = ctx.actions.declare_output("transaction.json")
+    resolve.add("--out", transaction.as_output())
+    ctx.actions.run(resolve, category = "box_resolve", allow_cache_upload = True)
+    return transaction
+
+def _install(
+    ctx: AnalysisContext,
+    package_system: Dependency,
+    box: Dependency | BoxInfo,
+    repositories: list[Dependency],
+    transaction: Artifact,
+    arch: str,
+    lower: list[Artifact],
+    installed: Artifact | None,
+) -> Artifact:
+    """Install `transaction` with `box`, which also verifies its packages, into a layer over `lower`.
+
+    The layer leaves out the packages of `installed`.
+    """
+    system = package_system[PackageSystemInfo]
+
+    # The predecessor verifies its successor's packages. A root box has only its own stage1 for that,
+    # which catches an unsigned or tampered package and a wrong key. But its verify program came out of
+    # unverified files: a tampered `rpmkeys` could say "OK" to anything, so stage1 is no root of trust.
+    packages = select_package_artifacts(
+        ctx,
+        transaction,
+        repositories = _box_repositories(ctx, repositories, package_system, box),
+        suffix = system.package_suffix,
+        installed = installed,
+    )
+
+    # Use the predecessor or bootstrapped root to install the box, or its layer over the parent.
+    stage2 = _layer_dir(ctx.actions, "stage2")
+    work = _layer_dir(ctx.actions, "stage2.work") if lower else None
+    ctx.actions.run(
+        cmd_args(
+            box_run(
+                box = box[BoxInfo] if isinstance(box, Dependency) else box,
+                exe = system.install,
+            ),
+            spec_args(
+                ctx.actions,
+                "install.spec.json",
+                {
+                    "arch": architecture.spelling(arch, system.arch_schema),
+                    "box_config": True,
+                    "docs": True,
+                    "installroot": None,
+                    "langs": [],
+                    "lower": lower,
+                    "packages_dir": packages,
+                    "target": stage2.as_output(),
+                    "work": work.as_output() if work != None else None,
+                },
+            ),
+        ),
+        category = "box",
+    )
+    return stage2
+
 def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     # A root box takes the repositories of its release rather than the release, because the release
     # depends on its root box.
@@ -129,10 +204,7 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     if transaction == None:
         if resolver_dep == None:
             fail("box: a root box has nothing to resolve with and requires a committed lock")
-        resolve = _solve(ctx, package_system, resolver_dep, configured_repositories, names, ctx.attrs._arch)
-        transaction = ctx.actions.declare_output("transaction.json")
-        resolve.add("--out", transaction.as_output())
-        ctx.actions.run(resolve, category = "box_resolve", allow_cache_upload = True)
+        transaction = _resolve(ctx, package_system, resolver_dep, configured_repositories, names, ctx.attrs._arch)
 
     # A predecessor installs the transaction directly. Only a root box must first unpack that
     # same closure into an installer-capable root, without metadata or scriptlets.
@@ -169,58 +241,31 @@ def _box_impl(ctx: AnalysisContext) -> list[Provider]:
     repository_labels = _repository_labels(repositories)
     lower = []
     installed = None
-    if parent != None and ctx.attrs.layered and parent[_BoxRootInfo].repositories == repository_labels:
+    if parent != None and ctx.attrs.layered and _repository_labels(parent[_BoxRootInfo].selected) == repository_labels:
         lower = parent[BoxInfo].layers
         installed = parent[_BoxRootInfo].transaction
 
-    # The predecessor verifies its successor's packages. A root box has only its own stage1 for that,
-    # which catches an unsigned or tampered package and a wrong key. But its verify program came out of
-    # unverified files: a tampered `rpmkeys` could say "OK" to anything, so stage1 is no root of trust.
-    packages = select_package_artifacts(
+    # With the resolver box as a dependency, the keyrings are anonymous targets. Every box that resolves
+    # through the same resolver box shares them. A root box has no resolver box and verifies with its stage1
+    # root, which is no target.
+    stage2 = _install(
         ctx,
+        package_system,
+        resolver_dep if resolver_dep != None else installer_box,
+        repositories,
         transaction,
-        # With the resolver box as a dependency, the keyrings are anonymous targets. Every box that
-        # resolves through the same resolver box shares them. A root box has no resolver box and verifies
-        # with its stage1 root, which is no target.
-        repositories = _box_repositories(ctx, repositories, package_system, resolver_dep if resolver_dep != None else installer_box),
-        suffix = system.package_suffix,
-        installed = installed,
+        ctx.attrs._arch,
+        lower,
+        installed,
     )
-
-    # Use the predecessor or bootstrapped root to install the box, or its layer over the parent.
-    stage2 = _layer_dir(ctx.actions, "stage2")
-    work = _layer_dir(ctx.actions, "stage2.work") if lower else None
-    ctx.actions.run(
-        cmd_args(
-            box_run(
-                box = installer_box,
-                exe = system.install,
-            ),
-            spec_args(
-                ctx.actions,
-                "install.spec.json",
-                {
-                    "arch": architecture.spelling(ctx.attrs._arch, system.arch_schema),
-                    "box_config": True,
-                    "docs": True,
-                    "installroot": None,
-                    "langs": [],
-                    "lower": lower,
-                    "packages_dir": packages,
-                    "target": stage2.as_output(),
-                    "work": work.as_output() if work != None else None,
-                },
-            ),
-        ),
-        category = "box",
-    )
-
     info = BoxInfo(
         layers = lower + [stage2],
         sandbox = ctx.attrs._sandbox,
     )
     root = _BoxRootInfo(
-        repositories = repository_labels,
+        arch = ctx.attrs._arch,
+        resolver = resolver_dep,
+        selected = repositories,
         transaction = transaction,
     )
     sub_targets = {
@@ -278,6 +323,53 @@ _box = rule(
     # box.new() sets the incoming transition to the host platform of the release's distribution.
     supports_incoming_transition = True,
 )
+
+def _box_layer_impl(ctx: AnalysisContext) -> list[Provider]:
+    parent = ctx.attrs.parent
+    root = parent[_BoxRootInfo]
+    package_system = parent[BoxPackagesInfo].package_system
+    resolver = root.resolver if root.resolver != None else parent
+    names = _effective_packages(ctx.attrs.packages, parent, package_system)
+    transaction = _resolve(ctx, package_system, resolver, _box_repositories(ctx, root.selected, package_system, None), names, root.arch)
+    layer = _install(
+        ctx,
+        package_system,
+        resolver,
+        root.selected,
+        transaction,
+        root.arch,
+        parent[BoxInfo].layers,
+        root.transaction,
+    )
+    return [DefaultInfo(default_output = layer)]
+
+# An anonymous target is keyed on its attributes, so every target that adds the same packages to the
+# same box shares one layer.
+_box_layer = anon_rule(
+    impl = _box_layer_impl,
+    attrs = {
+        "packages": attrs.list(attrs.string()),
+        "parent": attrs.dep(providers = [BoxInfo, BoxPackagesInfo, _BoxRootInfo]),
+    },
+    artifact_promise_mappings = {
+        "layer": lambda providers: providers[DefaultInfo].default_outputs[0],
+    },
+)
+
+def box_layer(ctx: AnalysisContext, parent: Dependency, packages: list[str]) -> BoxInfo:
+    """Return the box `parent` with `packages` installed in a layer on top of it."""
+    info = parent[BoxInfo]
+    if not packages:
+        return info
+    layer = ctx.actions.anon_target(
+        _box_layer,
+        {
+            "name": "//box-layer:{}".format(parent.label.name),
+            "packages": sorted({package: True for package in packages}.keys()),
+            "parent": parent,
+        },
+    ).artifact("layer")
+    return BoxInfo(layers = info.layers + [layer], sandbox = info.sandbox)
 
 def _box_lock_impl(ctx: AnalysisContext) -> list[Provider]:
     release = ctx.attrs.release[OsReleaseInfo]
