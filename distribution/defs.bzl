@@ -170,16 +170,28 @@ def new(name: str, architectures: list[str], visibility: list[str] | None = None
             visibility = visibility,
         )
 
+    # A catalog that lists one release in releases.bzl has no other release to make the default. The
+    # release macros declare `<release>.release` after the distribution, so rule_exists() can't check
+    # the release that tine.box names here.
+    release = name.removesuffix(".distribution")
+    if _CATALOG_RELEASES.values() == [release]:
+        _alias_default(read_root_config("tine", "box", release), ["PUBLIC"])
+
 def default_release(release: str, visibility: list[str] = ["PUBLIC"]) -> None:
     """Declare a catalog's `default.*` targets as aliases of the targets of `release`, such as `fedora.rawhide`.
 
     tine's own boxes build from `default.release`. The `box` key of the `tine` buckconfig section names a
-    release that the `default.*` targets point to instead of `release`.
+    release that the `default.*` targets point to instead of `release`. A catalog whose `releases.bzl`
+    lists one release gets its `default.*` targets from `distribution.new()` and doesn't call this.
     """
+    if len(_CATALOG_RELEASES) == 1:
+        fail("default_release(): catalog//:releases.bzl lists one release, and the release declares the default.* targets itself; remove the call")
     release = read_root_config("tine", "box", release)
     if not rule_exists(release + ".release"):
         fail("tine.box: the catalog declares no release {!r}".format(release))
+    _alias_default(release, visibility)
 
+def _alias_default(release: str, visibility: list[str]) -> None:
     # box.new() derives the distribution's platforms from the release's name, so every derived target
     # needs an alias. tine//distribution:tools.box builds on `default.box` for a release that
     # catalog//:releases.bzl doesn't list.
