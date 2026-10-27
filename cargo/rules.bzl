@@ -4,7 +4,9 @@
 """Build a Rust project from its own source tree, offline and SBOM-visible."""
 
 load("//:specs.bzl", "executable", "spec_args")
+load("//box:build.bzl", "box_layer")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//distribution:defs.bzl", "distribution")
 load("//platforms:architecture.bzl", "architecture")
 load("//project:defs.bzl", "project")
 load(":vendor.bzl", "VENDOR_ATTRS", "assemble_vendor")
@@ -113,6 +115,7 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
     # the cache, only do that for incremental builds; otherwise build in scratch space.
     target = project.kept_dir(ctx.actions, _PRIVATE + "/target") if ctx.attrs.incremental else None
 
+    box = box_layer(ctx, ctx.attrs.box, ctx.attrs.buildroot_packages)
     resolved = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
     ctx.actions.run(
         cmd_args(
@@ -136,7 +139,7 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
             auditable = executable(ctx.attrs._auditable),
             bin = bin.as_output(),
             binaries = ctx.attrs.binaries,
-            build = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
+            build = box_run(box = box, exe = ctx.attrs._build),
             fetch = ctx.attrs._fetch[RunInfo],
             incremental = ctx.attrs.incremental,
             lock = resolved,
@@ -155,6 +158,9 @@ _cargo_package = rule(
         # `box` is a dep rather than an exec_dep, so tine//cargo:build.box builds from the release of the
         # distribution that the binaries are built for.
         "box": attrs.dep(providers = [BoxInfo], default = "tine//cargo:build.box", doc = "box with the Rust toolchain"),
+        "buildroot_packages": attrs.list(
+            attrs.string(), default = [], doc = "packages to install on top of `box`, such as the development packages the project links against"
+        ),
         "incremental": attrs.bool(doc = "keep cargo's build directory across dev-mode rebuilds"),
         "src": attrs.source(allow_directory = True, doc = "the project's source directory, Cargo.lock included"),
         # `_arch` is the architecture the binaries run on. On a cross build, it differs from the box's.
@@ -165,6 +171,7 @@ _cargo_package = rule(
         "_lock": attrs.exec_dep(providers = [RunInfo], default = "tine//cargo:lock"),
     }
     | VENDOR_ATTRS,
+    supports_incoming_transition = True,
 )
 
 def cargo_package(
@@ -172,6 +179,9 @@ def cargo_package(
     binaries: list[str],
     src: str | None = None,
     dev: bool | None = None,
+    distro: str | None = None,
+    visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
     **kwargs,
 ) -> None:
     """Build a checked-out Rust project against the crates its Cargo.lock pins.
@@ -203,5 +213,5 @@ def cargo_package(
         binaries = binaries,
         incremental = project.is_dev(name, source = src, override = dev),
         src = directory,
-        **kwargs,
+        **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
     )

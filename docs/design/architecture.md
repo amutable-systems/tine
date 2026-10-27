@@ -551,6 +551,11 @@ a box layer that deletes from the layers below.
 If the parent has different repositories, the box only shares the parent's package list and is installed
 on its own.
 
+`cargo.package()` and `go.package()` add their `buildroot_packages` to their box in a layer that an anonymous
+target builds. Buck keys an anonymous target on its attributes, the box and the sorted package list, so
+every target that adds the same packages to the same box shares one layer. The layer resolves during the
+build, because it has no target that a committed lock could belong to.
+
 ### Execution isolation and target roots
 
 All build actions run through `box.run()` and `box/sandbox.py`. The sandbox mounts the box's

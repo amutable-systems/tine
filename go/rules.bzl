@@ -4,7 +4,9 @@
 """Build and test a Go project from its own source tree: one online, verified module fetch, then an offline build."""
 
 load("//:specs.bzl", "spec_args")
+load("//box:build.bzl", "box_layer")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//distribution:defs.bzl", "distribution")
 load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load("//project:defs.bzl", "project")
 
@@ -181,6 +183,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
         if releases == None:
             toolchain = ctx.attrs.toolchain[DefaultInfo].default_outputs[0]
 
+    box = box_layer(ctx, ctx.attrs.box, ctx.attrs.buildroot_packages)
     workspace = ctx.actions.declare_output(_PRIVATE + "/workspace.json")
     ctx.actions.run(
         cmd_args(
@@ -204,11 +207,11 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
     ctx.actions.dynamic_output_new(
         _go_build(
             bin = bin.as_output(),
-            build = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._build),
+            build = box_run(box = box, exe = ctx.attrs._build),
             build_mode = ctx.attrs.build_mode,
             cgo = ctx.attrs.cgo,
             cgo_cflags = ctx.attrs.cgo_cflags,
-            fetch = box_run(box = ctx.attrs.box[BoxInfo], exe = ctx.attrs._fetch, network = True),
+            fetch = box_run(box = box, exe = ctx.attrs._fetch, network = True),
             gocache = gocache.as_output() if gocache != None else None,
             goarch = architecture.spelling(ctx.attrs._arch, "go"),
             incremental = ctx.attrs.incremental,
@@ -223,7 +226,7 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             workspace = workspace,
         ),
     )
-    return project.binaries_providers(outputs) + [GoPackageInfo(box = ctx.attrs.box[BoxInfo], src = src, tests = tests)]
+    return project.binaries_providers(outputs) + [GoPackageInfo(box = box, src = src, tests = tests)]
 
 _go_package = rule(
     impl = _go_package_impl,
@@ -237,6 +240,11 @@ _go_package = rule(
         ),
         "build_mode": attrs.option(
             attrs.enum(["exe", "pie"]), default = None, doc = "go's -buildmode for the binaries and tests, the toolchain default when unset"
+        ),
+        "buildroot_packages": attrs.list(
+            attrs.string(),
+            default = [],
+            doc = "packages to install on top of `box`, such as gcc and the development packages that cgo binds",
         ),
         "cgo": attrs.option(attrs.bool(), default = None, doc = "force cgo on or off, box toolchain default when unset"),
         "cgo_cflags": attrs.list(attrs.string(), default = [], doc = "extra C compiler flags for a cgo build"),
@@ -260,12 +268,16 @@ _go_package = rule(
         "_fetch": attrs.exec_dep(providers = [RunInfo], default = "tine//go:fetch"),
         "_workspace": attrs.exec_dep(providers = [RunInfo], default = "tine//go:workspace"),
     },
+    supports_incoming_transition = True,
 )
 
 def go_package(
     name: str,
     src: str | None = None,
     dev: bool | None = None,
+    distro: str | None = None,
+    visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
     **kwargs,
 ) -> None:
     """Build a checked-out Go project against the modules its go.sum pins.
@@ -278,7 +290,7 @@ def go_package(
         name = name,
         incremental = project.is_dev(name, source = src, override = dev),
         src = src if src != None else name,
-        **kwargs,
+        **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
     )
 
 # Keep in sync with GO_RELEASES_LABEL in tools/catalog.py, which refreshes the targets that carry it.
@@ -398,7 +410,7 @@ def _go_test_impl(ctx: AnalysisContext) -> list[Provider]:
         ),
     ]
 
-go_test = rule(
+_go_test = rule(
     doc = """Run the tests that a go_package's build compiled, by `buck test` inside the package's box.""",
     impl = _go_test_impl,
     attrs = {
@@ -407,4 +419,15 @@ go_test = rule(
         "package": attrs.dep(providers = [GoPackageInfo], doc = "the go_package whose tests to run"),
         "_runner": attrs.exec_dep(providers = [RunInfo], default = "tine//go:runner"),
     },
+    supports_incoming_transition = True,
 )
+
+def go_test(
+    name: str,
+    distro: str | None = None,
+    visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
+    **kwargs,
+) -> None:
+    """Run the tests of a go_package once per distribution of the package, or for `distro` alone."""
+    _go_test(name = name, **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs))

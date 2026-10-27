@@ -59,10 +59,29 @@ image.archive(
 
 `tine//cargo:build.box` contains the distribution's Rust toolchain, `gcc` and `pkgconf`. It installs them
 from the release of the distribution that the binaries are built for, so a binary links against the C
-library of the image that installs it. A build that chooses no distribution uses the catalog's default
-release.
+library of the image that installs it. Like an image, `cargo.package()` builds once for each distribution
+of its package, and `:hello.fedora` names the build for Fedora. See
+[Choosing a distribution](images.md#choosing-a-distribution).
 
 The box is a build environment. It never becomes part of an image.
+
+A crate that wraps a C library needs the library's development package. Add it with `buildroot_packages`:
+
+```Starlark
+cargo.package(
+    name = "hello",
+    binaries = ["hello-cli"],
+    buildroot_packages = ["openssl-devel"],
+)
+```
+
+The packages are installed in a layer on top of the box. Every `cargo.package()` that adds the same
+packages to the same box shares that layer. The names are the distribution's own. A project that builds
+for several families picks them with `distribution.select()`.
+
+The build fails when the box's packages and `buildroot_packages` together resolve to other packages than
+the box contains, such as another provider of a library. Then declare a box with all of the packages, and
+pass it as `box`.
 
 To build in a box of your own, pass it as `box`. Its packages need the toolchain, a linker and `python3`,
 which runs tine's driver inside the box. A crate that looks a library up with `pkg-config` also needs

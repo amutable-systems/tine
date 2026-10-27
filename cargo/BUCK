@@ -8,7 +8,8 @@ load("//box:test.bzl", "box_python_test")
 load("//distribution:defs.bzl", "distribution")
 load("//python:defs.bzl", "tine_python_binary")
 
-# The box that cargo.package() builds in unless a project names its own.
+# The box that cargo.package() builds in unless a project names its own. A package that links against
+# a C library adds the library's development package with cargo.package(buildroot_packages = ...).
 box.new(
     name = "build.box",
     packages = distribution.select({
