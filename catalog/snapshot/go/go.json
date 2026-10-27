@@ -1,1 +1,86 @@
-{}
+{
+  "go1.21.13": {
+    "arm64": {
+      "sha256": "2ca2d70dc9c84feef959eb31f2a5aac33eefd8c97fe48f1548886d737bffabd4",
+      "size": 63753135,
+      "url": "https://go.dev/dl/go1.21.13.linux-arm64.tar.gz"
+    },
+    "x86_64": {
+      "sha256": "502fc16d5910562461e6a6631fb6377de2322aad7304bf2bcd23500ba9dab4a7",
+      "size": 66660837,
+      "url": "https://go.dev/dl/go1.21.13.linux-amd64.tar.gz"
+    }
+  },
+  "go1.22.12": {
+    "arm64": {
+      "sha256": "fd017e647ec28525e86ae8203236e0653242722a7436929b1f775744e26278e7",
+      "size": 65924318,
+      "url": "https://go.dev/dl/go1.22.12.linux-arm64.tar.gz"
+    },
+    "x86_64": {
+      "sha256": "4fa4f869b0f7fc6bb1eb2660e74657fbf04cdd290b5aef905585c86051b34d43",
+      "size": 68995422,
+      "url": "https://go.dev/dl/go1.22.12.linux-amd64.tar.gz"
+    }
+  },
+  "go1.23.12": {
+    "arm64": {
+      "sha256": "52ce172f96e21da53b1ae9079808560d49b02ac86cecfa457217597f9bc28ab3",
+      "size": 70302251,
+      "url": "https://go.dev/dl/go1.23.12.linux-arm64.tar.gz"
+    },
+    "x86_64": {
+      "sha256": "d3847fef834e9db11bf64e3fb34db9c04db14e068eeb064f49af747010454f90",
+      "size": 73666637,
+      "url": "https://go.dev/dl/go1.23.12.linux-amd64.tar.gz"
+    }
+  },
+  "go1.24.13": {
+    "arm64": {
+      "sha256": "74d97be1cc3a474129590c67ebf748a96e72d9f3a2b6fef3ed3275de591d49b3",
+      "size": 74955536,
+      "url": "https://go.dev/dl/go1.24.13.linux-arm64.tar.gz"
+    },
+    "x86_64": {
+      "sha256": "1fc94b57134d51669c72173ad5d49fd62afb0f1db9bf3f798fd98ee423f8d730",
+      "size": 78709986,
+      "url": "https://go.dev/dl/go1.24.13.linux-amd64.tar.gz"
+    }
+  },
+  "go1.25.14": {
+    "arm64": {
+      "sha256": "9bf234ea70ffec9347fdf6b22ce4add51717d3386a38a441e8c8743fceb5eaee",
+      "size": 57360344,
+      "url": "https://go.dev/dl/go1.25.14.linux-arm64.tar.gz"
+    },
+    "x86_64": {
+      "sha256": "a21ae5633a269bcd7e90cf767e48225633795e99d831742cbf3397064fee7712",
+      "size": 59909419,
+      "url": "https://go.dev/dl/go1.25.14.linux-amd64.tar.gz"
+    }
+  },
+  "go1.26.10": {
+    "arm64": {
+      "sha256": "3f4227ce7b206a513e794f1393adb473a07b46e94d18bd15d1c684bbb7319797",
+      "size": 63827526,
+      "url": "https://go.dev/dl/go1.26.10.linux-arm64.tar.gz"
+    },
+    "x86_64": {
+      "sha256": "ccfe7ae822d2c2f41f4fe7c956199967a4dac22d0ee0d2b2bfdb440aab3b20c5",
+      "size": 66936659,
+      "url": "https://go.dev/dl/go1.26.10.linux-amd64.tar.gz"
+    }
+  },
+  "go1.27.3": {
+    "arm64": {
+      "sha256": "a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49",
+      "size": 67076044,
+      "url": "https://go.dev/dl/go1.27.3.linux-arm64.tar.gz"
+    },
+    "x86_64": {
+      "sha256": "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40",
+      "size": 70588678,
+      "url": "https://go.dev/dl/go1.27.3.linux-amd64.tar.gz"
+    }
+  }
+}

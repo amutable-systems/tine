@@ -3,6 +3,7 @@
 
 """Tests for the snapshot of go.dev's release index, with a fixture in place of the index."""
 
+import contextlib
 import io
 import json
 import tempfile
@@ -97,6 +98,43 @@ class Snapshot(unittest.TestCase):
             self._main(index),
             json.dumps(releases.snapshot(GOARCH, CURRENT, index), indent=2, sort_keys=True) + "\n",
         )
+
+    def test_main_advances_to_the_newest_patch_releases(self) -> None:
+        index = [_release(version) for version in ("go1.27.4", "go1.27.3", "go1.26.10", "go1.21.0")]
+        self.assertEqual(
+            sorted(json.loads(self._main(index, "--advance"))),
+            ["go1.21.0", "go1.26.10", "go1.27.4"],
+        )
+
+    def test_main_reports_each_release_that_an_advance_adds(self) -> None:
+        index = [_release(version) for version in ("go1.27.4", "go1.27.3", "go1.26.10", "go1.21.0")]
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self._main(index, "--advance")
+        self.assertEqual(
+            stderr.getvalue().splitlines(),
+            ["==> go-releases: adding go1.21.0", "==> go-releases: advancing go1.27.3 to go1.27.4"],
+        )
+
+
+class Advance(unittest.TestCase):
+    def test_takes_the_newest_patch_release_of_every_minor_version_from_go_1_21_on(self) -> None:
+        listed = [
+            "go1.28rc1",
+            "go1.27.3",
+            "go1.27.10",
+            "go1.27.0",
+            "go1.27rc2",
+            "go1.21.13",
+            "go1.20.14",
+            "weekly",
+        ]
+        index = [{"version": version} for version in listed] + ["malformed"]
+        self.assertEqual(releases.advance([], index), ["go1.21.13", "go1.27.10"])
+
+    def test_never_moves_a_release_backwards(self) -> None:
+        index = [{"version": "go1.26.8"}, {"version": "go1.27.3"}]
+        self.assertEqual(releases.advance(["go1.26.9"], index), ["go1.26.9", "go1.27.3"])
 
 
 if __name__ == "__main__":

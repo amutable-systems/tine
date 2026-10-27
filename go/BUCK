@@ -20,7 +20,12 @@ tine_python_binary(
     name = "releases",
     main = "releases.py",
     visibility = ["PUBLIC"],
-    deps = ["//:specs", "//:util"],
+    deps = [":goversion", "//:specs", "//:util"],
+)
+
+tine_python_library(
+    name = "goversion",
+    srcs = ["goversion.py"],
 )
 
 tine_python_library(
@@ -77,6 +82,7 @@ box_python_test(
         "build_test.py",
         "fetch.py",
         "fetch_test.py",
+        "goversion.py",
         "releases.py",
         "releases_test.py",
         "runner.py",

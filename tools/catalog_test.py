@@ -264,5 +264,21 @@ class Plan(unittest.TestCase):
         )
 
 
+class RegenerateGoReleases(unittest.TestCase):
+    def test_advances_the_snapshot_only_when_asked(self) -> None:
+        for advance, arguments in [(False, ()), (True, ("--advance",))]:
+            with (
+                self.subTest(advance=advance),
+                mock.patch.object(catalog, "_signing_keys", return_value=iter(())),
+                mock.patch.object(catalog, "_served_architectures", return_value={}),
+                mock.patch.object(catalog, "_run", return_value="{}\n") as run,
+            ):
+                regenerated = list(
+                    catalog._regenerate(Path("catalog"), [], [], ["catalog//:go.releases"], advance)
+                )
+                self.assertEqual(regenerated, [(Path("catalog/snapshot/go/go.json"), "{}\n")])
+                run.assert_called_once_with("catalog//:go.releases[snapshot]", *arguments)
+
+
 if __name__ == "__main__":
     unittest.main()
