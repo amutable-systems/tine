@@ -146,6 +146,7 @@ class TestCompileTests(unittest.TestCase):
         def run(command: list[str], *, check: bool, cwd: Path, env: dict[str, str]) -> None:
             commands.append(command)
             self.assertIn("-buildmode=pie", env["GOFLAGS"].split())
+            self.assertEqual(env["PKG_CONFIG"], "pkgconf")
             Path(command[command.index("-o") + 1]).write_text("compiled", encoding="utf-8")
 
         packages = [("example.com/a", "a"), ("example.com/b/a", "b/a")]

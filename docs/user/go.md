@@ -157,8 +157,8 @@ box.new(
   `git`, which then has to be there too.
 - The fetch and the build set `GOTOOLCHAIN=local`, so go never downloads another toolchain. A `go.mod`
   that requires a newer Go than the box's `go`, or than the `toolchain`, fails the build.
-- A project using cgo needs `gcc` and the `-devel` packages it binds, plus `pkgconf-pkg-config` and `rpm`
-  for a `#cgo pkg-config:` directive, because Fedora's `/usr/bin/pkg-config` shells out to `rpm --eval`.
+- A project using cgo needs `gcc` and the `-devel` packages it binds, plus `pkgconf` for a `#cgo
+  pkg-config:` directive, because the build runs `pkgconf` in place of `pkg-config`.
   Its binaries then link dynamically, so the image needs the matching runtime packages. This is not
   limited to projects that write C: with cgo enabled, importing `net` or `os/user` is enough. `cgo =
   False` uses Go's own implementations of those instead, and needs no C compiler.
