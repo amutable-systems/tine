@@ -58,5 +58,6 @@ debian_release(
 )
 
 # tine's own boxes, such as the boxes in tine//tools, build from the release that default_release()
-# names. A project's catalog has to call default_release() too. It can name a release of any family.
+# names. A project's catalog has to call default_release() too, unless its releases.bzl lists one
+# release. It can name a release of any family.
 distribution.default_release("fedora.rawhide")

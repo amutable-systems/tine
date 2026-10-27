@@ -71,6 +71,9 @@ load("@tine//distribution:defs.bzl", "distribution")
 distribution.default_release("debian.testing")
 ```
 
+If the catalog's `releases.bzl` lists one release, that release is the default release. A catalog with
+one release in `releases.bzl` doesn't call `default_release()`. The build fails if it does.
+
 To build with the boxes of another release of the catalog, set `box` in the `tine` section of the
 project's `.buckconfig`, or pass it for one build:
 
