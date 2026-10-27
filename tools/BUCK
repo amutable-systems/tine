@@ -133,7 +133,7 @@ box.new(
         ],
     }),
     parent = "tine//distribution:tools.box",
-    release = distribution.box_release(),
+    release = distribution.release_target("release"),
     visibility = ["PUBLIC"],
 )
 
@@ -229,7 +229,7 @@ box.new(
         "debian": ["awscli", "python3-virt-firmware"],
         "fedora": ["awscli2", "python3-virt-firmware"],
     }),
-    release = distribution.box_release(),
+    release = distribution.release_target("release"),
     visibility = ["PUBLIC"],
 )
 
