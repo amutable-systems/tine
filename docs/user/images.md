@@ -1196,6 +1196,16 @@ Each key is the suffix of the alias that every image gets for that release. The 
 `:boot-demo.fedora` beside `:boot-demo`. Each value is the `<family>.<release>` prefix of a release in the
 catalog. A project with its own catalog lists the releases of that catalog in its own `releases.bzl`.
 
+If `releases.bzl` lists one release, images build for that release by their own names and get no aliases.
+For a project that builds for Fedora rawhide only, `releases.bzl` lists that one release, and
+`:boot-demo` builds a Fedora rawhide image:
+
+```Starlark
+RELEASES = {
+    "fedora": "fedora.rawhide",
+}
+```
+
 `distribution.package_manager()` returns the package manager of the release that a build chooses. Pass
 it as an image's `package_manager`:
 

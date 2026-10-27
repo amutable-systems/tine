@@ -128,4 +128,5 @@ box_sh_test = rule(
         ),
         "test": attrs.option(attrs.source(), default = None, doc = "the script to run"),
     },
+    supports_incoming_transition = True,
 )
