@@ -7,6 +7,8 @@ With `--advance`, repositories pinned to a mirror that publishes snapshots first
 declaration to the newest one: an rpmrepo gateway enumerates them, the Arch Linux Archive publishes
 a tree per day and records when it last finished one, and the Debian archive lists every timestamp
 it holds. Repositories sharing one pin advance together, and rolling back means editing the pin.
+A go.releases snapshot pins one Go release per minor version. An advance snapshots the newest patch
+release of every minor version from Go 1.21 on that go.dev lists.
 
 Remote box-lock entries retain their package transports, so a repository's package pool keeps
 the committed box available after its repodata advances.
@@ -129,7 +131,7 @@ def _go_releases_path(target: str) -> Path:
     return Path("snapshot") / "go" / f"{name.removesuffix('.releases')}.json"
 
 
-def _run(target: str) -> str:
+def _run(target: str, *arguments: str) -> str:
     """Run a refresh target, returning what it wrote to stdout.
 
     Buck execs the target rather than piping it, and its own output is on stderr, so stdout is
@@ -137,7 +139,7 @@ def _run(target: str) -> str:
     the project and nothing else, so a path outside it would land in the sandbox's own tmpfs.
     """
     # Mute nested Buck while preserving driver progress on stderr.
-    command = buck2_argv("-v", "0", "run", target, "--console", "none", "--", "--out", "-")
+    command = buck2_argv("-v", "0", "run", target, "--console", "none", "--", "--out", "-", *arguments)
     return subprocess.run(command, check=True, stdout=subprocess.PIPE, encoding="utf-8").stdout
 
 
@@ -410,6 +412,8 @@ def _advance_snapshots(checkout: _Checkout, catalog: str, catalog_dir: Path, sel
     from one day composing package locations from another, so this stays inside the selection the
     caller is about to snapshot.
     """
+    if not selected:
+        return
     declaration = catalog_dir / "BUCK"
     wanted = set(selected)
     advanced = 0
@@ -422,8 +426,9 @@ def _advance_snapshots(checkout: _Checkout, catalog: str, catalog_dir: Path, sel
         advanced += _advance(checkout, pinned, wanted, newest, declaration, attribute)
     if not advanced:
         # Asked for and not done is worth a line: every selected pin is either newest already or
-        # shared with a repository outside the selection.
-        print("==> no pin advanced", file=sys.stderr)
+        # shared with a repository outside the selection. The go.releases snapshot driver reports its
+        # own advances.
+        print("==> no repository pin advanced", file=sys.stderr)
 
 
 def _declared_signing_keys(repositories: list[str]) -> dict[str, str]:
@@ -563,7 +568,7 @@ def _plan(
 
 
 def _regenerate(
-    catalog_dir: Path, snapshots: list[str], resolves: list[str], go_releases: list[str]
+    catalog_dir: Path, snapshots: list[str], resolves: list[str], go_releases: list[str], advance: bool
 ) -> Iterator[tuple[Path, str]]:
     """Fetch keys, snapshot repositories and resolve boxes, yielding each result and where it belongs.
 
@@ -584,7 +589,7 @@ def _regenerate(
         print(f"==> snapshotting {_name_of(target)} (via {target}[snapshot])", file=sys.stderr)
         yield (
             catalog_dir / _go_releases_path(target),
-            _run(f"{target}[snapshot]"),
+            _run(f"{target}[snapshot]", *(["--advance"] if advance else [])),
         )
 
     for target in resolves:
@@ -641,7 +646,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--advance",
         action="store_true",
-        help="first advance the selected repositories' pins to the newest snapshot their mirrors offer",
+        help="first advance the selected repositories' pins to the newest snapshot their mirrors offer, "
+        "and the selected go.releases snapshots to the newest patch release of every minor version from "
+        "Go 1.21 on",
     )
     p.add_argument(
         "--verify",
@@ -664,7 +671,7 @@ def main(argv: list[str] | None = None) -> None:
     with contextlib.chdir(buck_output("root", "--kind", "project")) as _:
         catalog_dir, snapshots, resolves, go_releases = _plan(catalog, args.box, args.go)
         # Lazy: nothing is snapshotted until the loop below asks, after the pins have moved.
-        regenerated = _regenerate(catalog_dir, snapshots, resolves, go_releases)
+        regenerated = _regenerate(catalog_dir, snapshots, resolves, go_releases, args.advance)
         if not args.verify:
             checkout = _Checkout()
             try:

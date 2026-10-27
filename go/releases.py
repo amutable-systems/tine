@@ -6,16 +6,19 @@
 """Snapshot the archives of the Go releases that a go.releases target declares.
 
 refresh-catalog runs the snapshot through the target's `[snapshot]` sub-target and writes the output
-into the catalog.
+into the catalog. With `--advance`, the snapshot contains the newest patch release of every minor
+version from Go 1.21 on instead.
 """
 
 import argparse
 import json
 import re
+import sys
 import urllib.parse
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
+import goversion
 import specs
 from util import fail, text_destination, urlopen, with_retries
 
@@ -24,6 +27,9 @@ from util import fail, text_destination, urlopen, with_retries
 INDEX = "https://go.dev/dl/?mode=json&include=all"
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+# go.dev names the first release of every minor version from Go 1.21 on with a .0 patch, such as
+# go1.21.0. An advance therefore starts at Go 1.21.
+_FIRST_MINOR = (1, 21)
 
 
 class Spec(TypedDict):
@@ -43,6 +49,25 @@ def _list(value: object, what: str) -> list[Any]:
     if not isinstance(value, list):
         fail(f"go-releases: {what} is not a JSON array")
     return cast(list[Any], value)
+
+
+def advance(current: list[str], index: list[Any]) -> list[str]:
+    """Return the newest patch release of every minor version from Go 1.21 on.
+
+    A release in `current` that is newer than every release that `index` lists for its minor version
+    stays, so an advance never moves a release backwards.
+    """
+    newest: dict[tuple[int, int], tuple[int, str]] = {}
+    for version in [*current, *(release.get("version") for release in index if isinstance(release, dict))]:
+        parsed = goversion.patch_release(version)
+        if parsed is None:
+            continue
+        major, minor, patch = parsed
+        if (major, minor) >= _FIRST_MINOR and (
+            (major, minor) not in newest or patch > newest[major, minor][0]
+        ):
+            newest[major, minor] = (patch, f"go{major}.{minor}.{patch}")
+    return sorted(release for _, release in newest.values())
 
 
 def snapshot(
@@ -89,6 +114,11 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="go-releases")
     specs.add_argument(parser)
     parser.add_argument("--out", type=Path, required=True, help="snapshot path to write, or `-` for stdout")
+    parser.add_argument(
+        "--advance",
+        action="store_true",
+        help="snapshot the newest patch release of every minor version from Go 1.21 on",
+    )
     args = parser.parse_args(argv)
     spec = specs.load(Spec, args.spec, prog="go-releases")
 
@@ -98,8 +128,21 @@ def main(argv: list[str] | None = None) -> None:
 
     index = _list(with_retries(f"go-releases: {INDEX}", fetch), INDEX)
     current = sorted(_object(json.loads(Path(spec["current"]).read_text(encoding="utf-8")), spec["current"]))
+    releases = advance(current, index) if args.advance else current
+    committed = {}
+    for release in current:
+        parsed = goversion.patch_release(release)
+        if parsed is not None:
+            committed[parsed[:2]] = release
+    for release in sorted(set(releases) - set(current)):
+        parsed = goversion.patch_release(release)
+        previous = None if parsed is None else committed.get(parsed[:2])
+        if previous is None:
+            print(f"==> go-releases: adding {release}", file=sys.stderr)
+        else:
+            print(f"==> go-releases: advancing {previous} to {release}", file=sys.stderr)
     with text_destination(args.out) as output:
-        output.write(json.dumps(snapshot(spec["goarch"], current, index), indent=2, sort_keys=True) + "\n")
+        output.write(json.dumps(snapshot(spec["goarch"], releases, index), indent=2, sort_keys=True) + "\n")
 
 
 if __name__ == "__main__":

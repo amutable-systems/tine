@@ -312,9 +312,11 @@ optional generated forms:
   published one, together with the URL to fetch it from. `refresh-catalog` fetches a missing key file
   once and never updates it: a key is immutable by fingerprint, and whether the file is the declared key
   is checked by the build with the package system's own tools, not by the refresh;
-- `snapshot/go/<name>.json` pins one Go release per minor version. It contains the URL, sha256 and size of
-  each release's archive per architecture, as go.dev's release list publishes them. `go.releases` reads the
-  file, so its declaration names no release.
+- `snapshot/go/<name>.json` pins one Go release for every minor version from Go 1.21 on. It contains the
+  URL, sha256 and size of each release's archive per architecture, as go.dev's release list publishes them.
+  `go.releases` reads the file, so its declaration names no release. Go keeps publishing patch releases of
+  an older minor version after a newer minor version is out, so `--advance` moves each minor version to its
+  newest patch release.
 
 A box with a resolver box and no committed transaction resolves through that predecessor as a normal
 cacheable build action. The generated transaction is an input to the existing dynamic package selectors,
@@ -344,8 +346,9 @@ phases. Pass another package of repositories and boxes after `--`, for example
    unused streams, validates package locations, and writes deterministic, pure snapshot JSON. It does not
    carry packages forward from an earlier snapshot. It only reads metadata, so any host runs it. Every
    `go.releases` target's `[snapshot]` sub-target runs in the same phase, unless `--box` selects boxes
-   without `--go`. It snapshots the releases in the committed snapshot. `--go` alone refreshes only the
-   `go.releases` targets.
+   without `--go`. It snapshots the releases in the committed snapshot, and with `--advance` the newest
+   patch release of every minor version from Go 1.21 on instead. `--go` alone refreshes only the
+   `go.releases` targets, so their advance needs no repository advance.
 3. Run the selected boxes' `<box>.lock.<architecture>` targets against the freshly pinned repository trees
    and atomically replace their optional frozen transactions. The target box's release, repository
    selection, package list, and architecture define the solve. A lock target carries its architecture as
