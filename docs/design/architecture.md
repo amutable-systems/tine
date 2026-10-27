@@ -290,7 +290,7 @@ root, not OS identity alone, is its relevant input.
 
 ### Catalog pinning and refresh
 
-Normal builds do not resolve against live network repositories. The catalog contains one required and two
+Normal builds do not resolve against live network repositories. The catalog contains one required and three
 optional generated forms:
 
 - `snapshot/repo/<name>.<architecture>.json` pins one repository's build metadata for one of the
@@ -311,7 +311,10 @@ optional generated forms:
   catalog's BUCK names the key by fingerprint, which is what a reviewer checks against the distribution's
   published one, together with the URL to fetch it from. `refresh-catalog` fetches a missing key file
   once and never updates it: a key is immutable by fingerprint, and whether the file is the declared key
-  is checked by the build with the package system's own tools, not by the refresh.
+  is checked by the build with the package system's own tools, not by the refresh;
+- `snapshot/go/<name>.json` pins one Go release per minor version. It contains the URL, sha256 and size of
+  each release's archive per architecture, as go.dev's release list publishes them. `go.releases` reads the
+  file, so its declaration names no release.
 
 A box with a resolver box and no committed transaction resolves through that predecessor as a normal
 cacheable build action. The generated transaction is an input to the existing dynamic package selectors,
@@ -339,7 +342,10 @@ phases. Pass another package of repositories and boxes after `--`, for example
 2. Run every remote repository's `[snapshot.<architecture>]` sub-target on the host, once per
    architecture its mirror serves. The snapshot driver downloads and verifies repository metadata, drops
    unused streams, validates package locations, and writes deterministic, pure snapshot JSON. It does not
-   carry packages forward from an earlier snapshot. It only reads metadata, so any host runs it.
+   carry packages forward from an earlier snapshot. It only reads metadata, so any host runs it. Every
+   `go.releases` target's `[snapshot]` sub-target runs in the same phase, unless `--box` selects boxes
+   without `--go`. It snapshots the releases in the committed snapshot. `--go` alone refreshes only the
+   `go.releases` targets.
 3. Run the selected boxes' `<box>.lock.<architecture>` targets against the freshly pinned repository trees
    and atomically replace their optional frozen transactions. The target box's release, repository
    selection, package list, and architecture define the solve. A lock target carries its architecture as
@@ -396,7 +402,7 @@ the generated transaction. Refreshing the
 catalog is optional for that box and freezes the generated result at the conventional lock path.
 
 The refresh convention keeps repository and box declarations plus their generated data in the active
-catalog's root Buck package, with generated data grouped under `snapshot/{repo,box,key}/`. This makes
+catalog's root Buck package, with generated data grouped under `snapshot/{repo,box,key,go}/`. This makes
 target-name-derived paths and the package-local optional `snapshot/box/*.<architecture>.json` retention
 inputs agree, the latter narrowed to the architecture being built for.
 
