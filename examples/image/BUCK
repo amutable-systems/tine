@@ -239,9 +239,6 @@ image.vm(
         "firstboot.locale": "C.UTF-8",
         "firstboot.timezone": "UTC",
     },
-    # The runner's box is independent of the image's, so every distribution boots under the
-    # same harness and the VM stack is built once rather than per release.
-    box = "tine//distribution:tools.box",
     image = ":boot-demo",
     extensions = [":demo-confext", ":demo-ext"],
     portables = [":demo-portable", ":demo-portable-ext"],

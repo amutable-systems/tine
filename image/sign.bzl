@@ -139,7 +139,7 @@ def _signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
     certificate = pair.project("signing.crt")
     ctx.actions.run(
         cmd_args(
-            box_run(box = ctx.attrs.box[BoxInfo]),
+            box_run(box = ctx.attrs._box[BoxInfo]),
             "sh",
             "-c",
             """set -eu
@@ -178,11 +178,7 @@ exec ukify genkey --secureboot-certificate-common-name "$2" \
 generate_signing_key = rule(
     impl = _signing_key_impl,
     attrs = {
-        "box": attrs.exec_dep(
-            providers = [BoxInfo],
-            default = "tine//distribution:tools.box",
-            doc = "box providing ukify",
-        ),
+        "_box": attrs.exec_dep(providers = [BoxInfo], default = "tine//distribution:tools.box"),
     },
     doc = """Mint a development signing key pair as a build artifact.
 
@@ -279,7 +275,7 @@ def _extract_certificate(ctx: AnalysisContext, key: SigningKeyInfo) -> Artifact:
     access = merge_signing_access([key])
     ctx.actions.run(
         cmd_args(
-            box_run(box = ctx.attrs.box[BoxInfo], ro_binds = access.ro_binds, setenv = access.setenv),
+            box_run(box = ctx.attrs._box[BoxInfo], ro_binds = access.ro_binds, setenv = access.setenv),
             "sh",
             "-c",
             """set -eu
@@ -360,11 +356,6 @@ def _pkcs11_signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
 _pkcs11_signing_key = rule(
     impl = _pkcs11_signing_key_impl,
     attrs = {
-        "box": attrs.exec_dep(
-            providers = [BoxInfo],
-            default = "tine//distribution:tools.box",
-            doc = "box providing keyutil and the PKCS#11 provider",
-        ),
         "certificate": attrs.option(
             attrs.source(),
             default = None,
@@ -388,6 +379,7 @@ _pkcs11_signing_key = rule(
         "section": attrs.string(doc = "the build configuration section the coordinates came from"),
         "socket": attrs.option(attrs.string(), default = None, doc = "host path of the p11-kit server socket"),
         "token": attrs.option(attrs.string(), default = None, doc = "the token label"),
+        "_box": attrs.exec_dep(providers = [BoxInfo], default = "tine//distribution:tools.box"),
     },
     doc = """Address a key held by a PKCS#11 token reachable over a p11-kit server socket.
 

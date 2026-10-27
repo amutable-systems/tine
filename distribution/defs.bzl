@@ -17,11 +17,17 @@ distribution does not serve, the transition leaves the constraint unset.
 load("@catalog//:releases.bzl", _CATALOG_RELEASES = "RELEASES")
 load("@prelude//:rules.bzl", "constraint_value")
 load("@prelude//cfg/exec_platform:marker.bzl", "get_exec_platform_marker")
+load("//box:runtime.bzl", "BoxInfo")
 load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load("//platforms:defs.bzl", "check_unmarked")
 
 # The families that tine declares releases for. Each one is a value of `tine//distribution:family`.
 FAMILIES = ["arch", "debian", "fedora"]
+
+# A rule that runs in the tools box of its release takes the box as a plain dependency rather than an
+# execution one. The tools box then takes the distribution that the rule is configured for, and its
+# incoming transition configures it for the host.
+TOOLS_BOX_ATTR = attrs.dep(providers = [BoxInfo], default = "tine//distribution:tools.box")
 
 def _distribution_impl(ctx: AnalysisContext) -> list[Provider]:
     value = ctx.attrs.constraint[ConstraintValueInfo]

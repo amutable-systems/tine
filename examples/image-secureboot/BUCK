@@ -188,7 +188,6 @@ image.vm(
         "firstboot.locale": "C.UTF-8",
         "firstboot.timezone": "UTC",
     },
-    box = "tine//distribution:tools.box",
     image = ":image",
     # select setup-mode firmware, so sd-boot enrolls the keys from the ESP on first
     # boot; VM then enforces Secure Boot.

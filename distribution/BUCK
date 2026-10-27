@@ -72,13 +72,13 @@ _RELEASE = distribution.select(
     {release: "catalog//:{}.release".format(release) for release in RELEASES.values()} | {"DEFAULT": "catalog//:default.release"},
 )
 
-# Images and buildroots run in the tools box of the release that the build chooses. An execution
+# Images, buildroots and VMs run in the tools box of the release that the build chooses. An execution
 # dependency, and a build that chooses no release, get the tools box of the catalog's default release.
-# A catalog can make a release of any family its default release, and signing and VMs run in that box.
-# The package list therefore names the VM stack and the PKCS#11 client for every family. An image runs its
-# package operations in the tools box of its own release, and the root box of that release contains the
-# package system of its family. catalog//:releases.bzl has to list every release that images build for.
-# A release missing from it gets the root box of the default release.
+# Images of every family sign and boot in the tools box of their release, so the package list names the
+# VM stack and the PKCS#11 client for every family. An image runs its package operations in the tools box
+# of its own release, and the root box of that release contains the package system of its family.
+# catalog//:releases.bzl has to list every release that images build for. A release missing from it gets
+# the root box of the default release.
 box.new(
     name = "tools.box",
     packages = (
@@ -92,7 +92,7 @@ box.new(
             "zstd",
             # Signing with a PKCS#11 token loads pkcs11-provider, which loads p11-kit's client module.
             "pkcs11-provider",
-            # image.vm takes this box. systemd-vmspawn runs the guest, virtiofsd shares the image's
+            # image.vm runs in this box. systemd-vmspawn runs the guest, virtiofsd shares the image's
             # extensions with it, and swtpm gives it a vTPM for measured boot.
             "swtpm",
             "virtiofsd",
