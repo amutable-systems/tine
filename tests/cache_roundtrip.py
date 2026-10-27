@@ -135,7 +135,9 @@ class RoundTrip:
 
     def build(self) -> None:
         """Build every target named in SERVED."""
-        self.tine("build", *SERVED)
+        # The Go and Rust examples build once per distribution. Without a chosen distribution, Buck
+        # finds the examples incompatible and fails the build.
+        self.tine("build", "-c", "tine.distribution=fedora", *SERVED)
 
     def check_uploads(self, allowed: bool) -> None:
         """Fail unless Buck's executor offers uploads exactly when the shim takes them.

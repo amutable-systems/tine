@@ -874,4 +874,4 @@ def image_install(name: str, ops: list[LayerOperationTree] = [], packages: list[
     """
     if not ops and not packages:
         fail("image_install {}: declare the packages or operations that install it".format(name))
-    _image_install(name = name, ops = flatten_operations(ops), packages = packages, **kwargs)
+    _image_install(name = name, ops = flatten_operations(ops), packages = packages, **(distribution.attrs() | kwargs))

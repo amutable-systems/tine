@@ -122,7 +122,8 @@ go.test(
 )
 ```
 
-`buck test :hello-test` runs the tests in the package's box, without network.
+`buck test :hello-test` runs the tests in the package's box, without network, once for each distribution
+that the package builds for.
 
 - `test_packages` lists Go package patterns relative to the module root, such as `["./..."]` or
   `["./pkg/...", "./internal/store"]`. The build compiles one test binary for each matched package that has
@@ -142,27 +143,45 @@ go.test(
 
 `tine//go:build.box` contains the distribution's Go toolchain and `ca-certificates`, which gives the module
 fetch its TLS trust for `proxy.golang.org`. It installs them from the release of the distribution that the
-binaries are built for. A build that chooses no distribution uses the catalog's default release.
+binaries are built for. Like an image, `go.package()` builds once for each distribution of its package,
+and `:hello.fedora` names the build for Fedora. See
+[Choosing a distribution](images.md#choosing-a-distribution).
 
 - Fedora's Go package depends on `gcc`, so go enables cgo in the Fedora box. A binary that imports `net` or
   `os/user` then links dynamically against the C library. The Arch and Debian boxes contain no C compiler,
   so go disables cgo there and links static binaries. `cgo = False` builds static binaries for every
   distribution.
-- A module that `proxy.golang.org` does not serve is fetched directly with `git`, which the box does not
-  contain.
+- A project that depends on a module that `proxy.golang.org` does not serve needs `git` in
+  `buildroot_packages`, because go fetches that module directly with `git`.
 - The fetch and the build set `GOTOOLCHAIN=local`, so go never downloads another toolchain. A `go.mod`
   that requires a newer Go than the box's `go`, or than the `toolchain`, fails the build.
 
 The box is a build environment. It never becomes part of an image.
 
+A project using cgo needs `gcc` and the `-devel` packages it binds. Add them with `buildroot_packages`:
+
+```Starlark
+go.package(
+    name = "hello",
+    buildroot_packages = ["gcc", "libpathrs-devel", "pkgconf"],
+)
+```
+
+A `#cgo pkg-config:` directive needs `pkgconf`, because the build runs `pkgconf` in place of `pkg-config`.
+The binaries then link dynamically, so the image needs the matching runtime packages. This is not limited to
+projects that write C: with cgo enabled, importing `net` or `os/user` is enough. `cgo = False` uses Go's own
+implementations of those instead, and needs no C compiler.
+
+The packages are installed in a layer on top of the box. Every `go.package()` that adds the same packages
+to the same box shares that layer. The names are the distribution's own. A project that builds for several
+families picks them with `distribution.select()`.
+
+The build fails when the box's packages and `buildroot_packages` together resolve to other packages than
+the box contains, such as another provider of a library. Then declare a box with all of the packages, and
+pass it as `box`.
+
 To build in a box of your own, pass it as `box`. Its packages need the Go toolchain, `ca-certificates` and
 `python3`, which runs tine's drivers inside the box.
-
-A project using cgo needs `gcc` and the `-devel` packages it binds, plus `pkgconf` for a `#cgo
-pkg-config:` directive, because the build runs `pkgconf` in place of `pkg-config`. Its binaries then link
-dynamically, so the image needs the matching runtime packages. This is not limited to projects that write
-C: with cgo enabled, importing `net` or `os/user` is enough. `cgo = False` uses Go's own implementations
-of those instead, and needs no C compiler.
 
 ## Building with your own Go toolchain
 

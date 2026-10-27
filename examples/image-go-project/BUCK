@@ -65,6 +65,33 @@ go.package(
     src = "nodeps",
 )
 
+# Only the Fedora build box contains a C compiler, so a project that uses cgo adds gcc. Every go.package()
+# that adds the same packages to the same box builds in one shared layer.
+go.package(
+    name = "cgo",
+    buildroot_packages = [
+        "gcc",
+        "pkgconf",
+    ]
+    + distribution.select({
+        "arch": ["zlib"],
+        "debian": [
+            # gcc only recommends the C library headers, and the install skips recommended packages.
+            "libc6-dev",
+            "zlib1g-dev",
+        ],
+        "fedora": ["zlib-ng-compat-devel"],
+    }),
+)
+
+box.sh_test(
+    name = "cgo-test",
+    labels = ["image"],
+    box = "@tine//tools:dev.box",
+    script = '[[ "$("$1")" == 42 ]]',
+    args = ["$(location :cgo)"],
+)
+
 go.package(
     name = "pie",
     build_mode = "pie",
@@ -95,7 +122,7 @@ box.sh_test(
     labels = ["image"],
     box = "@tine//tools:dev.box",
     script = '[[ "$("$1")" == "server using sibling api: "* ]]',
-    args = ["$(exe :siblings)"],
+    args = ["$(location :siblings)"],
 )
 
 box.sh_test(
@@ -103,12 +130,11 @@ box.sh_test(
     labels = ["image"],
     box = "@tine//tools:dev.box",
     script = 'for binary in "$@"; do [[ "$("$binary")" == "no dependencies here" ]]; done',
-    # $(exe) goes through RunInfo: a single binary is run as the target, any binary as its sub-target.
     args = [
-        "$(exe :nodeps)",
-        "$(exe :renamed)",
-        "$(exe :multiple[first])",
-        "$(exe :multiple[second])",
+        "$(location :nodeps)",
+        "$(location :renamed)",
+        "$(location :multiple[first])",
+        "$(location :multiple[second])",
     ],
 )
 
@@ -192,7 +218,7 @@ box.sh_test(
     labels = ["image"],
     box = "@tine//tools:dev.box",
     script = '[[ "$("$1")" == "local replacement: "* ]]',
-    args = ["$(exe :local-replace)"],
+    args = ["$(location :local-replace)"],
 )
 
 # `:demo[sbom][cyclonedx]` lists the Go modules each binary was built from, next to the image's

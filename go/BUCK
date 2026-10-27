@@ -11,7 +11,8 @@ load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
 
 # The box that go.package() builds in unless a project names its own. Fedora's golang package depends on
 # gcc, so go enables cgo in the Fedora box. The Arch and Debian boxes contain no C compiler, so go disables
-# cgo there and links static binaries.
+# cgo there and links static binaries. A project that uses cgo adds gcc and the development packages it
+# binds with go.package(buildroot_packages = ...).
 box.new(
     name = "build.box",
     packages = [
