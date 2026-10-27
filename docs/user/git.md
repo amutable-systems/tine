@@ -27,7 +27,6 @@ git.fetch(
 cargo.package(
     name = "hello",
     binaries = ["hello-cli"],
-    box = ":rust.box",
     src = ":hello.git",
 )
 ```
