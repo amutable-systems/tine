@@ -106,6 +106,7 @@ _image_directory = rule(
         "image": attrs.dep(providers = [ImageInfo], doc = "the logical image to materialize"),
     }
     | IMAGE_TOOLS_ATTR,
+    supports_incoming_transition = True,
 )
 
 def image_directory(

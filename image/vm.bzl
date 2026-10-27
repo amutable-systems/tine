@@ -172,6 +172,7 @@ _image_vm = rule(
             doc = "attach a software TPM, which Secure Boot implies",
         ),
     },
+    supports_incoming_transition = True,
 )
 
 def image_vm(
