@@ -70,8 +70,8 @@ box.new(
 - `cargo` and `rust` are the toolchain, and `gcc` links. `python3` runs the in-box driver, because
   tine's drivers execute through the box's own interpreter.
 - Add whatever the project links against. A crate wrapping a C library needs that library's `-devel`
-  package, and on Fedora anything using `pkg-config` also needs `rpm`, because `/usr/bin/pkg-config` is a
-  wrapper that shells out to `rpm --eval`.
+  package. A crate that looks the library up with `pkg-config` also needs `pkgconf`, because the build runs
+  `pkgconf` in place of `pkg-config`.
 - The box is a build environment. It never becomes part of an image, and the toolchain is not shipped.
 
 ## Git dependencies

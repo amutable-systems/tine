@@ -201,6 +201,10 @@ def build_go(spec: Spec) -> None:
         # A go.work above the module root switches go into workspace mode, where a go.work.sum
         # replaces the go.sum this build is pinned by.
         "GOWORK": "off",
+        # Fedora's pkg-config is a wrapper script that runs `rpm --eval`, and its package doesn't depend
+        # on rpm. In a box without rpm, every pkg-config lookup fails. cgo runs PKG_CONFIG in place of
+        # pkg-config for a `#cgo pkg-config:` directive.
+        "PKG_CONFIG": "pkgconf",
     }
     if spec["cgo"] is not None:
         # Without `cgo`, CGO_ENABLED stays unset, and the toolchain's own default applies as it would for

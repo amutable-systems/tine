@@ -165,7 +165,15 @@ def build_cargo(spec: Spec) -> None:
                 ],
                 check=True,
                 cwd=workspace,
-                env=os.environ | {"CARGO_HOME": str(cargo_home), "CARGO_TARGET_DIR": str(target)},
+                env=os.environ
+                | {
+                    "CARGO_HOME": str(cargo_home),
+                    "CARGO_TARGET_DIR": str(target),
+                    # Fedora's pkg-config is a wrapper script that runs `rpm --eval`, and its package
+                    # doesn't depend on rpm. In a box without rpm, every pkg-config lookup fails. The
+                    # pkg-config crate runs PKG_CONFIG in place of pkg-config.
+                    "PKG_CONFIG": "pkgconf",
+                },
             )
 
         _take_binaries(target, spec["triple"], spec["binaries"], out)

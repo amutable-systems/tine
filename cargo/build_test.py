@@ -78,6 +78,7 @@ class TestBuildCargo(unittest.TestCase):
             self.assertEqual((cwd / "source.rs").read_text(encoding="utf-8"), "original")
             self.assertTrue(Path(env["CARGO_HOME"]).is_absolute())
             self.assertTrue(Path(env["CARGO_TARGET_DIR"]).is_absolute())
+            self.assertEqual(env["PKG_CONFIG"], "pkgconf")
             for path in (cwd / "source.rs", cwd / "generated", Path("outside")):
                 with self.subTest(path=path), self.assertRaises(OSError) as caught:
                     path.write_text("changed", encoding="utf-8")
