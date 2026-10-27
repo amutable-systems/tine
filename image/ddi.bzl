@@ -8,7 +8,6 @@ load("//box:runtime.bzl", "BoxInfo", "box_run")
 load(
     ":image.bzl",
     "GPT_LABEL_LIMIT",
-    "IMAGE_TOOLS_ATTR",
     "ImageInfo",
     "ImageToolsInfo",
     "check_name",
@@ -490,12 +489,6 @@ DISK_FORMATS = ["qcow2", "raw.zst", "vmdk"]
 # claim. The raw itself stays as small as its partitions.
 VIRTUAL_SIZE_FORMATS = ["qcow2", "vmdk"]
 
-VIRTUAL_SIZE_ATTR = attrs.option(
-    attrs.string(),
-    default = None,
-    doc = 'size of the disk a qcow2 or vmdk describes, e.g. "20G"; the room past the partitions stays free',
-)
-
 DiskConversionInfo = provider(
     doc = "A composed raw disk re-encoded into one distributable format.",
     fields = {
@@ -511,28 +504,20 @@ def declare_disk_conversion(
     disk: DdiInfo,
     box: Dependency,
     format: str,
-    virtual_size: str | None = None,
-    basename: str = "image",
-    identifier: str | None = None,
+    virtual_size: str | None,
+    basename: str,
 ) -> DiskConversionInfo:
     """Declare a disk format conversion from a resolved raw disk provider.
 
     `virtual_size` sizes the disk of a format in VIRTUAL_SIZE_FORMATS, which otherwise is as large as
     the raw.
     """
-    if disk.disk == None:
-        fail("disk_convert: DdiInfo does not contain a composed disk")
-    if virtual_size != None:
-        if format not in VIRTUAL_SIZE_FORMATS:
-            fail("disk_convert: a {} disk is the raw's size and takes no virtual_size".format(format))
-        if not regex_match(SIZE_PATTERN, virtual_size):
-            fail("disk_convert: invalid virtual_size {!r}".format(virtual_size))
-    out = declare_out(ctx, identifier, basename + "." + format)
+    out = declare_out(ctx, format, basename + "." + format)
     cmd = cmd_args(
         box_run(box = box[BoxInfo], exe = tools.convert),
         spec_args(
             ctx.actions,
-            spec_path(identifier, "convert"),
+            spec_path(format, "convert"),
             {
                 "format": format,
                 "input": disk.disk,
@@ -541,29 +526,5 @@ def declare_disk_conversion(
             },
         ),
     )
-    ctx.actions.run(cmd, category = "disk_convert", identifier = identifier or format)
+    ctx.actions.run(cmd, category = "disk_convert", identifier = format)
     return DiskConversionInfo(format = format, image = out)
-
-def _disk_convert_impl(ctx: AnalysisContext) -> list[Provider]:
-    info = declare_disk_conversion(
-        ctx,
-        tools = ctx.attrs._tools[ImageToolsInfo],
-        basename = ctx.attrs.basename,
-        disk = ctx.attrs.disk[DdiInfo],
-        box = ctx.attrs.box,
-        format = ctx.attrs.format,
-        virtual_size = ctx.attrs.virtual_size,
-    )
-    return [DefaultInfo(default_output = info.image), info]
-
-disk_convert = rule(
-    impl = _disk_convert_impl,
-    attrs = {
-        "basename": attrs.string(default = "image", doc = "file name of the re-encoded disk, without extension"),
-        "box": attrs.exec_dep(providers = [BoxInfo], doc = "execution environment supplying conversion tools"),
-        "disk": attrs.dep(providers = [DdiInfo], doc = "the composed raw disk to re-encode"),
-        "format": attrs.enum(DISK_FORMATS),
-        "virtual_size": VIRTUAL_SIZE_ATTR,
-    }
-    | IMAGE_TOOLS_ATTR,
-)

@@ -31,7 +31,7 @@ load(
     "DDI_ATTRS",
     "DISK_FORMATS",
     "Partition",  # @unused Used as a type.
-    "VIRTUAL_SIZE_ATTR",
+    "SIZE_PATTERN",
     "VIRTUAL_SIZE_FORMATS",
     "declare_ddi",
     "declare_disk_conversion",
@@ -514,6 +514,8 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
 
     raw = composed.info.disk
     directory = declare_image_directory(ctx, tools = tools, identifier = "directory", image = top)
+    if ctx.attrs.virtual_size != None and not regex_match(SIZE_PATTERN, ctx.attrs.virtual_size):
+        fail("disk: invalid virtual_size {!r}".format(ctx.attrs.virtual_size))
     conversions = [
         declare_disk_conversion(
             ctx,
@@ -523,7 +525,6 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
             box = top.box,
             format = format,
             virtual_size = ctx.attrs.virtual_size if format in VIRTUAL_SIZE_FORMATS else None,
-            identifier = format,
         )
         for format in DISK_FORMATS
     ]
@@ -594,7 +595,11 @@ _DISK_ATTRS = (
         "arch": UKI_ATTRS["arch"],
         "disk_seed": attrs.option(attrs.string(), default = None),
         "image_id": attrs.option(attrs.string(), default = None),
-        "virtual_size": VIRTUAL_SIZE_ATTR,
+        "virtual_size": attrs.option(
+            attrs.string(),
+            default = None,
+            doc = 'size of the disk a qcow2 or vmdk describes, e.g. "20G"; the room past the partitions stays free',
+        ),
     }
 )
 

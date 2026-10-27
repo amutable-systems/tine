@@ -1372,11 +1372,9 @@ Boot profiles become small PE binaries of `.profile` and `.cmdline` sections, bu
 addon stub and joined into every UKI; a profile's arguments extend the shared base command line (including
 the verity hash), and kernel arguments are last-wins, so profiles can also override it.
 
-A composed raw disk can be re-encoded into distributable formats without rebuilding it: `image.disk_convert`
-uses its explicit box to drive `qemu-img` for a compact qcow2 and `zstd` for a compressed raw. These are
-alternative encodings of the same disk and remain separate, reusable terminal implementations rather than
-default outputs. A converted target provides `image.DiskConversionInfo`, naming the format alongside its
-artifact, so one provider covers every encoding instead of one provider type per format.
+A composed raw disk can be re-encoded into distributable formats without rebuilding it: the `[qcow2]`,
+`[raw.zst]` and `[vmdk]` subtargets of a disk run `qemu-img` or `zstd` in the image's box. These are
+alternative encodings of the same disk and remain subtargets rather than default outputs.
 
 #### Bootable-image result
 
