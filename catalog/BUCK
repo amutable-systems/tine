@@ -3,8 +3,8 @@
 
 """Default repositories, OS releases, boxes, package managers, and build profiles."""
 
-# Generated data lives under `snapshot/{repo,box,key}/`, named by target without its type suffix, and
-# by architecture.
+# Generated data lives under `snapshot/{repo,box,key,go}/`, named by target without its type suffix, and
+# by architecture where it differs per architecture.
 # Boxes with a resolver can derive their transaction during the build; refresh the catalog to freeze
 # one as a retained lock. Signing keys are fetched once, when a repository first declares them.
 
@@ -12,6 +12,7 @@ load("@tine//distribution:arch.bzl", "arch_release", "arch_signing_keys")
 load("@tine//distribution:debian.bzl", "debian_release", "debian_signing_keys")
 load("@tine//distribution:defs.bzl", "distribution")
 load("@tine//distribution:fedora.bzl", "fedora_release", "fedora_signing_keys")
+load("@tine//go:defs.bzl", "go")
 
 # What the mirror serves, and so what a box of this release keeps a committed lock for. A box only
 # ever takes architectures its release has, so state each release's once.
@@ -54,6 +55,11 @@ debian_release(
     archive_snapshot = "20261024T203415Z",
     # The archive signs a Release with its current key and with the previous key.
     signing_keys = debian_signing_keys("archive-key-12", "archive-key-13"),
+    visibility = ["PUBLIC"],
+)
+
+go.releases(
+    name = "go.releases",
     visibility = ["PUBLIC"],
 )
 

@@ -152,6 +152,13 @@ class LockPaths(unittest.TestCase):
             Path("snapshot/repo/arch.rolling.core.x86_64.json"),
         )
 
+    def test_names_a_go_releases_snapshot_by_target(self) -> None:
+        self.assertEqual(catalog._go_releases_path("catalog//:go.releases"), Path("snapshot/go/go.json"))
+
+    def test_rejects_a_go_releases_target_without_its_suffix(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "does not end with '.releases'"):
+            catalog._go_releases_path("catalog//:go")
+
 
 class NewestRpmrepoSnapshot(unittest.TestCase):
     @override
@@ -206,6 +213,55 @@ class NewestRpmrepoSnapshot(unittest.TestCase):
                     ]
                 )
         self.assertIn("one pin cannot advance to several snapshots", str(raised.exception))
+
+
+class Plan(unittest.TestCase):
+    def plan(self, boxes: list[str] | None, go: bool) -> tuple[list[str], list[str], list[str]]:
+        labelled = {
+            catalog.BOX_LOCK_LABEL: ["catalog//:fedora.box.lock.x86_64", "catalog//:arch.box.lock.x86_64"],
+            catalog.REMOTE_REPOSITORY_LABEL: ["catalog//:fedora.repository", "catalog//:arch.repository"],
+            catalog.GO_RELEASES_LABEL: ["catalog//:go.releases"],
+        }
+        with (
+            mock.patch.object(
+                catalog, "_targets_with_label", side_effect=lambda _catalog, label: labelled[label]
+            ),
+            mock.patch.object(
+                catalog, "_repositories_for_boxes", return_value=["catalog//:fedora.repository"]
+            ),
+            mock.patch.object(catalog, "_catalog_directory", return_value=Path("catalog")),
+        ):
+            _, snapshots, resolves, go_releases = catalog._plan("catalog//", boxes, go)
+        return snapshots, resolves, go_releases
+
+    def test_refreshes_everything_without_a_selection(self) -> None:
+        self.assertEqual(
+            self.plan(None, False),
+            (
+                ["catalog//:fedora.repository", "catalog//:arch.repository"],
+                ["catalog//:fedora.box.lock.x86_64", "catalog//:arch.box.lock.x86_64"],
+                ["catalog//:go.releases"],
+            ),
+        )
+
+    def test_selecting_boxes_leaves_out_go_releases(self) -> None:
+        self.assertEqual(
+            self.plan(["fedora.box"], False),
+            (["catalog//:fedora.repository"], ["catalog//:fedora.box.lock.x86_64"], []),
+        )
+
+    def test_go_alone_refreshes_only_go_releases(self) -> None:
+        self.assertEqual(self.plan(None, True), ([], [], ["catalog//:go.releases"]))
+
+    def test_go_with_boxes_refreshes_both(self) -> None:
+        self.assertEqual(
+            self.plan(["fedora.box"], True),
+            (
+                ["catalog//:fedora.repository"],
+                ["catalog//:fedora.box.lock.x86_64"],
+                ["catalog//:go.releases"],
+            ),
+        )
 
 
 if __name__ == "__main__":

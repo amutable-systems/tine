@@ -5,7 +5,7 @@
 
 load("//:specs.bzl", "spec_args")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
-load("//platforms:architecture.bzl", "architecture")
+load("//platforms:architecture.bzl", "ARCHITECTURES", "architecture")
 load("//project:defs.bzl", "project")
 
 _PRIVATE = "__tine"
@@ -232,6 +232,54 @@ def go_package(
         name = name,
         incremental = project.is_dev(name, source = src, override = dev),
         src = src if src != None else name,
+        **kwargs,
+    )
+
+# Keep in sync with GO_RELEASES_LABEL in tools/catalog.py, which refreshes the targets that carry it.
+_GO_RELEASES_LABEL = "tine:go-releases"
+
+def go_releases_snapshot_path(name: str) -> str:
+    """Where the committed snapshot of a go.releases target lives, relative to its package.
+
+    Keep in sync with `_go_releases_path` in tools/catalog.py, which writes it.
+    """
+    return "snapshot/go/{}.json".format(name.removesuffix(".releases"))
+
+def _go_releases_impl(ctx: AnalysisContext) -> list[Provider]:
+    # A catalog declares go.releases before refresh-catalog writes its first snapshot. The catalog
+    # has to load without the snapshot, because refresh-catalog runs the [snapshot] sub-target to
+    # write it.
+    snapshot = ctx.attrs.snapshot if ctx.attrs.snapshot != None else ctx.actions.write_json("empty-snapshot.json", {})
+    spec = spec_args(
+        ctx.actions,
+        "snapshot.spec.json",
+        {"current": snapshot, "goarch": {arch: architecture.spelling(arch, "go") for arch in ARCHITECTURES}},
+    )
+    run_snapshot = [DefaultInfo(), RunInfo(args = cmd_args(ctx.attrs._snapshot[RunInfo], spec))]
+
+    return [DefaultInfo(sub_targets = {"snapshot": run_snapshot})]
+
+_go_releases = rule(
+    impl = _go_releases_impl,
+    attrs = {
+        "labels": attrs.list(attrs.string(), default = []),
+        "snapshot": attrs.option(attrs.source(), default = None, doc = "the committed URL, sha256 and size of each release's archive, per architecture"),
+        "_snapshot": attrs.exec_dep(providers = [RunInfo], default = "tine//go:releases"),
+    },
+)
+
+def go_releases(name: str, labels: list[str] = [], **kwargs) -> None:
+    """Declare the Go releases of the committed snapshot.
+
+    refresh-catalog writes the snapshot to snapshot/go/<name without .releases>.json in the package.
+    """
+    if not name.endswith(".releases"):
+        fail("go.releases name must end with '.releases': {}".format(name))
+    committed = glob([go_releases_snapshot_path(name)])
+    _go_releases(
+        name = name,
+        labels = [_GO_RELEASES_LABEL] + labels,
+        snapshot = committed[0] if committed else None,
         **kwargs,
     )
 

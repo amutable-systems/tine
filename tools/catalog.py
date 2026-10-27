@@ -53,6 +53,8 @@ REMOTE_REPOSITORY_LABEL = "tine:remote-repository"
 RPM_REMOTE_REPOSITORY_LABEL = "tine:rpm-remote-repository"
 PACMAN_REMOTE_REPOSITORY_LABEL = "tine:pacman-remote-repository"
 DEB_REMOTE_REPOSITORY_LABEL = "tine:deb-remote-repository"
+# Keep in sync with _GO_RELEASES_LABEL in go/rules.bzl.
+GO_RELEASES_LABEL = "tine:go-releases"
 
 # Keep in sync with SIGNING_KEY_DIRECTORY/SIGNING_KEY_SUFFIX in package/repository.bzl.
 SIGNING_KEY_DIRECTORY = Path("snapshot/key")
@@ -114,6 +116,17 @@ def _box_lock_parts(target: str) -> tuple[str, str]:
 def _box_lock_path(target: str) -> Path:
     box, architecture = _box_lock_parts(target)
     return _lock_path("box", box.removesuffix(".box"), architecture)
+
+
+def _go_releases_path(target: str) -> Path:
+    """Where the committed snapshot of a go.releases target lives, relative to the catalog package.
+
+    Keep in sync with `go_releases_snapshot_path` in go/rules.bzl, which reads it.
+    """
+    name = _name_of(target)
+    if not name.endswith(".releases"):
+        fail(f"catalog: {target} does not end with '.releases'")
+    return Path("snapshot") / "go" / f"{name.removesuffix('.releases')}.json"
 
 
 def _run(target: str) -> str:
@@ -521,26 +534,37 @@ def _repositories_for_boxes(boxes: list[str]) -> list[str]:
     return sorted(buck_output("uquery", query).split())
 
 
-def _plan(catalog: str, selected_boxes: list[str] | None) -> tuple[Path, list[str], list[str]]:
+def _plan(
+    catalog: str, selected_boxes: list[str] | None, go: bool
+) -> tuple[Path, list[str], list[str], list[str]]:
     """Pick what to refresh.
 
-    Selecting boxes also scopes the snapshotted repositories to those the boxes depend on, so a
-    partial refresh or verify never touches a repository outside the selection.
+    Without a selection, everything is refreshed. Selecting boxes also scopes the snapshotted
+    repositories to those the boxes depend on, so a partial refresh or verify never touches a
+    repository outside the selection. `go` selects every go.releases target, alone or beside the
+    selected boxes.
     """
     all_resolves = _targets_with_label(catalog, BOX_LOCK_LABEL)
-    resolves = _select_boxes(all_resolves, selected_boxes)
-
-    if selected_boxes is None:
+    all_go_releases = _targets_with_label(catalog, GO_RELEASES_LABEL)
+    if go and not all_go_releases:
+        fail(f"catalog: no go.releases targets found in {catalog}")
+    if selected_boxes is None and not go:
+        resolves = all_resolves
         snapshots = _targets_with_label(catalog, REMOTE_REPOSITORY_LABEL)
+        go_releases = all_go_releases
     else:
-        snapshots = _repositories_for_boxes(resolves)
-    targets = all_resolves + snapshots
+        resolves = [] if selected_boxes is None else _select_boxes(all_resolves, selected_boxes)
+        snapshots = _repositories_for_boxes(resolves) if resolves else []
+        go_releases = all_go_releases if go else []
+    targets = all_resolves + snapshots + all_go_releases
     if not targets:
         fail(f"catalog: no repository/box refresh targets found in {catalog}")
-    return _catalog_directory(targets), snapshots, resolves
+    return _catalog_directory(targets), snapshots, resolves, go_releases
 
 
-def _regenerate(catalog_dir: Path, snapshots: list[str], resolves: list[str]) -> Iterator[tuple[Path, str]]:
+def _regenerate(
+    catalog_dir: Path, snapshots: list[str], resolves: list[str], go_releases: list[str]
+) -> Iterator[tuple[Path, str]]:
     """Fetch keys, snapshot repositories and resolve boxes, yielding each result and where it belongs.
 
     Nothing is written here, so a verify regenerates through the same commands a refresh does and
@@ -555,6 +579,13 @@ def _regenerate(catalog_dir: Path, snapshots: list[str], resolves: list[str]) ->
                 catalog_dir / _repository_lock_path(target, architecture),
                 _snapshot(target, architecture),
             )
+
+    for target in go_releases:
+        print(f"==> snapshotting {_name_of(target)} (via {target}[snapshot])", file=sys.stderr)
+        yield (
+            catalog_dir / _go_releases_path(target),
+            _run(f"{target}[snapshot]"),
+        )
 
     for target in resolves:
         yield catalog_dir / _box_lock_path(target), _resolve(target)
@@ -603,6 +634,11 @@ def main(argv: list[str] | None = None) -> None:
         help="only (re)resolve these boxes and snapshot the repositories they depend on; default: all",
     )
     p.add_argument(
+        "--go",
+        action="store_true",
+        help="only refresh the go.releases targets, besides the boxes that --box selects",
+    )
+    p.add_argument(
         "--advance",
         action="store_true",
         help="first advance the selected repositories' pins to the newest snapshot their mirrors offer",
@@ -626,9 +662,9 @@ def main(argv: list[str] | None = None) -> None:
 
     # Run nested commands from the project root so wrappers resolve consistently.
     with contextlib.chdir(buck_output("root", "--kind", "project")) as _:
-        catalog_dir, snapshots, resolves = _plan(catalog, args.box)
+        catalog_dir, snapshots, resolves, go_releases = _plan(catalog, args.box, args.go)
         # Lazy: nothing is snapshotted until the loop below asks, after the pins have moved.
-        regenerated = _regenerate(catalog_dir, snapshots, resolves)
+        regenerated = _regenerate(catalog_dir, snapshots, resolves, go_releases)
         if not args.verify:
             checkout = _Checkout()
             try:

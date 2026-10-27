@@ -4,12 +4,21 @@
 """Go source builds: one online, go.sum-verified module fetch, then an offline compile."""
 
 load("//box:test.bzl", "box_python_test")
+load("//go:defs.bzl", "go")
 load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
 
 # The project's source artifacts in; the module root, its pins and the go.mod files the fetch reads out.
 tine_python_binary(
     name = "workspace",
     main = "workspace.py",
+    visibility = ["PUBLIC"],
+    deps = ["//:specs", "//:util"],
+)
+
+# refresh-catalog runs this driver on the host through a go.releases target's [snapshot] sub-target.
+tine_python_binary(
+    name = "releases",
+    main = "releases.py",
     visibility = ["PUBLIC"],
     deps = ["//:specs", "//:util"],
 )
@@ -55,6 +64,11 @@ tine_python_binary(
     ],
 )
 
+# A catalog declares go.releases before refresh-catalog writes its first snapshot. go/ contains no
+# snapshot for this target, so the graph analysis that lint runs checks that go.releases analyzes
+# without one.
+go.releases(name = "unrefreshed.releases")
+
 box_python_test(
     name = "test",
     box = "//tools:dev.box",
@@ -63,6 +77,8 @@ box_python_test(
         "build_test.py",
         "fetch.py",
         "fetch_test.py",
+        "releases.py",
+        "releases_test.py",
         "runner.py",
         "runner_test.py",
         "toolchain.py",
