@@ -395,15 +395,14 @@ when needed:
   set its `sign_expected_pcr` to false to opt out;
 - `image.bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
-- `image.vm` runs the raw image ephemerally with its explicitly selected box's `systemd-vmspawn`, QEMU,
-  and OVMF stack,
-  and binds the DDIs in `extensions` into the guest, where systemd merges them at boot: a sysext from
-  `/var/lib/extensions`, a confext from `/var/lib/confexts`, and a DDI of both classes from both. Each
-  must have the `system` scope. It binds the DDIs in `portables`, portable images and extensions with
-  the `portable` scope, at `/var/lib/portables`, where `portablectl attach` finds them by name. Each DDI
-  is named `<name>.raw` in the guest. With `secure_boot`, vmspawn picks Secure Boot capable firmware
-  without pre-enrolled keys, so an image carrying `loader/keys/auto` enrollment files enrolls them on
-  first boot and then boots with Secure Boot enforced, and attaches a software TPM so the UKI's signed
+- `image.vm` runs the raw image ephemerally with the `systemd-vmspawn`, QEMU and OVMF stack of the tools box
+  of the image's release, and binds the DDIs in `extensions` into the guest, where systemd merges them at
+  boot: a sysext from `/var/lib/extensions`, a confext from `/var/lib/confexts`, and a DDI of both classes
+  from both. Each must have the `system` scope. It binds the DDIs in `portables`, portable images and
+  extensions with the `portable` scope, at `/var/lib/portables`, where `portablectl attach` finds them by
+  name. Each DDI is named `<name>.raw` in the guest. With `secure_boot`, vmspawn picks Secure Boot capable
+  firmware without pre-enrolled keys, so an image carrying `loader/keys/auto` enrollment files enrolls them
+  on first boot and then boots with Secure Boot enforced, and attaches a software TPM so the UKI's signed
   expected-PCR policy is measured.
 
 `image.archive` builds one logical image from operations and writes it as a deterministic tar or newc cpio
@@ -1058,11 +1057,11 @@ and the build reaches it over a socket without ever seeing the key material. See
 
 ## Running the image in a VM
 
-Runtime and execution policy live on the `image.vm` target, not in the disk provider: its explicit `box`
-supplies the VM stack, its `autologin` option provisions a locked root password and runtime `login.noauth`,
-and arbitrary non-secret system credentials configure settings such as first-boot locale and timezone.
-`cpus` sets the number of virtual CPUs, and `ram` sets the guest memory to a systemd size such as `"4G"`;
-both are passed directly to vmspawn.
+Runtime and execution policy live on the `image.vm` target, not in the disk provider: the tools box of the
+image's release supplies the VM stack, its `autologin` option provisions a locked root password and runtime
+`login.noauth`, and arbitrary non-secret system credentials configure settings such as first-boot locale and
+timezone. `cpus` sets the number of virtual CPUs, and `ram` sets the guest memory to a systemd size such as
+`"4G"`; both are passed directly to vmspawn.
 
 `cmdline_extra` appends kernel command line arguments to the ones the image already boots with, for
 settings a run needs and the image should not carry: `["systemd.firstboot=headless"]` keeps a first boot

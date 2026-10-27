@@ -5,7 +5,7 @@
 
 load("@prelude//platforms:defs.bzl", "host_configuration")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
-load("//distribution:defs.bzl", "distribution")
+load("//distribution:defs.bzl", "TOOLS_BOX_ATTR", "distribution")
 load(":ddi.bzl", "DdiInfo", "SIZE_PATTERN")
 load(":extension.bzl", "ExtensionInfo", "PortableInfo")
 
@@ -15,7 +15,7 @@ def _image_vm_impl(ctx: AnalysisContext) -> list[Provider]:
         fail("image_vm: DdiInfo does not contain a composed disk")
     run = cmd_args(
         box_run(
-            box = ctx.attrs.box[BoxInfo],
+            box = ctx.attrs._box[BoxInfo],
             exe = "systemd-vmspawn",
             relaxed = True,
         ),
@@ -125,7 +125,6 @@ _image_vm = rule(
             default = None,
             doc = "user to log in automatically without authentication",
         ),
-        "box": attrs.exec_dep(providers = [BoxInfo], doc = "execution environment supplying the VM stack"),
         "cmdline_extra": attrs.list(
             attrs.string(),
             default = [],
@@ -171,6 +170,9 @@ _image_vm = rule(
             default = False,
             doc = "attach a software TPM, which Secure Boot implies",
         ),
+        # The tools box of the image's release built the image and contains the VM stack. Booting the image
+        # in that box builds no other box.
+        "_box": TOOLS_BOX_ATTR,
     },
     supports_incoming_transition = True,
 )

@@ -1268,8 +1268,9 @@ from an earlier split call; their blocks are copied into the new disk with their
 preserved. Calls emit a disk by default. `split = True` additionally exposes each newly defined partition
 with normalized metadata alongside its block artifact; `disk = False` makes such a call partition-only. No
 partial disk is passed between actions. The partition artifacts are portable, so `image.DdiInfo` carries no
-box: repart uses the destination `image.ImageInfo.box`, while standalone conversion and VM rules select a box
-explicitly. `image.directory` is an independent terminal view and is never an input to repart.
+box: repart and the format conversions use the destination `image.ImageInfo.box`, and `image.vm` uses the
+tools box of the image's release. `image.directory` is an independent terminal view and is never an input to
+repart.
 
 Partition layouts are always explicit inputs; `image.disk` doesn't choose one
 implicitly. The reusable conventional layouts are listed in [images.md](../user/images.md).
