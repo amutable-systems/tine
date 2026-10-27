@@ -1043,7 +1043,8 @@ finds it after an OS update; [architecture.md](../design/architecture.md) explai
 Development images can source a key in two ways:
 
 - `image.generate_signing_key()` mints a pair at build time with `ukify genkey`, into buck-out; see
-  `//examples/image-secureboot`. Nothing is committed and no manual step is needed. Every workspace, and
+  `//examples/image-secureboot`. Nothing is committed and no manual step is needed. Rebuilds reuse the pair,
+  also after a change to the box, and the build never uploads it to a cache. Every workspace, and
   every build after `buck clean`, mints a different key, so all signed artifacts rebuild and each
   workspace's images enroll a different certificate.
 - `image.pem_signing_key()` adopts PEM files committed in the consuming project. Stable inputs keep the whole

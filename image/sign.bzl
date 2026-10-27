@@ -12,6 +12,7 @@ Do not load image.bzl here: it consumes the provider, so that would close a load
 """
 
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//project:defs.bzl", "project")
 
 # Reads a certificate through the same OpenSSL provider the signing tools load the key with, so a
 # token's certificate needs no second way to address it. Not on PATH, hence the full path.
@@ -129,19 +130,40 @@ def key_source_arguments(key: SigningKeyInfo) -> list[str]:
     return arguments
 
 def _signing_key_impl(ctx: AnalysisContext) -> list[Provider]:
-    key = ctx.actions.declare_output("signing.key")
-    certificate = ctx.actions.declare_output("signing.crt")
+    # The box is an input of the action, so every change to the box reruns it. `ukify genkey` creates a
+    # random pair, and every new pair changes every artifact signed with it. The action therefore writes
+    # the pair into a kept directory, whose path depends only on the target. It runs `ukify genkey` only
+    # when that directory contains no pair.
+    pair = project.kept_dir(ctx.actions, "pair")
+    key = pair.project("signing.key")
+    certificate = pair.project("signing.crt")
     ctx.actions.run(
         cmd_args(
             box_run(box = ctx.attrs.box[BoxInfo]),
-            "ukify",
-            "genkey",
-            "--secureboot-certificate-common-name",
+            "sh",
+            "-c",
+            """set -eu
+key=$1/signing.key
+certificate=$1/signing.crt
+if [ -s "$key" ] && [ -s "$certificate" ]; then
+    exit 0
+fi
+# An interrupted run can leave only one file of the pair. ukify fails when a file it writes exists.
+mkdir -p "$1"
+rm -f "$key" "$certificate"
+exec ukify genkey --secureboot-certificate-common-name "$2" \
+    --secureboot-private-key="$key" --secureboot-certificate="$certificate"
+""",
+            "sh",  # $0, which only names the shell in its own diagnostics
+            pair.as_output(),
             _GENERATED_CN_PREFIX + ctx.label.name,
-            cmd_args(key.as_output(), format = "--secureboot-private-key={}"),
-            cmd_args(certificate.as_output(), format = "--secureboot-certificate={}"),
         ),
         category = "signing_key",
+        # The output contains a private key that is not a function of the action's inputs. Through a shared
+        # cache, another workspace would download the same key.
+        allow_cache_upload = False,
+        local_only = True,
+        no_outputs_cleanup = True,
     )
     return [
         DefaultInfo(
@@ -164,9 +186,11 @@ generate_signing_key = rule(
     },
     doc = """Mint a development signing key pair as a build artifact.
 
-    `ukify genkey` produces the pair per workspace into buck-out, so nothing secret is committed, and
-    anyone who wants one by hand can run `ukify genkey` directly. `:<name>[cert]` and `:<name>[key]`
-    are the PEM artifacts.
+    `ukify genkey` produces the pair once per workspace into buck-out, so nothing secret is committed,
+    and anyone who wants one by hand can run `ukify genkey` directly. Rebuilds reuse the pair, so signed
+    artifacts stay byte-identical when nothing else changes. After a `buck clean`, the next build generates
+    a new pair. The build never uploads the pair to a cache. `:<name>[cert]` and `:<name>[key]` are the
+    PEM artifacts.
 
     The certificate is named `tine.generated.<name>`, to signify that it is not an official
     production key.
