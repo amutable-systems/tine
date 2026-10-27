@@ -1124,7 +1124,9 @@ Nothing supplies a default. A target declared for no distribution in particular 
 its `select()`, and is `target_compatible_with` a value no platform carries wherever none was chosen,
 so a build that has chosen one resolves, `//...` skips the rest, and naming one directly fails as
 incompatible rather than quietly picking, reporting the missing choice by name. A default
-would decide which distribution actually gets built and leave the others to rot. The list comes from
+would decide which distribution actually gets built and leave the others to rot. If the catalog lists
+one release, no other release can go unbuilt. A package that takes its list from the catalog then builds
+every target for that release by its own name and declares no aliases. The list comes from
 `catalog//:releases.bzl`, or from a package's `PACKAGE` file where the package declares its own, and
 every image rule defaults to it. The failure mode of repeating it per target is a target that forgets:
 being compatible while depending on something incompatible is an error rather than a skip. Buck can't

@@ -214,8 +214,10 @@ def set_for_package(distributions: dict[str, dict[str, str]]) -> None:
     """Declare, for one package and everything under it, which distributions its images serve.
 
     A package that declares no distributions builds its images for every release in
-    `catalog//:releases.bzl`. An empty dict declares no distribution. The package's images then build
-    by their own names, and their `target_compatible_with` keeps the value that each target sets.
+    `catalog//:releases.bzl`. If that file lists one release, the package's images build for it by
+    their own names, without aliases. An empty dict declares no distribution. The package's images
+    then build by their own names, and their `target_compatible_with` keeps the value that each target
+    sets.
 
     Each entry names one distribution of the package. Its `release` key names a release of the
     catalog, such as `fedora.rawhide`. Its `package_manager` key defaults to the release's package
@@ -240,6 +242,12 @@ def for_package() -> dict[str, dict[str, str]]:
     if declared != None:
         return declared
     return {name: _describe(name, {"release": release}) for name, release in _CATALOG_RELEASES.items()}
+
+def _implied() -> str | None:
+    """Return the distribution that this package's targets build for when they name none, or None."""
+    if read_package_value(_DISTRIBUTIONS) != None or len(_CATALOG_RELEASES) != 1:
+        return None
+    return _release(_CATALOG_RELEASES.values()[0], "distribution")
 
 def package_manager() -> Select:
     """Return the package manager of the release that a build chooses for this package."""
@@ -273,9 +281,13 @@ def compatibility():
     that asks for nothing under each distribution and for the unsatisfiable value under anything
     else. A package that declared no distributions constrains nothing. Rules tine owns get this
     through their macros; a rule it does not own, such as a prelude one over an image, asks here.
+
+    A package that builds for the catalog's only release gets no constraint either. A rule that tine
+    does not own takes no incoming transition. The select would make a target of that rule
+    incompatible wherever it is built by its own name.
     """
     declared = for_package()
-    if not declared:
+    if not declared or _implied() != None:
         return []
     targets = [described["distribution"] for described in declared.values()]
     return select({target: [] for target in targets} | {"DEFAULT": [_UNCHOSEN]})
@@ -286,7 +298,7 @@ def _chosen(distro: str) -> list[str] | Select:
     The transition leaves the distribution unset for an architecture that `distro` does not serve,
     and the target is then incompatible.
     """
-    if for_package():
+    if for_package() and _implied() == None:
         return compatibility()
     return select({distro: [], "DEFAULT": [_UNCHOSEN]})
 
@@ -318,9 +330,11 @@ def aliases(
 
     A target that names no distribution of its own is buildable under every one of them, so the
     names that say which are declared beside it rather than listed again somewhere else. A target
-    that does name one is already the distribution it is, and gets no aliases.
+    that does name one is already the distribution it is, and gets no aliases. Neither does a target
+    of a package that builds for the catalog's only release, because it builds for that release by
+    its own name.
     """
-    if distro != None:
+    if distro != None or _implied() != None:
         return
     declared = for_package()
     for suffix in sorted(declared):
@@ -350,6 +364,8 @@ def distributed(
     `//...` then fails instead of skipping both.
     """
     compatible_with = [] if target_compatible_with == None else target_compatible_with
+    if distro == None:
+        distro = _implied()
     aliases(name, distro, visibility, compatible_with)
     result = attributes(distro, visibility)
     result["target_compatible_with"] = result.get("target_compatible_with", []) + compatible_with
