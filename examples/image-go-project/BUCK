@@ -15,22 +15,10 @@ load("@tine//http:defs.bzl", "http")
 load("@tine//image:defs.bzl", "image")
 load("//:tine.lock.json", _pins = "value")
 
-# The build environment for our Go projects; it never reaches an image.
-box.new(
-    name = "go.box",
-    packages = [
-        # TLS trust for the module fetch from proxy.golang.org.
-        "ca-certificates",
-        "golang",
-    ],
-    release = "catalog//:fedora.rawhide.release",
-)
-
 # A checked-out project needs no build file of its own: the sources default to the directory named
 # after the target, and the go.mod in them marks the module root.
 go.package(
     name = "hello",
-    box = ":go.box",
     packages = {"hello-cli": "./cmd/hello-cli"},
     test_packages = ["./..."],
 )
@@ -45,7 +33,6 @@ go.test(
 # Without `packages`, the module's only main package is built under the target's name.
 go.package(
     name = "nodeps",
-    box = ":go.box",
     test_packages = ["./..."],
 )
 
@@ -64,13 +51,11 @@ git.fetch(
 
 go.package(
     name = "renamed",
-    box = ":go.box",
     src = ":nodeps.git",
 )
 
 go.package(
     name = "multiple",
-    box = ":go.box",
     # Force the persistent-cache path for this test; real projects select dev mode with tine mount.
     dev = True,
     packages = {
@@ -82,7 +67,6 @@ go.package(
 
 go.package(
     name = "pie",
-    box = ":go.box",
     build_mode = "pie",
     src = "nodeps",
 )
@@ -103,7 +87,6 @@ box.sh_test(
 # Without `module_root`, the build selects the root module, which contains no Go package.
 go.package(
     name = "siblings",
-    box = ":go.box",
     module_root = "server",
 )
 
@@ -202,7 +185,6 @@ box.sh_test(
 # that directory too.
 go.package(
     name = "local-replace",
-    box = ":go.box",
 )
 
 box.sh_test(

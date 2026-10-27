@@ -1024,7 +1024,7 @@ bytes a proxy serves, so there is nothing a hash-verified `download_file` could 
 Deriving byte hashes would mean a second, generated lock to keep refreshed. Instead go itself is the
 verifier, and the build is two actions so the network stays confined to the first:
 
-1. `go_fetch` is the online action: `go mod download` in the consumer's box with the network shared, reading
+1. `go_fetch` is the online action: `go mod download` in the package's box with the network shared, reading
    only the fetch's inputs named above, so an edit to a Go source file never refetches. go checks a download
    against the committed `go.sum` where that pins it, and against the checksum database otherwise.
    Downloading deliberately does not extend `go.sum`, so an unpinned module is fetched here and rejected in

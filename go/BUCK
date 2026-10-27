@@ -3,9 +3,29 @@
 
 """Go source builds: one online, go.sum-verified module fetch, then an offline compile."""
 
+load("//box:defs.bzl", "box")
 load("//box:test.bzl", "box_python_test")
+load("//distribution:defs.bzl", "distribution")
 load("//go:defs.bzl", "go")
 load("//python:defs.bzl", "tine_python_binary", "tine_python_library")
+
+# The box that go.package() builds in unless a project names its own. Fedora's golang package depends on
+# gcc, so go enables cgo in the Fedora box. The Arch and Debian boxes contain no C compiler, so go disables
+# cgo there and links static binaries.
+box.new(
+    name = "build.box",
+    packages = [
+        # TLS trust for the module fetch from proxy.golang.org.
+        "ca-certificates",
+    ]
+    + distribution.select({
+        "arch": ["go"],
+        "debian": ["golang-go"],
+        "fedora": ["golang"],
+    }),
+    release = distribution.release_target("release"),
+    visibility = ["PUBLIC"],
+)
 
 # The project's source artifacts in; the module root, its pins, the go.mod files the fetch reads and the
 # Go release to build with out.

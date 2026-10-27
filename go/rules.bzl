@@ -228,7 +228,13 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
 _go_package = rule(
     impl = _go_package_impl,
     attrs = {
-        "box": attrs.exec_dep(providers = [BoxInfo], doc = "box to build in, carrying the Go toolchain unless `toolchain` is set"),
+        # `box` is a dep rather than an exec_dep, so tine//go:build.box builds from the release of the
+        # distribution that the binaries are built for.
+        "box": attrs.dep(
+            providers = [BoxInfo],
+            default = "tine//go:build.box",
+            doc = "box to build in, with the Go toolchain unless `toolchain` is set",
+        ),
         "build_mode": attrs.option(
             attrs.enum(["exe", "pie"]), default = None, doc = "go's -buildmode for the binaries and tests, the toolchain default when unset"
         ),
