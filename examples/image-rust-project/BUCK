@@ -13,31 +13,18 @@ load("@tine//distribution:defs.bzl", "distribution")
 load("@tine//git:defs.bzl", "git")
 load("@tine//image:defs.bzl", "image")
 
-# The build environment for our Rust projects; it never reaches an image.
-box.new(
-    name = "rust.box",
-    packages = [
-        "cargo",
-        "gcc",
-        "rust",
-    ],
-    release = "catalog//:fedora.rawhide.release",
-)
-
 # A checked-out project needs no build file of its own: the sources default to the directory named
 # after the target. Its Cargo.lock both pins the crates and marks the workspace root, even though
 # neither it nor Cargo.toml is visible until the source tree has been built.
 cargo.package(
     name = "hello",
     binaries = ["hello-cli"],
-    box = ":rust.box",
 )
 
 # A project with no dependencies. Its Cargo.lock lists only the project itself.
 cargo.package(
     name = "nodeps",
     binaries = ["nodeps"],
-    box = ":rust.box",
 )
 
 # Products use git.fetch() for projects they build but do not vendor. The local checkout must override
@@ -51,14 +38,12 @@ git.fetch(
 cargo.package(
     name = "renamed",
     binaries = ["nodeps"],
-    box = ":rust.box",
     src = ":nodeps.git",
 )
 
 cargo.package(
     name = "incremental",
     binaries = ["nodeps"],
-    box = ":rust.box",
     # Exercise persistent output even when the checkout is not mounted in dev mode.
     dev = True,
     src = "nodeps",

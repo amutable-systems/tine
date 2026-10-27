@@ -968,7 +968,7 @@ A build is then two actions:
 
 1. `cargo_vendor` unpacks the registry crates into `vendor/<name>-<version>/` with the
    `.cargo-checksum.json` cargo expects. Git dependencies never enter this tree.
-2. `cargo_build` runs cargo in the consumer's box with the network unshared, against the vendored tree
+2. `cargo_build` runs cargo in the package's box with the network unshared, against the vendored tree
    and the fetched repositories: each git source is replaced by its repository, served over git's local
    `file://` transport, so cargo takes its own checkout and resolves each crate inside its workspace,
    inheritance and sibling path dependencies included, and it insists on finding the locked commit in the

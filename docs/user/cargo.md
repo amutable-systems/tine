@@ -11,8 +11,8 @@ the lock records, and each git dependency as a fetch of exactly the locked commi
 runs offline inside a box, and [`cargo-auditable`](https://crates.io/crates/cargo-auditable) writes the
 crate graph into each binary so the image's SBOM reports those crates beside its packages.
 
-`examples/image-rust-project` is a complete worked example: a builder box, two projects checked out
-beside it, and an image carrying the resulting binaries.
+`examples/image-rust-project` builds two projects checked out beside it and copies their binaries into
+an image.
 
 ## Declaring a build
 
@@ -22,7 +22,6 @@ load("@tine//cargo:defs.bzl", "cargo")
 cargo.package(
     name = "hello",
     binaries = ["hello-cli"],
-    box = ":rust.box",
 )
 ```
 
@@ -42,8 +41,7 @@ cargo.package(
   the package. Each becomes a sub-target (`:hello[hello-cli]`), and together they are the target's default
   outputs. A name that the build does not produce fails the action. A name that is empty, `.` or `..`,
   contains a slash or a backslash, or is listed twice fails analysis.
-- `box` is the build environment, declared by the consumer because only the consumer knows what its
-  projects link against.
+- `box` is the build environment. It defaults to `tine//cargo:build.box`, described below.
 
 The binaries are ordinary artifacts, so an image installs one with an `image.ops.copy()` operation:
 
@@ -57,22 +55,18 @@ image.archive(
 )
 ```
 
-## What the builder box needs
+## The build box
 
-```Starlark
-box.new(
-    name = "rust.box",
-    packages = ["cargo", "gcc", "python3", "rust"],
-    release = "catalog//:fedora.rawhide.release",
-)
-```
+`tine//cargo:build.box` contains the distribution's Rust toolchain, `gcc` and `pkgconf`. It installs them
+from the release of the distribution that the binaries are built for, so a binary links against the C
+library of the image that installs it. A build that chooses no distribution uses the catalog's default
+release.
 
-- `cargo` and `rust` are the toolchain, and `gcc` links. `python3` runs the in-box driver, because
-  tine's drivers execute through the box's own interpreter.
-- Add whatever the project links against. A crate wrapping a C library needs that library's `-devel`
-  package. A crate that looks the library up with `pkg-config` also needs `pkgconf`, because the build runs
-  `pkgconf` in place of `pkg-config`.
-- The box is a build environment. It never becomes part of an image, and the toolchain is not shipped.
+The box is a build environment. It never becomes part of an image.
+
+To build in a box of your own, pass it as `box`. Its packages need the toolchain, a linker and `python3`,
+which runs tine's driver inside the box. A crate that looks a library up with `pkg-config` also needs
+`pkgconf`, because the build runs `pkgconf` in place of `pkg-config`.
 
 ## Git dependencies
 

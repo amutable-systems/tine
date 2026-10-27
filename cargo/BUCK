@@ -3,8 +3,39 @@
 
 """Rust source builds against a vendored, hash-pinned crate tree."""
 
+load("//box:defs.bzl", "box")
 load("//box:test.bzl", "box_python_test")
+load("//distribution:defs.bzl", "distribution")
 load("//python:defs.bzl", "tine_python_binary")
+
+# The box that cargo.package() builds in unless a project names its own.
+box.new(
+    name = "build.box",
+    packages = distribution.select({
+        # The rust package contains cargo.
+        "arch": [
+            "gcc",
+            "pkgconf",
+            "rust",
+        ],
+        "debian": [
+            "cargo",
+            "gcc",
+            # gcc only recommends the C library headers, and the install skips recommended packages.
+            "libc6-dev",
+            "pkgconf",
+            "rustc",
+        ],
+        "fedora": [
+            "cargo",
+            "gcc",
+            "pkgconf",
+            "rust",
+        ],
+    }),
+    release = distribution.release_target("release"),
+    visibility = ["PUBLIC"],
+)
 
 # The project's source artifacts in, its workspace root and resolved lock out.
 tine_python_binary(

@@ -152,7 +152,9 @@ _cargo_package = rule(
     impl = _cargo_package_impl,
     attrs = {
         "binaries": attrs.list(attrs.string(), doc = "binaries to take out of the build"),
-        "box": attrs.exec_dep(providers = [BoxInfo], doc = "box carrying the Rust toolchain"),
+        # `box` is a dep rather than an exec_dep, so tine//cargo:build.box builds from the release of the
+        # distribution that the binaries are built for.
+        "box": attrs.dep(providers = [BoxInfo], default = "tine//cargo:build.box", doc = "box with the Rust toolchain"),
         "incremental": attrs.bool(doc = "keep cargo's build directory across dev-mode rebuilds"),
         "src": attrs.source(allow_directory = True, doc = "the project's source directory, Cargo.lock included"),
         # `_arch` is the architecture the binaries run on. On a cross build, it differs from the box's.
