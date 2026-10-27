@@ -23,7 +23,6 @@ load("@tine//go:defs.bzl", "go")
 
 go.package(
     name = "hello",
-    box = ":go.box",
     packages = {"hello-cli": "./cmd/hello-cli"},
 )
 ```
@@ -55,8 +54,7 @@ go.package(
   yield `:hello[hello]` rather than `hello-cli`. Every main package under the module root counts,
   including ones under `tools/` or `examples/`. With none or several, the build fails and lists what
   it found.
-- `box` is the build environment, declared by the consumer because only the consumer knows what its
-  projects need.
+- `box` is the build environment. It defaults to `tine//go:build.box`, described below.
 - `tags` are Go build tags: a `//go:build <tag>` line decides whether a file compiles at all. Nothing
   declares which tags a project defines, and one tag set applies to every module in the build, so this
   list has to come from the project's own build recipe.
@@ -101,7 +99,6 @@ the checkout:
 ```Starlark
 go.package(
     name = "etcd",
-    box = ":go.box",
     module_root = "server",
     packages = {"etcd-server": "."},
 )
@@ -115,7 +112,6 @@ Set `test_packages` on the `go.package()` to compile the project's tests in its 
 ```Starlark
 go.package(
     name = "hello",
-    box = ":go.box",
     packages = {"hello-cli": "./cmd/hello-cli"},
     test_packages = ["./..."],
 )
@@ -142,28 +138,31 @@ go.test(
   which `-test.timeout` overrides.
 - `labels` are passed to the test runner, so `buck test --exclude <label>` can leave the test out.
 
-## What the builder box needs
+## The build box
 
-```Starlark
-box.new(
-    name = "go.box",
-    packages = ["ca-certificates", "golang", "python3"],
-    release = "catalog//:fedora.rawhide.release",
-)
-```
+`tine//go:build.box` contains the distribution's Go toolchain and `ca-certificates`, which gives the module
+fetch its TLS trust for `proxy.golang.org`. It installs them from the release of the distribution that the
+binaries are built for. A build that chooses no distribution uses the catalog's default release.
 
-- `golang` is the toolchain, `python3` runs the in-box drivers, and `ca-certificates` gives the module
-  fetch its TLS trust for `proxy.golang.org`. A module that proxy does not serve is fetched directly, with
-  `git`, which then has to be there too.
+- Fedora's Go package depends on `gcc`, so go enables cgo in the Fedora box. A binary that imports `net` or
+  `os/user` then links dynamically against the C library. The Arch and Debian boxes contain no C compiler,
+  so go disables cgo there and links static binaries. `cgo = False` builds static binaries for every
+  distribution.
+- A module that `proxy.golang.org` does not serve is fetched directly with `git`, which the box does not
+  contain.
 - The fetch and the build set `GOTOOLCHAIN=local`, so go never downloads another toolchain. A `go.mod`
   that requires a newer Go than the box's `go`, or than the `toolchain`, fails the build.
-- A project using cgo needs `gcc` and the `-devel` packages it binds, plus `pkgconf` for a `#cgo
-  pkg-config:` directive, because the build runs `pkgconf` in place of `pkg-config`.
-  Its binaries then link dynamically, so the image needs the matching runtime packages. This is not
-  limited to projects that write C: with cgo enabled, importing `net` or `os/user` is enough. `cgo =
-  False` uses Go's own implementations of those instead, and needs no C compiler.
 
-The box is a build environment. It never becomes part of an image, and the toolchain is not shipped.
+The box is a build environment. It never becomes part of an image.
+
+To build in a box of your own, pass it as `box`. Its packages need the Go toolchain, `ca-certificates` and
+`python3`, which runs tine's drivers inside the box.
+
+A project using cgo needs `gcc` and the `-devel` packages it binds, plus `pkgconf` for a `#cgo
+pkg-config:` directive, because the build runs `pkgconf` in place of `pkg-config`. Its binaries then link
+dynamically, so the image needs the matching runtime packages. This is not limited to projects that write
+C: with cgo enabled, importing `net` or `os/user` is enough. `cgo = False` uses Go's own implementations
+of those instead, and needs no C compiler.
 
 ## Building with your own Go toolchain
 
