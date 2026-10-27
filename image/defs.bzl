@@ -36,7 +36,6 @@ load(
     "DdiInfo",
     "DiskConversionInfo",
     "RootHashInfo",
-    "disk_convert",
     "partition",
 )
 load(":extension.bzl", "ExtensionInfo")
@@ -98,7 +97,6 @@ image = struct(
     resolve_version = resolve_version,
     bootable = bootable,
     partition = partition,
-    disk_convert = disk_convert,
     vm = image_vm,
     generate_signing_key = generate_signing_key,
     install = image_install,

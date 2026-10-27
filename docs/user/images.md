@@ -393,8 +393,6 @@ when needed:
   kernel are signed
   for Secure Boot. With a `sign_expected_pcr_key`, a signed expected-PCR 11 policy covers each profile;
   set its `sign_expected_pcr` to false to opt out;
-- `image.disk_convert` re-encodes a raw disk with an explicitly selected box and provides
-  `image.DiskConversionInfo`; `virtual_size` sizes the disk a qcow2 or VMDK describes;
 - `image.bootable` selects a kernel and matching initrd from a logical image, exposed as `[uki]`, `[kernel]`,
   and `[initrd]` subtargets;
 - `image.vm` runs the raw image ephemerally with its explicitly selected box's `systemd-vmspawn`, QEMU,
