@@ -16,18 +16,21 @@ disks in various formats, and also additional artifacts like
 
 The host needs only:
 
- * Linux with unprivileged user namespaces. On Ubuntu you need to allow them with a
+ * Linux ≥ 5.12 with unprivileged user namespaces. On Ubuntu you need to allow them with a
  [sysctl](https://www.freedesktop.org/software/systemd/man/latest/sysctl.d.html):
    `kernel.apparmor_restrict_unprivileged_userns=0`
+ * glibc ≥ 2.17, which the pinned Python that starts every sandbox links against
  * `/usr/bin/python3` ≥ 3.14, or ≥ 3.12 together with `zstd`
  * `git`
+ * `/bin/sh`, which runs the fetch of a Rust project's git dependencies
  * `/dev/kvm` to run VMs for testing; without it, you can still build everything
 
-tine uses the host's `python` and `git` to bootstrap itself and to read the project's git state, such as
-the version an image derives from it; every tool a build itself runs is pinned. The first
-[`tine`](bin/tine) invocation that runs Buck fetches and verifies the pinned Buck2 binary into
-`${XDG_CACHE_HOME:-~/.cache}/tine/buck2` (one directory per pin, safe to delete); everything else is
-fetched and cached by Buck itself.
+tine uses the host's `python` and `git` to bootstrap itself and to read the project's git state, such as the
+version an image derives from it. A build also runs the host's `git` to fetch git checkouts, and the host's
+`git` and `/bin/sh` to fetch the git dependencies of Rust projects. Every other tool a build runs is pinned.
+The first [`tine`](bin/tine) invocation that runs Buck fetches and verifies the pinned Buck2 binary into
+`${XDG_CACHE_HOME:-~/.cache}/tine/buck2` (one directory per pin, safe to delete); everything else is fetched
+and cached by Buck itself.
 
 ### HOME directory
 
