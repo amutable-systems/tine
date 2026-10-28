@@ -44,6 +44,7 @@ box.new(
 
 box.sh_test(
     name = "per-family-test",
+    distributed = False,
     labels = ["image"],
     box = ":demo-per-family.box",
     script = "python3 -c 'import yaml'",
@@ -51,6 +52,7 @@ box.sh_test(
 
 box.sh_test(
     name = "layering-test",
+    distributed = False,
     labels = ["image"],
     box = "@tine//tools:dev.box",
     test = "layering.sh",
@@ -64,6 +66,7 @@ box.sh_test(
 # The layered box runs: bash comes from its parent's layer, fish from its own.
 box.sh_test(
     name = "layered-run-test",
+    distributed = False,
     labels = ["image"],
     box = ":demo-with-parent.box",
     script = "test \"$(HOME=/tmp fish --command 'echo hello')\" = hello",

@@ -9,6 +9,8 @@ load("@tine//image:defs.bzl", "image")
 load("@tine//package:defs.bzl", "package")
 load("@tine//package_system/rpm:defs.bzl", "rpm")
 
+_DISTRO = "catalog//:fedora.rawhide.distribution"
+
 _BUILDROOT = "catalog//:fedora.rawhide.buildroot"
 
 # The checks query the packages with rpm. The root box of the buildroot's release contains rpm, and the dev
@@ -31,6 +33,7 @@ rpm.package(
 
 box.sh_test(
     name = "hello-archive-test",
+    distro = _DISTRO,
     labels = ["image"],
     box = _CHECK_BOX,
     script = 'python3 "$@"',
@@ -54,6 +57,7 @@ rpm.package(
 
 box.sh_test(
     name = "hello-dev-test",
+    distro = _DISTRO,
     labels = ["image"],
     box = _CHECK_BOX,
     script = 'python3 "$@"',
@@ -80,6 +84,7 @@ rpm.package(
 
 box.sh_test(
     name = "hello-tree-test",
+    distro = _DISTRO,
     labels = ["image"],
     box = _CHECK_BOX,
     script = 'python3 "$@"',
@@ -105,14 +110,14 @@ package.manager(
 
 image.layer(
     name = "hello-image.layer",
-    distro = "catalog//:fedora.rawhide.distribution",
+    distro = _DISTRO,
     package_manager = ":hello.package-manager",
     packages = ["hello"],
 )
 
 image.archive(
     name = "hello-image",
-    distro = "catalog//:fedora.rawhide.distribution",
+    distro = _DISTRO,
     format = "tar",
     parent = ":hello-image.layer",
 )
@@ -123,4 +128,5 @@ box.sh_test(
     box = "@tine//tools:dev.box",
     script = 'tar -tf "$1" | grep -E "^(\\./)?usr/share/tine-package/archive$" > /dev/null',
     args = ["$(location :hello-image)"],
+    distro = _DISTRO,
 )

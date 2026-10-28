@@ -283,6 +283,16 @@ def package_manager() -> Select:
         fail("distribution.package_manager(): this package declares no distribution, so name a package manager")
     return by_distribution({described["release"]: described["package_manager"] for described in declared.values()})
 
+def box_release() -> Select:
+    """Return the `release` of a box that builds from the release of the target that depends on it.
+
+    A target without a distribution, and a target of a release that catalog//:releases.bzl doesn't
+    list, gets the catalog's default release.
+    """
+    return by_distribution(
+        {release: _release(release, "release") for release in _CATALOG_RELEASES.values()} | {"DEFAULT": "catalog//:default.release"},
+    )
+
 def _condition(key: str) -> str:
     if key == "DEFAULT":
         return key
@@ -463,6 +473,7 @@ distribution = struct(
     aliases = aliases,
     attrs = attributes,
     box_host = box_host,
+    box_release = box_release,
     default_release = default_release,
     select = by_distribution,
     serves = serves,

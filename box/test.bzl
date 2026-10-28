@@ -5,6 +5,7 @@
 
 load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapSources")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
+load("//distribution:defs.bzl", "distribution")
 load("//python:defs.bzl", "flat_tree", "ty_check")
 
 def _box_python_test_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -51,7 +52,7 @@ _box_python_test = rule(
     """,
     impl = _box_python_test_impl,
     attrs = {
-        "box": attrs.exec_dep(providers = [BoxInfo], doc = "box whose hermetic sandbox runs the tests"),
+        "box": attrs.dep(providers = [BoxInfo], doc = "box whose hermetic sandbox runs the tests"),
         "deps": attrs.list(
             attrs.dep(providers = [PythonBootstrapSources]),
             default = [],
@@ -106,7 +107,7 @@ def _box_sh_test_impl(ctx: AnalysisContext) -> list[Provider]:
         ),
     ]
 
-box_sh_test = rule(
+_box_sh_test = rule(
     doc = """One shell script asserting something about what a build produced, run inside a box.
 
     The shell is either a committed script (`test`) or written inline (`script`), and is handed
@@ -115,11 +116,14 @@ box_sh_test = rule(
     and needs no escaping. Running it in a box rather than on the host is what makes the tools
     it reaches for the pinned ones, so an assertion cannot pass or fail on what a developer happens
     to have installed.
+
+    `box` builds for the distribution of the test. A box whose release follows the distribution, such
+    as `tine//tools:dev.box`, then builds from the release of the image that the test checks.
     """,
     impl = _box_sh_test_impl,
     attrs = {
         "args": attrs.list(attrs.arg(), default = [], doc = "arguments to the script, artifacts included"),
-        "box": attrs.exec_dep(providers = [BoxInfo], doc = "box whose hermetic sandbox runs the script"),
+        "box": attrs.dep(providers = [BoxInfo], doc = "box whose hermetic sandbox runs the script"),
         "labels": attrs.list(attrs.string(), default = [], doc = "passed to the test runner, for `buck test` filtering"),
         "script": attrs.option(
             attrs.string(),
@@ -130,3 +134,24 @@ box_sh_test = rule(
     },
     supports_incoming_transition = True,
 )
+
+def box_sh_test(
+    name: str,
+    distro: str | None = None,
+    distributed: bool = True,
+    visibility: list[str] | None = None,
+    target_compatible_with: list[str] | Select | None = None,
+    **kwargs,
+) -> None:
+    """Declare a shell test once per distribution of the package, or for `distro` alone.
+
+    A test of an output that is the same for every distribution, such as a box of a fixed release,
+    passes `distributed = False`. Otherwise the test runs once per distribution, and each run builds
+    the output again.
+    """
+    if not distributed:
+        if distro != None:
+            fail("box_sh_test {}: a test with distributed = False takes no distro".format(name))
+        _box_sh_test(name = name, visibility = visibility, target_compatible_with = target_compatible_with, **kwargs)
+        return
+    _box_sh_test(name = name, **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs))

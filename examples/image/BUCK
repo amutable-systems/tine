@@ -22,6 +22,9 @@ load(":expected.json", _expected = "value")
 # here, and no target below names a release.
 DISTRIBUTIONS = distribution.for_package()
 
+# A test that checks only the Fedora images builds for Fedora, so that it runs in a box of the Fedora release.
+_FEDORA = DISTRIBUTIONS["fedora"]["distribution"]
+
 # A build artifact a command names through $(location), chrooted or not.
 export_file(
     name = "marker.txt",
@@ -298,6 +301,7 @@ for disk in "$@"; do
 done
 """,
     args = ["$(location :boot-demo.fedora)", "$(location :boot-demo.fedora[qcow2])", "$(location :boot-demo.fedora[vmdk])"],
+    distro = _FEDORA,
 )
 
 # The AMI parameters register the disk for the image's architecture with a root volume of its virtual_size.
@@ -314,6 +318,7 @@ assert register["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] == 2, register
 ' "$@"
 """,
     args = ["$(location :boot-demo.fedora[ami])"] + architecture.select({name: [spellings.ec2] for name, spellings in ARCHITECTURES.items()}),
+    distro = _FEDORA,
 )
 
 # data-disk has no ESP partition, so image.disk builds it without systemd-boot, UKIs or an initrd.
@@ -337,6 +342,7 @@ box.sh_test(
     box = "@tine//tools:dev.box",
     test = "data-disk-test.sh",
     args = ["$(location :data-disk.fedora)"],
+    distro = _FEDORA,
 )
 
 # demo-ext extends boot-demo. The DDI contains only the files that demo-ext adds to boot-demo,
@@ -413,7 +419,6 @@ box.sh_test(
     box = "@tine//tools:dev.box",
     test = "tree-test.sh",
     args = ["$(location :tree)"] + distribution.select({d["release"]: [name if name == "arch" else "none"] for name, d in DISTRIBUTIONS.items()}),
-    **distribution.distributed("tree-test"),
 )
 
 # Replacing a populated directory exercises the opaque-dir marker.
@@ -455,6 +460,7 @@ box.sh_test(
         '"path": ".*/{}\\.ko'.format(module)
         for module in ["erofs", "dm-verity", "ena", "loop", "overlay", "nvme", "vfat", "virtio_scsi", "virtio_net", "virtiofs"]
     ],
+    distro = _FEDORA,
 )
 
 # The file manifest is what tells a consumer which paths an image ships, so its framing and its
@@ -469,6 +475,7 @@ box.sh_test(
         "$(location :manifest_check.py)",
         "$(location :demo.fedora[manifest])",
     ],
+    distro = _FEDORA,
 )
 
 box.sh_test(
@@ -483,6 +490,7 @@ box.sh_test(
         "$(location :boot-demo.fedora[initrd])",
     ]
     + architecture.select({name: [name] for name in ARCHITECTURES}),
+    distro = _FEDORA,
 )
 
 # The splash the image ships reached the UKI. The image tools' box carries ukify, which lists a
@@ -493,7 +501,6 @@ box.sh_test(
     box = "tine//distribution:tools.box",
     script = 'test "$(ukify inspect "$1" | grep -cx ".splash:")" = "$2"',
     args = ["$(location :boot-demo[boot][uki])"] + distribution.select({"DEFAULT": ["0"], "arch": ["1"]}),
-    **distribution.distributed("uki-splash-test"),
 )
 
 # The microcode the image installs reached the UKI, which only an x86 kernel takes that way. The
@@ -504,6 +511,7 @@ box.sh_test(
     box = "tine//distribution:tools.box",
     test = "uki-microcode.sh",
     args = ["$(location :boot-demo.fedora[boot][uki])"] + architecture.select({name: [name] for name in ARCHITECTURES}),
+    distro = _FEDORA,
 )
 
 # Once per distribution, because each package system captures its database in its own format.
@@ -513,7 +521,6 @@ box.sh_test(
     box = "@tine//tools:dev.box",
     test = "pkgdb-format.sh",
     args = ["$(location :demo[pkgdb])"] + distribution.select({"arch": ["tar.zst", "alpm"], "debian": ["tar.zst", "dpkg"], "fedora": ["sqlite", "rpm"]}),
-    **distribution.distributed("pkgdb-format-test"),
 )
 
 # A DDI's file name is what a systemd-sysupdate transfer matches, so it is part of the contract
@@ -528,6 +535,7 @@ box.sh_test(
     + architecture.select({name: ["demo-ext_0_{}.sysext.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()})
     + ["$(location :demo-confext.fedora)"]
     + architecture.select({name: ["demo-confext_0_{}.confext.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()}),
+    distro = _FEDORA,
 )
 
 # portablectl takes the image name from the DDI's file name, up to the first "_", and matches the
@@ -541,6 +549,7 @@ box.sh_test(
     + architecture.select({name: ["demo-portable_0_{}.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()})
     + ["$(location :demo-portable-ext.fedora)"]
     + architecture.select({name: ["demo-portable-ext_0_{}.raw".format(spellings.systemd)] for name, spellings in ARCHITECTURES.items()}),
+    distro = _FEDORA,
 )
 
 # The portable image contains its os-release and no extension-release files. The extension contains
@@ -554,6 +563,7 @@ box.sh_test(
         "$(location :demo-portable.fedora[disk-manifest])",
         "$(location :demo-portable-ext.fedora[disk-manifest])",
     ],
+    distro = _FEDORA,
 )
 
 # [NAME, DIGEST, PATH] for each target expected.json tracks, per architecture. Sorted, so the command line
@@ -579,6 +589,7 @@ box.sh_test(
         arch: [arch, "{}/actual.{}.json".format(package_name(), arch)] + [item for target in targets for item in target]
         for arch, targets in _reproducibility_targets.items()
     }),
+    distro = _FEDORA,
     # expected.json records the digests of images that the catalog's default boxes build. The boxes of
     # another release build the same images with other tools, which write different bytes.
     target_compatible_with = []

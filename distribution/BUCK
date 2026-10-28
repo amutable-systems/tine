@@ -3,7 +3,6 @@
 
 """The axis an image's distribution is selected on."""
 
-load("@catalog//:releases.bzl", "RELEASES")
 load("@prelude//:rules.bzl", "constraint_setting", "constraint_value")
 load("//box:defs.bzl", "box")
 load("//platforms:architecture.bzl", "architecture")
@@ -61,16 +60,12 @@ box.sh_test(
             "catalog//:fedora.rawhide.distribution": "release",
         }),
     ],
-    **distribution.distributed("select-test"),
 )
 
 # A box whose release is a select() on the distribution takes this as its incoming transition.
 distribution.box_host(name = "release.host")
 
-# The tools box selects its release by the distribution that it is configured for.
-_RELEASE = distribution.select(
-    {release: "catalog//:{}.release".format(release) for release in RELEASES.values()} | {"DEFAULT": "catalog//:default.release"},
-)
+_RELEASE = distribution.box_release()
 
 # Images, buildroots and VMs run in the tools box of the release that the build chooses. An execution
 # dependency, and a build that chooses no release, get the tools box of the catalog's default release.
