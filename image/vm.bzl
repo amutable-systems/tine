@@ -186,7 +186,7 @@ def image_vm(
 ) -> None:
     """Declare one, compatible with the distributions its package serves."""
 
-    # vmspawn runs the host's qemu with KVM and has no option for another architecture. A disk of
-    # another architecture therefore cannot boot, and the runner is incompatible with it.
+    # The runner passes --kvm=yes to vmspawn, and KVM only runs guests of the host's architecture. A
+    # disk of another architecture therefore cannot boot, and the runner is incompatible with it.
     compatible_with = ([] if target_compatible_with == None else target_compatible_with) + [host_configuration.cpu]
     _image_vm(name = name, **(distribution.distributed(name, distro, visibility, compatible_with) | kwargs))

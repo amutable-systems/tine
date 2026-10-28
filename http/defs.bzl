@@ -77,10 +77,6 @@ def http_tool(
         )
         strip_prefix = None
     else:
-        # http_archive strips a prefix with GNU tar's --strip-components, which tar applies after it
-        # removes a leading slash. With --strip-components=1, a member named go//home/user/.bashrc is
-        # written to /home/user/.bashrc. A plain extraction keeps every member inside the output, and
-        # _tool then uses the prefix directory inside the output.
         http_archive(
             name = name + "-download",
             sha256 = sha256,
