@@ -139,7 +139,7 @@ _box_python_binary = rule(
     """,
     impl = _box_python_binary_impl,
     attrs = {
-        "box": attrs.exec_dep(providers = [BoxInfo], doc = "box whose interpreter and packages run it"),
+        "box": attrs.dep(providers = [BoxInfo], doc = "box whose interpreter and packages run it"),
         "deps": attrs.list(attrs.dep(providers = [PythonBootstrapSources]), default = []),
         "main": attrs.source(doc = "the entry point"),
     },
