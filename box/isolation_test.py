@@ -105,6 +105,24 @@ class TestStartup(unittest.TestCase):
         self.assertFalse(unwanted & set(process.stdout.splitlines()))
 
 
+class TestLibseccomp(unittest.TestCase):
+    def test_libseccomp_is_found_in_each_library_directory(self) -> None:
+        for directory in ("usr/lib64", f"usr/lib/{os.uname().machine}-linux-gnu", "usr/lib"):
+            with self.subTest(directory=directory), tempfile.TemporaryDirectory(dir="/var/tmp") as root:
+                library = Path(root, directory, "libseccomp.so.2")
+                library.parent.mkdir(parents=True)
+                library.touch()
+
+                self.assertEqual(isolation._libseccomp(root), str(library))
+
+    def test_a_root_without_libseccomp_fails(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as root:
+            with self.assertRaises(isolation.SandboxOSError) as raised:
+                isolation._libseccomp(root)
+
+            self.assertEqual(raised.exception.message, "the box contains no libseccomp.so.2")
+
+
 class TestPaths(unittest.TestCase):
     def test_nofollow_dot_components_do_not_escape_the_supplied_root(self) -> None:
         with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:

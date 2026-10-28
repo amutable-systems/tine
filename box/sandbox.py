@@ -440,8 +440,6 @@ def main(argv: list[str] | None = None) -> NoReturn:
         unshare_sandbox(
             become_root=not args.relaxed,
             isolate_network=not args.relaxed and not args.network,
-            suppress_chown=not args.relaxed,
-            suppress_sync=not args.relaxed,
         )
         if len(layers) == 1:
             launch = _launch(args, tools, Stage(Bind(tools, tools, readonly=True)))
@@ -454,7 +452,9 @@ def main(argv: list[str] | None = None) -> NoReturn:
             merged = Overlay(layers, None, None, tools, lazy_unmount=True)
             with merged:
                 launch = _launch(args, tools, Stage(merged))
-        enter_sandbox(launch.filesystems, launch.chdir)
+        enter_sandbox(
+            launch.filesystems, launch.chdir, suppress_chown=not args.relaxed, suppress_sync=not args.relaxed
+        )
     except SandboxOSError as error:
         print(error.message, file=sys.stderr)
         raise

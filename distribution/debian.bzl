@@ -102,7 +102,6 @@ _DEBIAN_ROOT_PACKAGES = [
     # UserDB services there. Without libnss_systemd, getpwuid() cannot find a systemd-homed caller, and
     # ssh-keygen aborts.
     "libnss-systemd",
-    "libseccomp2",
     "python3",
     # package_system/deb/verify.py runs sqv. apt depends on sqv today, but list it explicitly.
     "sqv",

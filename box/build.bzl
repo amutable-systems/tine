@@ -327,6 +327,10 @@ _box_lock = rule(
 # provides this.
 _DEFAULT_PACKAGES = ["python3"]
 
+# The sandbox suppresses chown and sync calls with a seccomp filter. It loads libseccomp from the box
+# after it enters the box, so the host doesn't need libseccomp.
+_LIBSECCOMP = distribution.select({"DEFAULT": ["libseccomp"], "debian": ["libseccomp2"]})
+
 def new(
     name: str,
     packages: list[str] | Select,
@@ -386,7 +390,7 @@ def new(
             distro = release.removesuffix(".release") + ".distribution"
         incoming_transition = distro + ".host"
     stem = name.removesuffix(".box")
-    packages = _DEFAULT_PACKAGES + packages
+    packages = _DEFAULT_PACKAGES + packages + _LIBSECCOMP
 
     # The lock of each architecture, None until refresh-catalog has written one. A box that keeps
     # none has nothing to select over and resolves during the build instead.
