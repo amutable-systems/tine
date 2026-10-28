@@ -51,6 +51,7 @@ image.generate_signing_key(name = "pcr-signing")
 [
     box.sh_test(
         name = "generated-key-name-test." + name,
+        distributed = False,
         args = ["$(location :{}[cert])".format(name), "tine.generated." + name],
         box = "@tine//tools:dev.box",
         script = """
@@ -139,7 +140,6 @@ for name in ("PK", "KEK", "db"):
         sys.exit(f"ERROR: {name} does not hold the signing certificate")
 ' "$2"
 """,
-    **distribution.distributed("uefi-data-test"),
 )
 
 # System-extension DDI extending :image, signed so the strict policy in sysext.conf accepts the
@@ -272,7 +272,6 @@ box.sh_test(
             "pkg:rpm/fedora/filesystem@",
         ],
     }),
-    **distribution.distributed("sbom-test"),
 )
 
 box.sh_test(
@@ -289,7 +288,6 @@ box.sh_test(
         "debian": ["tar.zst", "deb"],
         "fedora": ["sqlite", "rpm"],
     }),
-    **distribution.distributed("release-artifacts-test"),
 )
 
 # The disk's own listing is the union of its partitions': what an installation of it leaves behind,
@@ -305,7 +303,6 @@ box.sh_test(
         '"name":"boot/tine-tmpfiles","type":"dir","mode":448',
         '"name":"boot/EFI/Linux',
     ],
-    **distribution.distributed("disk-manifest-test"),
 )
 
 # The kernel install hook is bypassed, it didn't generate its own initrd.
@@ -321,7 +318,6 @@ if grep -o '"name":"boot/\\(initramfs\\|symvers\\)[^"]*"' "$1"; then
     exit 1
 fi
 """,
-    **distribution.distributed("esp-kernel-leftovers-test"),
 )
 
 box.sh_test(
@@ -330,7 +326,6 @@ box.sh_test(
     box = "@tine//tools:dev.box",
     test = "extension-manifest.sh",
     args = ["$(location :demo-ext[disk-manifest])"],
-    **distribution.distributed("extension-manifest-test"),
 )
 
 # Each listing covers what its own artifact carries: a DDI holds the two merged hierarchies, and a
@@ -342,7 +337,6 @@ box.sh_test(
         box = "@tine//tools:dev.box",
         test = "@tine//tests:manifest-scope.sh",
         args = [target] + hierarchies,
-        **distribution.distributed("manifest-scope-test." + name),
     )
     for name, target, hierarchies in [
         ("ddi", "$(location :demo-ext[disk-manifest])", ["usr", "opt"]),

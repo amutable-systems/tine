@@ -113,5 +113,4 @@ box.sh_test(
         "pkg:cargo/serde_json@",
         "pkg:cargo/anyhow@",
     ],
-    **distribution.distributed("sbom-test"),
 )

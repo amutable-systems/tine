@@ -44,6 +44,7 @@ umask_probe(name = "umask-probe")
 # directories; this fails when built with a umask such as 0002 without that.
 box_sh_test(
     name = "umask-test",
+    distributed = False,
     args = ["$(location :umask-probe)/directory"],
     box = "//tools:dev.box",
     script = """

@@ -80,8 +80,9 @@ http.tool(
 
 # tine's dev environment for importer and its unit tests. Used by every `box_python_test` suite
 # (hermetic), `tine//tools:importer` (relaxed), and anyone entering it as a box.
-# The dev box layers over the tools box of the default release, so it installs only its own packages.
-# No image depends on the dev box, so a change to its packages rebuilds no image.
+# The dev box layers over the tools box, so it installs only its own packages. A test of an image runs in
+# the dev box of the image's release. No image depends on the dev box, so a change to its packages rebuilds
+# no image.
 # The dev box contains the package tooling of its own family only. The tests of the importer and of
 # package_system/rpm skip themselves in a dev box without rpmbuild. The plan test of package_system/pacman
 # skips itself in a dev box without libalpm.
@@ -132,7 +133,7 @@ box.new(
         ],
     }),
     parent = "tine//distribution:tools.box",
-    release = _RELEASE,
+    release = distribution.box_release(),
     visibility = ["PUBLIC"],
 )
 

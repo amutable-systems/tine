@@ -243,5 +243,4 @@ box.sh_test(
         "pkg:golang/rsc.io/quote@",
         "pkg:golang/golang.org/x/text@",
     ],
-    **distribution.distributed("sbom-test"),
 )
