@@ -74,8 +74,9 @@ _FEDORA_ROOT_PACKAGES = [
     # The rpm drivers define rpm macros through the rpm module.
     "python3-rpm",
     "rpm",
-    # The relaxed sandbox binds the host's nsswitch.conf. Without libnss_systemd, getpwuid() cannot find
-    # a systemd-homed caller, and ssh-keygen aborts.
+    # A relaxed box binds the host's /run, and nss-systemd reads the caller's identity from the host's
+    # UserDB services there. Without libnss_systemd, getpwuid() cannot find a systemd-homed caller, and
+    # ssh-keygen aborts.
     "systemd-libs",
 ]
 

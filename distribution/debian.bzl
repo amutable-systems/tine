@@ -98,8 +98,9 @@ _DEBIAN_ROOT_PACKAGES = [
     "bash",
     "coreutils",
     "dpkg",
-    # The relaxed sandbox binds the host's nsswitch.conf. Without libnss_systemd, getpwuid() cannot find
-    # a systemd-homed caller, and ssh-keygen aborts.
+    # A relaxed box binds the host's /run, and nss-systemd reads the caller's identity from the host's
+    # UserDB services there. Without libnss_systemd, getpwuid() cannot find a systemd-homed caller, and
+    # ssh-keygen aborts.
     "libnss-systemd",
     "libseccomp2",
     "python3",
