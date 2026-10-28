@@ -68,7 +68,6 @@ def _merge_package_sets(
 # tine//distribution:tools.box contains everything else.
 _FEDORA_ROOT_PACKAGES = [
     "coreutils",
-    "libseccomp",
     "python3-createrepo_c",
     "python3-libdnf5",
     # The rpm drivers define rpm macros through the rpm module.

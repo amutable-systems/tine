@@ -64,7 +64,6 @@ _ARCH_ROOT_PACKAGES = [
     "archlinux-keyring",
     "bash",
     "coreutils",
-    "libseccomp",
     "pacman",
     # A relaxed box binds the host's /run, and nss-systemd reads the caller's identity from the host's
     # UserDB services there. Without libnss_systemd, getpwuid() cannot find a systemd-homed caller, and

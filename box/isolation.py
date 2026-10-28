@@ -378,11 +378,23 @@ def _acquire_privileges(*, become_root: bool, network: bool) -> bool:
     return True
 
 
+def _libseccomp(root: str = "/") -> str:
+    """Return the path of libseccomp.so.2 in the tree at `root`."""
+    # The stage1 tree that bootstraps a root box contains no /etc/ld.so.cache. A lookup by name then
+    # searches only the default directories of the host's dynamic loader, and an Arch host searches only
+    # /usr/lib. Debian installs libraries into a multiarch directory, such as usr/lib/x86_64-linux-gnu.
+    for directory in ("usr/lib64", f"usr/lib/{os.uname().machine}-linux-gnu", "usr/lib"):
+        path = os.path.join(root, directory, "libseccomp.so.2")
+        if os.path.exists(path):
+            return path
+    raise SandboxOSError(errno.ENOENT, "the box contains no libseccomp.so.2")
+
+
 def _suppress_syscalls(*, chown: bool, sync: bool) -> None:
     if not chown and not sync:
         return
 
-    library = ctypes.CDLL("libseccomp.so.2")
+    library = ctypes.CDLL(_libseccomp())
 
     library.seccomp_init.argtypes = (ctypes.c_uint32,)
     library.seccomp_init.restype = ctypes.c_void_p
@@ -842,8 +854,6 @@ def unshare_sandbox(
     *,
     become_root: bool = False,
     isolate_network: bool = False,
-    suppress_chown: bool = False,
-    suppress_sync: bool = False,
 ) -> None:
     """Enter the namespaces of a sandbox without replacing the root.
 
@@ -858,11 +868,6 @@ def unshare_sandbox(
     namespaces = CLONE_NEWNS
     if isolate_network and _has_capability(CAP_NET_ADMIN):
         namespaces |= CLONE_NEWNET
-
-    _suppress_syscalls(
-        chown=suppress_chown and (user_namespace or _single_user_namespace()),
-        sync=suppress_sync,
-    )
 
     try:
         unshare(namespaces)
@@ -880,11 +885,26 @@ def unshare_sandbox(
         mount(None, _ROOT, flags=MS_SLAVE | MS_REC)
 
 
-def enter_sandbox(filesystems: tuple[Filesystem, ...], chdir: StrPath | None = None) -> None:
-    """Replace the root with `filesystems`. Call `unshare_sandbox()` first."""
+def enter_sandbox(
+    filesystems: tuple[Filesystem, ...],
+    chdir: StrPath | None = None,
+    *,
+    suppress_chown: bool = False,
+    suppress_sync: bool = False,
+) -> None:
+    """Replace the root with `filesystems`. Call `unshare_sandbox()` first.
+
+    `suppress_chown` makes chown calls succeed without effect, and `suppress_sync` does the same for sync
+    calls. The seccomp filter uses the libseccomp of the new root.
+    """
     for filesystem in filesystems:
         if not os.path.isabs(filesystem.target):
             raise ValueError(f"sandbox destination must be absolute: {filesystem.target}")
+
+    # In a user namespace that maps a single user, a chown to any other user fails, and package installs
+    # chown their files. The user namespace that unshare_sandbox() creates maps a single user. Read the
+    # map before the root changes, because the new root may not contain /proc.
+    chown = suppress_chown and _single_user_namespace()
 
     mount("tmpfs", "/tmp", "tmpfs")
     os.chdir("/tmp")
@@ -921,6 +941,8 @@ def enter_sandbox(filesystems: tuple[Filesystem, ...], chdir: StrPath | None = N
         _error("pivot_root")
 
     umount2(".", MNT_DETACH)
+
+    _suppress_syscalls(chown=chown, sync=suppress_sync)
 
     if chdir is not None:
         os.chdir(chdir)

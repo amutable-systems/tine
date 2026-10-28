@@ -365,11 +365,18 @@ class TestHermetic(unittest.TestCase):
 
     def test_builds_get_fakeroot_semantics(self) -> None:
         with _project() as (_, tools):
-            namespaces = _unshare("--tools", str(tools), "--", "true").call_args.kwargs
+            calls = unittest.mock.MagicMock()
+            with (
+                unittest.mock.patch.object(sandbox, "unshare_sandbox", calls.unshare_sandbox),
+                unittest.mock.patch.object(sandbox, "enter_sandbox", calls.enter_sandbox),
+                unittest.mock.patch.object(os, "execvpe"),
+                suppress(SystemExit),
+            ):
+                sandbox.main(["--tools", str(tools), "--", "true"])
 
-            self.assertTrue(namespaces["become_root"])
-            self.assertTrue(namespaces["suppress_chown"])
-            self.assertTrue(namespaces["suppress_sync"])
+            self.assertTrue(calls.unshare_sandbox.call_args.kwargs["become_root"])
+            self.assertTrue(calls.enter_sandbox.call_args.kwargs["suppress_chown"])
+            self.assertTrue(calls.enter_sandbox.call_args.kwargs["suppress_sync"])
 
 
 class TestRelaxed(unittest.TestCase):
@@ -427,8 +434,8 @@ def _runnable(tools: Path) -> Path:
 
 
 def _run_relaxed(layers: tuple[Path, ...], host: Path, script: str) -> subprocess.CompletedProcess[str]:
-    # The hermetic mode loads libseccomp, and the test box does not install it. Run the sandbox in
-    # relaxed mode instead.
+    # The hermetic mode loads libseccomp from the box's root, and the test's tools tree doesn't contain
+    # it. Run the sandbox in relaxed mode instead.
     return subprocess.run(
         [
             sys.executable,
@@ -501,7 +508,9 @@ class TestLayers(unittest.TestCase):
                     self.assertIs(stage.filesystem, calls.Overlay.return_value)
                 self.assertEqual([call[0] for call in calls.mock_calls], expected)
                 self.assertEqual(calls._launch.call_args.args[1], "/top")
-                calls.enter_sandbox.assert_called_once_with((), None)
+                calls.enter_sandbox.assert_called_once_with(
+                    (), None, suppress_chown=True, suppress_sync=True
+                )
 
     def test_a_command_sees_a_single_layer(self) -> None:
         with _project() as (_, tools):
@@ -679,7 +688,7 @@ class TestInteractiveShell(unittest.TestCase):
         launch = sandbox.Launch(filesystems=(), chdir=None, command=(), environment={})
         entered = False
 
-        def enter(_filesystems: tuple[Filesystem, ...], _chdir: str | None) -> None:
+        def enter(_filesystems: tuple[Filesystem, ...], _chdir: str | None, **_suppress: bool) -> None:
             nonlocal entered
             entered = True
 
