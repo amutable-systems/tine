@@ -619,8 +619,8 @@ _BOOTABLE_ATTRS = UKI_ATTRS | {
         providers = [InitrdInfo],
         doc = "the initrd to boot; the declaration macro declares a conventional one when given none",
     ),
-    "_ami_box": attrs.exec_dep(providers = [BoxInfo], default = "tine//tools:aws.box"),
-    "_ami_import": attrs.exec_dep(providers = [RunInfo], default = "tine//image:ami-import"),
+    "_ami_box": attrs.dep(providers = [BoxInfo], default = "tine//tools:aws.box"),
+    "_ami_import": attrs.dep(providers = [RunInfo], default = "tine//image:ami-import"),
 }
 
 _disk = rule(

@@ -216,7 +216,8 @@ command_alias(
     visibility = ["PUBLIC"],
 )
 
-# AWS tooling in its own box, as it's big and not always needed.
+# The AWS tools are big and rarely needed, so they get a box of their own. A disk's AMI subtarget writes and
+# imports the AMI in the aws box of the disk's release.
 box.new(
     name = "aws.box",
     # uefi-data-test in examples/image-secureboot runs mktemp from coreutils. Fedora installs coreutils as a
@@ -228,7 +229,7 @@ box.new(
         "debian": ["awscli", "python3-virt-firmware"],
         "fedora": ["awscli2", "python3-virt-firmware"],
     }),
-    release = _RELEASE,
+    release = distribution.box_release(),
     visibility = ["PUBLIC"],
 )
 

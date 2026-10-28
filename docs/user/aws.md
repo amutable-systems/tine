@@ -39,8 +39,9 @@ Boot disabled.
 
 ## Logging in
 
-tine never handles AWS credentials. It uses the Fedora packaged [AWS CLI](https://aws.amazon.com/de/cli/)
-in a box, which runs with your home directory and environment:
+tine never handles AWS credentials. It runs the packaged [AWS CLI](https://aws.amazon.com/de/cli/) in a box,
+which runs with your home directory and environment. The import of a disk runs the AWS CLI of the disk's
+release, with the same login:
 
 ```sh
 tine buck run tine//tools:aws -- login

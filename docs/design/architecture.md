@@ -465,20 +465,20 @@ runs the plan and install of its package manager in the tools box as well. The t
 build, so a new tool leaves the root box and its lock alone. The base release identifies where this userspace
 came from, not the only release it may operate on.
 
-A box runs on the build host. An image, a buildroot, a VM runner and a test take their box as an ordinary
-dependency, so that the box takes their distribution. A box whose release follows the distribution, such as
-the tools box or `tine//tools:dev.box`, then builds from the release of the image. `box.sh_test` builds a
-test once per distribution of its package, or for the distribution that its `distro` names. A signing key
-takes the tools box as an execution dependency with `attrs.exec_dep`, because a key doesn't depend on a
-release. A command line takes a box with `$(location_exec)`. A target named on the command line or reached as
-an ordinary dependency is configured for the target platform instead. To build each box once, the box has an
-incoming transition to the host's platform plus the constraints of its release's distribution. Each
-distribution declares that platform beside it, as `<family>.<release>.distribution.host`. tine's execution
-platform registers no exec marker constraint, so the execution configuration is the same as the host
-platform's. `buck build`, `buck run`, execution dependencies and ordinary dependencies therefore all reach
-the same box. This assumes one execution platform, for the host's architecture. An execution platform for
-another architecture, such as a remote arm64 one, still gets the box built for the host. Its actions then run
-binaries for the wrong architecture.
+A box runs on the build host. An image, a buildroot, a VM runner, a test and the AMI of a disk take their box
+as an ordinary dependency, so that the box takes their distribution. A box whose release follows the
+distribution, such as the tools box or `tine//tools:dev.box`, then builds from the release of the image.
+`box.sh_test` builds a test once per distribution of its package, or for the distribution that its `distro`
+names. A signing key takes the tools box as an execution dependency with `attrs.exec_dep`, because a key
+doesn't depend on a release. A command line takes a box with `$(location_exec)`. A target named on the
+command line or reached as an ordinary dependency is configured for the target platform instead. To build
+each box once, the box has an incoming transition to the host's platform plus the constraints of its
+release's distribution. Each distribution declares that platform beside it, as
+`<family>.<release>.distribution.host`. tine's execution platform registers no exec marker constraint, so the
+execution configuration is the same as the host platform's. `buck build`, `buck run`, execution dependencies
+and ordinary dependencies therefore all reach the same box. This assumes one execution platform, for the
+host's architecture. An execution platform for another architecture, such as a remote arm64 one, still gets
+the box built for the host. Its actions then run binaries for the wrong architecture.
 
 A box's packages can `select()` on the architecture, and `distribution.select()` on the release or its
 family. A box lock is configured for its own architecture and its release's
