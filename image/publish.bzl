@@ -37,15 +37,18 @@ PublishedInfo = provider(
         "artifacts": provider_field(dict[str, PublishedFile]),
         "image": provider_field(str),
         "partitions": provider_field(list[PartitionInfo], default = []),
+        # A rule outside tine may publish files of an image that has no version. The release's
+        # description then has no `version` key for those files.
+        "version": provider_field(str | None, default = None),
     },
 )
 
-def published_metadata_subtargets(image: ImageInfo, basename: str, image_name: str | None = None) -> dict[str, list[Provider]]:
+def published_metadata_subtargets(image: ImageInfo, basename: str, version: str, image_name: str | None = None) -> dict[str, list[Provider]]:
     """The metadata views of an image, publishing themselves under the name it is published as.
 
     Each view publishes itself rather than travelling in the image's own set, exactly as a re-encoding
     does, so a release builds the metadata it lists and nothing else. `image_name` is the image the
-    views belong to in the release's description, `basename` by default.
+    views belong to in the release's description, `basename` by default, and `version` is the version of that image.
     """
     image_name = image_name or basename
     sub_targets = image_metadata_subtargets(image)
@@ -56,6 +59,7 @@ def published_metadata_subtargets(image: ImageInfo, basename: str, image_name: s
                 "{}.spdx.json".format(basename): PublishedFile(artifact = image.sbom.spdx, kind = "sbom", subkind = "spdx"),
             },
             image = image_name,
+            version = version,
         ),
     ]
     if image.pkgdb != None:
@@ -67,6 +71,7 @@ def published_metadata_subtargets(image: ImageInfo, basename: str, image_name: s
             PublishedInfo(
                 artifacts = {"{}.{}".format(basename, image.pkgdb.basename): PublishedFile(artifact = image.pkgdb, kind = "pkgdb", subkind = system)},
                 image = image_name,
+                version = version,
             ),
         ]
     return sub_targets
@@ -78,6 +83,7 @@ _Described = record(
     subkind = field(str | None),
     # This indexes the verity root hash of the file in the release's root hash files.
     root_hash = field(int | None),
+    version = field(str | None),
 )
 
 def _assemble_impl(
@@ -106,6 +112,8 @@ def _assemble_impl(
             entry["root_hash"] = hashes[file.root_hash]
         if file.subkind != None:
             entry["subkind"] = file.subkind
+        if file.version != None:
+            entry["version"] = file.version
         entries[name] = entry
     description = actions.declare_output(description_name)
     actions.write_json(description, {"arch": arch, "files": entries}, pretty = True)
@@ -162,6 +170,7 @@ def _image_artifacts_impl(ctx: AnalysisContext) -> list[Provider]:
                 kind = file.kind,
                 subkind = file.subkind,
                 root_hash = root_hash if file.artifact == whole else None,
+                version = published.version,
             )
         for partition in published.partitions:
             metadata.append(partition.metadata)
@@ -172,6 +181,7 @@ def _image_artifacts_impl(ctx: AnalysisContext) -> list[Provider]:
                     kind = "partition",
                     subkind = partition.definition["type"],
                     root_hash = root_hash if partition.definition["verity"] == "data" else None,
+                    version = published.version,
                 ),
             )
 
