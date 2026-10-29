@@ -54,7 +54,6 @@ export_file(
 # Minimal install + ordered-ops demo. `:demo` is both the tar result and a logical image.
 image.archive(
     name = "demo",
-    package_manager = distribution.package_manager(),
     packages = ["bash", "coreutils"]
     # Some extra coverage for distribution.select().
     + distribution.select({
@@ -94,7 +93,6 @@ image.archive(
 # Base-only image exercising a single-component delta stack.
 image.archive(
     name = "base",
-    package_manager = distribution.package_manager(),
     packages = ["bash"],
     format = "tar",
 )
@@ -102,7 +100,6 @@ image.archive(
 # Chained images: the child adds one file and whiteouts another.
 image.layer(
     name = "chained-base",
-    package_manager = distribution.package_manager(),
     packages = ["bash", "coreutils"],
     ops = [
         image.ops.write_file("/etc/tine/from-base-kept", "base"),
@@ -128,7 +125,6 @@ image.archive(
 # Package installation and mutations sharing one physical delta.
 image.layer(
     name = "layered-install-base",
-    package_manager = distribution.package_manager(),
     packages = ["bash"],
     ops = [
         image.ops.run(["/usr/bin/bash", "-c", "echo base > /etc/from-base-install"], chroot = True),
@@ -153,7 +149,6 @@ image.archive(
 # Round-trip an escaped name and an escaped whiteout through stored deltas.
 image.layer(
     name = "escaped-base",
-    package_manager = distribution.package_manager(),
     packages = ["bash", "coreutils"],
     ops = [
         image.ops.mkdir("/etc/tine"),
@@ -187,7 +182,6 @@ image.archive(
 # `bin/tine` (see "Image versioning" in images.md); this demo has nothing to version.
 image.disk(
     name = "boot-demo",
-    package_manager = distribution.package_manager(),
     definitions = image.DEFAULT_USR_VERITY_PARTITIONS,
     version = "unversioned",
     # The release names what a bootable system of its own family needs, so this stays symbolic.
@@ -324,7 +318,6 @@ assert register["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] == 2, register
 # data-disk has no ESP partition, so image.disk builds it without systemd-boot, UKIs or an initrd.
 image.disk(
     name = "data-disk",
-    package_manager = distribution.package_manager(),
     packages = ["bash"],
     definitions = [
         image.partition(
@@ -369,7 +362,6 @@ image.confext(
 # called demo-portable.service.
 image.portable(
     name = "demo-portable",
-    package_manager = distribution.package_manager(),
     packages = ["bash", "coreutils"],
     install_docs = False,
     # demo-portable-ext must not contain this directory, because only demo-portable declares it.
@@ -424,7 +416,6 @@ box.sh_test(
 # Replacing a populated directory exercises the opaque-dir marker.
 image.layer(
     name = "opaque-base",
-    package_manager = distribution.package_manager(),
     packages = ["bash", "coreutils"],
     ops = [
         image.ops.run(["/usr/bin/bash", "-c", "mkdir -p /etc/tine/sub; echo old > /etc/tine/sub/old"], chroot = True),

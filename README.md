@@ -67,12 +67,10 @@ Images are declared in ordinary `BUCK` files ([examples/image/BUCK](examples/ima
 demos):
 
 ```Starlark
-load("@tine//distribution:defs.bzl", "distribution")
 load("@tine//image:defs.bzl", "image")
 
 image.archive(
     name = "demo",
-    package_manager = distribution.package_manager(),
     packages = ["bash", "coreutils"],
     ops = [
         image.ops.copy("marker.txt", "/etc/tine/marker"),

@@ -73,13 +73,11 @@ _PCR_SIGNING = ":pcr-signing.token" if SIGN_WITH_TOKEN else ":pcr-signing"
 # its packages, its operations, and how the cpio the UKI carries is compressed.
 image.initrd(
     name = "image.initrd",
-    package_manager = distribution.package_manager(),
     compression = "none",
 )
 
 image.disk(
     name = "image",
-    package_manager = distribution.package_manager(),
     initrd = ":image.initrd",
     definitions = image.DEFAULT_SIGNED_USR_VERITY_PARTITIONS,
     package_sets = ["bootable"],
@@ -176,7 +174,6 @@ image.artifacts(
 # matters; the marker is for the smoke test's permissive counter-check.
 image.sysext(
     name = "demo-ext-unsigned",
-    package_manager = distribution.package_manager(),
     ops = [image.ops.mkdir("/usr/share/tine-unsigned")],
     install_docs = False,
 )
