@@ -59,6 +59,7 @@ load(
     "flatten_operations",
     "generated",
     "image_providers",
+    "initial_package_manager",
     "install_systemd_boot",
     "merge_os_release",
     "remove",
@@ -180,6 +181,7 @@ _initrd_image = rule(
 def initrd_image(
     name: str,
     ops: list[LayerOperationTree] = [],
+    package_manager: str | Select | None = None,
     version: str | Select | None = None,
     distro: str | None = None,
     visibility: list[str] | None = None,
@@ -195,6 +197,7 @@ def initrd_image(
     _initrd_image(
         name = name,
         ops = flatten_operations(ops),
+        package_manager = initial_package_manager(package_manager, None, distro),
         version = resolve_version("initrd_image {}".format(name), version),
         **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
     )
@@ -641,6 +644,8 @@ _bootable_disk = rule(
 def archive(
     name: str,
     ops: list[LayerOperationTree] = [],
+    package_manager: str | Select | None = None,
+    parent: str | Select | None = None,
     version: str | Select | None = None,
     distro: str | None = None,
     visibility: list[str] | None = None,
@@ -651,6 +656,8 @@ def archive(
     _archive(
         name = name,
         ops = flatten_operations(ops),
+        package_manager = initial_package_manager(package_manager, parent, distro),
+        parent = parent,
         version = resolve_version("archive {}".format(name), version),
         **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
     )
@@ -658,6 +665,8 @@ def archive(
 def extension(
     name: str,
     ops: list[LayerOperationTree] = [],
+    package_manager: str | Select | None = None,
+    parent: str | Select | None = None,
     version: str | Select | None = None,
     distro: str | None = None,
     visibility: list[str] | None = None,
@@ -672,6 +681,8 @@ def extension(
     _extension(
         name = name,
         ops = flatten_operations(ops),
+        package_manager = initial_package_manager(package_manager, parent, distro),
+        parent = parent,
         version = resolve_version("extension {}".format(name), version),
         **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
     )
@@ -687,6 +698,8 @@ def confext(name: str, **kwargs) -> None:
 def portable(
     name: str,
     ops: list[LayerOperationTree] = [],
+    package_manager: str | Select | None = None,
+    parent: str | Select | None = None,
     version: str | Select | None = None,
     distro: str | None = None,
     visibility: list[str] | None = None,
@@ -697,6 +710,8 @@ def portable(
     _portable(
         name = name,
         ops = flatten_operations(ops),
+        package_manager = initial_package_manager(package_manager, parent, distro),
+        parent = parent,
         version = resolve_version("portable {}".format(name), version),
         **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
     )
@@ -709,6 +724,7 @@ def disk(
     profiles: list[UkiProfile] = [],
     initrd: str | Select | None = None,
     package_manager: str | Select | None = None,
+    parent: str | Select | None = None,
     image_id: str | None = None,
     version: str | Select | None = None,
     distro: str | None = None,
@@ -738,6 +754,7 @@ def disk(
         labels = [d["label"] for d in definitions if d["label"] != None],
         image_id = image_id or name,
     )
+    package_manager = initial_package_manager(package_manager, parent, distro)
     common = dict(
         name = name,
         image_id = image_id,
@@ -745,6 +762,7 @@ def disk(
         definitions = [json.encode(definition) for definition in definitions],
         ops = flatten_operations(ops),
         package_manager = package_manager,
+        parent = parent,
         version = version,
         **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
     )
@@ -756,7 +774,7 @@ def disk(
         if package_manager == None:
             fail(
                 "disk {}: declare an `initrd_image()` and pass it as `initrd`; ".format(name)
-                + "a disk extending `parent` names no package manager to declare one from",
+                + "a disk extending `parent`, or in a package that declares no distribution, has no package manager to declare one from",
             )
         initrd = ":{}.initrd".format(name)
         initrd_image(

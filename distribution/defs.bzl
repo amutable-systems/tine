@@ -283,6 +283,22 @@ def package_manager() -> Select:
         fail("distribution.package_manager(): this package declares no distribution, so name a package manager")
     return by_distribution({described["release"]: described["package_manager"] for described in declared.values()})
 
+def default_package_manager(distro: str | None = None) -> str | Select | None:
+    """Return the package manager of an image that names none, or None if the package declares no distribution.
+
+    A target that names `distro` builds for that distribution only, and gets the package manager of
+    that release. A `select()` over the package's distributions has no key for a distribution that
+    the package does not declare.
+    """
+    declared = for_package()
+    if distro == None:
+        return package_manager() if declared else None
+    release = distro.rpartition(":")[2].removesuffix(".distribution")
+    for described in declared.values():
+        if described["release"] == release:
+            return described["package_manager"]
+    return _release(release, "package-manager")
+
 def _condition(key: str) -> str:
     if key == "DEFAULT":
         return key
