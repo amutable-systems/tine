@@ -226,7 +226,8 @@ def _go_package_impl(ctx: AnalysisContext) -> list[Provider]:
             workspace = workspace,
         ),
     )
-    return project.binaries_providers(outputs) + [GoPackageInfo(box = box, src = src, tests = tests)]
+    entry = box_run(box, relaxed = True, name = ctx.label.name)
+    return project.binaries_providers(outputs, entry) + [GoPackageInfo(box = box, src = src, tests = tests)]
 
 _go_package = rule(
     impl = _go_package_impl,
