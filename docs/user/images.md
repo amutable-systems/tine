@@ -172,9 +172,10 @@ resolve upstream (details in [architecture.md](../design/architecture.md)).
 
 ## Images and operations
 
-`image.layer` has two construction modes. An initial image may supply `package_manager`; a derived image
-supplies `parent` and inherits that image's package manager. A call with operations applies one
-ordered operation sequence in one action and persists exactly one delta:
+`image.layer` has two construction modes. An initial image takes `package_manager`, which defaults to the
+package manager of the distribution that the build chooses. A derived image takes `parent` and inherits the
+package manager of that image. A call with operations applies one ordered operation sequence in one action
+and persists exactly one delta:
 
 - `packages` and `package_sets` are rule attributes rather than operations: a layer installs them as one
   request before any of its operations run, so every operation sees what the layer adds. `package_sets`
@@ -411,7 +412,8 @@ archive, optionally zstd-compressed (`compression = "zstd"`). `image.sysext`, `i
 `image.extension` are the compositions for extension DDIs (see "Extensions" below), and `image.portable` is
 the composition for portable service images (see "image.portable" below). `image.archive`, the extension
 rules, `image.portable` and `image.disk` start their image from `package_manager`, or add their
-operations on top of the image in `parent`. Every composition takes `install_docs` and passes it to the image
+operations on top of the image in `parent`. Without either, they start their image from the package manager
+of the distribution that the build chooses. Every composition takes `install_docs` and passes it to the image
 it builds.
 
 Each composition publishes one product target that also provides its logical filesystem as `image.ImageInfo`.
@@ -468,11 +470,11 @@ image.extension(
 
 With `parent`, the DDI contains only what the target adds on top of `parent`. Only the `tmpfiles` lines that
 the target adds apply to the DDI, so a line of `parent` creates nothing in it. `parent` can be any image
-except another extension. Without `parent`, the target takes a `package_manager` and the DDI contains its
-whole tree. The DDI is an erofs root partition, its verity hash partition and, with `verity_key`, a signature
-over the verity root hash. A host validates the signature against the certificates in its
-`/usr/lib/verity.d/`, and enforces it only where its image policy says so (see "Example targets" below). The
-DDI contains no os-release and no package database.
+except another extension. Without `parent`, the DDI contains the whole tree of the image. The DDI is an
+erofs root partition, its verity hash partition and, with `verity_key`, a signature over the verity root
+hash. A host validates the signature against the certificates in its `/usr/lib/verity.d/`, and enforces it
+only where its image policy says so (see "Example targets" below). The DDI contains no os-release and no
+package database.
 
 The rule writes one extension-release file per class:
 `/usr/lib/extension-release.d/extension-release.<name>` for a sysext and
@@ -544,8 +546,9 @@ generators (see "Generating what packages only describe").
 The DDI is named `<name>_<version>_<arch>.raw`. portablectl takes the image name from the file name up to the
 first `_`, and attaches the units whose names start with that image name: `webapp.service`,
 `webapp-worker.service` or `webapp@.service`. The target defaults to its DDI and provides `image.DdiInfo`,
-with the same `[roothash]` and `[disk-manifest]` subtargets as an extension. It takes `package_manager` or
-`parent`, the operations and packages of any composition, and `version`, `arch`, `seed` and `verity_key`.
+with the same `[roothash]` and `[disk-manifest]` subtargets as an extension. It takes an optional
+`package_manager` or `parent`, the operations and packages of any composition, and `version`, `arch`,
+`seed` and `verity_key`.
 
 ### image.disk
 
@@ -555,7 +558,6 @@ described above.
 
 Required attributes:
 
-- `package_manager` (target label): See "Declaring an image" above.
 - `ops` (operation list) and `tmpfiles` (list of tmpfiles.d lines): Build the root filesystem layer;
   passed on to `image.layer`.
 - `definitions` (list of `image.partition()` descriptors): Partition layout; `image.DEFAULT_ROOT_PARTITIONS`,
@@ -591,8 +593,11 @@ Optional attributes:
   what a binary scan can guess. The ESP carries no database either way.
 - `sign_expected_pcr_key` (target providing `image.SigningKeyInfo`): Seals the expected-PCR policy;
   without one the policy is not sealed. See "Secure Boot signing" below.
+- `package_manager` (target label): The package manager the disk starts its image from. See "Declaring an
+  image" above. Without `package_manager` and `parent`, the disk uses the package manager of the
+  distribution that the build chooses.
 - `parent` (target label providing `image.ImageInfo`): The logical image the disk extends, instead of the
-  `package_manager` it would otherwise start one from; exactly one of the two is required. This is what
+  `package_manager` it would otherwise start one from. A disk can't have both. This is what
   lets something else build on the same content the disk boots: an `image.sysext()` whose `parent` is
   that image extends the content of the disk, and the disk can then copy the resulting DDI to `/boot`
   with `image.ops.copy()` in `ops`, where making the extension's parent the disk itself would be a
@@ -1173,7 +1178,7 @@ image.disk(
 )
 ```
 
-Either way the package manager comes from a `select()` on that distribution, and the package names come
+Either way the image gets the package manager of that distribution, and the package names come
 from the release's package sets, so moving an image between distributions changes neither its operations
 nor the rules underneath. The mechanism is described in
 [architecture.md](../design/architecture.md#selecting-a-distribution).
@@ -1208,19 +1213,19 @@ RELEASES = {
 }
 ```
 
-`distribution.package_manager()` returns the package manager of the release that a build chooses. Pass
-it as an image's `package_manager`:
+An image that names neither `package_manager` nor `parent` uses the package manager of the release that a
+build chooses:
 
 ```Starlark
 image.archive(
     name = "demo",
-    package_manager = distribution.package_manager(),
     packages = ["bash"],
     format = "tar",
 )
 ```
 
-To add repositories of your own, pass it as the `base` of a `package.manager()` instead.
+`distribution.package_manager()` returns that package manager. To add repositories of your own, pass it as
+the `base` of a `package.manager()`, and pass the result as the image's `package_manager`.
 
 A package that builds for other releases, or needs more per release, declares its own table in its
 `PACKAGE` file. Each entry's `release` names a release of the catalog. `package_manager` defaults to the
@@ -1237,7 +1242,8 @@ distribution.set_for_package({
 ```
 
 An empty table, `distribution.set_for_package({})`, declares no distribution. The package's images then
-build by their own names, from whichever package manager they name.
+build by their own names, from whichever package manager they name. An image in such a package that names
+neither `package_manager` nor `parent` has no package manager and can't install packages.
 
 A key of `distribution.select()` is a family (`arch`, `debian` or `fedora`), a release of the catalog such as
 `fedora.43`, or `DEFAULT`. A family key matches every release of that family. Buck picks a release key over

@@ -1103,9 +1103,9 @@ Which distribution an image is built from is a configuration, and the target car
 `tine//distribution` declares two constraint settings, `distribution` and `family`. A catalog release
 declares one value of the distribution setting beside its other role targets, as
 `<family>.<release>.distribution`, and that target also sets the value of its family. The target is the key a
-`select()` branches on, and it is the incoming transition that sets the two values. An image takes the
-package manager of its release from `distribution.package_manager()`, which selects among the package
-managers of the package's releases:
+`select()` branches on, and it is the incoming transition that sets the two values. An image that names no
+package manager and no parent takes the package manager of its release from `distribution.package_manager()`,
+which selects among the package managers of the package's releases:
 
 ```Starlark
 distribution.select({
@@ -1162,8 +1162,8 @@ whether the key is set or not, so CI does not depend on it.
 
 ### Image construction
 
-The `image.layer` rule creates either an initial image, optionally from a package manager, or a derived image
-from `parent`. `image.ImageInfo` carries the package manager, the box the image runs in, an ordered stack of
+The `image.layer` rule creates either an initial image from a package manager, or a derived image from
+`parent`. `image.ImageInfo` carries the package manager, the box the image runs in, an ordered stack of
 filesystem deltas, deferred tmpfiles snippets, and the canonical lazy package-database and SBOM artifacts. A
 derived image inherits the construction configuration but declares fresh metadata for its completed stack, so
 one composition cannot silently switch package sources or tooling environments between stages.

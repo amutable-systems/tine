@@ -5,7 +5,7 @@
 
 load("//:specs.bzl", "executable", "spec_args", "spec_argument")
 load("//box:runtime.bzl", "BoxInfo", "box_run")
-load("//distribution:defs.bzl", "TOOLS_BOX_ATTR", "distribution")
+load("//distribution:defs.bzl", "TOOLS_BOX_ATTR", "default_package_manager", "distribution")
 load("//package:install.bzl", "resolve_packages")
 load("//package:manager.bzl", "PackageManagerInfo")
 load("//package:system.bzl", "PackageSystemInfo")
@@ -831,16 +831,34 @@ def flatten_operations(ops: list[LayerOperationTree]) -> list[LayerOperation]:
             flattened.append(operation)
     return flattened
 
+def initial_package_manager(package_manager: str | Select | None, parent: str | Select | None, distro: str | None) -> str | Select | None:
+    """Return the package manager that an image declaration starts its image from.
+
+    An image that names no `package_manager` and no `parent` gets the package manager of its
+    distribution. An image with a `parent` gets None, because it uses the package manager of its parent.
+    """
+    if package_manager != None or parent != None:
+        return package_manager
+    return default_package_manager(distro)
+
 def layer(
     name: str,
     ops: list[LayerOperationTree] = [],
+    package_manager: str | Select | None = None,
+    parent: str | Select | None = None,
     distro: str | None = None,
     visibility: list[str] | None = None,
     target_compatible_with: list[str] | Select | None = None,
     **kwargs,
 ) -> None:
     """Create an initial image or apply one delta to a parent image."""
-    _image(name = name, ops = flatten_operations(ops), **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs))
+    _image(
+        name = name,
+        ops = flatten_operations(ops),
+        package_manager = initial_package_manager(package_manager, parent, distro),
+        parent = parent,
+        **(distribution.distributed(name, distro, visibility, target_compatible_with) | kwargs),
+    )
 
 def _image_install_impl(ctx: AnalysisContext) -> list[Provider]:
     from_targets, operations = expand_install_from(ctx.attrs.ops)
