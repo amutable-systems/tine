@@ -55,10 +55,10 @@ def _rpm_package_impl(ctx: AnalysisContext) -> list[Provider]:
     # Share the base buildroot; add package-specific BuildRequires as a delta.
     buildroot = [base_buildroot.root]
 
-    if ctx.attrs.build_requires or ctx.attrs.buildroot_deps:
+    if ctx.attrs.build_requires or ctx.attrs.buildroot_packages:
         # Self-hosted package outputs outrank upstream while resolving the delta.
         extra_packages = []
-        for dependency in ctx.attrs.buildroot_deps:
+        for dependency in ctx.attrs.buildroot_packages:
             info = dependency[LocalPackageInfo]
             if info.package_system.label != package_manager.package_system.label:
                 fail(
@@ -144,7 +144,7 @@ _rpm_package = rule(
             providers = [BuildrootInfo],
             doc = "the shared base buildroot",
         ),
-        "buildroot_deps": attrs.list(
+        "buildroot_packages": attrs.list(
             attrs.dep(providers = [LocalPackageInfo]),
             default = [],
             doc = "our packages whose rpms overlay the buildroot (self-hosted BRs)",

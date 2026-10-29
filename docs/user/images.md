@@ -1291,7 +1291,7 @@ With the key set, `buck test` runs a test of that distribution by its own name o
 for that distribution still builds, but `buck test` of the alias runs no test.
 
 A consuming project adds `//packages/fedora/rawhide:zlib-ng`, which validates package import,
-package-manager selection, buildroot assembly and RPM collection (packages with `buildroot_deps`
+package-manager selection, buildroot assembly and RPM collection (packages with `buildroot_packages`
 additionally exercise local-package preference), and `//examples/image-local-packages:image`, which builds
 an image from those packages. Neither target exists in this repository.
 

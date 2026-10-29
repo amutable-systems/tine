@@ -72,7 +72,7 @@ def _package_manager_impl(ctx: AnalysisContext) -> list[Provider]:
     repositories = merge_repositories(package_system, repositories + ctx.attrs.additional_repositories)
     by_id = {repository.label.name: repository for repository in repositories}
 
-    # 'extra' is synthesized per install for buildroot_deps and local-package selection.
+    # 'extra' is synthesized per install for buildroot_packages and local-package selection.
     if "extra" in by_id:
         fail("package_manager: repository id 'extra' is reserved for extra-package selection")
 

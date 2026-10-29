@@ -603,10 +603,10 @@ Native package installation has three phases shared by buildroots and images:
    an anonymous indexing target using the consumer's box. The same path handles
    package-build inputs and lets the solve choose between local and upstream packages.
    Extra packages arrive on two mutually exclusive paths: a package build passes its explicit
-   `buildroot_deps` outputs, while a package manager with attached `local_packages` computes the request's
-   runtime closure at analysis time from imported metadata and offers exactly the locally built packages
-   in it. Buildroots reject managers with local packages, because buildroot contents must come from the
-   explicit, cycle-checked self-hosting locks.
+   `buildroot_packages` outputs, while a package manager with attached `local_packages` computes the
+   request's runtime closure at analysis time from imported metadata and offers exactly the locally built
+   packages in it. Buildroots reject managers with local packages, because buildroot contents must come from
+   the explicit, cycle-checked self-hosting locks.
 3. **Install.** Run `PackageSystemInfo.install` over the exact package directory, whose file names carry
    the package system's suffix. `install_packages()` owns a fresh root or incremental buildroot delta. An
    image layer instead invokes the same installer against its already-mounted root so package and
@@ -627,7 +627,7 @@ deliberately stripped because Buck dependencies are analysis-only and not JSON-s
 reads each object into its `Repository` named tuple. The directory selects the pinned local repository
 metadata, while the base URL records the transport for remote packages selected into a transaction.
 
-Package-specific `buildroot_deps` use the same representation. Their ordered package directories are
+Package-specific `buildroot_packages` use the same representation. Their ordered package directories are
 materialized as an anonymous repository with ID `extra`, local priority, no base URL, and no declaration
 dependency. Transaction selection maps its local locations directly back to the producing package outputs.
 
@@ -705,7 +705,7 @@ and runtime package closures are still delegated to libdnf5 at buildroot-plan ti
 An `rpm_package` action:
 
 1. obtains the shared base root from its `BuildrootInfo`;
-2. resolves and installs its BuildRequires delta, preferring RPMs from `buildroot_deps` over upstream;
+2. resolves and installs its BuildRequires delta, preferring RPMs from `buildroot_packages` over upstream;
 3. overlays the base and delta, stages its spec/sources in Buck action scratch, and runs `rpmbuild -ba`,
    or `rpmbuild -bb --build-in-place` on a volatile overlay of a populated source tree. The project is
    read-only until the driver exits;
