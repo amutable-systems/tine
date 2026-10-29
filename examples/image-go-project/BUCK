@@ -225,7 +225,6 @@ box.sh_test(
 # packages.
 image.archive(
     name = "demo",
-    package_manager = distribution.package_manager(),
     # No runtime packages needed: neither project imports anything that pulls in cgo, so both
     # binaries are static. The filesystem skeleton still comes from its package, giving the
     # copies below their place to land.
