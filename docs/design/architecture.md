@@ -1434,8 +1434,9 @@ corresponding artifact or a user selects its subtarget. They must not appear in 
 so requesting either format runs the same SBOM action. A metadata view publishes itself the same way a
 conversion does: `[sbom]` and `[pkgdb]` carry an `image.PublishedInfo` naming them after the image they
 describe, so a release gathers what a scanner reads while an image's own published set stays what an
-update transfers. Every `image.PublishedInfo` must name its image and give each file a kind, which
-`image.artifacts` writes into the release's description.
+update transfers. Every `image.PublishedInfo` must name its image and give each file a kind, and may give
+the version of its image. `image.artifacts` writes the image, the kinds and the version into the release's
+description.
 
 `image.disk` is one rule that owns the complete composition action graph. Provider-oriented action
 helpers are shared with the standalone `image.layer`, `image.uki`, and terminal-format

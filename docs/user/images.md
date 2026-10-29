@@ -697,10 +697,11 @@ boot has no `[uki]`, `[initrd]`, `[boot]` or `[ami]` subtargets, returns no `ima
 for a disk the raw image, the UKI, the kernel and the initrd, plus the partitions, and for an
 extension its DDI. Each rule names what it builds, so anything gathering a release reads those
 names instead of composing names of its own. Each name maps to an `image.PublishedFile`, which holds the
-artifact, its kind and its optional subkind, and the provider's required `image` field names the image
-they belong to. Both end up in the release's description below. A partition is the exception and travels as a
-typed `PartitionInfo`: its name contains the type and UUID repart assigned, so it exists only after the
-build, and a consumer reads it back out of the metadata written beside the partition. The ESP is not
+artifact, its kind and its optional subkind. The provider's required `image` field names the image they
+belong to, and its optional `version` field gives the version of that image. The release's description
+below lists the kind, subkind, image and version of every file. A partition is the exception and travels
+as a typed `PartitionInfo`: its name contains the type and UUID repart assigned, so it exists only after
+the build, and a consumer reads it back out of the metadata written beside the partition. The ESP is not
 published: what it carries is transferred by other means, and no update writes the partition back. The format
 subtargets publish themselves rather than travelling in the disk's own set, so gathering a release does not
 build every encoding of it. So do the metadata views: `[sbom]` publishes both formats and `[pkgdb]` one file
@@ -774,6 +775,10 @@ The `files` key maps each published name to an entry with these fields:
   initrd file itself stays in the disk's image.
 - `root_hash`: This is the verity root hash of the partition verity protects in a disk, or of an extension
   or a portable image. Other files have no `root_hash`.
+- `version`: This is the version of the image the file belongs to, the same string as in the file's name:
+  `0` above, or a version rendered from git such as `0.0.0^573-160c7ddc0-d`. All files of one image share
+  it. Each image declares its own version, so two images in one release can have different versions. A
+  file whose `image.PublishedInfo` gives no version has no `version`.
 
 A consumer can match on these fields rather than file names. The excerpt below also gathers
 `:image[initrd][sbom]`.
@@ -786,27 +791,32 @@ A consumer can match on these fields rather than file names. The excerpt below a
       "image": "demo-ext_0_x86-64.sysext",
       "kind": "extension",
       "root_hash": "…",
-      "subkind": "sysext"
+      "subkind": "sysext",
+      "version": "0"
     },
     "image_0_x86-64.cdx.json": {
       "image": "image_0_x86-64",
       "kind": "sbom",
-      "subkind": "cyclonedx"
+      "subkind": "cyclonedx",
+      "version": "0"
     },
     "image_0_x86-64.efi": {
       "image": "image_0_x86-64",
-      "kind": "uki"
+      "kind": "uki",
+      "version": "0"
     },
     "image_0_x86-64.initrd.spdx.json": {
       "image": "image_0_x86-64.initrd",
       "kind": "sbom",
-      "subkind": "spdx"
+      "subkind": "spdx",
+      "version": "0"
     },
     "image_0_x86-64.usr-x86-64.0a72787674a137eaabf7aa97c82a72ee.raw": {
       "image": "image_0_x86-64",
       "kind": "partition",
       "root_hash": "0a72787674a137eaabf7aa97c82a72ee94dcef64374b73274b88fe1a9ff45b31",
-      "subkind": "usr"
+      "subkind": "usr",
+      "version": "0"
     }
   }
 }

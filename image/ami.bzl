@@ -39,6 +39,7 @@ def declare_ami(
     disk: Artifact,
     importer: RunInfo,
     secure_boot_certificate: Artifact | None,
+    version: str,
     virtual_size: str | None,
 ) -> list[Provider]:
     """Declare the AMI RegisterImage parameters of a bootable disk, for its `[ami]` subtarget.
@@ -89,7 +90,7 @@ def declare_ami(
         # Building an AMI builds the disk, as for any other format; only the parameters are published,
         # as a release carries the disk already.
         DefaultInfo(default_output = parameters, other_outputs = [disk]),
-        PublishedInfo(artifacts = {name: PublishedFile(artifact = parameters, kind = "ami")}, image = basename),
+        PublishedInfo(artifacts = {name: PublishedFile(artifact = parameters, kind = "ami")}, image = basename, version = version),
         RunInfo(args = cmd_args(importer, disk, parameters)),
     ]
 

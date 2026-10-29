@@ -484,7 +484,7 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
             "initrd": [
                 DefaultInfo(
                     default_output = initrd_info.cpio.archive,
-                    sub_targets = published_metadata_subtargets(initrd_info.image, "{}.initrd".format(basename)),
+                    sub_targets = published_metadata_subtargets(initrd_info.image, "{}.initrd".format(basename), version),
                 ),
                 initrd_info,
             ],
@@ -551,6 +551,7 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
             secure_boot_certificate = (
                 ctx.attrs.secure_boot_key[DefaultInfo].sub_targets["cert"][DefaultInfo].default_outputs[0] if secure_boot_key != None else None
             ),
+            version = version,
             virtual_size = ctx.attrs.virtual_size,
         )
     for conversion in conversions:
@@ -562,6 +563,7 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
             PublishedInfo(
                 artifacts = {conversion.image.basename: PublishedFile(artifact = conversion.image, kind = "disk", subkind = conversion.format)},
                 image = basename,
+                version = version,
             ),
             conversion,
         ]
@@ -582,6 +584,7 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
     published = PublishedInfo(
         artifacts = artifacts,
         image = basename,
+        version = version,
         partitions = [partition for partition in composed.info.partitions if partition.definition["type"] != "esp"],
     )
 
@@ -589,7 +592,7 @@ def _disk_impl(ctx: AnalysisContext) -> list[Provider]:
         default_outputs = [raw],
         extra = [directory, composed.info, published] + boot_providers,
         image = top,
-        sub_targets = sub_targets | published_metadata_subtargets(top, basename),
+        sub_targets = sub_targets | published_metadata_subtargets(top, basename, version),
     )
 
 _DISK_ATTRS = (

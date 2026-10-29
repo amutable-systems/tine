@@ -7,8 +7,8 @@
 # that each listing is named after what it describes, that the verity pair is named after the two
 # halves of the root hash (which is what lets systemd-sysupdate give the partitions it writes the
 # UUIDs dissection pairs them by), and that the ESP is not among them. Assert that the release's
-# description lists every published file with its kind and image, and gives the verity root hash to
-# the usr partition and the extension.
+# description lists every published file with its kind, image and version, and gives the verity root
+# hash to the usr partition and the extension.
 set -euo pipefail
 
 directory=$1 roothash_file=$2 arch=$3 pkgdb_suffix=$4 pkgdb_system=$5
@@ -16,7 +16,9 @@ roothash=$(cat "$roothash_file")
 names=$(ls "$directory")
 description=$directory/artifacts_$arch.json
 
-image="image_0_$arch" extension="demo-ext_0_$arch"
+# Every image of the example has the default version, 0.
+version=0
+image="image_${version}_$arch" extension="demo-ext_${version}_$arch"
 usr="$image.usr-$arch.${roothash:0:32}.raw" usr_verity="$image.usr-$arch-verity.${roothash:32:32}.raw"
 failed=0
 fail() {
@@ -44,30 +46,35 @@ if ! diff <(jq -r '.files | keys[]' "$description" | LC_ALL=C sort) \
     fail "the description lists other files than the release holds"
 fi
 
-# Each line names a file and the [image, kind, subkind] the description gives it, null where it has
-# none.
+# Each line names a file and the [image, kind, subkind, version] the description gives it, null where
+# it has none.
 while read -r name want; do
-    got=$(jq -c --arg name "$name" '.files[$name] | [.image, .kind, .subkind]' "$description")
+    got=$(jq -c --arg name "$name" '.files[$name] | [.image, .kind, .subkind, .version]' "$description")
     [ "$got" = "$want" ] || fail "$name is described as $got, not $want"
 done <<EOF
-$image.raw ["$image","disk","raw"]
-$image.qcow2 ["$image","disk","qcow2"]
-$image.efi ["$image","uki",null]
-$image.vmlinuz ["$image","kernel",null]
-$image.initrd ["$image","initrd",null]
-$image.Uapi16Manifest ["$image","listing","uapi16manifest"]
-$image.usr.Uapi16Manifest ["$image","listing","uapi16manifest"]
-$image.spdx.json ["$image","sbom","spdx"]
-$image.cdx.json ["$image","sbom","cyclonedx"]
-$image.pkgdb.$pkgdb_suffix ["$image","pkgdb","$pkgdb_system"]
-$image.initrd.spdx.json ["$image.initrd","sbom","spdx"]
-$usr ["$image","partition","usr"]
-$usr_verity ["$image","partition","usr-verity"]
-$extension.sysext.raw ["$extension.sysext","extension","sysext"]
-$extension.sysext.Uapi16Manifest ["$extension.sysext","listing","uapi16manifest"]
-$extension.sysext.roothash ["$extension.sysext","roothash",null]
-$extension.spdx.json ["$extension.sysext","sbom","spdx"]
+$image.raw ["$image","disk","raw","$version"]
+$image.qcow2 ["$image","disk","qcow2","$version"]
+$image.efi ["$image","uki",null,"$version"]
+$image.vmlinuz ["$image","kernel",null,"$version"]
+$image.initrd ["$image","initrd",null,"$version"]
+$image.Uapi16Manifest ["$image","listing","uapi16manifest","$version"]
+$image.usr.Uapi16Manifest ["$image","listing","uapi16manifest","$version"]
+$image.spdx.json ["$image","sbom","spdx","$version"]
+$image.cdx.json ["$image","sbom","cyclonedx","$version"]
+$image.pkgdb.$pkgdb_suffix ["$image","pkgdb","$pkgdb_system","$version"]
+$image.initrd.spdx.json ["$image.initrd","sbom","spdx","$version"]
+$usr ["$image","partition","usr","$version"]
+$usr_verity ["$image","partition","usr-verity","$version"]
+$extension.sysext.raw ["$extension.sysext","extension","sysext","$version"]
+$extension.sysext.Uapi16Manifest ["$extension.sysext","listing","uapi16manifest","$version"]
+$extension.sysext.roothash ["$extension.sysext","roothash",null,"$version"]
+$extension.spdx.json ["$extension.sysext","sbom","spdx","$version"]
 EOF
+
+# The list above leaves out some files, such as the ESP listing, so this check covers every file.
+unversioned=$(jq -r --arg version "$version" \
+    '.files | to_entries[] | select(.value.version != $version) | .key' "$description")
+[ -z "$unversioned" ] || fail "these files do not have version $version: $unversioned"
 
 # Only the usr partition and the extension carry a verity root hash.
 extension_hash=$(cat "$directory/$extension.sysext.roothash")

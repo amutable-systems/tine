@@ -88,6 +88,7 @@ def _declare_preset(
     systemd_arch: str,
     basename: str,
     filename: str,
+    version: str,
     kind: str,
     subkind: str | None,
     copy_files: list[str],
@@ -101,7 +102,8 @@ def _declare_preset(
 
     `basename` is <name>_<version>_<arch>, which names the metadata of the logical image. `filename`
     names the DDI and adds the class suffix of an extension to `basename`. It is also the DDI's image
-    in the release's description, so that a sysext and a confext of one name are two images.
+    in the release's description, so that a sysext and a confext of one name are two images. `version`
+    is the version in `basename`. The release's description gives it to every file of the DDI.
     """
     # The partitions match the definitions systemd-repart --make-ddi uses, so that a DDI does not
     # depend on the systemd version of the box that builds it.
@@ -136,12 +138,13 @@ def _declare_preset(
             info.root_hash.hash.basename: PublishedFile(artifact = info.root_hash.hash, kind = "roothash"),
         },
         image = filename,
+        version = version,
     )
     return image_providers(
         default_outputs = [info.disk],
         extra = [info, published] + extra,
         image = image,
-        sub_targets = output.sub_targets | published_metadata_subtargets(image, basename, filename),
+        sub_targets = output.sub_targets | published_metadata_subtargets(image, basename, version, filename),
     )
 
 def declare_extension(
@@ -221,6 +224,7 @@ def declare_extension(
         # systemd recognizes the suffixes .sysext.raw and .confext.raw. No suffix names a DDI with
         # the two classes, so it gets the plain .raw suffix.
         filename = basename + (suffixes[0] if len(suffixes) == 1 else ""),
+        version = version,
         kind = "extension",
         subkind = "+".join([class_name for class_name, _ in _CLASSES if class_name in classes]),
         copy_files = copy_files,
@@ -263,6 +267,7 @@ def declare_portable(
         # portablectl takes the image name from the file name up to the first "_", and
         # systemd-sysupdate matches a transfer against <name>_<version>_<arch>.raw.
         filename = basename,
+        version = version,
         kind = "portable",
         subkind = None,
         copy_files = ["/"],
