@@ -149,7 +149,7 @@ def _cargo_package_impl(ctx: AnalysisContext) -> list[Provider]:
             vendor = ctx.attrs._vendor[RunInfo],
         ),
     )
-    return project.binaries_providers(outputs)
+    return project.binaries_providers(outputs, box_run(box, relaxed = True, name = ctx.label.name))
 
 _cargo_package = rule(
     impl = _cargo_package_impl,

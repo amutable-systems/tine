@@ -86,12 +86,18 @@ def binaries_dir(actions: AnalysisActions, name: str, binaries: list[str], owner
     bin = kept_dir(actions, name)
     return bin, {binary: bin.project(binary) for binary in binaries}
 
-def binaries_providers(outputs: dict[str, Artifact]) -> list[Provider]:
-    """Return the providers of a rule whose outputs are the binaries in `outputs`."""
+def binaries_providers(outputs: dict[str, Artifact], box: RunInfo) -> list[Provider]:
+    """Return the providers of a rule whose outputs are the binaries in `outputs`.
+
+    `box` enters the box that built them, and is run by the `box` sub-target.
+    """
 
     # `buck run` runs a binary on the host, as a developer would after building it by hand. The box
     # contains no runtime packages, so a dynamically linked binary would not run there either.
     sub_targets = {name: [DefaultInfo(default_output = out), RunInfo(args = cmd_args(out))] for name, out in outputs.items()}
+    if "box" in sub_targets:
+        fail("a binary named `box` would replace the `box` sub-target")
+    sub_targets["box"] = [DefaultInfo(), box]
     providers = [DefaultInfo(default_outputs = outputs.values(), sub_targets = sub_targets)]
     if len(outputs) == 1:
         providers.append(RunInfo(args = cmd_args(outputs.values()[0])))

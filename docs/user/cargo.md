@@ -40,7 +40,8 @@ cargo.package(
   produces no binary has nothing an image could install. These are cargo binary names, which need not match
   the package. Each becomes a sub-target (`:hello[hello-cli]`), and together they are the target's default
   outputs. A name that the build does not produce fails the action. A name that is empty, `.` or `..`,
-  contains a slash or a backslash, or is listed twice fails analysis.
+  contains a slash or a backslash, or is listed twice fails analysis. So does `box`, which names the
+  sub-target that opens the build box.
 - `box` is the build environment. It defaults to `tine//cargo:build.box`, described below.
 
 The binaries are ordinary artifacts, so an image installs one with an `image.ops.copy()` operation:
@@ -82,6 +83,9 @@ for several families picks them with `distribution.select()`.
 The build fails when the box's packages and `buildroot_packages` together resolve to other packages than
 the box contains, such as another provider of a library. Then declare a box with all of the packages, and
 pass it as `box`.
+
+`buck run :hello[box]` opens a shell in the box that builds `:hello`, with its `buildroot_packages`
+installed.
 
 To build in a box of your own, pass it as `box`. Its packages need the toolchain, a linker and `python3`,
 which runs tine's driver inside the box. A crate that looks a library up with `pkg-config` also needs

@@ -49,6 +49,7 @@ go.package(
 - `packages` maps output names to Go main packages, such as `{"etcd": "."}` or
   `{"server": "./cmd/server"}`. Values are paths relative to the module root or full import paths;
   keys set the binary's filename and sub-target name. Together these are the target's default outputs.
+  A binary named `box` fails analysis, because `box` names the sub-target that opens the build box.
   `packages` may be left out when the module holds exactly one main package. The binary is then named
   after the target, not after the package's directory as a bare `go build` would: `hello` above would
   yield `:hello[hello]` rather than `hello-cli`. Every main package under the module root counts,
@@ -179,6 +180,9 @@ families picks them with `distribution.select()`.
 The build fails when the box's packages and `buildroot_packages` together resolve to other packages than
 the box contains, such as another provider of a library. Then declare a box with all of the packages, and
 pass it as `box`.
+
+`buck run :hello[box]` opens a shell in the box that builds `:hello`, with its `buildroot_packages`
+installed.
 
 To build in a box of your own, pass it as `box`. Its packages need the Go toolchain, `ca-certificates` and
 `python3`, which runs tine's drivers inside the box.
