@@ -88,7 +88,8 @@ box.new(
             # Signing with a PKCS#11 token loads pkcs11-provider, which loads p11-kit's client module.
             "pkcs11-provider",
             # image.vm runs in this box. systemd-vmspawn runs the guest, virtiofsd shares the image's
-            # extensions with it, and swtpm gives it a vTPM for measured boot.
+            # extensions with it, and swtpm gives it a vTPM for measured boot. vmspawn forwards the
+            # guest's journal through systemd-journal-remote, and ssh logs in to the guest.
             "swtpm",
             "virtiofsd",
         ]
@@ -107,7 +108,8 @@ box.new(
                 "python-pefile",
                 # An image's qcow2 subtarget runs qemu-img.
                 "qemu-img",
-                # The systemd package contains udev, repart, tmpfiles, sysusers, bootctl and vmspawn.
+                # The systemd package contains udev, repart, tmpfiles, sysusers, bootctl, vmspawn and
+                # journal-remote.
                 "systemd",
             ],
             "debian": [
@@ -128,6 +130,7 @@ box.new(
                 "systemd-boot-efi",
                 "systemd-boot-tools",
                 "systemd-container",
+                "systemd-journal-remote",
                 "systemd-repart",
                 # systemd-tpm contains systemd-measure, which ukify runs to sign the policy for the
                 # expected PCRs.
@@ -137,7 +140,7 @@ box.new(
             "fedora": [
                 # The uki driver resolves module dependencies through libkmod.
                 "kmod-libs",
-                "openssh",
+                "openssh-clients",
                 "p11-kit-client",
                 # ukify needs python3-cryptography and python3-pefile to sign UKIs and parse PEs, but
                 # systemd-ukify only weakly depends on them.
@@ -147,6 +150,7 @@ box.new(
                 # swtpm-tools contains swtpm_setup, which vmspawn runs to initialize the TPM state.
                 "swtpm-tools",
                 "systemd-container",
+                "systemd-journal-remote",
                 "systemd-udev",
                 "veritysetup",
             ],
