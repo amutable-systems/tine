@@ -111,6 +111,22 @@ class Counts:
             return dict(sorted(self._counter.items()))
 
 
+class KeyedLocks:
+    """One lock per key, made on first use.
+
+    Never cleaned up, which costs a lock object per distinct key a shim ever sees: keys are bundle
+    names, a few dozen per build.
+    """
+
+    def __init__(self) -> None:
+        self._locks: dict[str, threading.Lock] = {}
+        self._guard = threading.Lock()
+
+    def __call__(self, key: str) -> threading.Lock:
+        with self._guard:
+            return self._locks.setdefault(key, threading.Lock())
+
+
 class Local:
     """The local cache store, and populating it from the bucket.
 
@@ -261,15 +277,8 @@ class ActionCache:
         self.signer = signer
         self.verifier = verifier
         self.accepting = accepts_uploads(signer, verifier)
-        # One lock per bundle being uploaded, so two results that share a bundle do not both send
-        # it. Keyed by name and never cleaned up, which costs a lock object per distinct bundle a
-        # shim ever publishes: a few dozen per build.
-        self._uploads: dict[str, threading.Lock] = {}
-        self._uploads_guard = threading.Lock()
-
-    def _upload_lock(self, name: str) -> threading.Lock:
-        with self._uploads_guard:
-            return self._uploads.setdefault(name, threading.Lock())
+        # By bundle name, so two results that share a bundle do not both send it.
+        self._upload_lock = KeyedLocks()
 
     def get(
         self, request: reapi.GetActionResultRequest, context: grpc.ServicerContext
