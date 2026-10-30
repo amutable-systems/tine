@@ -18,7 +18,7 @@ from contextlib import contextmanager, redirect_stdout, suppress
 from pathlib import Path
 
 import sandbox
-from isolation import Bind, Devices, Filesystem, Overlay, Stage, Symlink, Tmpfs
+from isolation import Bind, Devices, File, Filesystem, Overlay, Stage, Symlink, Tmpfs
 from sandbox import _PROJECT
 
 
@@ -433,10 +433,10 @@ def _runnable(tools: Path) -> Path:
     return host
 
 
-def _run_relaxed(layers: tuple[Path, ...], host: Path, script: str) -> subprocess.CompletedProcess[str]:
+def _start_relaxed(layers: tuple[Path, ...], host: Path, script: str) -> subprocess.Popen[str]:
     # The hermetic mode loads libseccomp from the box's root, and the test's tools tree doesn't contain
     # it. Run the sandbox in relaxed mode instead.
-    return subprocess.run(
+    return subprocess.Popen(
         [
             sys.executable,
             "-I",
@@ -451,9 +451,17 @@ def _run_relaxed(layers: tuple[Path, ...], host: Path, script: str) -> subproces
         # Arch's dynamic loader searches only /usr/lib, which the test's tools tree replaces, so the lib
         # and lib64 links do not lead it to the bound /usr.
         env=os.environ | {"LD_LIBRARY_PATH": str(host / "lib")},
-        capture_output=True,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
     )
+
+
+def _run_relaxed(layers: tuple[Path, ...], host: Path, script: str) -> subprocess.CompletedProcess[str]:
+    with _start_relaxed(layers, host, script) as process:
+        stdout, stderr = process.communicate()
+    return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
 
 
 class TestLayers(unittest.TestCase):
@@ -467,8 +475,9 @@ class TestLayers(unittest.TestCase):
             self.assertIn(("usr/bin", "/bin"), [(link.source, link.target) for link in _symlinks(hermetic)])
             self.assertIn((layer / "srv", Path("/srv"), True, False), _bind_specs(hermetic))
             self.assertIn((layer / "home", Path("/home"), True, False), _bind_specs(hermetic))
-            passwd = next(bind for bind in _binds(relaxed) if bind.target == "/etc/passwd")
-            self.assertTrue(Path(passwd.source).read_text().startswith("layered:"))
+            files = [filesystem for filesystem in relaxed.filesystems if isinstance(filesystem, File)]
+            passwd = next(file for file in files if file.target == "/etc/passwd")
+            self.assertTrue(passwd.content.startswith("layered:"))
 
     def test_main_mounts_the_merged_tree_only_while_it_plans(self) -> None:
         for layers in (["/top"], ["/base", "/top"]):
@@ -541,6 +550,26 @@ class TestLayers(unittest.TestCase):
         # its scratch directory must not appear anywhere else, for example below the host's /var.
         merged = {line.split()[4] for line in lines[3:] if " - overlay " in line and str(layer) in line}
         self.assertEqual(merged, {"/usr", "/etc"})
+
+    def test_a_start_leaves_the_identity_of_running_boxes_alone(self) -> None:
+        with _project() as (_, tools):
+            host = _runnable(tools)
+            (tools / "etc/passwd").write_text("first:x:0:0::/:/bin/sh\n")
+            # Print the first passwd line, wait for another box to start, and print it again.
+            script = 'first() { read -r line < /etc/passwd; echo "$line"; }; first; read -r _; first'
+            with _start_relaxed((tools,), host, script) as running:
+                assert running.stdout is not None
+                before = running.stdout.readline()
+                (tools / "etc/passwd").write_text("second:x:0:0::/:/bin/sh\n")
+                started = _run_relaxed((tools,), host, f"{host}/bin/cat /etc/passwd")
+                after, stderr = running.communicate("\n")
+
+        self.assertEqual(running.returncode, 0, stderr)
+        self.assertEqual(before + after, "first:x:0:0::/:/bin/sh\n" * 2)
+        self.assertEqual(started.returncode, 0, started.stderr)
+        passwd = started.stdout.splitlines()
+        self.assertEqual(passwd[0], "second:x:0:0::/:/bin/sh")
+        self.assertIn(f":x:{os.getuid()}:{os.getgid()}::", passwd[1])
 
 
 class TestBoxEnvironment(unittest.TestCase):
