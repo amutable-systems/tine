@@ -11,6 +11,7 @@ pinned userspace but exposes host devices, services, environment, cwd, and netwo
 Target-root setup belongs to rootfs.py rather than this launcher.
 """
 
+import errno
 import os
 import stat
 import sys
@@ -27,6 +28,7 @@ from isolation import (
     Symlink,
     Tmpfs,
     Tree,
+    check_kernel,
     enter_sandbox,
     unshare_sandbox,
 )
@@ -327,18 +329,18 @@ def _interactive_shell(environment: dict[str, str]) -> str:
     _fail("no shell installed in box ($SHELL and bash were not found)")
 
 
-def _launch(args: Options, tree: Tree) -> Launch:
+def _launch(args: Options, tree: Tree, project: Bind | None) -> Launch:
     """Translate the command-line request into the Python sandbox interface.
 
     `tree` is the entered tools tree, which the binds of the tools tree take their sources from.
+    `project` is the bind of the project for `--bind-cwd`.
     """
     with Close(os.open(".", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC, dir_fd=tree.fd)) as tools:
-        return _plan(args, tools, tree)
+        return _plan(args, tools, tree, project)
 
 
-def _plan(args: Options, tools: int, tree: Tree) -> Launch:
+def _plan(args: Options, tools: int, tree: Tree, project: Bind | None) -> Launch:
     filesystems: list[Filesystem] = []
-    cwd = os.getcwd() if args.bind_cwd else None
 
     # Recreate usr-merge symlinks instead of binding through them.
     if args.relaxed:
@@ -358,8 +360,10 @@ def _plan(args: Options, tools: int, tree: Tree) -> Launch:
 
     chdir: str | None = None
     command = tuple(args.cmd)
-    if cwd:
-        filesystems.append(Bind(cwd, _PROJECT))
+    cwd: str | None = None
+    if project is not None:
+        cwd = project.source
+        filesystems.append(project)
         chdir = _PROJECT
 
         # A build action names its artifacts project-relative, but `buck run` calls the same command with
@@ -433,25 +437,47 @@ def _plan(args: Options, tools: int, tree: Tree) -> Launch:
     return Launch(filesystems=tuple(filesystems), chdir=chdir, command=command, environment=environment)
 
 
+def _copy_project(stack: ExitStack, project: Bind) -> None:
+    """Enter `project` before unshare_sandbox(), unless the caller can't mount in its mount namespace."""
+    # The kernel locks each mount that the sandbox's user namespace inherits, such as a `tine mount` below
+    # the project. overlayfs refuses a lower directory with a locked mount below it with EINVAL, so an rpm
+    # build of the project in place fails. The kernel doesn't lock the mounts of a copy that is made before
+    # unshare_sandbox() and attached after it.
+    try:
+        stack.enter_context(project)
+    except OSError as error:
+        # open_tree_attr() fails with EPERM if the caller can't mount in its mount namespace. The mounts
+        # below the project then belong to a user namespace that the caller doesn't own. The kernel locks
+        # them in the sandbox whether the sandbox copies the project before or after unshare_sandbox().
+        # After a failure with EPERM, main() enters the project with the other mounts after
+        # unshare_sandbox().
+        if error.errno != errno.EPERM:
+            raise
+
+
 def main(argv: list[str] | None = None) -> NoReturn:
     args = _parse(argv)
     # `layers` lists the layers of the tools tree top first, which is the order of overlayfs lower
     # directories.
     layers = tuple(reversed(args.tools))
+    project = Bind(os.getcwd(), _PROJECT) if args.bind_cwd else None
     try:
-        unshare_sandbox(
-            become_root=not args.relaxed,
-            isolate_network=not args.relaxed and not args.network,
-        )
+        check_kernel()
         with ExitStack() as stack:
+            if project is not None:
+                _copy_project(stack, project)
+            unshare_sandbox(
+                become_root=not args.relaxed,
+                isolate_network=not args.relaxed and not args.network,
+            )
             # The tools tree is opened after unshare_sandbox(), so that an overlay of its layers belongs to
             # the sandbox's user namespace.
             tree = stack.enter_context(Tree(layers))
-            launch = _launch(args, tree)
+            launch = _launch(args, tree, project)
             # The mounts take their sources from paths in the host's root, so they are entered before
             # enter_sandbox() changes the root.
             for filesystem in launch.filesystems:
-                if not isinstance(filesystem, Symlink):
+                if not isinstance(filesystem, Symlink) and filesystem.fd < 0:
                     stack.enter_context(filesystem)
             enter_sandbox(
                 launch.filesystems,
