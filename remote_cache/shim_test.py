@@ -243,6 +243,23 @@ class TestContentAddressableStorage(ShimCase):
         self.assertEqual(status.code, reapi.INVALID_ARGUMENT)
         self.assertEqual(self.store.counts()[0], 1)  # only the empty blob
 
+    def test_one_bad_blob_in_a_batch_is_refused_alone(self) -> None:
+        """The batch is stored at once, but answered per blob, the way the API asks."""
+        honest = reapi.Digest.for_bytes(b"honest")
+        response = self.batch_update(
+            reapi.BatchUpdateBlobsRequest(
+                blobs=[
+                    reapi.Blob(digest=honest, data=b"honest"),
+                    reapi.Blob(digest=reapi.Digest.for_bytes(b"also honest"), data=b"a lie"),
+                ]
+            )
+        )
+        self.assertEqual(
+            [one.status.code for one in response.blobs if one.status], [reapi.OK, reapi.INVALID_ARGUMENT]
+        )
+        self.assertEqual(self.store.blob(honest), b"honest")
+        self.assertEqual(self.store.counts()[0], 2)  # and the empty blob
+
 
 class TestByteStream(ShimCase):
     def test_a_chunked_upload_reads_back_whole(self) -> None:

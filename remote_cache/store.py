@@ -59,6 +59,13 @@ def write_atomically(path: Path, data: bytes) -> None:
         Path(temporary).unlink(missing_ok=True)
 
 
+def check_blob(digest: reapi.Digest, data: bytes) -> None:
+    """Raise a `ValueError` unless these are the bytes the digest names."""
+    found = hashlib.sha256(data).hexdigest()
+    if found != digest.hash or len(data) != digest.size_bytes:
+        raise ValueError(f"filed under {digest} but hashes to {found}/{len(data)}")
+
+
 def _now() -> int:
     """Unix nanoseconds.
 
@@ -245,9 +252,7 @@ class Store:
         its own members would be fetched again on every lookup.
         """
         for digest, data in blobs.items():
-            found = hashlib.sha256(data).hexdigest()
-            if found != digest.hash or len(data) != digest.size_bytes:
-                raise ValueError(f"filed under {digest} but hashes to {found}/{len(data)}")
+            check_blob(digest, data)
         with self._lock:
             arriving = sum(one.size_bytes for one in blobs if not self._present(one.hash))
         self._evict(arriving, keeping={one.hash for one in blobs})
