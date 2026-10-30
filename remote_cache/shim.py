@@ -158,6 +158,7 @@ class Local:
     def fetch_bundle(self, name: str) -> dict[str, bytes] | None:
         """A bundle's members by hash, or None with the reason logged and counted."""
         assert self.bucket is not None
+        started = time.monotonic()
         try:
             # Bounded by the store: a bundle that would not fit could not be kept anyway, and the
             # operator, not the builder, decides how large the object under this name is.
@@ -177,12 +178,21 @@ class Local:
             log.info("bundle %s is gone from the bucket", name[:12])
             self.counts.add("bundles gone")
             return None
+        downloaded = time.monotonic()
         try:
-            return dict(bundle.unpack(packed))
+            members = dict(bundle.unpack(packed))
         except ValueError as error:
             log.error("bundle %s is unreadable: %s", name[:12], error)
             self.refuse(name)
             return None
+        log.info(
+            "bundle %s, %d bytes: downloaded in %.1fs, unpacked in %.1fs",
+            name[:12],
+            len(packed),
+            downloaded - started,
+            time.monotonic() - downloaded,
+        )
+        return members
 
     def refuse(self, name: str) -> None:
         """This bundle is not what its name says. Remembered, so a publisher writes it again."""
@@ -267,6 +277,7 @@ class ActionCache:
         action = request.action_digest
         if action is None or not signing.is_sha256_hex(action.hash):
             abort(context, grpc.StatusCode.INVALID_ARGUMENT, "no action digest")
+        started = time.monotonic()
         self.counts.add("lookups")
         found = self._kept(action)
         if found is None and self.bucket is not None:
@@ -289,7 +300,7 @@ class ActionCache:
             self.counts.add("incomplete")
             abort(context, grpc.StatusCode.NOT_FOUND, "result names blobs this cache does not have")
         self.counts.add("hits")
-        log.info("AC hit %s, %d blobs", action.hash[:12], len(blobs))
+        log.info("AC hit %s, %d blobs, in %.1fs", action.hash[:12], len(blobs), time.monotonic() - started)
         return result
 
     def update(
@@ -407,13 +418,15 @@ class ActionCache:
             log.error("AC %s: %s", action.hash[:12], error)
             self.local.refuse(pointer.bundle)
             return None
+        started = time.monotonic()
         self.local.admit(members, pointer.bundle)
         self.store.put_result(action, stored)
         log.info(
-            "AC from bucket %s, bundle %s, %d blobs",
+            "AC from bucket %s, bundle %s, %d blobs, admitted in %.1fs",
             action.hash[:12],
             pointer.bundle[:12],
             len(blobs),
+            time.monotonic() - started,
         )
         return pointer, result
 
