@@ -355,16 +355,28 @@ class TestActionCache(ShimCase):
             self.get_action_result(reapi.GetActionResultRequest(action_digest=action))
         self.assertEqual(status_of(caught.exception), grpc.StatusCode.NOT_FOUND)
 
-    def test_a_blob_rewritten_on_disk_is_a_miss_and_is_dropped(self) -> None:
-        """A hit is claimed only for bytes that still hash to their names, whatever the files say."""
+    def test_a_blob_of_another_size_on_disk_is_a_miss(self) -> None:
+        """A truncated file is as good as gone, and a hit is never claimed for one."""
         action, result = self.result_with_a_tree()
         digest = result.file_digests[0]
-        (self.store.root / "blobs" / digest.hash[:2] / digest.hash).write_bytes(b"x" * digest.size_bytes)
+        (self.store.root / "blobs" / digest.hash[:2] / digest.hash).write_bytes(b"truncated")
         with self.assertRaises(grpc.RpcError) as caught:
             self.get_action_result(reapi.GetActionResultRequest(action_digest=action))
         self.assertEqual(status_of(caught.exception), grpc.StatusCode.NOT_FOUND)
-        self.assertEqual(self.store.has_blobs([digest]), [False])
         self.assertEqual(self.counts.report()["incomplete"], 1)
+
+    def test_a_blob_rewritten_on_disk_at_its_size_is_refused_where_it_is_read(self) -> None:
+        """A hit does not read every blob it names; the bytes are checked where they are served.
+
+        With no bucket to fetch them from again, the hit fails there: the price of not reading.
+        """
+        action, result = self.result_with_a_tree()
+        digest = result.file_digests[0]
+        (self.store.root / "blobs" / digest.hash[:2] / digest.hash).write_bytes(b"x" * digest.size_bytes)
+        self.get_action_result(reapi.GetActionResultRequest(action_digest=action))
+        response = self.batch_read(reapi.BatchReadBlobsRequest(digests=[digest]))
+        self.assertEqual([one.status.code for one in response.blobs if one.status], [reapi.NOT_FOUND])
+        self.assertEqual(self.store.has_blobs([digest]), [False])
 
 
 def one_file_result(digest: reapi.Digest) -> reapi.ActionResult:
@@ -549,6 +561,17 @@ class TestBucketFetch(BucketCase):
         response = self.batch_read(reapi.BatchReadBlobsRequest(digests=[digest]))
         self.assertEqual([one.data for one in response.blobs], [b"the output"])
         self.assertEqual(self.counts.report()["bundles refilled"], 2)
+
+    def test_a_blob_rewritten_on_disk_at_its_size_comes_back_from_its_bundle_when_read(self) -> None:
+        """The hit was claimed by size, so the read is where it has to be made good."""
+        action = self.publish(b"one action", b"the output")
+        digest = reapi.Digest.for_bytes(b"the output")
+        self.start_shim()
+        self.assertIsNone(self.lookup(action))
+        (self.store.root / "blobs" / digest.hash[:2] / digest.hash).write_bytes(b"x" * digest.size_bytes)
+        self.assertIsNone(self.lookup(action))
+        self.assertEqual(self.read(reapi.ReadRequest(resource_name=self.resource(digest))), b"the output")
+        self.assertEqual(self.counts.report()["bundles refilled"], 1)
 
     def test_a_refill_from_a_rewritten_bundle_is_a_refusal(self) -> None:
         action = self.publish(b"one action", b"the output")

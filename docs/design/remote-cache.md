@@ -230,7 +230,9 @@ One process holds the store at a time, and the store is disposable.
 
 The one gap of the eager fetch: Buck2 may ask for an output by digest in a later build, and if its bundle
 has left the bucket by then, that build fails with Buck2's "expired in the RE CAS" error; `buck clean`
-recovers. Rarer than with per-output storage, not gone.
+recovers. Rarer than with per-output storage, not gone. A hit checks the outputs it names by size rather
+than reading them all, so an output rewritten in the store at its own size is found only when Buck2 reads
+it, and is fetched from its bundle then, with the same gap.
 
 See `remote_cache/store.py` and its comments for details.
 

@@ -210,6 +210,18 @@ class TestEviction(StoreCase):
         self.store.put_blob(third, third_body)
         self.assertEqual(self.store.has_blobs([old, new, third]), [True, False, True])
 
+    def test_being_asked_about_counts_as_a_use(self) -> None:
+        """A hit asks about every blob its result names, and Buck2 reads only a few of them."""
+        old, old_body = blob(b"o" * 400)
+        new, new_body = blob(b"n" * 400)
+        self.store.put_blob(old, old_body)
+        self.store.put_blob(new, new_body)
+        self.assertEqual(self.store.has_blobs([old]), [True])
+
+        third, third_body = blob(b"t" * 400)
+        self.store.put_blob(third, third_body)
+        self.assertEqual(self.store.has_blobs([old, new, third]), [True, False, True])
+
     def test_it_stays_under_its_bound_and_what_it_evicted_can_still_be_found_again(self) -> None:
         for index in range(10):
             digest, body = blob(f"{index}".encode() * 300)
