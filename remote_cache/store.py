@@ -298,8 +298,24 @@ class Store:
         return data
 
     def has_blobs(self, digests: list[reapi.Digest]) -> list[bool]:
-        """Which of these are here."""
-        return [self._path(one.hash).is_file() for one in digests]
+        """Which of these are here, each counted as used, like a read.
+
+        A hit names every blob of its result, but Buck2 reads only a few of them. Without this, a
+        result looked up in every build would age as unused, and its bundle would be fetched again
+        after the next eviction. A file of another size than its digest counts as absent; what it
+        holds is checked by `blob`, when it is read.
+        """
+        return [self._use(one) for one in digests]
+
+    def _use(self, digest: reapi.Digest) -> bool:
+        path = self._path(digest.hash)
+        try:
+            if path.stat().st_size != digest.size_bytes:
+                return False
+            os.utime(path)
+        except FileNotFoundError:
+            return False
+        return True
 
     # The two below are how a test takes blobs away to see what happens: nothing in the shim
     # enumerates or evicts by hand.
@@ -413,7 +429,7 @@ class Store:
     def _evict(self, arriving: int = 0, keeping: Collection[str] = ()) -> None:
         """Drop the least recently used blobs until `arriving` more bytes fit well inside the bound.
 
-        Least recently used by the file's own timestamp, which `blob` moves on every read. None of
+        Least recently used by the file's own timestamp, which `blob` and `has_blobs` move. None of
         `keeping` goes.
 
         Finding them stats every blob here, so this frees room for more than the blob that crossed

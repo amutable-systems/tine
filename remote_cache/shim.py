@@ -151,8 +151,16 @@ class Local:
         self.fetching = KeyedLocks()
 
     def blob(self, digest: reapi.Digest) -> bytes | None:
-        """A blob's bytes, fetching the bundle it arrived in if they are no longer here."""
-        return self.store.blob(digest) if self.ensure([digest]) else None
+        """A blob's bytes, fetching the bundle it arrived in if they are no longer here.
+
+        Or if they no longer hash to their name, which the store finds only on reading them and
+        then drops them: a hit checks sizes, so it may have been claimed for exactly these.
+        """
+        if not self.ensure([digest]):
+            return None
+        if (data := self.store.blob(digest)) is None and self.ensure([digest]):
+            data = self.store.blob(digest)
+        return data
 
     def ensure(self, digests: list[reapi.Digest]) -> bool:
         """Make all of these present, fetching whole bundles rather than asking per blob."""
@@ -308,13 +316,9 @@ class ActionCache:
             abort(context, grpc.StatusCode.NOT_FOUND, "no result for this action")
         _, result = found
         blobs = referenced(self.local.blob, result)
-        # Present, then read: `ensure` fetches what is missing bundle by bundle, and reading is
-        # what proves the bytes on disk still hash to their names.
-        if (
-            blobs is None
-            or not self.local.ensure(blobs)
-            or any(self.store.blob(one) is None for one in blobs)
-        ):
+        # Present at their size: `ensure` fetches what is missing bundle by bundle. Not read, which
+        # would cost every hit as much as its outputs weigh, for the few Buck2 then reads.
+        if blobs is None or not self.local.ensure(blobs):
             # A result we cannot back is a miss, never a hit that fails later: that is the whole
             # reason Buck2's "expired in the RE CAS" error stays out of reach.
             log.info("AC incomplete %s", action.hash[:12])
