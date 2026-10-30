@@ -275,6 +275,31 @@ class TestMountContexts(unittest.TestCase):
             self.assertEqual(target.readlink(), Path("other"))
             self.assertEqual(source.read_text(), "source")
 
+    def test_file_covers_its_target_with_its_own_content_read_only(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
+            root = Path(directory)
+            files, target = root / "files", root / "target"
+            files.mkdir()
+            target.write_text("host")
+
+            with mock.patch.object(isolation.FILES, "root", str(files)), isolation.File("box", target):
+                self.assertEqual(target.read_text(), "box")
+                with self.assertRaises(OSError) as raised:
+                    target.write_text("changed")
+                self.assertEqual(raised.exception.errno, errno.EROFS)
+
+            self.assertEqual(target.read_text(), "host")
+
+    def test_file_refuses_to_write_outside_a_sandbox(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
+            target = Path(directory) / "target"
+            target.write_text("host")
+
+            with self.assertRaisesRegex(RuntimeError, "internal error"):
+                isolation.File("box", target).mount()
+
+            self.assertEqual(target.read_text(), "host")
+
     def test_mounts_unwind_on_success_and_failure(self) -> None:
         with tempfile.TemporaryDirectory(dir="/var/tmp") as directory:
             root = Path(directory)

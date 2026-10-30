@@ -651,6 +651,11 @@ class Stage:
 # host's root to /oldroot and updates `HOST.root`.
 HOST = Stage()
 
+# FILES is the stage that File writes its content into. It has no filesystem either: enter_sandbox()
+# creates a directory in its scratch directory, which no process outside the sandbox can reach, and
+# updates `FILES.root`.
+FILES = Stage()
+
 
 class Bind(_Mount):
     # A bind mount clones its source recursively, and submounts inherited across a user namespace are
@@ -750,6 +755,26 @@ class Devices(_Mount):
             mount(_under(HOST.root, self.tty), destination, flags=MS_BIND)
 
 
+class File(Bind):
+    """A read-only file with `content` that only this sandbox sees."""
+
+    def __init__(self, content: str, target: StrPath) -> None:
+        super().__init__(target, target, readonly=True, stage=FILES)
+        self.content = content
+
+    @override
+    def mount(self, root: StrPath = _ROOT) -> str:
+        if FILES.root == _ROOT:
+            # Programming error: this would write to the host's own copy of the target.
+            raise RuntimeError("internal error: File is only mounted by enter_sandbox()")
+        path = _under(FILES.root, self.source)
+        os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(self.content)
+        return super().mount(root)
+
+
 class Tmpfs(_Mount):
     _unmount_flags = MNT_DETACH
 
@@ -829,7 +854,7 @@ class Overlay(_Mount):
         return target
 
 
-Filesystem = Bind | Devices | Tmpfs | Symlink | Overlay
+Filesystem = Bind | File | Devices | Tmpfs | Symlink | Overlay
 
 
 def _filesystem_key(filesystem: Filesystem) -> tuple[tuple[str, ...], bool]:
@@ -921,7 +946,11 @@ def enter_sandbox(
         umount2("oldroot/tmp", MNT_DETACH)
 
     HOST.root = "/oldroot"
-    stages = dict.fromkeys(fs.stage for fs in filesystems if isinstance(fs, Bind) and fs.stage is not HOST)
+    FILES.root = "/files"
+    os.mkdir(FILES.root, mode=0o755)
+    stages = dict.fromkeys(
+        fs.stage for fs in filesystems if isinstance(fs, Bind) and fs.stage not in (HOST, FILES)
+    )
     for index, stage in enumerate(stages):
         assert stage.filesystem is not None
         stage.root = f"/stage{index}"
