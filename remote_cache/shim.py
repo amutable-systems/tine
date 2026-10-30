@@ -145,6 +145,10 @@ class Local:
         # is uploaded again regardless, or the bad object would sit there for its whole lifetime,
         # a miss for every action that shares it, with every rebuild pointing at it afresh.
         self.tainted: set[str] = set()
+        # Held by bundle name while it is fetched and admitted. A second request that needs the same
+        # bundle, such as Buck2 reading several of its evicted blobs at once, waits and then finds
+        # it here.
+        self.fetching = KeyedLocks()
 
     def blob(self, digest: reapi.Digest) -> bytes | None:
         """A blob's bytes, fetching the bundle it arrived in if they are no longer here."""
@@ -157,18 +161,24 @@ class Local:
             return True
         if self.bucket is None:
             return False
-        wanted = {name for one in missing if (name := self.store.bundle_of(one)) is not None}
-        for name in wanted:
-            # Every member is checked against its own name on the way out, and this bundle was
-            # already proven against the result that named it when it first arrived. There is no
-            # result to prove it against now, so only what this store already attributes to the
-            # bundle is taken from it: a rewritten one could otherwise fill the store with junk
-            # that hashes correctly, and re-point another bundle's blobs at itself.
-            members = self.fetch_bundle(name)
-            if members is not None:
-                known = self.store.members_of(name)
-                self.admit({member: blob for member, blob in members.items() if member in known}, name)
-                self.counts.add("bundles refilled")
+        wanted: dict[str, list[reapi.Digest]] = {}
+        for one in missing:
+            if (name := self.store.bundle_of(one)) is not None:
+                wanted.setdefault(name, []).append(one)
+        for name, needed in wanted.items():
+            with self.fetching(name):
+                if all(self.store.has_blobs(needed)):
+                    continue
+                # Every member is checked against its own name on the way out, and this bundle was
+                # already proven against the result that named it when it first arrived. There is
+                # no result to prove it against now, so only what this store already attributes to
+                # the bundle is taken from it: a rewritten one could otherwise fill the store with
+                # junk that hashes correctly, and re-point another bundle's blobs at itself.
+                members = self.fetch_bundle(name)
+                if members is not None:
+                    known = self.store.members_of(name)
+                    self.admit({member: blob for member, blob in members.items() if member in known}, name)
+                    self.counts.add("bundles refilled")
         return all(self.store.has_blobs(digests))
 
     def fetch_bundle(self, name: str) -> dict[str, bytes] | None:
@@ -393,19 +403,6 @@ class ActionCache:
                 self.counts.add("misses")
                 return None
             pointer, result = self._trusted(action, stored)
-            # Another pointer to the same bundle, usually: the same outputs under an action digest
-            # that differs only in configuration. The pointer is signed and every blob it names is
-            # content-addressed and already proven, so there is nothing left for the bundle to
-            # prove, and a hit stays at one request rather than re-downloading the same bundle.
-            local = referenced(self.store.blob, result)
-            if local is not None and all(self.store.has_blobs(local)):
-                self.store.put_result(action, stored)
-                # The blobs may have come from this machine's own build and know no bundle yet;
-                # the signed pointer says which one has them, and that is what an eviction needs.
-                for digest in local:
-                    self.store.remember(digest, pointer.bundle)
-                log.info("AC from bucket %s, %d blobs already here", action.hash[:12], len(local))
-                return pointer, result
         except urllib.error.URLError as error:
             # A broken endpoint. Loud, and still a miss: the build rebuilds rather than failing on
             # something the bucket did.
@@ -418,26 +415,41 @@ class ActionCache:
             log.error("AC %s refused: %s", action.hash[:12], error)
             self.counts.add("pointers refused")
             return None
-        members = self.local.fetch_bundle(pointer.bundle)
-        if members is None:
-            return None
-        try:
-            blobs = self._proven(pointer, result, members)
-        except ValueError as error:
-            log.error("AC %s: %s", action.hash[:12], error)
-            self.local.refuse(pointer.bundle)
-            return None
-        started = time.monotonic()
-        self.local.admit(members, pointer.bundle)
-        self.store.put_result(action, stored)
-        log.info(
-            "AC from bucket %s, bundle %s, %d blobs, admitted in %.1fs",
-            action.hash[:12],
-            pointer.bundle[:12],
-            len(blobs),
-            time.monotonic() - started,
-        )
-        return pointer, result
+        with self.local.fetching(pointer.bundle):
+            # Another pointer to the same bundle, usually: the same outputs under an action digest
+            # that differs only in configuration, or a lookup that waited for this lock while
+            # another one fetched it. The pointer is signed and every blob it names is
+            # content-addressed and already proven, so there is nothing left for the bundle to
+            # prove, and a hit stays at one request rather than re-downloading the same bundle.
+            local = referenced(self.store.blob, result)
+            if local is not None and all(self.store.has_blobs(local)):
+                self.store.put_result(action, stored)
+                # The blobs may have come from this machine's own build and know no bundle yet;
+                # the signed pointer says which one has them, and that is what an eviction needs.
+                for digest in local:
+                    self.store.remember(digest, pointer.bundle)
+                log.info("AC from bucket %s, %d blobs already here", action.hash[:12], len(local))
+                return pointer, result
+            members = self.local.fetch_bundle(pointer.bundle)
+            if members is None:
+                return None
+            try:
+                blobs = self._proven(pointer, result, members)
+            except ValueError as error:
+                log.error("AC %s: %s", action.hash[:12], error)
+                self.local.refuse(pointer.bundle)
+                return None
+            started = time.monotonic()
+            self.local.admit(members, pointer.bundle)
+            self.store.put_result(action, stored)
+            log.info(
+                "AC from bucket %s, bundle %s, %d blobs, admitted in %.1fs",
+                action.hash[:12],
+                pointer.bundle[:12],
+                len(blobs),
+                time.monotonic() - started,
+            )
+            return pointer, result
 
     @staticmethod
     def _proven(

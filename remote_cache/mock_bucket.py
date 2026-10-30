@@ -21,11 +21,12 @@ from store import write_atomically
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
-    """Serves the directory, counts every key asked for, and can be told to fail one of them."""
+    """Serves the directory, counts every key asked for, and can be told to fail or hold one of them."""
 
     counts: Counter[str]
     agents: set[str]
     broken: set[str]
+    held: dict[str, threading.Event]
 
     @override
     def do_GET(self) -> None:  # noqa: N802 - the base class names it
@@ -35,6 +36,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if key in self.broken:
             self.send_error(503, "pretending to be unwell")
             return
+        if (gate := self.held.get(key)) is not None:
+            gate.wait()
         super().do_GET()
 
     # `format` because that is what the base class calls it, and an override has to match.
@@ -54,7 +57,9 @@ class Served:
         self.counts: Counter[str] = Counter()
         self.agents: set[str] = set()
         self.broken: set[str] = set()
-        bound = {"counts": self.counts, "agents": self.agents, "broken": self.broken}
+        # A key in here is answered only once its event is set, so a test can overlap requests.
+        self.held: dict[str, threading.Event] = {}
+        bound = {"counts": self.counts, "agents": self.agents, "broken": self.broken, "held": self.held}
         handler = functools.partial(type("Bound", (Handler,), bound), directory=str(root))
         self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
         # A short poll, because `shutdown` waits out one interval and a suite closes many of these.
