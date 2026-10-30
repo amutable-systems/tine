@@ -18,6 +18,7 @@ import warnings  # noqa: F401 (os.execvpe imports it after the host Python is no
 from isolation import (
     Bind,
     Devices,
+    File,
     Filesystem,
     Overlay,
     SandboxOSError,
@@ -193,13 +194,7 @@ def _identity(tools: str) -> list[Filesystem]:
         if os.path.exists(source):
             with open(source, encoding="utf-8") as handle:
                 content = handle.read()
-        # Deterministic per-uid path: overwritten each run rather than accumulated, and O_NOFOLLOW so
-        # a pre-planted symlink can't redirect the write.
-        path = f"/var/tmp/.tine-sandbox-{base}-{uid}"
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(content + entry)
-        out.append(Bind(path, "/etc/" + base, readonly=True))
+        out.append(File(content + entry, "/etc/" + base))
     return out
 
 
