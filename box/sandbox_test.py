@@ -6,6 +6,7 @@
 buck test tine//box:test
 """
 
+import ast
 import io
 import os
 import subprocess
@@ -18,7 +19,7 @@ from contextlib import contextmanager, redirect_stdout, suppress
 from pathlib import Path
 
 import sandbox
-from isolation import Bind, Devices, File, Filesystem, Overlay, Stage, Symlink, Tmpfs
+from isolation import Bind, Devices, File, Filesystem, Symlink, Tmpfs, Tree
 from sandbox import _PROJECT
 
 
@@ -56,8 +57,8 @@ def _project() -> Generator[tuple[Path, Path]]:
 
 def _launch(*args: str) -> sandbox.Launch:
     options = sandbox._parse(list(args))
-    tools = os.path.realpath(options.tools[-1])
-    return sandbox._launch(options, tools, Stage(Bind(tools, tools, readonly=True)))
+    with Tree(tuple(reversed(options.tools))) as tree:
+        return sandbox._launch(options, tree)
 
 
 def _unshare(*args: str) -> unittest.mock.MagicMock:
@@ -263,23 +264,27 @@ class TestHermetic(unittest.TestCase):
             launch = _launch("--tools", str(tools), "--", "true")
 
             self.assertIn(("usr/bin", "/bin"), [(link.source, link.target) for link in _symlinks(launch)])
-            self.assertNotIn(tools / "bin", [Path(bind.source) for bind in _binds(launch)])
+            self.assertNotIn("bin", [bind.source for bind in _binds(launch) if bind.tree is not None])
 
     def test_tools_directories_are_bound_read_only(self) -> None:
         with _project() as (_, tools):
             launch = _launch("--tools", str(tools), "--", "true")
 
-            bound = {Path(bind.source): Path(bind.target) for bind in _binds(launch) if bind.readonly}
-            self.assertEqual(bound[tools / "usr"], Path("/usr"))
-            self.assertEqual(bound[tools / "etc"], Path("/etc"))
-            self.assertEqual(bound[tools / "home"], Path("/home"))
+            bound = {
+                bind.source: bind.target
+                for bind in _binds(launch)
+                if bind.readonly and bind.tree is not None
+            }
+            self.assertEqual(bound["usr"], "/usr")
+            self.assertEqual(bound["etc"], "/etc")
+            self.assertEqual(bound["home"], "/home")
 
     def test_the_sandbox_supplies_the_api_filesystems_itself(self) -> None:
         with _project() as (_, tools):
             launch = _launch("--tools", str(tools), "--", "true")
 
             for name in ("proc", "sys", "dev", "run", "tmp", "boot"):
-                self.assertNotIn(tools / name, [Path(bind.source) for bind in _binds(launch)])
+                self.assertNotIn(name, [bind.source for bind in _binds(launch) if bind.tree is not None])
             self.assertIn((Path("/proc"), Path("/proc"), False, False), _bind_specs(launch))
             self.assertIn(
                 ("/dev", None),
@@ -303,7 +308,7 @@ class TestHermetic(unittest.TestCase):
 
             launch = _launch("--tools", str(tools), "--bind-cwd", "--", "true")
 
-            self.assertIn((occupied, Path("/") / occupied.name, True, False), _bind_specs(launch))
+            self.assertIn((Path(occupied.name), Path("/") / occupied.name, True, False), _bind_specs(launch))
 
     def test_absolute_project_paths_in_the_command_follow_the_mount(self) -> None:
         with _project() as (project, tools):
@@ -385,7 +390,7 @@ class TestRelaxed(unittest.TestCase):
             args = ("--tools", str(tools), "--relaxed", "--", "true")
             launch = _launch(*args)
 
-            self.assertIn((tools / "usr", Path("/usr"), True, False), _bind_specs(launch))
+            self.assertIn((Path("usr"), Path("/usr"), True, False), _bind_specs(launch))
             self.assertEqual(launch.chdir, str(project))
             namespaces = _unshare(*args).call_args.kwargs
             self.assertFalse(namespaces["isolate_network"])
@@ -468,18 +473,17 @@ class TestLayers(unittest.TestCase):
     def test_launch_reads_the_merged_tree(self) -> None:
         with _project() as (_, tools):
             layer = _layer(tools)
-            with Overlay((layer, tools), None, None, layer, lazy_unmount=False):
-                hermetic = _launch("--tools", str(layer), "--", "true")
-                relaxed = _launch("--tools", str(layer), "--relaxed", "--", "true")
+            hermetic = _launch("--tools", str(tools), "--tools", str(layer), "--", "true")
+            relaxed = _launch("--tools", str(tools), "--tools", str(layer), "--relaxed", "--", "true")
 
             self.assertIn(("usr/bin", "/bin"), [(link.source, link.target) for link in _symlinks(hermetic)])
-            self.assertIn((layer / "srv", Path("/srv"), True, False), _bind_specs(hermetic))
-            self.assertIn((layer / "home", Path("/home"), True, False), _bind_specs(hermetic))
+            self.assertIn((Path("srv"), Path("/srv"), True, False), _bind_specs(hermetic))
+            self.assertIn((Path("home"), Path("/home"), True, False), _bind_specs(hermetic))
             files = [filesystem for filesystem in relaxed.filesystems if isinstance(filesystem, File)]
             passwd = next(file for file in files if file.target == "/etc/passwd")
             self.assertTrue(passwd.content.startswith("layered:"))
 
-    def test_main_mounts_the_merged_tree_only_while_it_plans(self) -> None:
+    def test_main_opens_the_tools_layers_top_first(self) -> None:
         for layers in (["/top"], ["/base", "/top"]):
             with self.subTest(layers=layers):
                 calls = unittest.mock.MagicMock()
@@ -489,7 +493,7 @@ class TestLayers(unittest.TestCase):
 
                 with (
                     unittest.mock.patch.object(sandbox, "unshare_sandbox", calls.unshare_sandbox),
-                    unittest.mock.patch.object(sandbox, "Overlay", calls.Overlay),
+                    unittest.mock.patch.object(sandbox, "Tree", calls.Tree),
                     unittest.mock.patch.object(sandbox, "_launch", calls._launch),
                     unittest.mock.patch.object(sandbox, "enter_sandbox", calls.enter_sandbox),
                     unittest.mock.patch.object(os, "execvpe"),
@@ -497,26 +501,21 @@ class TestLayers(unittest.TestCase):
                 ):
                     sandbox.main(argv)
 
-                stage = calls._launch.call_args.args[2]
-                if len(layers) == 1:
-                    expected = ["unshare_sandbox", "_launch", "enter_sandbox"]
-                    self.assertIsInstance(stage.filesystem, Bind)
-                    self.assertEqual((stage.filesystem.source, stage.filesystem.target), ("/top", "/top"))
-                else:
-                    expected = [
+                self.assertEqual(
+                    [call[0] for call in calls.mock_calls],
+                    [
                         "unshare_sandbox",
-                        "Overlay",
-                        "Overlay().__enter__",
+                        "Tree",
+                        "Tree().__enter__",
                         "_launch",
-                        "Overlay().__exit__",
                         "enter_sandbox",
-                    ]
-                    calls.Overlay.assert_called_once_with(
-                        ("/top", "/base"), None, None, "/top", lazy_unmount=True
-                    )
-                    self.assertIs(stage.filesystem, calls.Overlay.return_value)
-                self.assertEqual([call[0] for call in calls.mock_calls], expected)
-                self.assertEqual(calls._launch.call_args.args[1], "/top")
+                        "Tree().__exit__",
+                    ],
+                )
+                calls.Tree.assert_called_once_with(tuple(reversed(layers)))
+                self.assertIs(
+                    calls._launch.call_args.args[1], calls.Tree.return_value.__enter__.return_value
+                )
                 calls.enter_sandbox.assert_called_once_with(
                     (), None, suppress_chown=True, suppress_sync=True
                 )
@@ -621,6 +620,10 @@ class TestShellLookup(unittest.TestCase):
 
 
 class TestStartup(unittest.TestCase):
+    def test_the_oldest_host_python_can_parse_the_launcher(self) -> None:
+        # The launcher also runs on the host's python3, which can be Python 3.12.
+        ast.parse(Path(sandbox.__file__).read_text(), feature_version=(3, 12))
+
     def test_legacy_python_imports_the_eager_annotation_names(self) -> None:
         for minor in (12, 13):
             with self.subTest(minor=minor):
@@ -651,8 +654,8 @@ class TestStartup(unittest.TestCase):
                     "-B",
                     "-c",
                     "import sys; sys.path.insert(0, sys.argv[1]); import sandbox; "
-                    "sandbox._launch(sandbox._parse(['--tools', sys.argv[2], '--', 'true']), sys.argv[2], "
-                    "sandbox.Stage()); "
+                    "sandbox._launch(sandbox._parse(['--tools', sys.argv[2], '--', 'true']), "
+                    "sandbox.Tree((sys.argv[2],)).__enter__()); "
                     "print('\\n'.join(sys.modules))",
                     str(Path(sandbox.__file__).parent),
                     str(tools),
@@ -731,6 +734,7 @@ class TestInteractiveShell(unittest.TestCase):
             ),
             unittest.mock.patch.object(sandbox, "_launch", return_value=launch),
             unittest.mock.patch.object(sandbox, "unshare_sandbox"),
+            unittest.mock.patch.object(sandbox, "Tree"),
             unittest.mock.patch.object(sandbox, "enter_sandbox", side_effect=enter),
             unittest.mock.patch.object(sandbox, "_interactive_shell", side_effect=shell),
             unittest.mock.patch.object(os, "execvpe") as execute,
