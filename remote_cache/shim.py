@@ -809,6 +809,10 @@ def build_server(
         grpc.server(
             futures.ThreadPoolExecutor(max_workers=workers),
             interceptors=[activity] if activity is not None else None,
+            # Buck2 keeps pinging while it waits for a slow lookup. By default, gRPC drops the
+            # connection after more than two pings less than five minutes apart with nothing sent
+            # back in between (grpc's doc/keepalive.md). 0 tolerates any number of them.
+            options=[("grpc.http2.max_ping_strikes", 0)],
         ),
     )
     server.add_generic_rpc_handlers(handlers(Local(store, bucket, counts), signer, verifier))
