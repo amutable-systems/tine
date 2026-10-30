@@ -36,7 +36,7 @@ import signing
 import wire
 from bucket import Bucket, Reader, S3Writer, Writer
 from status import ask, serving
-from store import Store
+from store import Store, check_blob
 
 # What Buck2 falls back to when a server advertises no limit of its own, so advertising the same
 # keeps it on the path it would take against a real cache: batches below this, ByteStream above.
@@ -591,18 +591,23 @@ class ContentAddressableStorage:
         if not self.accepting:
             self.local.counts.add("uploads refused")
             abort(context, grpc.StatusCode.PERMISSION_DENIED, NOT_ACCEPTING)
+        # Checked one by one, so that a bad blob is answered for alone, then stored in one
+        # `put_blobs`, for the reason it gives.
         answers = []
+        good: dict[reapi.Digest, bytes] = {}
         for entry in request.blobs:
             status = reapi.Status(code=reapi.OK)
             if entry.digest is None:
                 status = reapi.Status(code=reapi.INVALID_ARGUMENT, message="no digest")
             else:
                 try:
-                    self.store.put_blob(entry.digest, entry.data)
+                    check_blob(entry.digest, entry.data)
+                    good[entry.digest] = entry.data
                 except ValueError as error:
                     log.error("batch put %s: %s", entry.digest, error)
                     status = reapi.Status(code=reapi.INVALID_ARGUMENT, message=str(error))
             answers.append(reapi.Blob(digest=entry.digest, status=status))
+        self.store.put_blobs(good)
         log.info("batch put: %d blobs", len(answers))
         return reapi.BatchUpdateBlobsResponse(blobs=answers)
 
