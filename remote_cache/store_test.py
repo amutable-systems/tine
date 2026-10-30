@@ -214,6 +214,22 @@ class TestEviction(StoreCase):
             digest, _ = blob(f"{index}".encode() * 300)
             self.assertEqual(self.store.bundle_of(digest), BUNDLE)
 
+    def test_crossing_the_bound_makes_room_for_more_than_the_blob_that_crossed_it(self) -> None:
+        """Finding what to evict stats every blob, which a full store must not do on every upload."""
+        for index in range(11):
+            digest, body = blob(f"{index}".encode() * 95)
+            self.store.put_blob(digest, body)
+        self.assertLessEqual(self.store.held, 900)
+
+    def test_a_bundle_near_the_bound_does_not_evict_its_own_members(self) -> None:
+        """Otherwise every lookup of its result fetches it again, and loses some of it again."""
+        old, old_body = blob(b"o" * 100)
+        self.store.put_blob(old, old_body)
+        members = dict(blob(f"{index}".encode() * 95) for index in range(10))
+        self.store.put_blobs(members, bundle=BUNDLE)
+        self.assertEqual(self.store.has_blobs([old, *members]), [False] + [True] * 10)
+        self.assertLessEqual(self.store.held, 1000)
+
     def test_a_blob_larger_than_the_bound_does_not_wedge_it(self) -> None:
         """It is stored, then immediately evicted, rather than refused or kept forever."""
         digest, body = blob(b"x" * 5000)
