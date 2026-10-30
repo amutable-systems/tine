@@ -58,6 +58,13 @@ class TestBlobs(StoreCase):
         with self.assertRaisesRegex(ValueError, "hashes to"):
             self.store.put_blob(digest, b"a lie")
 
+    def test_invalid_hash_is_refused(self) -> None:
+        outside = reapi.Digest(hash="../../lock", size_bytes=1)
+        with self.assertRaisesRegex(ValueError, "not a SHA-256"):
+            self.store.blob(outside)
+        with self.assertRaisesRegex(ValueError, "not a SHA-256"):
+            self.store.has_blobs([outside])
+
     def test_the_empty_blob_is_always_there(self) -> None:
         """Clients take it for granted rather than uploading it."""
         digest, body = blob(b"")

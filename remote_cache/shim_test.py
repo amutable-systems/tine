@@ -221,9 +221,10 @@ class TestContentAddressableStorage(ShimCase):
         thing a trusted client should be able to do by accident either."""
         outside = reapi.Digest(hash="../../lock", size_bytes=1)
         response = self.batch_read(reapi.BatchReadBlobsRequest(digests=[outside]))
-        self.assertEqual([one.status.code for one in response.blobs if one.status], [reapi.NOT_FOUND])
-        missing = self.find_missing(reapi.FindMissingBlobsRequest(blob_digests=[outside]))
-        self.assertEqual(missing.missing_blob_digests, [outside])
+        self.assertEqual([one.status.code for one in response.blobs if one.status], [reapi.INVALID_ARGUMENT])
+        with self.assertRaises(grpc.RpcError) as caught:
+            self.find_missing(reapi.FindMissingBlobsRequest(blob_digests=[outside]))
+        self.assertEqual(status_of(caught.exception), grpc.StatusCode.INVALID_ARGUMENT)
         with self.assertRaises(grpc.RpcError) as caught:
             self.get_action_result(reapi.GetActionResultRequest(action_digest=outside))
         self.assertEqual(status_of(caught.exception), grpc.StatusCode.INVALID_ARGUMENT)
@@ -316,6 +317,28 @@ class TestActionCache(ShimCase):
         action, result = self.result_with_a_tree()
         served = self.get_action_result(reapi.GetActionResultRequest(action_digest=action))
         self.assertEqual(served, result)
+
+    def test_a_result_naming_something_that_is_not_a_digest_is_an_error(self) -> None:
+        """As an output file or as a Tree. A client or builder bug, so never quietly a miss."""
+        outside = reapi.Digest(hash="../../lock", size_bytes=1).to_bytes()
+        for raw in (
+            wire.submessage(2, wire.text(1, "out") + wire.submessage(2, outside)),
+            wire.submessage(3, wire.text(1, "dir") + wire.submessage(3, outside)),
+        ):
+            action = reapi.Digest.for_bytes(raw)
+            with self.assertRaises(grpc.RpcError) as caught:
+                self.update_action_result(
+                    reapi.UpdateActionResultRequest(
+                        action_digest=action, action_result=reapi.ActionResult.parse(raw)
+                    )
+                )
+            self.assertEqual(status_of(caught.exception), grpc.StatusCode.INVALID_ARGUMENT)
+            self.assertIsNone(self.store.result(action))
+            # As if a builder had signed it.
+            self.store.put_result(action, shim.ac_pack(shim.Pointer(bundle="b" * 64, result=raw)))
+            with self.assertRaises(grpc.RpcError) as caught:
+                self.get_action_result(reapi.GetActionResultRequest(action_digest=action))
+            self.assertEqual(status_of(caught.exception), grpc.StatusCode.UNKNOWN)
 
     def test_a_result_whose_blob_is_gone_is_a_miss(self) -> None:
         """Including a blob named inside the Tree, which is only reachable by parsing it."""

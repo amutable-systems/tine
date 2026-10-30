@@ -282,8 +282,6 @@ class Store:
         names, not that the file under a digest still holds those bytes. One that does not is
         dropped, so the next request fetches it again from its bundle.
         """
-        if not signing.is_sha256_hex(digest.hash):
-            return None
         path = self._path(digest.hash)
         try:
             data = path.read_bytes()
@@ -300,8 +298,8 @@ class Store:
         return data
 
     def has_blobs(self, digests: list[reapi.Digest]) -> list[bool]:
-        """Which of these are here. Something that is not a digest is not, rather than an error."""
-        return [signing.is_sha256_hex(one.hash) and self._path(one.hash).is_file() for one in digests]
+        """Which of these are here."""
+        return [self._path(one.hash).is_file() for one in digests]
 
     # The two below are how a test takes blobs away to see what happens: nothing in the shim
     # enumerates or evicts by hand.

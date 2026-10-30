@@ -333,7 +333,12 @@ class ActionCache:
         if not self.accepting:
             self.counts.add("uploads refused")
             abort(context, grpc.StatusCode.PERMISSION_DENIED, NOT_ACCEPTING)
-        prepared = self._prepare(action, result)
+        try:
+            prepared = self._prepare(action, result)
+        except ValueError as error:
+            # The store refusing something in the result that is not a digest: the client's bug,
+            # the same as one in the request.
+            abort(context, grpc.StatusCode.INVALID_ARGUMENT, str(error))
         if prepared is None:
             return result
         payload, bundle_name, blobs = prepared
@@ -567,7 +572,11 @@ class ContentAddressableStorage:
         self, request: reapi.FindMissingBlobsRequest, context: grpc.ServicerContext
     ) -> reapi.FindMissingBlobsResponse:
         digests = request.blob_digests
-        answers = zip(digests, self.store.has_blobs(digests), strict=True)
+        try:
+            present = self.store.has_blobs(digests)
+        except ValueError as error:
+            abort(context, grpc.StatusCode.INVALID_ARGUMENT, str(error))
+        answers = zip(digests, present, strict=True)
         missing = [digest for digest, found in answers if not found]
         log.info("find missing: %d of %d", len(missing), len(digests))
         return reapi.FindMissingBlobsResponse(missing_blob_digests=missing)
@@ -598,14 +607,12 @@ class ContentAddressableStorage:
     ) -> reapi.BatchReadBlobsResponse:
         answers = []
         for digest in request.digests:
-            data = self.local.blob(digest)
-            answers.append(
-                reapi.Blob(
-                    digest=digest,
-                    data=data or b"",
-                    status=reapi.Status(code=reapi.OK if data is not None else reapi.NOT_FOUND),
-                )
-            )
+            try:
+                data = self.local.blob(digest)
+                status = reapi.Status(code=reapi.OK if data is not None else reapi.NOT_FOUND)
+            except ValueError as error:
+                data, status = None, reapi.Status(code=reapi.INVALID_ARGUMENT, message=str(error))
+            answers.append(reapi.Blob(digest=digest, data=data or b"", status=status))
         found = sum(1 for one in answers if one.status and one.status.code == reapi.OK)
         log.info("batch read: %d of %d", found, len(answers))
         return reapi.BatchReadBlobsResponse(blobs=answers)
