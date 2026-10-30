@@ -546,8 +546,9 @@ class ActionCache:
                 for digest in blobs:
                     data = self.store.blob(digest)
                     if data is None:
-                        log.error("not publishing %s: %s is gone from the store", action.hash[:12], digest)
-                        return
+                        raise RuntimeError(
+                            f"not publishing {action.hash[:12]}: {digest} is gone from the store"
+                        )
                     members[digest.hash] = data
                 writer.put(key, bundle.pack(members))
                 self.local.tainted.discard(bundle_name)

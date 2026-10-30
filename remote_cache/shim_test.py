@@ -649,6 +649,23 @@ class TestBucketFetch(BucketCase):
         self.assertEqual(sum(self.served.counts.values()), asked)
 
 
+class TestPublish(BucketCase):
+    def test_a_blob_gone_before_its_bundle_is_written_is_a_publish_failure(self) -> None:
+        """Checked by size when the result arrives, so a rewritten file is only found here."""
+        (digest,) = self.upload(b"the output")
+        (self.store.root / "blobs" / digest.hash[:2] / digest.hash).write_bytes(b"x" * digest.size_bytes)
+        with self.assertRaises(grpc.RpcError) as caught:
+            self.update_action_result(
+                reapi.UpdateActionResultRequest(
+                    action_digest=reapi.Digest.for_bytes(b"one action"),
+                    action_result=one_file_result(digest),
+                )
+            )
+        self.assertEqual(status_of(caught.exception), grpc.StatusCode.UNKNOWN)
+        self.assertEqual(self.counts.report()["publish failures"], 1)
+        self.assertEqual(self.served.keys("ac"), [])
+
+
 class TestProven(unittest.TestCase):
     """The bundle is shown to be exactly what the signed result names before anything reaches the store."""
 
