@@ -31,7 +31,7 @@ import sqlite3
 import tempfile
 import threading
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 from typing import TextIO, cast
 
@@ -70,6 +70,9 @@ def _now() -> int:
 
 # Held open for as long as a store is served, naming who holds it.
 LOCK_NAME = "lock"
+
+# The share of `max_bytes` an eviction leaves held, once the store went over it.
+EVICTED_DOWN_TO = 0.9
 
 # Bumped whenever the tables below change shape. A store is a cache, so the answer to meeting an
 # older one is to throw it away rather than to carry migrations for something nobody deployed.
@@ -237,23 +240,24 @@ class Store:
         of them does not match.
 
         One transaction and one eviction pass for all of them, because a bundle can hold tens of
-        thousands of blobs, and committing and counting rows per blob takes minutes for that.
+        thousands of blobs, and committing and counting rows per blob takes minutes for that. The
+        room is made before writing, and never from the blobs being stored: a bundle that evicted
+        its own members would be fetched again on every lookup.
         """
         for digest, data in blobs.items():
             found = hashlib.sha256(data).hexdigest()
             if found != digest.hash or len(data) != digest.size_bytes:
                 raise ValueError(f"filed under {digest} but hashes to {found}/{len(data)}")
+        with self._lock:
+            arriving = sum(one.size_bytes for one in blobs if not self._present(one.hash))
+        self._evict(arriving, keeping={one.hash for one in blobs})
         for digest, data in blobs.items():
             path = self._path(digest.hash)
             path.parent.mkdir(parents=True, exist_ok=True)
             write_atomically(path, data)
         with self._lock:
-            for digest in blobs:
-                known = self._db.execute(
-                    "SELECT present FROM blob WHERE hash = ?", (digest.hash,)
-                ).fetchone()
-                if known is None or not known[0]:
-                    self.held += digest.size_bytes
+            # Counted again: another thread may have stored some of them meanwhile.
+            self.held += sum(one.size_bytes for one in blobs if not self._present(one.hash))
             now = _now()
             self._db.executemany(
                 "INSERT INTO blob (hash, size, bundle, present, seen) VALUES (?, ?, ?, 1, ?)"
@@ -261,8 +265,14 @@ class Store:
                 [(digest.hash, digest.size_bytes, bundle, now, bundle, now) for digest in blobs],
             )
             self._db.commit()
+        # Only a batch larger than the whole bound is still over it here.
         self._evict()
         self._evict_rows()
+
+    def _present(self, digest_hash: str) -> bool:
+        """Whether the index counts this blob's bytes as here. The caller holds the lock."""
+        row = self._db.execute("SELECT present FROM blob WHERE hash = ?", (digest_hash,)).fetchone()
+        return row is not None and bool(row[0])
 
     def blob(self, digest: reapi.Digest) -> bytes | None:
         """The bytes filed under this digest, if they still hash to it.
@@ -402,12 +412,16 @@ class Store:
             self._db.commit()
             self.held -= freed
 
-    def _evict(self) -> None:
-        """Drop the least recently used blobs until the store is inside its bound.
+    def _evict(self, arriving: int = 0, keeping: Collection[str] = ()) -> None:
+        """Drop the least recently used blobs until `arriving` more bytes fit well inside the bound.
 
-        Least recently used by the file's own timestamp, which `blob` moves on every read.
+        Least recently used by the file's own timestamp, which `blob` moves on every read. None of
+        `keeping` goes.
+
+        Finding them stats every blob here, so this frees room for more than the blob that crossed
+        the bound: a full store would otherwise pay that again for every single blob Buck2 uploads.
         """
-        if self.held <= self.max_bytes:
+        if self.held + arriving <= self.max_bytes:
             return
         with self._lock:
             # Only blobs whose bytes are worth something. The one blob of no size is the empty one,
@@ -416,13 +430,15 @@ class Store:
             rows = self._db.execute("SELECT hash, size FROM blob WHERE present = 1 AND size > 0").fetchall()
         ages = []
         for one, size in rows:
+            if one in keeping:
+                continue
             try:
                 ages.append((self._path(one).stat().st_atime, one, size))
             except FileNotFoundError:
                 # Dropped by another thread between the query and here.
                 continue
         ages.sort()
-        over = self.held - self.max_bytes
+        over = self.held + arriving - int(self.max_bytes * EVICTED_DOWN_TO)
         going = []
         freed = 0
         for _, one, size in ages:
