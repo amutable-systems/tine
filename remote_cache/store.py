@@ -31,7 +31,7 @@ import sqlite3
 import tempfile
 import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import TextIO, cast
 
@@ -226,29 +226,41 @@ class Store:
     # Blobs.
 
     def put_blob(self, digest: reapi.Digest, data: bytes, bundle: str | None = None) -> None:
-        """Store a blob under the digest it was filed under, if that is what it hashes to.
+        """Store one blob, see `put_blobs`."""
+        self.put_blobs({digest: data}, bundle)
+
+    def put_blobs(self, blobs: Mapping[reapi.Digest, bytes], bundle: str | None = None) -> None:
+        """Store blobs under the digests they were filed under, if that is what they all hash to.
 
         Checking here is what a cache filled from somewhere else cannot skip, so it is not an
-        assertion about our own client but the one place the rule belongs.
+        assertion about our own client but the one place the rule belongs. Nothing is stored if one
+        of them does not match.
+
+        One transaction and one eviction pass for all of them, because a bundle can hold tens of
+        thousands of blobs, and committing and counting rows per blob takes minutes for that.
         """
-        found = hashlib.sha256(data).hexdigest()
-        if found != digest.hash or len(data) != digest.size_bytes:
-            raise ValueError(f"filed under {digest} but hashes to {found}/{len(data)}")
-        path = self._path(digest.hash)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        write_atomically(path, data)
+        for digest, data in blobs.items():
+            found = hashlib.sha256(data).hexdigest()
+            if found != digest.hash or len(data) != digest.size_bytes:
+                raise ValueError(f"filed under {digest} but hashes to {found}/{len(data)}")
+        for digest, data in blobs.items():
+            path = self._path(digest.hash)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_atomically(path, data)
         with self._lock:
-            known = self._db.execute(
-                "SELECT size, present FROM blob WHERE hash = ?", (digest.hash,)
-            ).fetchone()
-            self._db.execute(
+            for digest in blobs:
+                known = self._db.execute(
+                    "SELECT present FROM blob WHERE hash = ?", (digest.hash,)
+                ).fetchone()
+                if known is None or not known[0]:
+                    self.held += digest.size_bytes
+            now = _now()
+            self._db.executemany(
                 "INSERT INTO blob (hash, size, bundle, present, seen) VALUES (?, ?, ?, 1, ?)"
                 " ON CONFLICT (hash) DO UPDATE SET present = 1, bundle = COALESCE(?, bundle), seen = ?",
-                (digest.hash, digest.size_bytes, bundle, _now(), bundle, _now()),
+                [(digest.hash, digest.size_bytes, bundle, now, bundle, now) for digest in blobs],
             )
             self._db.commit()
-            if known is None or not known[1]:
-                self.held += digest.size_bytes
         self._evict()
         self._evict_rows()
 
@@ -294,13 +306,17 @@ class Store:
         """Forget a blob's bytes. Where it came from is kept: that is how it can be asked for again."""
         self._forget([digest.hash])
 
-    def remember(self, digest: reapi.Digest, bundle: str) -> None:
-        """Record which bundle a blob arrived in, whether or not its bytes are still here."""
+    def remember_all(self, digests: Iterable[reapi.Digest], bundle: str) -> None:
+        """Record which bundle these blobs arrived in, whether or not their bytes are still here.
+
+        One transaction for all of them, like `put_blobs`.
+        """
+        now = _now()
         with self._lock:
-            self._db.execute(
+            self._db.executemany(
                 "INSERT INTO blob (hash, size, bundle, present, seen) VALUES (?, ?, ?, 0, ?)"
                 " ON CONFLICT (hash) DO UPDATE SET bundle = ?, seen = ?",
-                (digest.hash, digest.size_bytes, bundle, _now(), bundle, _now()),
+                [(digest.hash, digest.size_bytes, bundle, now, bundle, now) for digest in digests],
             )
             self._db.commit()
         self._evict_rows()
