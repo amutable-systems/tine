@@ -227,8 +227,10 @@ class Local:
 
     def admit(self, members: dict[str, bytes], name: str) -> None:
         """Every member into the store, each remembering the bundle it can be fetched from again."""
-        for member, blob in members.items():
-            self.store.put_blob(reapi.Digest(hash=member, size_bytes=len(blob)), blob, bundle=name)
+        self.store.put_blobs(
+            {reapi.Digest(hash=member, size_bytes=len(blob)): blob for member, blob in members.items()},
+            bundle=name,
+        )
 
 
 def referenced(
@@ -426,8 +428,7 @@ class ActionCache:
                 self.store.put_result(action, stored)
                 # The blobs may have come from this machine's own build and know no bundle yet;
                 # the signed pointer says which one has them, and that is what an eviction needs.
-                for digest in local:
-                    self.store.remember(digest, pointer.bundle)
+                self.store.remember_all(local, pointer.bundle)
                 log.info("AC from bucket %s, %d blobs already here", action.hash[:12], len(local))
                 return pointer, result
             members = self.local.fetch_bundle(pointer.bundle)
@@ -543,8 +544,7 @@ class ActionCache:
                 self.local.tainted.discard(bundle_name)
         writer.put(f"ac/{action.hash}", payload)
         # Now that it is there, every blob remembers which bundle it can be fetched from again.
-        for digest in blobs:
-            self.store.remember(digest, bundle_name)
+        self.store.remember_all(blobs, bundle_name)
         self.counts.add("published")
         if not shared:
             self.counts.add("bundles uploaded")

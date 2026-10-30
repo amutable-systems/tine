@@ -75,6 +75,27 @@ class TestBlobs(StoreCase):
         self.store.put_blob(digest, body)
         self.assertEqual(self.store.held, held)
 
+    def test_a_batch_is_stored_whole_and_counted_once_per_blob(self) -> None:
+        """How a bundle arrives: thousands of blobs, some of which may already be here."""
+        here, here_body = blob(b"already here")
+        self.store.put_blob(here, here_body)
+        held = self.store.held
+        bodies = [f"member {index}".encode() for index in range(100)] + [here_body]
+        self.store.put_blobs(dict(map(blob, bodies)), bundle=BUNDLE)
+        for body in bodies:
+            digest, _ = blob(body)
+            self.assertEqual(self.store.blob(digest), body)
+            self.assertEqual(self.store.bundle_of(digest), BUNDLE)
+        self.assertEqual(self.store.held, held + sum(map(len, bodies[:-1])))
+
+    def test_a_batch_holding_one_wrong_blob_stores_nothing(self) -> None:
+        good, good_body = blob(b"honest")
+        bad, _ = blob(b"honest too")
+        with self.assertRaisesRegex(ValueError, "hashes to"):
+            self.store.put_blobs({good: good_body, bad: b"a lie"}, bundle=BUNDLE)
+        self.assertEqual(self.store.has_blobs([good, bad]), [False, False])
+        self.assertIsNone(self.store.bundle_of(good))
+
     def test_a_file_that_no_longer_hashes_to_its_name_is_dropped_on_read(self) -> None:
         """The directory is shared and outlives the process, so the name proves nothing about the bytes."""
         digest, body = blob(b"honest")
@@ -145,17 +166,20 @@ class TestProvenance(StoreCase):
         self.assertIsNone(self.store.blob(digest))
         self.assertEqual(self.store.bundle_of(digest), BUNDLE)
 
-    def test_provenance_can_be_recorded_without_the_bytes(self) -> None:
-        digest, _ = blob(b"never stored here")
-        self.store.remember(digest, BUNDLE)
-        self.assertEqual(self.store.bundle_of(digest), BUNDLE)
-        self.assertEqual(self.store.has_blobs([digest]), [False])
+    def test_provenance_of_many_blobs_is_recorded_at_once(self) -> None:
+        """A result served from blobs already here names one bundle for all of them."""
+        stored, body = blob(b"stored here")
+        self.store.put_blob(stored, body)
+        absent, _ = blob(b"never stored here")
+        self.store.remember_all([stored, absent], BUNDLE)
+        self.assertEqual([self.store.bundle_of(one) for one in (stored, absent)], [BUNDLE, BUNDLE])
+        self.assertEqual(self.store.has_blobs([stored, absent]), [True, False])
 
     def test_a_later_bundle_replaces_an_earlier_one(self) -> None:
         """Identical outputs share a bundle, so the same blob arrives under more than one name."""
         digest, body = blob(b"shared between results")
         self.store.put_blob(digest, body, bundle=BUNDLE)
-        self.store.remember(digest, OTHER_BUNDLE)
+        self.store.remember_all([digest], OTHER_BUNDLE)
         self.assertEqual(self.store.bundle_of(digest), OTHER_BUNDLE)
 
     def test_a_blob_with_no_provenance_says_so(self) -> None:
@@ -215,9 +239,9 @@ class TestRowBound(StoreCase):
 
     def test_it_stays_under_its_row_bound_dropping_the_oldest_first(self) -> None:
         first = blob(b"oldest")[0]
-        self.store.remember(first, BUNDLE)
+        self.store.remember_all([first], BUNDLE)
         for index in range(self.MAX_ROWS + 4):
-            self.store.remember(blob(f"newer {index}".encode())[0], BUNDLE)
+            self.store.remember_all([blob(f"newer {index}".encode())[0]], BUNDLE)
         self.assertLessEqual(sum(self.store.counts()), self.MAX_ROWS)
         self.assertIsNone(self.store.bundle_of(first))
 
@@ -226,7 +250,7 @@ class TestRowBound(StoreCase):
         kept, body = blob(b"still here")
         self.store.put_blob(kept, body, bundle=BUNDLE)
         for index in range(self.MAX_ROWS * 3):
-            self.store.remember(blob(f"provenance {index}".encode())[0], OTHER_BUNDLE)
+            self.store.remember_all([blob(f"provenance {index}".encode())[0]], OTHER_BUNDLE)
         self.assertEqual(self.store.bundle_of(kept), BUNDLE)
         self.assertEqual(self.store.blob(kept), body)
 
@@ -235,11 +259,11 @@ class TestRowBound(StoreCase):
         evicted, body = blob(b"here for a long time")
         self.store.put_blob(evicted, body, bundle=BUNDLE)
         for index in range(4):
-            self.store.remember(blob(f"younger {index}".encode())[0], OTHER_BUNDLE)
+            self.store.remember_all([blob(f"younger {index}".encode())[0]], OTHER_BUNDLE)
         self.store.drop_blob(evicted)
         # Six rows so far, the empty blob included; push exactly four over the bound.
         for index in range(self.MAX_ROWS - 2):
-            self.store.remember(blob(f"youngest {index}".encode())[0], OTHER_BUNDLE)
+            self.store.remember_all([blob(f"youngest {index}".encode())[0]], OTHER_BUNDLE)
         self.assertEqual(self.store.bundle_of(evicted), BUNDLE)
         self.assertIsNone(self.store.bundle_of(blob(b"younger 0")[0]))
 
