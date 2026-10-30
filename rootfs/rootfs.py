@@ -25,6 +25,7 @@ from isolation import (
     Devices,
     Overlay,
     Tmpfs,
+    submounts,
 )
 from isolation import (
     chroot as _chroot,
@@ -220,19 +221,27 @@ def source_overlay(source: Path, target: Path) -> Generator[Path]:
     `rootfs()` decodes the `.wh.` and `.esc.` marker files of a stored image layer. This function
     does not, because a checkout is not an image layer and can contain such names.
     """
+    # An overlay shows the directory that a mount in its lower directory covers, not the mounted tree.
+    # A `tine mount` covers a directory of the project, so every mount below `source` gets an overlay
+    # of its own. statmount() returns the mount points with their symlinks resolved, so `source` needs
+    # them resolved too.
+    resolved = source.resolve()
+    layers = [(source, target)]
+    # overlayfs only takes directories as layers, so CHECKOUT shows the file that a file mount covers.
+    points = [Path(point) for point in submounts(str(resolved)) if Path(point).is_dir()]
+    layers += [(point, target / point.relative_to(resolved)) for point in points]
     with ExitStack() as stack:
         scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="source.")))
-        upper, work = scratch / "upper", scratch / "work"
-        upper.mkdir()
-        work.mkdir()
-        # Make sure the root directory has the source mode and times rather than the tmpdir
-        # mode and times.
-        source_attributes = source.stat()
-        upper.chmod(stat.S_IMODE(source_attributes.st_mode))
-        os.utime(upper, ns=(source_attributes.st_atime_ns, source_attributes.st_mtime_ns))
-        # A child process can keep a file descriptor open in the mount, and a normal unmount then
-        # fails with EBUSY.
-        stack.enter_context(Overlay((source,), upper, work, target, lazy_unmount=True))
+        for index, (lower, merged) in enumerate(layers):
+            upper, work = scratch / str(index) / "upper", scratch / str(index) / "work"
+            upper.mkdir(parents=True)
+            work.mkdir()
+            # Make sure the root directory has the mode and times of the lower directory rather than
+            # the tmpdir mode and times.
+            attributes = lower.stat()
+            upper.chmod(stat.S_IMODE(attributes.st_mode))
+            os.utime(upper, ns=(attributes.st_atime_ns, attributes.st_mtime_ns))
+            stack.enter_context(Overlay((lower,), upper, work, merged)).mount()
         yield target
 
 
@@ -266,11 +275,11 @@ def readonly_project(project: Path, outputs: Mapping[Path, Path]) -> Generator[N
             if not resolved.is_relative_to(os.path.realpath(project)):
                 raise ValueError(f"readonly_project: output leaves the project: {output} -> {resolved}")
             (project / output).mkdir(parents=True, exist_ok=True)
-            stack.enter_context(Bind(project / output, mounted))
+            stack.enter_context(Bind(project / output, mounted)).mount()
         # The read-only bind covers `project`, but the working directory of this process still
         # refers to the writable mount underneath. Change into `project` again, so that relative
         # paths of this process and of its children resolve through the read-only bind.
-        stack.enter_context(Bind(project, project, readonly=True))
+        stack.enter_context(Bind(project, project, readonly=True)).mount()
         os.chdir(project)
         yield
 
@@ -278,17 +287,17 @@ def readonly_project(project: Path, outputs: Mapping[Path, Path]) -> Generator[N
 def _apivfs(stack: ExitStack, target: Path) -> None:
     """Mount the API and temporary filesystems expected by package scripts."""
     tty = Path(os.ttyname(2)) if os.isatty(2) else None
-    stack.enter_context(Devices(target / "dev", tty))
-    stack.enter_context(Bind(Path("/proc"), target / "proc"))
-    stack.enter_context(Tmpfs(target / "run"))
+    stack.enter_context(Devices(target / "dev", tty)).mount()
+    stack.enter_context(Bind(Path("/proc"), target / "proc")).mount()
+    stack.enter_context(Tmpfs(target / "run")).mount()
 
     # The root splits temporary space as box/sandbox.py does. /tmp is a tmpfs for small files that
     # live briefly. /var/tmp is on disk, because package scripts stage gigabytes there. `buck run`
     # on a box and `buck test` have no scratch directory, so /var/tmp is a tmpfs there as well.
-    stack.enter_context(Tmpfs(target / "tmp"))
+    stack.enter_context(Tmpfs(target / "tmp", mode="1777")).mount()
 
     if "BUCK_SCRATCH_PATH" not in os.environ:
-        stack.enter_context(Tmpfs(target / "var/tmp"))
+        stack.enter_context(Tmpfs(target / "var/tmp", mode="1777")).mount()
     else:
         # In a run action, the sandbox mounts the action's scratch directory at /var/tmp, and TMPDIR
         # points there. Buck creates the scratch directory in buck-out, inside the project. /var/tmp
@@ -299,7 +308,7 @@ def _apivfs(stack: ExitStack, target: Path) -> None:
             stack.enter_context(tempfile.TemporaryDirectory(prefix="var-tmp.", ignore_cleanup_errors=True))
         )
         backing.chmod(0o1777)  # what a tmpfs mounted on /var/tmp defaults to
-        stack.enter_context(Bind(backing, target / "var/tmp"))
+        stack.enter_context(Bind(backing, target / "var/tmp")).mount()
 
 
 @contextmanager
@@ -332,7 +341,8 @@ def rootfs(
     target = Path(target)
     with ExitStack() as stack:
         if lowers is not None:
-            # Resolve Buck-relative paths before entering a possible chroot.
+            # _in_lower() treats a symlink as a missing directory. Without resolve(), capture() would find
+            # no entry in a layer that the caller passes as a symlink.
             resolved = [Path(lo).resolve() for lo in lowers]
             scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="rootfs.")))
             components = _reconstruct(resolved, scratch)
@@ -352,24 +362,24 @@ def rootfs(
             if upperdir is not None:
                 # Enter before registering the unmount so capture runs after it.
                 stack.enter_context(capture_on_exit(upper, resolved))
-            # capture() rewrites the upperdir, which overlayfs must no longer own by then, so a
-            # captured upper needs a strict unmount. An ephemeral one is read by nobody: detach it
-            # like every other mount and let the kernel finish in the background.
+            # capture() reads and rewrites the upperdir after the unmount, so a captured upper needs a
+            # strict unmount. Nobody reads an ephemeral upper, so it is unmounted lazily like every
+            # other mount.
             stack.enter_context(
-                Overlay(tuple(components), upper, work, target, lazy_unmount=upperdir is None)
-            )
+                Overlay(tuple(components), upper, work, target, strict_unmount=upperdir is not None)
+            ).mount()
         elif bind is not None:
             if capture_bind:
                 # Enter before registering the unmount so capture runs after it.
                 stack.enter_context(capture_on_exit(bind))
-            stack.enter_context(Bind(Path(bind), target))
+            stack.enter_context(Bind(Path(bind), target)).mount()
         else:
             raise ValueError("rootfs needs bind= or lowers=")
         if apivfs:
             _apivfs(stack, target)
         for src, dst in binds or []:
             dest = target / str(dst).lstrip("/")
-            stack.enter_context(Bind(Path(src), dest))
+            stack.enter_context(Bind(Path(src), dest)).mount()
         if chroot:
             # Enter last so callbacks resolve paths after the chroot unwinds.
             stack.enter_context(_chroot(target))
