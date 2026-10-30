@@ -124,6 +124,7 @@ image.disk(
 # out trusting it. See docs/user/aws.md.
 box.sh_test(
     name = "uefi-data-test",
+    labels = ["image"],
     args = ["$(location :image[ami])", "$(location {}[cert])".format(_SIGNING)],
     box = "@tine//tools:aws.box",
     script = """
