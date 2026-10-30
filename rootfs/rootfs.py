@@ -241,9 +241,7 @@ def source_overlay(source: Path, target: Path) -> Generator[Path]:
             attributes = lower.stat()
             upper.chmod(stat.S_IMODE(attributes.st_mode))
             os.utime(upper, ns=(attributes.st_atime_ns, attributes.st_mtime_ns))
-            # A child process can keep a file descriptor open in the mount, and a normal unmount then
-            # fails with EBUSY.
-            stack.enter_context(Overlay((lower,), upper, work, merged, lazy_unmount=True)).mount()
+            stack.enter_context(Overlay((lower,), upper, work, merged)).mount()
         yield target
 
 
@@ -363,11 +361,11 @@ def rootfs(
             if upperdir is not None:
                 # Enter before registering the unmount so capture runs after it.
                 stack.enter_context(capture_on_exit(upper, resolved))
-            # capture() rewrites the upperdir, which overlayfs must no longer own by then, so a
-            # captured upper needs a strict unmount. An ephemeral one is read by nobody: detach it
-            # like every other mount and let the kernel finish in the background.
+            # capture() reads and rewrites the upperdir after the unmount, so a captured upper needs a
+            # strict unmount. Nobody reads an ephemeral upper, so it is unmounted lazily like every
+            # other mount.
             stack.enter_context(
-                Overlay(tuple(components), upper, work, target, lazy_unmount=upperdir is None)
+                Overlay(tuple(components), upper, work, target, strict_unmount=upperdir is not None)
             ).mount()
         elif bind is not None:
             if capture_bind:

@@ -766,7 +766,11 @@ class _Mount:
     attached it.
     """
 
-    _unmount_flags: int = 0
+    # A strict unmount fails with EBUSY while a mount has submounts, for example the device nodes of
+    # `Devices` or the submounts that a recursive `Bind` copies. Unmounting the submounts first doesn't work
+    # either. A submount inherited across a user namespace is locked, and unmounting it on its own fails
+    # with EINVAL.
+    _unmount_flags = MNT_DETACH
 
     def __init__(self, target: StrPath) -> None:
         self.target = os.fspath(target)
@@ -854,10 +858,6 @@ class ExitStack:
 
 
 class Bind(_Mount):
-    # A bind mount clones its source recursively, and submounts inherited across a user namespace are
-    # locked, so an individual unmount of one fails with EINVAL. Unmounting only works lazily.
-    _unmount_flags = MNT_DETACH
-
     def __init__(
         self,
         source: StrPath,
@@ -889,8 +889,6 @@ class Bind(_Mount):
 
 
 class Devices(_Mount):
-    _unmount_flags = MNT_DETACH
-
     def __init__(self, target: StrPath, tty: StrPath | None = None) -> None:
         super().__init__(target)
         self.tty = None if tty is None else os.fspath(tty)
@@ -929,8 +927,6 @@ class Devices(_Mount):
 class File(_Mount):
     """A read-only file with `content` that only this mount shows."""
 
-    _unmount_flags = MNT_DETACH
-
     def __init__(self, content: str, target: StrPath) -> None:
         super().__init__(target)
         self.content = content
@@ -946,8 +942,6 @@ class File(_Mount):
 
 
 class Tmpfs(_Mount):
-    _unmount_flags = MNT_DETACH
-
     def __init__(self, target: StrPath, mode: str = "0755") -> None:
         super().__init__(target)
         self.mode = mode
@@ -984,8 +978,10 @@ class Overlay(_Mount):
         workdir: StrPath | None,
         target: StrPath,
         *,
-        # Set to False if you need to access upperdir right after unmounting
-        lazy_unmount: bool,
+        # A lazy unmount also succeeds while a process still uses the overlay, and that process can
+        # keep writing into upperdir. Pass True if the caller reads upperdir after the unmount. A
+        # strict unmount fails with EBUSY while a process still uses the overlay.
+        strict_unmount: bool = False,
     ) -> None:
         super().__init__(target)
         if (upperdir is None) != (workdir is None):
@@ -995,7 +991,8 @@ class Overlay(_Mount):
         self.lowerdirs = tuple(os.fspath(path) for path in lowerdirs)
         self.upperdir = None if upperdir is None else os.fspath(upperdir)
         self.workdir = None if workdir is None else os.fspath(workdir)
-        self._unmount_flags = MNT_DETACH if lazy_unmount else 0
+        if strict_unmount:
+            self._unmount_flags = 0
 
     @override
     def _open(self) -> int:
